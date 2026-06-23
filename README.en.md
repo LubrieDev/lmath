@@ -22,7 +22,7 @@
 
 ### Manual
 
-1. Download `main.js` and `manifest.json` from the latest release.
+1. Download `main.js`, `manifest.json` and `styles.css` from the latest release.
 2. Create an `obsi-math` folder inside `<your-vault>/.obsidian/plugins/`.
 3. Copy the files there.
 4. In Obsidian: **Settings → Community plugins** → enable **Obsi Math**.

@@ -22,7 +22,7 @@ Plugin de [Obsidian](https://obsidian.md) para graficar funciones matemáticas d
 
 ### Manual
 
-1. Descarga `main.js` y `manifest.json` desde la última release.
+1. Descarga `main.js`, `manifest.json` y `styles.css` desde la última release.
 2. Crea la carpeta `obsi-math` dentro de `<tu-vault>/.obsidian/plugins/`.
 3. Copia ahí los archivos.
 4. En Obsidian: **Configuración → Plugins de la comunidad** → activa **Obsi Math**.
