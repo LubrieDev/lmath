@@ -45492,6 +45492,11 @@ Chain.createProxy(math);
 // main.ts
 var FUNCIONES_TRIG = ["sin", "cos", "tan", "sec", "csc", "cot"];
 var FUNCIONES_LATEX = "sin|cos|tan|sec|csc|cot|log|ln";
+var FUNCIONES_INVERSAS_EXTRA = {
+  acsc: (x) => Math.asin(1 / x),
+  asec: (x) => Math.acos(1 / x),
+  acot: (x) => Math.PI / 2 - Math.atan(x)
+};
 function encontrarParentesisCierre(texto, inicio) {
   let profundidad = 0;
   for (let i2 = inicio; i2 < texto.length; i2++) {
@@ -45505,6 +45510,41 @@ function encontrarParentesisCierre(texto, inicio) {
   }
   return -1;
 }
+function encontrarLlaveCierre(texto, inicio) {
+  let profundidad = 0;
+  for (let i2 = inicio; i2 < texto.length; i2++) {
+    if (texto[i2] === "{")
+      profundidad++;
+    else if (texto[i2] === "}") {
+      profundidad--;
+      if (profundidad === 0)
+        return i2;
+    }
+  }
+  return -1;
+}
+function convertirFracciones(expr) {
+  let idx = expr.indexOf("\\frac{");
+  while (idx !== -1) {
+    const inicioNum = idx + 5;
+    const finNum = encontrarLlaveCierre(expr, inicioNum);
+    if (finNum === -1)
+      break;
+    if (expr[finNum + 1] !== "{") {
+      idx = expr.indexOf("\\frac{", idx + 1);
+      continue;
+    }
+    const inicioDen = finNum + 1;
+    const finDen = encontrarLlaveCierre(expr, inicioDen);
+    if (finDen === -1)
+      break;
+    const num = convertirFracciones(expr.slice(inicioNum + 1, finNum));
+    const den = convertirFracciones(expr.slice(inicioDen + 1, finDen));
+    expr = expr.slice(0, idx) + `(${num})/(${den})` + expr.slice(finDen + 1);
+    idx = expr.indexOf("\\frac{", idx);
+  }
+  return expr;
+}
 function argumentoTrigonometrico(arg2) {
   return /^[+-]?\d+(\.\d+)?$/.test(arg2.trim()) ? arg2.trim() + "*pi/180" : arg2.trim();
 }
@@ -45516,6 +45556,10 @@ function normalizarTrigonometria(expr) {
       const idx = resultado.indexOf(fn + "(", desde);
       if (idx === -1)
         break;
+      if (idx > 0 && /[a-zA-Z]/.test(resultado[idx - 1])) {
+        desde = idx + fn.length + 1;
+        continue;
+      }
       const inicioArg = idx + fn.length;
       const finArg = encontrarParentesisCierre(resultado, inicioArg);
       if (finArg === -1)
@@ -45555,6 +45599,62 @@ function convertirExponentes(expr) {
   }
   return out;
 }
+function ultimoNoEspacio(s) {
+  for (let i2 = s.length - 1; i2 >= 0; i2--)
+    if (s[i2] !== " ")
+      return s[i2];
+  return "";
+}
+function convertirValorAbsoluto(expr) {
+  if (!expr.includes("|"))
+    return expr;
+  const totalBarras = (expr.match(/\|/g) || []).length;
+  if (totalBarras % 2 !== 0)
+    return expr;
+  let out = "";
+  const pila = [];
+  for (let i2 = 0; i2 < expr.length; i2++) {
+    const c = expr[i2];
+    if (c !== "|") {
+      out += c;
+      continue;
+    }
+    const prev = ultimoNoEspacio(out);
+    const cierraOperando = prev !== "" && /[A-Za-z0-9.)\]}]/.test(prev);
+    if (pila.length > 0 && cierraOperando) {
+      pila.pop();
+      out += ")";
+    } else {
+      pila.push(i2);
+      out += "abs(";
+    }
+  }
+  return pila.length === 0 ? out : expr;
+}
+function normalizarFuncionesInversas(expr) {
+  const t = "sin|cos|tan|csc|sec|cot";
+  expr = expr.replace(new RegExp(`(${t})\\s*\u207B\xB9`, "g"), "a$1");
+  expr = expr.replace(new RegExp(`(${t})\\s*\\^\\{?\\s*-\\s*1\\s*\\}?`, "g"), "a$1");
+  expr = expr.replace(new RegExp(`\\barc(${t})\\b`, "g"), "a$1");
+  for (const fn of ["asin", "acos", "atan", "acsc", "asec", "acot"]) {
+    let desde = 0;
+    let idx;
+    while ((idx = expr.indexOf(fn + "{", desde)) !== -1) {
+      const prev = idx > 0 ? expr[idx - 1] : "";
+      if (/[A-Za-z0-9]/.test(prev)) {
+        desde = idx + fn.length;
+        continue;
+      }
+      const inicioLlave = idx + fn.length;
+      const fin = encontrarLlaveCierre(expr, inicioLlave);
+      if (fin === -1)
+        break;
+      expr = expr.slice(0, inicioLlave) + "(" + expr.slice(inicioLlave + 1, fin) + ")" + expr.slice(fin + 1);
+      desde = fin + 1;
+    }
+  }
+  return expr;
+}
 function normalizarEntrada(raw) {
   let expr = raw;
   expr = expr.replace(/π/g, "pi");
@@ -45566,12 +45666,21 @@ function normalizarEntrada(raw) {
   expr = expr.replace(/∞/g, "Infinity");
   expr = expr.replace(/\\left/g, "");
   expr = expr.replace(/\\right/g, "");
+  expr = convertirValorAbsoluto(expr);
+  expr = normalizarFuncionesInversas(expr);
   expr = expr.replace(
     /\(\s*\{\\frac\{([^}]+)\}\{([^}]+)\}\s*\}\s*\)/g,
     "(($1)/($2))"
   );
   expr = expr.replace(/\(\s*\{([^{}]+)\}\s*\)/g, "($1)");
-  expr = expr.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, "($1)/($2)");
+  expr = convertirFracciones(expr);
+  expr = expr.replace(
+    /([a-zA-Z][a-zA-Z0-9._]*|\d+(?:\.\d+)?|\([^()]+\))\^\{\s*\(?\s*(\d+)\s*\)?\s*\/\s*\(?\s*(\d+)\s*\)?\s*\}/g,
+    (_, base, m, n) => {
+      const radicando = m === "1" ? base : `${base}^${m}`;
+      return n === "2" ? `sqrt(${radicando})` : `nthRoot(${radicando},${n})`;
+    }
+  );
   expr = convertirExponentes(expr);
   expr = expr.replace(/\\log_\{([^{}]+)\}\s*\{([^{}]+)\}/g, "log($2,$1)");
   expr = expr.replace(/\\log_\{([^{}]+)\}\s*\(([^()]+)\)/g, "log($2,$1)");
@@ -45580,6 +45689,7 @@ function normalizarEntrada(raw) {
   expr = expr.replace(/\\ln\s*\{([^{}]+)\}/g, "log($1)");
   expr = expr.replace(/\\ln\s*\(([^()]+)\)/g, "log($1)");
   expr = expr.replace(/\\log\s*\{([^{}]+)\}/g, "log($1)");
+  expr = expr.replace(/\bln\b/g, "log");
   const TRIG_PATRON = "sin|cos|tan|sec|csc|cot";
   expr = expr.replace(
     new RegExp(`\\\\(${TRIG_PATRON})\\s*\\{\\\\frac\\{([^}]+)\\}\\{([^}]+)\\}\\}`, "g"),
@@ -45604,8 +45714,11 @@ function normalizarEntrada(raw) {
   expr = normalizarTrigonometria(expr);
   return expr;
 }
+function embellecerInversasLatex(tex) {
+  return tex.replace(/\\sin\s*\^\{-1\}/g, "\\arcsin").replace(/\\cos\s*\^\{-1\}/g, "\\arccos").replace(/\\tan\s*\^\{-1\}/g, "\\arctan").replace(/\\csc\s*\^\{-1\}/g, "\\text{arccsc}").replace(/\\sec\s*\^\{-1\}/g, "\\text{arcsec}").replace(/\\cot\s*\^\{-1\}/g, "\\text{arccot}");
+}
 function limpiarTex(tex) {
-  let resultado = tex;
+  let resultado = embellecerInversasLatex(tex);
   resultado = resultado.replace(/~\s*/g, "");
   resultado = resultado.replace(/(^|[^a-zA-Z\\^_}\]])\{\s*([a-zA-Z0-9])\s*\}/g, "$1$2");
   resultado = resultado.replace(/(\d)\s+([a-zA-Z\\])/g, "$1$2");
@@ -45857,42 +45970,175 @@ function resolverSistema(ecuaciones) {
   }
   return Object.fromEntries(todasVars.map((v, i2) => [v, solucion[i2]]));
 }
-var RANGO_X = { min: -10, max: 10, pasos: 200 };
+var RANGO_X = { min: -10, max: 10, pasos: 1e3 };
 var UMBRAL_PENDIENTE = 50;
+var LIMITE_PUNTOS_NOTABLES = 20;
+var TOLERANCIA_FUSION = 0.05;
+function refinarRaiz(evaluar, a, fa, b) {
+  for (let i2 = 0; i2 < 60; i2++) {
+    const m2 = (a + b) / 2;
+    const fm2 = evaluar(m2);
+    if (!Number.isFinite(fm2))
+      return null;
+    if (fm2 === 0)
+      return m2;
+    if (fa * fm2 < 0) {
+      b = m2;
+    } else {
+      a = m2;
+      fa = fm2;
+    }
+  }
+  const m = (a + b) / 2;
+  const fm = evaluar(m);
+  return Number.isFinite(fm) && Math.abs(fm) < 1e-3 ? m : null;
+}
+function detectarRaices(evaluar, xs, ys) {
+  const raices = [];
+  const agregar = (x) => {
+    if (!raices.some((r) => Math.abs(r - x) < 1e-4))
+      raices.push(x);
+  };
+  let finitos = 0, ceros = 0;
+  for (const y of ys) {
+    if (!Number.isFinite(y))
+      continue;
+    finitos++;
+    if (y === 0)
+      ceros++;
+  }
+  if (finitos > 0 && ceros === finitos)
+    return [];
+  for (let i2 = 0; i2 < xs.length - 1; i2++) {
+    const ya = ys[i2], yb = ys[i2 + 1];
+    if (!Number.isFinite(ya) || !Number.isFinite(yb))
+      continue;
+    if (ya === 0) {
+      agregar(xs[i2]);
+      continue;
+    }
+    if (ya * yb < 0) {
+      const r = refinarRaiz(evaluar, xs[i2], ya, xs[i2 + 1]);
+      if (r !== null)
+        agregar(r);
+    }
+  }
+  const n = xs.length - 1;
+  if (Number.isFinite(ys[n]) && ys[n] === 0)
+    agregar(xs[n]);
+  return raices.sort((p, q) => p - q);
+}
+function detectarVertices(xs, ys, delta) {
+  var _a, _b;
+  const vertices = [];
+  for (let i2 = 1; i2 < xs.length - 1; i2++) {
+    const yPrev = ys[i2 - 1], yCurr = ys[i2], yNext = ys[i2 + 1];
+    if (!Number.isFinite(yPrev) || !Number.isFinite(yCurr) || !Number.isFinite(yNext))
+      continue;
+    if (Math.abs((yCurr - yPrev) / delta) >= UMBRAL_PENDIENTE)
+      continue;
+    if (Math.abs((yNext - yCurr) / delta) >= UMBRAL_PENDIENTE)
+      continue;
+    if (!Number.isFinite((_a = ys[i2 - 2]) != null ? _a : 0) || !Number.isFinite((_b = ys[i2 + 2]) != null ? _b : 0))
+      continue;
+    const dAntes = yCurr - yPrev;
+    const dDespues = yNext - yCurr;
+    const tipo = dAntes < 0 && dDespues > 0 ? "min" : dAntes > 0 && dDespues < 0 ? "max" : null;
+    if (tipo === null)
+      continue;
+    const denom = yPrev - 2 * yCurr + yNext;
+    let xVert = xs[i2], yVert = yCurr;
+    if (Number.isFinite(denom) && Math.abs(denom) > 1e-12) {
+      const t = (yPrev - yNext) / (2 * denom);
+      if (Math.abs(t) <= 1) {
+        xVert = xs[i2] + t * delta;
+        yVert = yCurr - (yPrev - yNext) * (yPrev - yNext) / (8 * denom);
+      }
+    }
+    vertices.push({ x: xVert, y: yVert, tipo });
+  }
+  return vertices;
+}
 function analizarFuncion(evaluar) {
   const { min: min3, max: max3, pasos } = RANGO_X;
   const delta = (max3 - min3) / pasos;
-  const raices = [];
-  const vertices = [];
-  let xPrev = min3;
-  let yPrev = evaluar(xPrev);
-  let xCurr = min3 + delta;
-  let yCurr = evaluar(xCurr);
-  for (let i2 = 2; i2 <= pasos; i2++) {
-    const xNext = min3 + i2 * delta;
-    const yNext = evaluar(xNext);
-    if (isFinite(yPrev) && isFinite(yCurr) && isFinite(yNext)) {
-      const pendiente = Math.abs((yNext - yPrev) / delta);
-      const dAntes = yCurr - yPrev;
-      const dDespues = yNext - yCurr;
-      if (pendiente < UMBRAL_PENDIENTE) {
-        if (dAntes < 0 && dDespues > 0)
-          vertices.push({ x: xCurr, y: yCurr, tipo: "min" });
-        else if (dAntes > 0 && dDespues < 0)
-          vertices.push({ x: xCurr, y: yCurr, tipo: "max" });
-        if (yPrev === 0) {
-          raices.push(xPrev);
-        } else if (yPrev * yCurr < 0) {
-          raices.push(xPrev - yPrev * (xCurr - xPrev) / (yCurr - yPrev));
-        }
-      }
-    }
-    xPrev = xCurr;
-    yPrev = yCurr;
-    xCurr = xNext;
-    yCurr = yNext;
+  const xs = new Array(pasos + 1);
+  const ys = new Array(pasos + 1);
+  for (let i2 = 0; i2 <= pasos; i2++) {
+    const x = min3 + i2 * delta;
+    xs[i2] = x;
+    ys[i2] = evaluar(x);
   }
-  return { raices, vertices };
+  return {
+    raices: detectarRaices(evaluar, xs, ys),
+    vertices: detectarVertices(xs, ys, delta)
+  };
+}
+var TRIG_LLAMADA = /\b(sin|cos|tan|sec|csc|cot)\s*\(/;
+function tieneTrigonometria(expr) {
+  return TRIG_LLAMADA.test(expr);
+}
+var MIN_PUNTOS_PERIODICO = 3;
+function estadoGrupo(cantidad, esTrig) {
+  if (esTrig && cantidad >= MIN_PUNTOS_PERIODICO)
+    return "infinitas";
+  if (cantidad > LIMITE_PUNTOS_NOTABLES)
+    return "demasiadas";
+  return "normal";
+}
+function construirPuntosNotables(analisis, interseccionY, estadoRaices, estadoVertices) {
+  const puntos = [];
+  if (estadoRaices === "normal")
+    for (const x of analisis.raices)
+      puntos.push({ x, y: 0, tipo: "raiz" });
+  if (estadoVertices === "normal")
+    for (const v of analisis.vertices)
+      puntos.push({ x: v.x, y: v.y, tipo: v.tipo });
+  if (Number.isFinite(interseccionY))
+    puntos.push({ x: 0, y: interseccionY, tipo: "interseccion-y" });
+  const fusionados = [];
+  for (const p of puntos) {
+    const coincide = fusionados.some(
+      (q) => Math.abs(q.x - p.x) < TOLERANCIA_FUSION && Math.abs(q.y - p.y) < TOLERANCIA_FUSION
+    );
+    if (!coincide)
+      fusionados.push(p);
+  }
+  return fusionados;
+}
+function clasificarDegenerada(evaluar) {
+  let reales = 0, infinitos = 0, complejos = 0;
+  const muestra = (x) => {
+    const v = evaluar(x);
+    if (typeof v === "number") {
+      if (Number.isFinite(v))
+        reales++;
+      else if (v === Infinity || v === -Infinity)
+        infinitos++;
+    } else if (v && typeof v === "object" && typeof v.im === "number") {
+      complejos++;
+    }
+  };
+  for (let i2 = 0; i2 <= 500; i2++)
+    muestra(-1e3 + 2e3 * i2 / 500);
+  for (let i2 = 0; i2 <= 200; i2++)
+    muestra(-10 + 20 * i2 / 200);
+  if (reales > 0)
+    return null;
+  if (infinitos > 0)
+    return {
+      etiqueta: "Indefinida",
+      detalle: "La expresi\xF3n no est\xE1 definida en \u211D."
+    };
+  if (complejos > 0)
+    return {
+      etiqueta: "No definida en \u211D",
+      detalle: "La expresi\xF3n produce valores complejos y no puede representarse en el plano real."
+    };
+  return {
+    etiqueta: "Indeterminada",
+    detalle: "La expresi\xF3n produce una forma indeterminada."
+  };
 }
 function crearShader(gl, tipo, fuente) {
   const shader = gl.createShader(tipo);
@@ -45967,6 +46213,8 @@ var ObsiMathPlugin = class extends import_obsidian.Plugin {
       "obs-graph",
       async (source, el, ctx) => {
         const contenedor = el.createDiv({ cls: "obsi-math-container" });
+        const limpieza = new import_obsidian.MarkdownRenderChild(contenedor);
+        ctx.addChild(limpieza);
         try {
           const partes = source.trim().split("=");
           const exprRaw = partes.length > 1 ? partes[1].trim() : partes[0].trim();
@@ -45974,11 +46222,16 @@ var ObsiMathPlugin = class extends import_obsidian.Plugin {
           let latex = "f(x)=" + expr;
           try {
             const tex = limpiarTex(parse2(expr).toTex({ parenthesis: "auto" }));
-            latex = "f(x)=" + tex;
+            latex = "f(x)=" + (tex === "undefined" ? "\\text{[...]}" : tex);
           } catch (e3) {
             console.warn("ObsiMath: no se pudo generar LaTeX para", expr, e3);
           }
-          const contenedorLatex = contenedor.createDiv({ cls: "obsi-math-latex" });
+          const panelLatex = contenedor.createDiv({ cls: "obsi-math-latex" });
+          panelLatex.style.cssText = "position:relative; width:50%; height:261px; padding:0; overflow:hidden;";
+          const contenedorLatex = panelLatex.createDiv({ cls: "obsi-math-latex" });
+          contenedorLatex.style.cssText = "width:100%; height:100%; padding:24px; box-sizing:border-box; display:flex; align-items:center; justify-content:safe center; overflow-x:hidden; overflow-y:hidden;";
+          contenedorLatex.style.scrollbarWidth = "thin";
+          contenedorLatex.style.scrollbarColor = "#3a3a3a #1e1e1e";
           await import_obsidian.MarkdownRenderer.render(
             this.app,
             "$$" + latex + "$$",
@@ -45986,6 +46239,40 @@ var ObsiMathPlugin = class extends import_obsidian.Plugin {
             ctx.sourcePath,
             this
           );
+          const fadeOverlay = panelLatex.createDiv();
+          fadeOverlay.style.cssText = "position:absolute; inset:0; pointer-events:none;";
+          const fadeColor = "rgba(30, 30, 30, 0.85)";
+          const fadeIzq = fadeOverlay.createDiv();
+          fadeIzq.style.cssText = `position:absolute; top:0; bottom:0; left:0; width:32px; opacity:0; transition:opacity 0.15s ease; background:linear-gradient(to right, ${fadeColor}, transparent);`;
+          const fadeDer = fadeOverlay.createDiv();
+          fadeDer.style.cssText = `position:absolute; top:0; bottom:0; right:0; width:32px; opacity:0; transition:opacity 0.15s ease; background:linear-gradient(to left, ${fadeColor}, transparent);`;
+          const TOLERANCIA_SCROLL = 3;
+          const actualizarFade = () => {
+            const max3 = contenedorLatex.scrollWidth - contenedorLatex.clientWidth;
+            const desborda = max3 > TOLERANCIA_SCROLL;
+            contenedorLatex.style.overflowX = desborda ? "auto" : "hidden";
+            const sl = contenedorLatex.scrollLeft;
+            fadeIzq.style.opacity = desborda && sl > 0 ? "1" : "0";
+            fadeDer.style.opacity = desborda && sl < max3 - 1 ? "1" : "0";
+          };
+          contenedorLatex.addEventListener("scroll", actualizarFade);
+          contenedorLatex.addEventListener(
+            "wheel",
+            (e3) => {
+              if (contenedorLatex.scrollWidth - contenedorLatex.clientWidth <= TOLERANCIA_SCROLL)
+                return;
+              e3.preventDefault();
+              const desplazamiento = e3.deltaY + e3.deltaX;
+              contenedorLatex.scrollLeft += Math.max(-40, Math.min(40, desplazamiento));
+            },
+            { passive: false }
+          );
+          requestAnimationFrame(actualizarFade);
+          window.addEventListener("resize", actualizarFade);
+          limpieza.register(() => window.removeEventListener("resize", actualizarFade));
+          const observadorLatex = new ResizeObserver(() => actualizarFade());
+          observadorLatex.observe(contenedorLatex);
+          limpieza.register(() => observadorLatex.disconnect());
           let W = 768;
           const H = 261;
           const dpr = Math.ceil(window.devicePixelRatio || 1);
@@ -45993,27 +46280,57 @@ var ObsiMathPlugin = class extends import_obsidian.Plugin {
           wrapGrafica.style.cssText = `position:relative; width:100%; height:${H}px;`;
           const canvasGL = wrapGrafica.createEl("canvas");
           const canvas2D = wrapGrafica.createEl("canvas");
+          const canvasCross = wrapGrafica.createEl("canvas");
           canvasGL.width = W * dpr;
           canvasGL.height = H * dpr;
           canvasGL.style.cssText = `position:absolute; top:0; left:0; width:100%; height:100%;`;
           canvas2D.width = W * dpr;
           canvas2D.height = H * dpr;
           canvas2D.style.cssText = `position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;`;
+          canvasCross.width = W * dpr;
+          canvasCross.height = H * dpr;
+          canvasCross.style.cssText = `position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;`;
           const gl = canvasGL.getContext("webgl", { antialias: true });
           const ctx2d = canvas2D.getContext("2d");
+          const ctxCross = canvasCross.getContext("2d");
+          if (gl) {
+            limpieza.register(
+              () => {
+                var _a;
+                return (_a = gl.getExtension("WEBGL_lose_context")) == null ? void 0 : _a.loseContext();
+              }
+            );
+          }
           const exprCompilada = parse2(expr).compile();
           const evalX = (x) => {
             try {
-              return exprCompilada.evaluate({ x });
+              return exprCompilada.evaluate({ x, ...FUNCIONES_INVERSAS_EXTRA });
             } catch (e3) {
               return NaN;
             }
           };
-          if (!gl || !ctx2d) {
+          const degenerada = expr.trim() === "" ? {
+            etiqueta: "Sin funci\xF3n",
+            detalle: "Escribe una expresi\xF3n matem\xE1tica para graficar."
+          } : clasificarDegenerada(evalX);
+          const analisis = degenerada ? { raices: [], vertices: [] } : analizarFuncion(evalX);
+          const interseccionY = evalX(0);
+          const esTrig = tieneTrigonometria(expr);
+          const estadoRaices = estadoGrupo(analisis.raices.length, esTrig);
+          const estadoVertices = estadoGrupo(analisis.vertices.length, esTrig);
+          const puntosNotables = construirPuntosNotables(
+            analisis,
+            interseccionY,
+            estadoRaices,
+            estadoVertices
+          );
+          if (!gl || !ctx2d || !ctxCross) {
             wrapGrafica.createEl("p", { text: "Error: WebGL no disponible" });
           } else {
             let domX = [-7, 7];
             let domY = [-7, 7];
+            let cursorPx = null;
+            let cursorPy = null;
             const sx = (x) => (x - domX[0]) / (domX[1] - domX[0]) * W;
             const sy = (y) => H - (y - domY[0]) / (domY[1] - domY[0]) * H;
             const generarTicks = (min3, max3, maxTicks = 10) => {
@@ -46034,6 +46351,137 @@ var ObsiMathPlugin = class extends import_obsidian.Plugin {
               if (Math.abs(n) >= 1e3 || Math.abs(n) < 0.01 && n !== 0)
                 return n.toExponential(1);
               return parseFloat(n.toPrecision(4)).toString();
+            };
+            const esDesbordamiento = (x) => {
+              const dir = Math.sign(x) || 1;
+              const borde = dir > 0 ? domX[1] : domX[0];
+              const PASOS = 14;
+              const paso = (borde - x) / PASOS;
+              if (Math.abs(paso) < 1e-12)
+                return false;
+              for (let k = 1; k <= PASOS; k++) {
+                if (Number.isFinite(evalX(x + k * paso)))
+                  return false;
+              }
+              return true;
+            };
+            const dibujarPuntoMarcador = (ctx2, px, py, color) => {
+              ctx2.save();
+              ctx2.beginPath();
+              ctx2.arc(px, py, 4.5, 0, Math.PI * 2);
+              ctx2.fillStyle = "rgba(255, 255, 255, 0.3)";
+              ctx2.fill();
+              ctx2.beginPath();
+              ctx2.arc(px, py, 3, 0, Math.PI * 2);
+              ctx2.fillStyle = color;
+              ctx2.fill();
+              ctx2.restore();
+            };
+            const dibujarCrosshair = (cursorX) => {
+              ctxCross.clearRect(0, 0, W, H);
+              if (degenerada || cursorX === null)
+                return;
+              ctxCross.save();
+              ctxCross.setLineDash([4, 6]);
+              ctxCross.strokeStyle = "rgba(100, 150, 255, 0.4)";
+              ctxCross.lineWidth = 1;
+              ctxCross.beginPath();
+              ctxCross.moveTo(cursorX, 0);
+              ctxCross.lineTo(cursorX, H);
+              ctxCross.stroke();
+              ctxCross.setLineDash([]);
+              const xMath = domX[0] + cursorX / W * (domX[1] - domX[0]);
+              const yMath = evalX(xMath);
+              if (Number.isFinite(yMath)) {
+                const py = sy(yMath);
+                if (py >= 0 && py <= H) {
+                  dibujarPuntoMarcador(ctxCross, cursorX, py, "rgba(80, 160, 255, 1.0)");
+                }
+              }
+              const aLaDerecha = cursorX < W * 0.75;
+              ctxCross.textAlign = aLaDerecha ? "left" : "right";
+              ctxCross.textBaseline = "top";
+              ctxCross.font = "11px monospace";
+              const tx = cursorX + (aLaDerecha ? 5 : -5);
+              ctxCross.fillStyle = "rgba(200, 210, 255, 0.9)";
+              ctxCross.fillText(`x = ${formatearNumero(xMath)}`, tx, 4);
+              let textoY;
+              if (Number.isFinite(yMath)) {
+                textoY = `f(x) = ${formatearNumero(yMath)}`;
+              } else if (yMath === Infinity || yMath === -Infinity) {
+                if (esDesbordamiento(xMath)) {
+                  textoY = yMath < 0 ? "f(x) < -10\xB3\u2070\u2078" : "f(x) > 10\xB3\u2070\u2078";
+                } else {
+                  textoY = `f(x) \u2192 ${yMath < 0 ? "-\u221E" : "+\u221E"}`;
+                }
+              } else {
+                textoY = "f(x) = indef.";
+              }
+              ctxCross.fillText(textoY, tx, 18);
+              if (cursorPy !== null) {
+                const RADIO_HOVER = 16;
+                const colocadas = [];
+                for (const p of puntosNotables) {
+                  const px = sx(p.x);
+                  const py = sy(p.y);
+                  if (px < 0 || px > W || py < 0 || py > H)
+                    continue;
+                  if (Math.hypot(px - cursorX, py - cursorPy) > RADIO_HOVER)
+                    continue;
+                  dibujarEtiquetaPunto(
+                    ctxCross,
+                    px,
+                    py,
+                    `(${formatearNumero(p.x)}, ${formatearNumero(p.y)})`,
+                    colocadas
+                  );
+                }
+              }
+              ctxCross.restore();
+            };
+            const COLOR_PUNTO_NOTABLE = "rgba(255, 160, 40, 1.0)";
+            const solapanRect = (a, b) => !(a.x1 < b.x0 || a.x0 > b.x1 || a.y1 < b.y0 || a.y0 > b.y1);
+            const dibujarEtiquetaPunto = (ctx2, px, py, texto, colocadas) => {
+              ctx2.save();
+              ctx2.font = "11px monospace";
+              ctx2.textBaseline = "middle";
+              const ancho = ctx2.measureText(texto).width;
+              const PAD = 3;
+              const candidatos = [
+                { dx: 9, dy: -9, align: "left" },
+                { dx: 9, dy: 11, align: "left" },
+                { dx: -9, dy: -9, align: "right" },
+                { dx: -9, dy: 11, align: "right" }
+              ];
+              for (const c of candidatos) {
+                const tx = px + c.dx;
+                const ty = py + c.dy;
+                const x0 = (c.align === "left" ? tx : tx - ancho) - PAD;
+                const rect = { x0, y0: ty - 8, x1: x0 + ancho + 2 * PAD, y1: ty + 8 };
+                if (rect.x0 < 0 || rect.x1 > W || rect.y0 < 0 || rect.y1 > H)
+                  continue;
+                if (colocadas.some((r) => solapanRect(r, rect)))
+                  continue;
+                colocadas.push(rect);
+                ctx2.fillStyle = "rgba(18, 18, 18, 0.7)";
+                ctx2.fillRect(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0);
+                ctx2.textAlign = c.align;
+                ctx2.fillStyle = "rgba(255, 200, 130, 0.95)";
+                ctx2.fillText(texto, tx, ty);
+                break;
+              }
+              ctx2.restore();
+            };
+            const dibujarPuntosNotables = () => {
+              if (degenerada || puntosNotables.length === 0)
+                return;
+              for (const p of puntosNotables) {
+                const px = sx(p.x);
+                const py = sy(p.y);
+                if (px < 0 || px > W || py < 0 || py > H)
+                  continue;
+                dibujarPuntoMarcador(ctx2d, px, py, COLOR_PUNTO_NOTABLE);
+              }
             };
             const dibujarOverlay = () => {
               ctx2d.clearRect(0, 0, W, H);
@@ -46103,6 +46551,8 @@ var ObsiMathPlugin = class extends import_obsidian.Plugin {
                 ctx2d.stroke();
                 ctx2d.fillText(formatearNumero(y), ceroX - 6, py);
               }
+              dibujarPuntosNotables();
+              dibujarCrosshair(cursorPx);
             };
             const programa = crearPrograma(gl);
             const aPos = gl.getAttribLocation(programa, "a_pos");
@@ -46115,6 +46565,8 @@ var ObsiMathPlugin = class extends import_obsidian.Plugin {
               gl.viewport(0, 0, W * dpr, H * dpr);
               gl.clearColor(0.118, 0.118, 0.118, 1);
               gl.clear(gl.COLOR_BUFFER_BIT);
+              if (degenerada)
+                return;
               gl.useProgram(programa);
               gl.uniform4f(uColor, 0.31, 0.62, 1, 1);
               gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
@@ -46126,7 +46578,6 @@ var ObsiMathPlugin = class extends import_obsidian.Plugin {
               const MUESTRAS = interactivo ? Math.min(2e3, Math.max(1e3, Math.floor((domX[1] - domX[0]) * 20))) : Math.min(8e3, Math.max(2e3, Math.floor((domX[1] - domX[0]) * 50)));
               const dx = (domX[1] - domX[0]) / MUESTRAS;
               const GROSOR_CLIP = 4e-3;
-              const rangoY = domY[1] - domY[0];
               const SALTO_PX_MAX = 8;
               const PROF_MAX = interactivo ? 8 : 18;
               let segmento = [];
@@ -46168,13 +46619,70 @@ var ObsiMathPlugin = class extends import_obsidian.Plugin {
                 ctx2d.stroke();
                 ctx2d.restore();
               };
+              const esOverflowPersistente = (xInf, xFin) => {
+                const dir = Math.sign(xInf - xFin) || 1;
+                const borde = dir > 0 ? domX[1] : domX[0];
+                const PASOS = 16;
+                const paso = (borde - xInf) / PASOS;
+                if (Math.abs(paso) < 1e-12)
+                  return false;
+                for (let k = 1; k <= PASOS; k++) {
+                  if (Number.isFinite(evalX(xInf + k * paso)))
+                    return false;
+                }
+                return true;
+              };
+              const detectarAsintotasMismaRama = () => {
+                const out = [];
+                const N = 500;
+                const paso = (domX[1] - domX[0]) / N;
+                const UMBRAL = Math.max(Math.abs(domY[0]), Math.abs(domY[1]));
+                const registrar = (xIzq, xDer, aRef) => {
+                  let lo = xIzq, hi = xDer;
+                  for (let k = 0; k < 60; k++) {
+                    const m1 = lo + (hi - lo) / 3;
+                    const m2 = hi - (hi - lo) / 3;
+                    if (Math.abs(evalX(m1)) < Math.abs(evalX(m2)))
+                      lo = m1;
+                    else
+                      hi = m2;
+                  }
+                  const xPolo = (lo + hi) / 2;
+                  const aPolo = Math.abs(evalX(xPolo));
+                  const diverge = !Number.isFinite(aPolo) || Math.max(aRef, aPolo) > 1e10;
+                  if (diverge && !out.some((p) => Math.abs(p - xPolo) < paso))
+                    out.push(xPolo);
+                };
+                let xA = domX[0], yA = evalX(xA);
+                let xB = xA + paso, yB = evalX(xB);
+                for (let i2 = 2; i2 <= N; i2++) {
+                  const xC = domX[0] + i2 * paso;
+                  const yC = evalX(xC);
+                  if ((yB === Infinity || yB === -Infinity) && Number.isFinite(yA) && Number.isFinite(yC) && Math.sign(yA) === Math.sign(yC)) {
+                    registrar(xA, xC, Math.max(Math.abs(yA), Math.abs(yC)));
+                  } else if (Number.isFinite(yA) && Number.isFinite(yB) && Number.isFinite(yC)) {
+                    const aB = Math.abs(yB);
+                    const maxLocal = Math.abs(yA) <= aB && aB >= Math.abs(yC) && aB > UMBRAL && Math.sign(yA) === Math.sign(yB) && Math.sign(yB) === Math.sign(yC);
+                    if (maxLocal)
+                      registrar(xA, xC, aB);
+                  }
+                  xA = xB;
+                  yA = yB;
+                  xB = xC;
+                  yB = yC;
+                }
+                return out;
+              };
+              const asintotasMismaRama = detectarAsintotasMismaRama();
               const tramo = (xa, ya, xb, yb, prof) => {
                 const finA = Number.isFinite(ya), finB = Number.isFinite(yb);
                 const pyA = finA ? sy(ya) : ya > 0 ? -1e7 : 1e7;
                 const pyB = finB ? sy(yb) : yb > 0 ? -1e7 : 1e7;
                 const saltoPx = Math.abs(pyB - pyA);
                 const fueraMismoLado = ya > domY[1] && yb > domY[1] || ya < domY[0] && yb < domY[0];
-                if (prof < PROF_MAX && saltoPx > SALTO_PX_MAX && !fueraMismoLado) {
+                const poloAqui = fueraMismoLado && asintotasMismaRama.some((p) => p > Math.min(xa, xb) && p < Math.max(xa, xb));
+                const refinar = prof < PROF_MAX && (poloAqui || saltoPx > SALTO_PX_MAX && !fueraMismoLado);
+                if (refinar) {
                   const xm = (xa + xb) / 2;
                   const ym = evalX(xm);
                   tramo(xa, ya, xm, ym, prof + 1);
@@ -46183,8 +46691,9 @@ var ObsiMathPlugin = class extends import_obsidian.Plugin {
                 }
                 const cruza = ya > domY[1] && yb < domY[0] || ya < domY[0] && yb > domY[1];
                 const algunNoFinito = !finA || !finB;
-                if (cruza || algunNoFinito) {
-                  let esPolo = cruza;
+                const poloMismoLado = poloAqui && finA && finB && !cruza;
+                if (cruza || algunNoFinito || poloMismoLado) {
+                  let esPolo = cruza || poloMismoLado;
                   if (!esPolo && finA !== finB) {
                     const xf = finA ? xa : xb;
                     const yf = finA ? ya : yb;
@@ -46195,12 +46704,22 @@ var ObsiMathPlugin = class extends import_obsidian.Plugin {
                       esPolo = !Number.isFinite(yp) || Math.abs(yf) > Math.abs(yp);
                     }
                   }
+                  if (esPolo && !cruza && finA !== finB) {
+                    const yInf = finA ? yb : ya;
+                    if (yInf === Infinity || yInf === -Infinity) {
+                      const xInf = finA ? xb : xa;
+                      const xFin = finA ? xa : xb;
+                      if (esOverflowPersistente(xInf, xFin))
+                        esPolo = false;
+                    }
+                  }
                   if (esPolo) {
                     if (finA) {
                       emit(xa, ya);
                       emitPolo(xa, ya);
                     }
-                    dibujarAsintota((xa + xb) / 2);
+                    if (!poloMismoLado)
+                      dibujarAsintota((xa + xb) / 2);
                     flush();
                     if (finB) {
                       emitPolo(xb, yb);
@@ -46229,6 +46748,8 @@ var ObsiMathPlugin = class extends import_obsidian.Plugin {
                 y0 = y1;
               }
               flush();
+              for (const xp of asintotasMismaRama)
+                dibujarAsintota(xp);
             };
             let dibujado = false;
             const redimensionar = () => {
@@ -46241,13 +46762,27 @@ var ObsiMathPlugin = class extends import_obsidian.Plugin {
               canvasGL.height = H * dpr;
               canvas2D.width = W * dpr;
               canvas2D.height = H * dpr;
+              canvasCross.width = W * dpr;
+              canvasCross.height = H * dpr;
               ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+              ctxCross.setTransform(dpr, 0, 0, dpr, 0, 0);
               dibujarOverlay();
               dibujarCurvaGL("inicio");
             };
             redimensionar();
             const observadorTamano = new ResizeObserver(() => redimensionar());
             observadorTamano.observe(wrapGrafica);
+            limpieza.register(() => observadorTamano.disconnect());
+            if (degenerada) {
+              const velo = wrapGrafica.createDiv();
+              velo.style.cssText = "position:absolute; inset:0; background:rgba(18,18,18,0.55); pointer-events:none;";
+              const msg = wrapGrafica.createDiv();
+              msg.style.cssText = "position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:8px; padding:24px; box-sizing:border-box; pointer-events:none;";
+              const titulo = msg.createDiv({ text: degenerada.etiqueta });
+              titulo.style.cssText = "font-size:20px; font-weight:600; color:rgba(200,210,255,0.95);";
+              const detalle = msg.createDiv({ text: degenerada.detalle });
+              detalle.style.cssText = "font-size:12px; line-height:1.4; max-width:320px; color:rgba(190,195,210,0.85);";
+            }
             let isDragging = false;
             let lastPointer = { x: 0, y: 0 };
             let rafPendiente = false;
@@ -46268,6 +46803,10 @@ var ObsiMathPlugin = class extends import_obsidian.Plugin {
               }
             };
             let timerFinal = null;
+            limpieza.register(() => {
+              if (timerFinal !== null)
+                clearTimeout(timerFinal);
+            });
             const programarFinal = () => {
               if (timerFinal !== null)
                 clearTimeout(timerFinal);
@@ -46280,7 +46819,22 @@ var ObsiMathPlugin = class extends import_obsidian.Plugin {
             canvasGL.addEventListener("pointerdown", (e3) => {
               isDragging = true;
               lastPointer = { x: e3.offsetX, y: e3.offsetY };
+              cursorPx = null;
+              cursorPy = null;
+              dibujarCrosshair(null);
               canvasGL.setPointerCapture(e3.pointerId);
+            });
+            canvasGL.addEventListener("pointermove", (e3) => {
+              if (isDragging)
+                return;
+              cursorPx = e3.offsetX;
+              cursorPy = e3.offsetY;
+              dibujarCrosshair(e3.offsetX);
+            });
+            canvasGL.addEventListener("pointerleave", () => {
+              cursorPx = null;
+              cursorPy = null;
+              dibujarCrosshair(null);
             });
             canvasGL.addEventListener("pointermove", (e3) => {
               if (!isDragging)
@@ -46310,6 +46864,23 @@ var ObsiMathPlugin = class extends import_obsidian.Plugin {
               programarFinal();
             }, { passive: false });
           }
+          const msgRaices = estadoRaices === "infinitas" ? "Ra\xEDces: infinitas" : estadoRaices === "demasiadas" ? "Ra\xEDces: demasiadas para mostrar" : null;
+          const msgVertices = estadoVertices === "infinitas" ? "V\xE9rtices: infinitos" : estadoVertices === "demasiadas" ? "V\xE9rtices: demasiados para mostrar" : null;
+          if (msgRaices || msgVertices) {
+            const btnResumen = wrapGrafica.createDiv({ text: "\u24D8" });
+            btnResumen.setAttribute("title", "Resumen de puntos notables");
+            btnResumen.style.cssText = "position:absolute; bottom:8px; right:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; user-select:none; z-index:5;";
+            const popResumen = wrapGrafica.createDiv();
+            popResumen.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:230px; padding:8px 10px; box-sizing:border-box; background:rgba(20,20,20,0.95); border:1px solid rgba(255,255,255,0.12); border-radius:6px; font-size:11px; line-height:1.5; white-space:nowrap; color:rgba(230,230,235,0.92); z-index:5; box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+            if (msgRaices)
+              popResumen.createEl("div", { text: msgRaices });
+            if (msgVertices)
+              popResumen.createEl("div", { text: msgVertices });
+            btnResumen.addEventListener("click", (e3) => {
+              e3.stopPropagation();
+              popResumen.style.display = popResumen.style.display === "none" ? "block" : "none";
+            });
+          }
           const infoBox = contenedor.createDiv({ cls: "obsi-math-info" });
           let formaSimplificada = "";
           try {
@@ -46321,20 +46892,28 @@ var ObsiMathPlugin = class extends import_obsidian.Plugin {
             infoBox.createEl("p", { text: "Interseccion Y: (0, 0.0000)" });
             infoBox.createEl("p", { text: "Todos los valores de x son raices (funcion identicamente cero)" });
           } else {
-            const interseccionY = evalX(0);
             infoBox.createEl("p", {
               text: isFinite(interseccionY) ? `Interseccion Y: (0, ${interseccionY.toFixed(4)})` : "Interseccion Y: no definida (discontinuidad en x=0)"
             });
-            const { raices, vertices } = analizarFuncion(evalX);
-            if (raices.length > 0) {
-              infoBox.createEl("p", { text: "Raices: " + raices.map((r) => r.toFixed(4)).join(", ") });
+            if (estadoRaices === "infinitas") {
+              infoBox.createEl("p", { text: "Raices: infinitas" });
+            } else if (estadoRaices === "demasiadas") {
+              infoBox.createEl("p", { text: "Raices: demasiadas para mostrar" });
+            } else if (analisis.raices.length > 0) {
+              infoBox.createEl("p", { text: "Raices: " + analisis.raices.map((r) => r.toFixed(4)).join(", ") });
             } else {
               infoBox.createEl("p", { text: "No hay raices reales" });
             }
-            for (const v of vertices) {
-              infoBox.createEl("p", {
-                text: `Vertice ${v.tipo}: (${v.x.toFixed(4)}, ${v.y.toFixed(4)})`
-              });
+            if (estadoVertices === "infinitas") {
+              infoBox.createEl("p", { text: "Vertices: infinitos" });
+            } else if (estadoVertices === "demasiadas") {
+              infoBox.createEl("p", { text: "Vertices: demasiados para mostrar" });
+            } else {
+              for (const v of analisis.vertices) {
+                infoBox.createEl("p", {
+                  text: `Vertice ${v.tipo}: (${v.x.toFixed(4)}, ${v.y.toFixed(4)})`
+                });
+              }
             }
           }
         } catch (error) {

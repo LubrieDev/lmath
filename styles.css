@@ -24,6 +24,28 @@
   font-size: 1.6em !important;
 }
 
+/* Obsidian envuelve las matemáticas de bloque ($$…$$) en un elemento con su
+   propio overflow-x:auto + max-width:100%, que mostraba una barra de scroll
+   NATIVA (con flechas) redundante incluso cuando la fórmula cabe de sobra. Se
+   notaba sólo en una ventana de anchos concreta (p.ej. x^{1000}…x^{9999}),
+   justo cuando ese bloque interno desbordaba su propia caja por unos píxeles.
+   El scroll horizontal de la fórmula lo gestiona el contenedor del plugin
+   (overflow controlado por JS + fades + rueda), así que anulamos por completo
+   el overflow propio de Obsidian/KaTeX: dejamos que el contenido fluya hasta el
+   contenedor del plugin, que será el único (y sólo si desborda de verdad) en
+   mostrar su barra fina. */
+.obsi-math-latex .markdown-rendered,
+.obsi-math-latex p,
+.obsi-math-latex .math,
+.obsi-math-latex .math-block,
+.obsi-math-latex .katex-display,
+.obsi-math-latex mjx-container,
+.obsi-math-latex mjx-math {
+  overflow: visible !important;
+  max-width: none !important;
+  margin: 0 !important;
+}
+
 .obsi-math-grafica {
   width: 50%;
   height: 261px;
