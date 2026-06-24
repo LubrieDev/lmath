@@ -1,20 +1,31 @@
 # obsi-math
 
-[Obsidian](https://obsidian.md) plugin for plotting mathematical functions directly in your notes, using `obs-graph` code blocks. It renders the expression in LaTeX, draws the graph with a WebGL + Canvas 2D engine (Desmos-style), and automatically calculates roots, vertices, and intercepts.
+🇪🇸 [Español](./README.es.md) · 🇬🇧 [English](./README.en.md)
 
-![Plugin overview: LaTeX + graph of 1/(x-2) with vertical asymptote](assets/images/demo-asymptote.png)
+An Obsidian plugin for graphing mathematical functions directly inside your notes using `obs-graph` code blocks. It renders the expression in LaTeX, draws the graph using a WebGL + Canvas 2D engine (Desmos-style), and automatically computes roots, vertices, and the Y-intercept.
+
+![Plugin overview: LaTeX + graph of 1/(x-2) with a vertical asymptote](assets/images/demo-asymptote.png)
 
 ---
 
 ## Features
 
-- 📈 Real-time plotting with a WebGL engine (curves) + Canvas 2D overlay (axes, grid, labels).
-- ✏️ LaTeX rendering of the input expression, including nested exponents and roots of any index.
-- 🔍 Interactive zoom and pan with the mouse, with precise cursor position detection.
-- 📍 Automatic detection of roots, vertices (maxima/minima), and Y-intercept.
-- ⚡ Vertical asymptotes detected and drawn as dashed lines, with correct behavior when zooming out.
-- 🎨 Desmos-style aesthetic: subtle grid, discrete axes, correct margins and centering, no distortion when resizing.
-- 🔤 Input support for LaTeX, Unicode (`π`, `√`, `×`, `÷`, `²`, `³`), and standard math notation.
+* 📈 Real-time graphing with a WebGL engine (curves) + Canvas 2D (axes, grid, labels).
+* ✏️ LaTeX rendering of the entered expression, including nested exponents and roots of any degree.
+* 🔍 Interactive zoom and pan with the mouse.
+* 🖱️ Interactive crosshair: follows the cursor and displays `x` and `f(x)` in real time, with a marker on the curve.
+* 📍 Automatic detection of roots, vertices (maxima/minima), and the Y-intercept (`f(0)`), displayed as orange markers on the graph. Hovering near a notable point shows its coordinate label.
+* ⚡ Vertical asymptotes automatically detected and drawn as dashed lines, including cases where both branches diverge in the same direction (`1/x²`, `x⁻⁴`, etc.).
+* ⚠️ Classification of non-graphable functions in ℝ (*Undefined in ℝ*, *Undefined*, *Indeterminate*), with an informational overlay and an interactive graph plane.
+* 🎨 Subtle grid, clean axes, proper margins and centering, with no distortion when resizing.
+* 🔤 Input support for LaTeX, Unicode (`π`, `√`, `×`, `÷`, `²`, `³`), and standard mathematical notation.
+* 📐 Support for absolute value (`|x|`, `\left|…\right|`, `abs(x)`) and all six inverse trigonometric functions (`arcsin`, `arccos`, `arctan`, `arccsc`, `arcsec`, `arccot`) in multiple input formats.
+
+![Interactive crosshair showing cursor position, x value, and real-time function evaluation](assets/images/demo-crosshair.png)
+
+![Automatically detected notable points, including roots, vertices, and Y-intercept](assets/images/demo-notable-points.png)
+
+![tan(x) with correctly detected and rendered vertical asymptotes](assets/images/demo-tan.png)
 
 ---
 
@@ -22,27 +33,27 @@
 
 ### Manual
 
-1. Download `main.js`, `manifest.json` and `styles.css` from the latest release.
-2. Create an `obsi-math` folder inside `<your-vault>/.obsidian/plugins/`.
+1. Download `main.js`, `manifest.json`, and `styles.css` from the latest release.
+2. Create the `obsi-math` folder inside `<your-vault>/.obsidian/plugins/`.
 3. Copy the files there.
-4. In Obsidian: **Settings → Community plugins** → enable **Obsi Math**.
+4. In Obsidian: **Settings → Community Plugins** → enable **Obsi Math**.
 
 ### From source
 
-````bash
+```bash
 git clone https://github.com/RughustDev/obsi-math.git
 cd obsi-math
 npm install
 npm run build
-````
+```
 
-Copy the generated `main.js` (along with `manifest.json`) into your vault's plugins folder.
+Copy the generated `main.js` (along with `manifest.json` and `styles.css`) into your vault's plugin folder.
 
 ---
 
 ## Usage
 
-Create a code block with the `obs-graph` language and write your function:
+Create a code block using the `obs-graph` language and enter your function:
 
 ````markdown
 ```obs-graph
@@ -50,7 +61,7 @@ x^2 - 4
 ```
 ````
 
-You can also write the full equation; the plugin automatically takes the right-hand side:
+You can also enter the full equation; the plugin automatically uses the right-hand side:
 
 ````markdown
 ```obs-graph
@@ -58,9 +69,11 @@ f(x) = sin(x) * 2
 ```
 ````
 
-The block renders the expression in LaTeX, the interactive graph, and calculated data: Y-intercept, real roots, and vertices.
+The block renders the expression in LaTeX, the interactive graph, and the computed notable points: Y-intercept, real roots, and vertices.
 
 **More examples:**
+
+Vertical asymptote:
 
 ````markdown
 ```obs-graph
@@ -68,17 +81,31 @@ The block renders the expression in LaTeX, the interactive graph, and calculated
 ```
 ````
 
+Absolute value:
+
 ````markdown
 ```obs-graph
-sqrt(x) + 1
+|x^2 - 4|
 ```
 ````
+
+Inverse trigonometric function:
+
+````markdown
+```obs-graph
+arctan(x)
+```
+````
+
+Arbitrary-degree root:
 
 ````markdown
 ```obs-graph
 \sqrt[3]{x}
 ```
 ````
+
+Nested exponent (rendered and evaluated as `x⁹`):
 
 ````markdown
 ```obs-graph
@@ -88,56 +115,83 @@ x^{3^{2}}
 
 ### Graph interaction
 
-| Action | Effect |
-|---|---|
-| Drag | Pans the view |
-| Mouse wheel | Zoom in/out centered on the cursor |
+| Action                     | Effect                                           |
+| -------------------------- | ------------------------------------------------ |
+| Move cursor                | Displays crosshair with real-time `x` and `f(x)` |
+| Hover near a notable point | Displays coordinate label `(x, y)`               |
+| Drag                       | Pans the view                                    |
+| Mouse wheel                | Zooms in/out centered on the cursor              |
+
+### Functions with many notable points
+
+For periodic functions such as `sin(x)` or `tan(x)`, roots and vertices are infinite and are therefore not drawn individually. Instead, an **ⓘ** button appears in the graph corner and displays a summary when clicked.
+
+![Summary of notable points for functions with infinitely many roots or vertices](assets/images/demo-summary.png)
+
+### Non-graphable functions
+
+If the function produces no real values (for example `sqrt(-1)` or `log(x)/log(1)`), the graph plane is dimmed and an overlay indicates the reason: *Undefined in ℝ*, *Undefined*, or *Indeterminate*. Zoom and pan remain available.
+
+An empty block displays *No function* instead of an error.
+
+![Informational overlay shown when the function produces no graphable real values](assets/images/demo-degenerate.png)
 
 ---
 
 ## Input syntax
 
-The plugin normalizes different input formats before evaluating them with [mathjs](https://mathjs.org/):
+The plugin normalizes various formats before evaluating them with mathjs:
 
-| Type | Examples |
-|---|---|
-| Unicode | `π`, `√`, `×`, `÷`, `²`, `³`, `∞` |
-| LaTeX | `\frac{1}{2}`, `x^{2}`, `\sqrt{x}`, `\sqrt[3]{x}`, `\sin{x}`, `\log_{2}{x}` |
-| Standard | `sin(x)`, `cos(x)`, `log(x, 2)`, `sqrt(x)` |
+| Type     | Examples                                                                             |         |   |
+| -------- | ------------------------------------------------------------------------------------ | ------- | - |
+| Unicode  | `π`, `√`, `×`, `÷`, `²`, `³`, `∞`                                                    |         |   |
+| LaTeX    | `\frac{1}{2}`, `x^{2}`, `\sqrt{x}`, `\sqrt[3]{x}`, `\sin{x}`, `\log_{2}{x}`, `\left  | x\right | ` |
+| Standard | `sin(x)`, `cos(x)`, `log(x, 2)`, `sqrt(x)`, `abs(x)`                                 |         |   |
+| Inverse  | `arcsin(x)`, `sin⁻¹(x)`, `asin(x)` (and analogous forms for cos, tan, csc, sec, cot) |         |   |
 
-**Trigonometry:** a literal numeric argument (e.g. `sin(30)`) is interpreted in **degrees**. If it contains a variable (e.g. `sin(x)`), it's evaluated in radians.
+> ⚠️ **Trigonometry (degrees vs. radians):** if the argument is a literal number (e.g. `sin(30)`), it is interpreted in **degrees**; if the argument contains a variable (e.g. `sin(x)`), it is evaluated in **radians**.
 
-**Roots of any index:** the `\sqrt[n]{x}` notation is supported for cube roots, fourth roots, fifth roots, etc. Odd-index roots of negative numbers return the real value (e.g. `\sqrt[3]{-8} = -2`).
+**Roots of any degree:** the notation `\sqrt[n]{x}` is supported for cube roots, fourth roots, fifth roots, etc. Odd-degree roots of negative radicands return the real value (e.g. `\sqrt[3]{-8} = -2`).
 
-![Cube root of x plotted, showing the negative branch](assets/images/demo-cbrt.png)
+![Cube root of x graphed, showing the negative branch](assets/images/demo-cbrt.png)
 
-**Complex numbers:** not supported. If the function produces an imaginary result (e.g. `sqrt(-1)`), the graph will appear empty.
+**Absolute value:** `|x|`, `\left|x\right|`, and `abs(x)` are supported. Vertical bars are parsed using a stack-based algorithm rather than regular expressions, allowing correct handling of complex nested expressions.
+
+![Absolute value function entered using vertical bars](assets/images/demo-absolute-value.png)
+
+**Inverse trigonometric functions:** `arccsc`, `arcsec`, and `arccot` are not native to mathjs; the plugin implements them as real-domain wrappers (`acsc(x) = asin(1/x)`, `acot(x) = π/2 − atan(x)`, etc.).
+
+![Example of an inverse trigonometric function represented on the graph](assets/images/demo-inverse-trig.png)
+
+**Complex numbers:** not supported. If the function produces an imaginary result, the graph displays the non-graphable function overlay.
 
 ---
 
-## Known issues
+## Known Issues
 
-- ~~**Broken LaTeX rendering of `\sqrt`, `\log`, etc. without braces**~~ — fixed. The renderer now correctly handles commands like `\sqrt{x}` without producing broken output like `\sqrtx`.
-- ~~**Extra parentheses in nested exponents**~~ — fixed. Expressions like `x^{3^{2}}` now render and evaluate correctly, with no redundant parentheses in the LaTeX output.
-- ~~**Cursor position offset during zoom**~~ — fixed. The zoom now centers exactly on the cursor's actual position on screen.
-- ~~**Ghost asymptote in functions like `x^{2^{π}}`**~~ — fixed. When panning the X axis out of the viewport, the pole detector incorrectly interpreted the crossing as a discontinuity and drew a phantom line over the Y axis. No longer occurs.
-- The visual behavior of functions with dense asymptotes (e.g. `sec(10x)`) at extreme zoom out is inherent to the periodic nature of those functions; it has been significantly improved but does not disappear entirely.
+* The visual behavior of functions with dense asymptotes (such as `sec(10x)`) at extreme zoom-out levels is inherent to the periodic nature of those functions; it has been significantly improved but cannot be completely eliminated.
 
-![tan(x) with vertical asymptotes correctly detected and drawn](assets/images/demo-tan.png)
+### Fixed
+
+* ~~**LaTeX rendering of `\sqrt`, `\log`, etc. without braces**~~
+* ~~**Extra parentheses in nested exponents**~~
+* ~~**Cursor offset while zooming**~~
+* ~~**False asymptote in functions such as `x^{2^{π}}`**~~
+* ~~**Spurious horizontal scrollbar in the LaTeX panel**~~
 
 ---
 
 ## obs-system (temporarily disabled)
 
-The plugin includes an `obs-system` block for solving and graphing linear equation systems, but it's **currently disabled**: using it only shows a notice.
+The plugin includes an `obs-system` block for solving and graphing systems of linear equations, but **it is currently disabled**: using it only displays a notice.
 
-Reason: it's still a very basic feature, with noticeable lag during zoom and pan (dragging the view). Development is currently focused on polishing `obs-graph`, so `obs-system` will be revisited and improved later on.
+Reason: it is still a very basic feature, with noticeable lag during zooming and panning. Development is currently focused on refining `obs-graph`, so `obs-system` will be revisited and improved later.
 
 To re-enable it during development, in `main.ts`:
 
-````typescript
+```typescript
 private readonly OBS_SISTEMA_HABILITADO = false; // → true
-````
+```
 
 ---
 
@@ -145,23 +199,23 @@ private readonly OBS_SISTEMA_HABILITADO = false; // → true
 
 Requirements: Node.js, npm, TypeScript.
 
-````bash
+```bash
 npm run build
-````
+```
 
-Recommended workflow: edit `main.ts` → compile → copy `main.js` to a test vault → verify → back up if it works, restore if it breaks.
+Recommended workflow: edit `main.ts` → compile → copy `main.js` into a test vault → verify → back up if it works, restore if it fails.
 
-> **Important:** both `manifest.json` and `main.ts` must be saved as **UTF-8 without BOM**. A BOM at the start of either file can break parsing in Obsidian or cause silent compilation errors.
+> **Important:** both `manifest.json` and `main.ts` must be saved as **UTF-8 without BOM**. A BOM at the beginning of either file may break parsing in Obsidian or cause silent compilation errors.
 
 ---
 
 ## Roadmap
 
-- [ ] Re-enable and polish `obs-system` (zoom/pan performance).
-- [ ] Info panel integrated directly into the graph.
-- [ ] Global settings (decimal precision, theme).
-- [ ] Trig unit selector (degrees/radians/gradians).
-- [ ] Full rich LaTeX input support.
+* [ ] Re-enable and improve `obs-system` (zoom/pan performance).
+* [ ] Integrated information panel inside the graph (replace the current bottom panel).
+* [ ] Global settings panel in Obsidian (decimal precision, theme).
+* [ ] Trigonometric unit selector (degrees/radians/gradians).
+* [ ] Full support for enriched LaTeX input.
 
 ---
 
@@ -171,4 +225,4 @@ MIT — see [LICENSE](./LICENSE).
 
 ## Repository
 
-[github.com/RughustDev/obsi-math](https://github.com/RughustDev/obsi-math)
+https://github.com/RughustDev/obsi-math
