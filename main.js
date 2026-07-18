@@ -56928,7 +56928,7 @@ var MotorExperimental = class {
     const btnInfo = wrap.createDiv();
     btnInfo.setAttribute("title", t().botones.resumenNotables);
     btnInfo.style.cssText = "position:absolute; bottom:8px; right:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; user-select:none; z-index:5;";
-    btnInfo.createSpan({ text: "\u24D8" }).style.cssText = "line-height:1; transform:translateY(-1px);";
+    btnInfo.createSpan({ text: "\u24D8" }).setCssStyles({ lineHeight: "1", transform: "translateY(-1px)" });
     const pop = wrap.createDiv();
     pop.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:rgba(20,20,20,0.95); border:1px solid rgba(255,255,255,0.12); border-radius:6px; font-size:11px; line-height:1.5; color:rgba(230,230,235,0.92); z-index:5; box-shadow:0 4px 12px rgba(0,0,0,0.4);";
     for (const l of lineas) {

@@ -1612,7 +1612,7 @@ export class MotorExperimental {
       "border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; " +
       "user-select:none; z-index:5;";
     // Glifo ⓘ subido SOLO en vertical (métrica de la fuente), como en el GraphEngine.
-    btnInfo.createSpan({ text: "ⓘ" }).style.cssText = "line-height:1; transform:translateY(-1px);";
+    btnInfo.createSpan({ text: "ⓘ" }).setCssStyles({ lineHeight: "1", transform: "translateY(-1px)" });
 
     const pop = wrap.createDiv();
     pop.style.cssText =
