@@ -230,51 +230,30 @@ export class MotorExperimental {
     // asíntotas (las omite el proveedor en pasada "interactiva").
     // Pasada FINAL (máxima calidad): 150ms después de que la cámara deja de
     // moverse; muestreo denso + puntos notables + asíntotas.
-    // Instrumentación temporal de rendimiento: separa el coste de RECOMPUTAR
-    // (muestreo, mathjs) del de PINTAR (Canvas2D). Pon DIAG=false para silenciar.
-    const DIAG = false;
-    let accCalc = 0, accPaint = 0, maxCalc = 0, maxPaint = 0, nFrames = 0;
-    const diag = (etiqueta: string, dCalc: number, dPaint: number) => {
-      if (!DIAG) return;
-      accCalc += dCalc; accPaint += dPaint;
-      if (dCalc > maxCalc) maxCalc = dCalc;
-      if (dPaint > maxPaint) maxPaint = dPaint;
-      if (++nFrames >= 30) {
-        console.log(
-          `[motor ${etiqueta}] ${nFrames}f · calc avg ${(accCalc / nFrames).toFixed(2)}ms max ${maxCalc.toFixed(2)} · ` +
-          `paint avg ${(accPaint / nFrames).toFixed(2)}ms max ${maxPaint.toFixed(2)}`
-        );
-        accCalc = accPaint = maxCalc = maxPaint = nFrames = 0;
-      }
-    };
 
     let rafId: number | null = null;
     let pendienteRecomputar = false;
     const ejecutarFrame = () => {
       rafId = null;
-      const t0 = performance.now();
       if (pendienteRecomputar) {
         escena.actualizar(camara.viewport(), "interactiva");
         pendienteRecomputar = false;
       }
-      const t1 = performance.now();
       pintar();
-      const t2 = performance.now();
-      diag("interactiva", t1 - t0, t2 - t1);
     };
     const programarRedibujo = () => {   // pan/zoom/carril → recomputar (ligero) + pintar
       pendienteRecomputar = true;
-      if (rafId === null) rafId = requestAnimationFrame(ejecutarFrame);
+      if (rafId === null) rafId = window.requestAnimationFrame(ejecutarFrame);
     };
     const programarPintado = () => {    // solo cursor → repintar, sin recomputar
-      if (rafId === null) rafId = requestAnimationFrame(ejecutarFrame);
+      if (rafId === null) rafId = window.requestAnimationFrame(ejecutarFrame);
     };
     let timerFinal: number | null = null;
     // Aviso al panel de solución (ⓘ, solo sistemas) de que hay pasada final nueva:
     // las intersecciones pudieron cambiar. Se asigna al crear el panel, más abajo.
     let alRecalcularFinal: (() => void) | null = null;
     const programarFinal = () => {      // al detenerse la cámara → pasada de máxima calidad
-      if (timerFinal !== null) clearTimeout(timerFinal);
+      if (timerFinal !== null) window.clearTimeout(timerFinal);
       timerFinal = window.setTimeout(() => {
         timerFinal = null;
         escena.actualizar(camara.viewport(), "final");
@@ -283,8 +262,8 @@ export class MotorExperimental {
       }, 150);
     };
     limpieza.register(() => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      if (timerFinal !== null) clearTimeout(timerFinal);
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      if (timerFinal !== null) window.clearTimeout(timerFinal);
     });
 
     camara = new Camara(canvas, H, {
@@ -498,17 +477,17 @@ export class MotorExperimental {
         popSolucion.empty();
         // Un sistema necesita ≥2 ecuaciones: sin ellas no hay soluciones que buscar.
         if (visibles.length === 0) {
-          popSolucion.createEl("div", { text: t().solucion.sinSistema });
+          popSolucion.createDiv({ text: t().solucion.sinSistema });
           return;
         }
         if (visibles.length === 1) {
-          popSolucion.createEl("div", { text: t().solucion.sistemaIncompleto });
+          popSolucion.createDiv({ text: t().solucion.sistemaIncompleto });
           return;
         }
         // Infinitas (curvas que coinciden en un tramo) ANTES que la saturación: son
         // cosas distintas —una solución continua, no "muchos puntos aislados".
         if (escena.solucionesInfinitas()) {
-          popSolucion.createEl("div", { text: t().solucion.infinitasCoinciden });
+          popSolucion.createDiv({ text: t().solucion.infinitasCoinciden });
           return;
         }
         const pts = escena.intersecciones();
@@ -516,33 +495,33 @@ export class MotorExperimental {
         // soluciones (o satura el cap) las repite sin fin. Va ANTES de "demasiadas":
         // esto es infinito de verdad, no solo muchas finitas por estar muy alejado.
         if (sistemaPeriodico && (escena.interseccionesSaturadas() || pts.length >= MIN_PERIODICO)) {
-          popSolucion.createEl("div", { text: t().solucion.infinitasPeriodico });
+          popSolucion.createDiv({ text: t().solucion.infinitasPeriodico });
           return;
         }
         if (escena.interseccionesSaturadas()) {
-          popSolucion.createEl("div", { text: t().solucion.demasiadas });
+          popSolucion.createDiv({ text: t().solucion.demasiadas });
           return;
         }
         if (pts.length === 0) {
-          popSolucion.createEl("div", { text: t().solucion.sinSolucion });
+          popSolucion.createDiv({ text: t().solucion.sinSolucion });
           return;
         }
-        popSolucion.createEl("div", {
+        popSolucion.createDiv({
           text: pts.length === 1 ? t().solucion.unaSolucion : t().solucion.nSoluciones(pts.length),
           attr: { style: "font-weight:600; margin-bottom:4px;" },
         });
         for (const p of pts.slice(0, MAX_LISTA)) {
-          popSolucion.createEl("div", {
+          popSolucion.createDiv({
             text: `(${formatearNumero(p.x)}, ${formatearNumero(p.y)})`,
           });
         }
         if (pts.length > MAX_LISTA) {
-          popSolucion.createEl("div", {
+          popSolucion.createDiv({
             text: t().solucion.yMas(pts.length - MAX_LISTA),
             attr: { style: "opacity:0.6;" },
           });
         }
-        popSolucion.createEl("div", {
+        popSolucion.createDiv({
           text: t().solucion.enVista,
           attr: { style: "margin-top:4px; opacity:0.6;" },
         });
@@ -631,8 +610,8 @@ export class MotorExperimental {
             lineas.push(T.vertice(v.punto.x.toFixed(4), v.punto.y.toFixed(4)));
         else lineas.push(T.noVertices);
 
-        for (const linea of lineas) pop.createEl("div", { text: linea });
-        pop.createEl("div", {
+        for (const linea of lineas) pop.createDiv({ text: linea });
+        pop.createDiv({
           text: T.enVista,
           attr: { style: "margin-top:4px; opacity:0.6;" },
         });
@@ -888,7 +867,7 @@ export class MotorExperimental {
       // fórmula desborda (una tarjeta del par "ambas" con un operador alto), el thumb queda a
       // media altura —el contenido se ve centrado y se sube/baja por igual— en vez de arrancar
       // pegado arriba (`scrollTop = 0`). El horizontal ya arranca en 0 (lectura de izq. a der.).
-      requestAnimationFrame(() =>
+      window.requestAnimationFrame(() =>
         areas.forEach((a) => {
           a.actualizarFade();
           const maxY = a.area.scrollHeight - a.area.clientHeight;
@@ -1098,11 +1077,11 @@ export class MotorExperimental {
         if (bloqueALatex(nuevo) !== bloqueALatex(estado)) { estado = nuevo; await renderLatex(bloqueALatex(estado)); }
         sincronizar();
       };
-      btnOriginal.addEventListener("click", async () => {
+      btnOriginal.addEventListener("click", () => void (async () => {
         abierto = false;
         if (!esOriginal()) { estado = base; await renderLatex(original); }
         sincronizar();
-      });
+      })());
       btnOpciones.addEventListener("click", (e) => { e.stopPropagation(); abierto = !abierto; sincronizar(); });
       items.forEach((el, i) => el.addEventListener("click", () => void aplicar(i)));
 
@@ -1232,11 +1211,11 @@ export class MotorExperimental {
       if (firmaDe(v) !== firmaDe(vista)) { vista = v; await renderLatex(latexDe(vista)); }
       sincronizar();
     };
-    btnOriginal.addEventListener("click", async () => {
+    btnOriginal.addEventListener("click", () => void (async () => {
       abierto = false;
       if (vista !== "operador") { vista = "operador"; await renderLatex(operador); }
       sincronizar();
-    });
+    })());
     btnOpciones.addEventListener("click", (e) => { e.stopPropagation(); abierto = !abierto; sincronizar(); });
     items.forEach((el, i) => el.addEventListener("click", () => void aplicar(i)));
 
@@ -1369,11 +1348,11 @@ export class MotorExperimental {
       if (firmaDe(v) !== firmaDe(vista)) { vista = v; await renderLatex(latexDe(vista)); }
       sincronizar();
     };
-    btnOriginal.addEventListener("click", async () => {
+    btnOriginal.addEventListener("click", () => void (async () => {
       abierto = false;
       if (vista !== "operador") { vista = "operador"; await renderLatex(operador); }
       sincronizar();
-    });
+    })());
     btnOpciones.addEventListener("click", (e) => { e.stopPropagation(); abierto = !abierto; sincronizar(); });
     items.forEach((el, i) => el.addEventListener("click", () => void aplicar(i)));
 
@@ -1580,7 +1559,7 @@ export class MotorExperimental {
     } else {
       lineas.push({
         texto: Number.isFinite(interseccionY)
-          ? T.interseccionY((interseccionY as number).toFixed(4))
+          ? T.interseccionY(interseccionY.toFixed(4))
           : T.interseccionYNoDefinida,
       });
       if (estadoRaices === "infinitas") lineas.push({ texto: T.raicesInfinitas });
@@ -1622,7 +1601,7 @@ export class MotorExperimental {
       "border-radius:6px; font-size:11px; line-height:1.5; " +
       "color:rgba(230,230,235,0.92); z-index:5; box-shadow:0 4px 12px rgba(0,0,0,0.4);";
     for (const l of lineas) {
-      const div = pop.createEl("div", { text: l.texto });
+      const div = pop.createDiv({ text: l.texto });
       // La parte matemática (p. ej. `x\in[0,1)`) va renderizada con KaTeX en línea,
       // por el mismo helper que los glifos del toggle; hereda color y tamaño.
       if (l.tex) this.montarEtiquetaMath(div.createSpan(), l.tex, ctx);

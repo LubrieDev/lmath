@@ -144,7 +144,7 @@ function segmentosDe(ramas: readonly Rama[], region?: RegionMundo): Float64Array
       segs[k++] = ax; segs[k++] = ay; segs[k++] = bx; segs[k++] = by;
     }
   }
-  return k === segs.length ? segs : (segs.subarray(0, k) as Float64Array);
+  return k === segs.length ? segs : segs.subarray(0, k);
 }
 
 function agregarUnico(out: Punto[], p: Punto, eps: number, maxPuntos: number): void {

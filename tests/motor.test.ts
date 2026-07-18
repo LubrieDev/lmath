@@ -1049,8 +1049,8 @@ describe("Carril: tangente vertical de x³+y³=9 (siempre sobre la curva)", () =
     const g = globalThis as Record<string, unknown>;
     if (!g.window) g.window = { devicePixelRatio: 1 };
     let pendiente: ((t: number) => void) | null = null;
-    g.requestAnimationFrame = (cb: (t: number) => void) => { pendiente = cb; return 1; };
-    g.cancelAnimationFrame = () => { pendiente = null; };
+    g.requestAnimationFrame = (g.window as Record<string, unknown>).requestAnimationFrame = (cb: (t: number) => void) => { pendiente = cb; return 1; };
+    g.cancelAnimationFrame = (g.window as Record<string, unknown>).cancelAnimationFrame = () => { pendiente = null; };
 
     const fakeCanvas = () => {
       const handlers: Record<string, (e: unknown) => void> = {};
@@ -1317,8 +1317,8 @@ const arnesCarril = (fuente: string) => {
   const g = globalThis as Record<string, unknown>;
   if (!g.window) g.window = { devicePixelRatio: 1 };
   let pendiente: ((t: number) => void) | null = null;
-  g.requestAnimationFrame = (cb: (t: number) => void) => { pendiente = cb; return 1; };
-  g.cancelAnimationFrame = () => { pendiente = null; };
+  g.requestAnimationFrame = (g.window as Record<string, unknown>).requestAnimationFrame = (cb: (t: number) => void) => { pendiente = cb; return 1; };
+  g.cancelAnimationFrame = (g.window as Record<string, unknown>).cancelAnimationFrame = () => { pendiente = null; };
   const fakeCanvas = () => {
     const handlers: Record<string, (e: unknown) => void> = {};
     return { handlers, tabIndex: 0, style: {} as Record<string, string>,
@@ -1564,8 +1564,8 @@ describe("Carril: arranque cuando x=0 no está en la curva (1/x, dominio x>0)", 
     const g = globalThis as Record<string, unknown>;
     if (!g.window) g.window = { devicePixelRatio: 1 };
     let pendiente: ((t: number) => void) | null = null;
-    g.requestAnimationFrame = (cb: (t: number) => void) => { pendiente = cb; return 1; };
-    g.cancelAnimationFrame = () => { pendiente = null; };
+    g.requestAnimationFrame = (g.window as Record<string, unknown>).requestAnimationFrame = (cb: (t: number) => void) => { pendiente = cb; return 1; };
+    g.cancelAnimationFrame = (g.window as Record<string, unknown>).cancelAnimationFrame = () => { pendiente = null; };
     const fakeCanvas = () => {
       const handlers: Record<string, (e: unknown) => void> = {};
       return { handlers, tabIndex: 0, style: {} as Record<string, string>,

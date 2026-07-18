@@ -21,7 +21,6 @@ import { crearPrograma, construirQuadStrip } from "../../webgl";
 import { muestrearFuncion } from "../../render/muestreoExplicito";
 
 export class GraphEngine {
-  private obsMathUpdateCount = 0;
 
   constructor(private plugin: Plugin) {}
 
@@ -148,7 +147,7 @@ export class GraphEngine {
 
           // El layout de KaTeX no está medido hasta el siguiente frame; además
           // recalculamos al cambiar el tamaño de la ventana.
-          requestAnimationFrame(actualizarFade);
+          window.requestAnimationFrame(actualizarFade);
           window.addEventListener("resize", actualizarFade);
           limpieza.register(() => window.removeEventListener("resize", actualizarFade));
 
@@ -463,7 +462,7 @@ export class GraphEngine {
               ctxCross.stroke();
               if (yVisible) {
                 ctxCross.beginPath();
-                ctxCross.moveTo(0, py!); ctxCross.lineTo(W, py!);
+                ctxCross.moveTo(0, py); ctxCross.lineTo(W, py);
                 ctxCross.stroke();
               }
               ctxCross.setLineDash([]);
@@ -471,13 +470,13 @@ export class GraphEngine {
               // Indicador del punto (intersección con la curva). En modo carril, un
               // anillo naranja distingue que está bloqueado sobre la línea.
               if (yVisible) {
-                dibujarPuntoMarcador(ctxCross, xPix, py!, "rgba(80, 160, 255, 1.0)");
+                dibujarPuntoMarcador(ctxCross, xPix, py, "rgba(80, 160, 255, 1.0)");
                 if (modoCarril) {
                   ctxCross.save();
                   ctxCross.strokeStyle = "rgba(255, 160, 40, 0.9)";
                   ctxCross.lineWidth = 1.5;
                   ctxCross.beginPath();
-                  ctxCross.arc(xPix, py!, 7, 0, Math.PI * 2);
+                  ctxCross.arc(xPix, py, 7, 0, Math.PI * 2);
                   ctxCross.stroke();
                   ctxCross.restore();
                 }
@@ -663,13 +662,9 @@ export class GraphEngine {
             const programa = crearPrograma(gl);
             const aPos = gl.getAttribLocation(programa, "a_pos");
             const uColor = gl.getUniformLocation(programa, "u_color");
-            const buffer = gl.createBuffer()!;
-
-            const aspectoInicial = (domY[1] - domY[0]) / (domX[1] - domX[0]);
+            const buffer = gl.createBuffer();
 
 const dibujarCurvaGL = (motivo: "inicio" | "zoom" | "pan") => {
-  this.obsMathUpdateCount++;
-  console.log('Actualizaciones motor gráfico (obs-graph): ' + this.obsMathUpdateCount);
   gl.viewport(0, 0, W * dpr, H * dpr);
   gl.clearColor(0.118, 0.118, 0.118, 1);
   gl.clear(gl.COLOR_BUFFER_BIT);
@@ -785,7 +780,7 @@ const programarRedibujo = (motivo: "zoom" | "pan") => {
   
   if (!rafPendiente) {
     rafPendiente = true;
-    requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
       rafPendiente = false;
       dibujarOverlay();
       dibujarCurvaGL(motivoPendiente);
@@ -795,9 +790,9 @@ const programarRedibujo = (motivo: "zoom" | "pan") => {
 };
 
 let timerFinal: number | null = null;
-limpieza.register(() => { if (timerFinal !== null) clearTimeout(timerFinal); });
+limpieza.register(() => { if (timerFinal !== null) window.clearTimeout(timerFinal); });
 const programarFinal = () => {
-  if (timerFinal !== null) clearTimeout(timerFinal);
+  if (timerFinal !== null) window.clearTimeout(timerFinal);
   timerFinal = window.setTimeout(() => {
     timerFinal = null;
     dibujarOverlay();
@@ -942,7 +937,7 @@ const pasoTeclado = (t: number) => {
       dibujarCurvaGL("pan");                   // calidad interactiva (rápida)
     }
   }
-  rafTeclado = requestAnimationFrame(pasoTeclado);
+  rafTeclado = window.requestAnimationFrame(pasoTeclado);
 };
 
 canvasGL.addEventListener("keydown", e => {
@@ -951,7 +946,7 @@ canvasGL.addEventListener("keydown", e => {
   e.preventDefault();                          // evita scroll de página con flechas
   e.stopPropagation();                         // no dispares atajos de Obsidian
   teclasPan.add(dir);
-  if (rafTeclado === null) rafTeclado = requestAnimationFrame(pasoTeclado);
+  if (rafTeclado === null) rafTeclado = window.requestAnimationFrame(pasoTeclado);
 });
 canvasGL.addEventListener("keyup", e => {
   const dir = MAPA_TECLAS[e.key.toLowerCase()];
@@ -966,7 +961,7 @@ canvasGL.addEventListener("blur", () => {
   canvasGL.setCssStyles({ outline: "none" });
   teclasPan.clear();
 });
-limpieza.register(() => { if (rafTeclado !== null) cancelAnimationFrame(rafTeclado); });
+limpieza.register(() => { if (rafTeclado !== null) window.cancelAnimationFrame(rafTeclado); });
 
 // Botón "fijar punto" (⌖): ancla el ÚLTIMO punto del crosshair sobre la curva como
 // un CARRIL (ver railX/seguirRail) y centra la vista en él; luego con A/D se viaja
@@ -1048,8 +1043,8 @@ btnFijar.addEventListener("click", () => {
               "color:rgba(230,230,235,0.92); z-index:5; " +
               "box-shadow:0 4px 12px rgba(0,0,0,0.4);";
 
-            if (msgRaices) popResumen.createEl("div", { text: msgRaices });
-            if (msgVertices) popResumen.createEl("div", { text: msgVertices });
+            if (msgRaices) popResumen.createDiv({ text: msgRaices });
+            if (msgVertices) popResumen.createDiv({ text: msgVertices });
 
             btnResumen.addEventListener("click", e => {
               e.stopPropagation();

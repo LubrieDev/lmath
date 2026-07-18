@@ -272,7 +272,7 @@ function fraccionExacta(v: number): { n: number; d: number } | null {
   if (!Number.isFinite(v)) return null;
   if (Number.isInteger(v)) return { n: v, d: 1 };
   try {
-    const f = fraction(v) as { s: number; n: number; d: number };
+    const f = fraction(v);
     if (f.d > 1e6) return null;
     const val = (f.s * f.n) / f.d;
     return Math.abs(val - v) < 1e-9 ? { n: f.s * f.n, d: f.d } : null;

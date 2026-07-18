@@ -161,7 +161,7 @@ function parsearLineas(entrada: string): Integral | null {
  */
 function normalizarInvisibles(texto: string): string {
   return texto
-    .replace(/[\u200B\u200C\u200D\uFEFF]/g, "")
+    .replace(/[\u200B\u200C\u200D\uFEFF]/gu, "")
     .replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, " ");
 }
 
@@ -423,7 +423,7 @@ function cuerpoAreaExactoBase(source: string): { cuerpo: string; conector: strin
   if (primitiva && a !== null && b !== null) {
     try {
       const F = crearFuncionReal(primitiva);
-      const v = (F.eval(b) as number) - (F.eval(a) as number);
+      const v = F.eval(b) - F.eval(a);
       // Consistencia con el área numérica: si NO coincide, Barrow no aplica (polo interior:
       // ∫₋₁¹1/x tiene F=ln|x| finita en los extremos pero diverge) → se respeta el numérico.
       if (Number.isFinite(v) && Math.abs(v - area.valor) <= 1e-5 * (1 + Math.abs(area.valor))) {

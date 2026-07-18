@@ -28,7 +28,6 @@ export default class LMathPlugin extends Plugin implements PluginConAjustes {
   ajustes: AjustesTransformaciones = { ...AJUSTES_POR_DEFECTO };
 
   async onload() {
-    console.log("LMath: plugin cargado");
 
     // Ajustes persistentes ANTES de registrar los motores (los capturan por referencia) y
     // ANTES de cualquier texto de interfaz: `cargarAjustes` fija el idioma activo (i18n) a
@@ -92,11 +91,9 @@ export default class LMathPlugin extends Plugin implements PluginConAjustes {
     // para trazar el pipeline de un bloque (grafica + LaTeX + diagnóstico) sin pintar nada.
     // La MISMA maquinaria pura que la CLI `npm run trazar`. `lmath.ayuda()` lista el uso.
     (window as unknown as Record<string, unknown>)[NOMBRE_GLOBAL] = crearConsolaDev();
-    console.log(`LMath: consola de desarrollo lista → ${NOMBRE_GLOBAL}.ayuda()`);
   }
 
   onunload() {
-    console.log("LMath: plugin descargado:");
     // Retira el global de consola para no dejar referencias colgando al recargar el plugin.
     delete (window as unknown as Record<string, unknown>)[NOMBRE_GLOBAL];
   }

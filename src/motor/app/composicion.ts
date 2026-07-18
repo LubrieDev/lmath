@@ -58,7 +58,7 @@ const PALETA: ReadonlyArray<readonly [number, number, number, number]> = [
  */
 export function crearProveedor(objeto: ObjetoMatematico): ProveedorGeometria {
   if (objeto.tipo === "implicita") {
-    const F = (objeto as ObjetoImplicito).F;
+    const F = objeto.F;
     // Separable en Y con polos (tan x+y²=2) → ramas y=f(x) con el sampler 1D.
     const ramasY = tienePolos(F) ? despejarRamas(F) : null;
     if (ramasY) {
@@ -96,7 +96,7 @@ export function crearProveedor(objeto: ObjetoMatematico): ProveedorGeometria {
       return new ProveedorImplicitoSeparable(objeto.id, monX, new TrazadorExplicitoAdaptativo(), Ft, true);
     }
     const generico = new ProveedorImplicito(
-      objeto as ObjetoImplicito, new DescubrimientoMuestreado(), new TrazadorContinuacion(),
+      objeto, new DescubrimientoMuestreado(), new TrazadorContinuacion(),
       new TrazadorExplicitoAdaptativo() // para puntos notables por despeje (invariantes)
     );
     // Campo PERIÓDICO en x/y (la red de lazos de 4(cos x+cos y)+2cos(x+y)+…=7) → con
@@ -116,7 +116,7 @@ export function crearProveedor(objeto: ObjetoMatematico): ProveedorGeometria {
     return new ProveedorImplicitoRasterizado(objeto.id, F, generico);
   }
   if (objeto.tipo === "parametrica" || objeto.tipo === "polar") {
-    return new ProveedorParametrico(objeto as ObjetoParametrico | ObjetoPolar, new TrazadorParametricoAdaptativo());
+    return new ProveedorParametrico(objeto, new TrazadorParametricoAdaptativo());
   }
   return new ProveedorExplicito(objeto as ObjetoExplicito, new TrazadorExplicitoAdaptativo());
 }

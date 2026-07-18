@@ -48323,7 +48323,6 @@ function muestrearFuncion(p) {
 var GraphEngine = class {
   constructor(plugin) {
     this.plugin = plugin;
-    this.obsMathUpdateCount = 0;
   }
   async process(source, el, ctx) {
     const contenedor = el.createDiv({ cls: "lmath-container" });
@@ -48386,7 +48385,7 @@ var GraphEngine = class {
         },
         { passive: false }
       );
-      requestAnimationFrame(actualizarFade);
+      window.requestAnimationFrame(actualizarFade);
       window.addEventListener("resize", actualizarFade);
       limpieza.register(() => window.removeEventListener("resize", actualizarFade));
       const observadorLatex = new ResizeObserver(() => actualizarFade());
@@ -48767,10 +48766,7 @@ var GraphEngine = class {
         const aPos = gl.getAttribLocation(programa, "a_pos");
         const uColor = gl.getUniformLocation(programa, "u_color");
         const buffer = gl.createBuffer();
-        const aspectoInicial = (domY[1] - domY[0]) / (domX[1] - domX[0]);
         const dibujarCurvaGL = (motivo) => {
-          this.obsMathUpdateCount++;
-          console.log("Actualizaciones motor gr\xE1fico (obs-graph): " + this.obsMathUpdateCount);
           gl.viewport(0, 0, W * dpr, H * dpr);
           gl.clearColor(0.118, 0.118, 0.118, 1);
           gl.clear(gl.COLOR_BUFFER_BIT);
@@ -48865,7 +48861,7 @@ var GraphEngine = class {
             motivoPendiente = "pan";
           if (!rafPendiente) {
             rafPendiente = true;
-            requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
               rafPendiente = false;
               dibujarOverlay();
               dibujarCurvaGL(motivoPendiente);
@@ -48876,11 +48872,11 @@ var GraphEngine = class {
         let timerFinal = null;
         limpieza.register(() => {
           if (timerFinal !== null)
-            clearTimeout(timerFinal);
+            window.clearTimeout(timerFinal);
         });
         const programarFinal = () => {
           if (timerFinal !== null)
-            clearTimeout(timerFinal);
+            window.clearTimeout(timerFinal);
           timerFinal = window.setTimeout(() => {
             timerFinal = null;
             dibujarOverlay();
@@ -49017,7 +49013,7 @@ var GraphEngine = class {
               dibujarCurvaGL("pan");
             }
           }
-          rafTeclado = requestAnimationFrame(pasoTeclado);
+          rafTeclado = window.requestAnimationFrame(pasoTeclado);
         };
         canvasGL.addEventListener("keydown", (e3) => {
           const dir = MAPA_TECLAS[e3.key.toLowerCase()];
@@ -49027,7 +49023,7 @@ var GraphEngine = class {
           e3.stopPropagation();
           teclasPan.add(dir);
           if (rafTeclado === null)
-            rafTeclado = requestAnimationFrame(pasoTeclado);
+            rafTeclado = window.requestAnimationFrame(pasoTeclado);
         });
         canvasGL.addEventListener("keyup", (e3) => {
           const dir = MAPA_TECLAS[e3.key.toLowerCase()];
@@ -49045,7 +49041,7 @@ var GraphEngine = class {
         });
         limpieza.register(() => {
           if (rafTeclado !== null)
-            cancelAnimationFrame(rafTeclado);
+            window.cancelAnimationFrame(rafTeclado);
         });
         const btnFijar = wrapGrafica.createDiv();
         btnFijar.setAttribute("title", "Fijar la vista al punto del crosshair");
@@ -49085,9 +49081,9 @@ var GraphEngine = class {
         const popResumen = wrapGrafica.createDiv();
         popResumen.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:230px; padding:8px 10px; box-sizing:border-box; background:rgba(20,20,20,0.95); border:1px solid rgba(255,255,255,0.12); border-radius:6px; font-size:11px; line-height:1.5; white-space:nowrap; color:rgba(230,230,235,0.92); z-index:5; box-shadow:0 4px 12px rgba(0,0,0,0.4);";
         if (msgRaices)
-          popResumen.createEl("div", { text: msgRaices });
+          popResumen.createDiv({ text: msgRaices });
         if (msgVertices)
-          popResumen.createEl("div", { text: msgVertices });
+          popResumen.createDiv({ text: msgVertices });
         btnResumen.addEventListener("click", (e3) => {
           e3.stopPropagation();
           popResumen.style.display = popResumen.style.display === "none" ? "block" : "none";
@@ -49330,7 +49326,7 @@ var Camara = class {
   /** Corta cualquier animación de vista en curso: un gesto del usuario manda sobre ella. */
   cancelarAnimacion() {
     if (this.rafAnim !== null)
-      cancelAnimationFrame(this.rafAnim);
+      window.cancelAnimationFrame(this.rafAnim);
     this.rafAnim = null;
     this.logZoomPendiente = 0;
     this.volviendoAInicio = false;
@@ -49345,11 +49341,11 @@ var Camara = class {
       const avance = 1 - Math.exp(-dt / TAU_ZOOM_MS);
       const sigue = this.pasoAnimacion(avance);
       this.cb.onViewport();
-      this.rafAnim = sigue ? requestAnimationFrame(paso) : null;
+      this.rafAnim = sigue ? window.requestAnimationFrame(paso) : null;
       if (!sigue)
         this.volviendoAInicio = false;
     };
-    this.rafAnim = requestAnimationFrame(paso);
+    this.rafAnim = window.requestAnimationFrame(paso);
   }
   /** Un frame de la animación activa. Devuelve `true` si aún queda camino. */
   pasoAnimacion(avance) {
@@ -49792,7 +49788,7 @@ var Navegacion = class {
           }
         }
       }
-      this.raf = requestAnimationFrame(this.paso);
+      this.raf = window.requestAnimationFrame(this.paso);
     };
     canvas.tabIndex = 0;
     canvas.setCssStyles({ outline: "none" });
@@ -49805,7 +49801,7 @@ var Navegacion = class {
       e3.stopPropagation();
       this.teclas.add(d);
       if (this.raf === null)
-        this.raf = requestAnimationFrame(this.paso);
+        this.raf = window.requestAnimationFrame(this.paso);
     };
     const onKeyUp = (e3) => {
       this.fino = e3.shiftKey;
@@ -50018,7 +50014,7 @@ var Navegacion = class {
   }
   destruir() {
     if (this.raf !== null)
-      cancelAnimationFrame(this.raf);
+      window.cancelAnimationFrame(this.raf);
     for (const f of this.limpiezas)
       f();
   }
@@ -55379,7 +55375,7 @@ function parsearLineas(entrada) {
   return f ? { integrando: f, a, b, variable: "x" } : null;
 }
 function normalizarInvisibles(texto) {
-  return texto.replace(/[\u200B\u200C\u200D\uFEFF]/g, "").replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, " ");
+  return texto.replace(/[\u200B\u200C\u200D\uFEFF]/gu, "").replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, " ");
 }
 function extraerIntegral(source) {
   const s = normalizarInvisibles(source).trim();
@@ -55975,52 +55971,30 @@ var MotorExperimental = class {
         escena.pintar(vp, mx, false, void 0, mx, my);
       }
     };
-    const DIAG = false;
-    let accCalc = 0, accPaint = 0, maxCalc = 0, maxPaint = 0, nFrames = 0;
-    const diag2 = (etiqueta, dCalc, dPaint) => {
-      if (!DIAG)
-        return;
-      accCalc += dCalc;
-      accPaint += dPaint;
-      if (dCalc > maxCalc)
-        maxCalc = dCalc;
-      if (dPaint > maxPaint)
-        maxPaint = dPaint;
-      if (++nFrames >= 30) {
-        console.log(
-          `[motor ${etiqueta}] ${nFrames}f \xB7 calc avg ${(accCalc / nFrames).toFixed(2)}ms max ${maxCalc.toFixed(2)} \xB7 paint avg ${(accPaint / nFrames).toFixed(2)}ms max ${maxPaint.toFixed(2)}`
-        );
-        accCalc = accPaint = maxCalc = maxPaint = nFrames = 0;
-      }
-    };
     let rafId = null;
     let pendienteRecomputar = false;
     const ejecutarFrame = () => {
       rafId = null;
-      const t0 = performance.now();
       if (pendienteRecomputar) {
         escena.actualizar(camara.viewport(), "interactiva");
         pendienteRecomputar = false;
       }
-      const t1 = performance.now();
       pintar();
-      const t2 = performance.now();
-      diag2("interactiva", t1 - t0, t2 - t1);
     };
     const programarRedibujo = () => {
       pendienteRecomputar = true;
       if (rafId === null)
-        rafId = requestAnimationFrame(ejecutarFrame);
+        rafId = window.requestAnimationFrame(ejecutarFrame);
     };
     const programarPintado = () => {
       if (rafId === null)
-        rafId = requestAnimationFrame(ejecutarFrame);
+        rafId = window.requestAnimationFrame(ejecutarFrame);
     };
     let timerFinal = null;
     let alRecalcularFinal = null;
     const programarFinal = () => {
       if (timerFinal !== null)
-        clearTimeout(timerFinal);
+        window.clearTimeout(timerFinal);
       timerFinal = window.setTimeout(() => {
         timerFinal = null;
         escena.actualizar(camara.viewport(), "final");
@@ -56030,9 +56004,9 @@ var MotorExperimental = class {
     };
     limpieza.register(() => {
       if (rafId !== null)
-        cancelAnimationFrame(rafId);
+        window.cancelAnimationFrame(rafId);
       if (timerFinal !== null)
-        clearTimeout(timerFinal);
+        window.clearTimeout(timerFinal);
     });
     camara = new Camara(canvas, H, {
       // pan/zoom: pasada interactiva mientras dura el gesto + programa la final
@@ -56153,46 +56127,46 @@ var MotorExperimental = class {
       const refrescarSolucion = () => {
         popSolucion.empty();
         if (visibles.length === 0) {
-          popSolucion.createEl("div", { text: t().solucion.sinSistema });
+          popSolucion.createDiv({ text: t().solucion.sinSistema });
           return;
         }
         if (visibles.length === 1) {
-          popSolucion.createEl("div", { text: t().solucion.sistemaIncompleto });
+          popSolucion.createDiv({ text: t().solucion.sistemaIncompleto });
           return;
         }
         if (escena.solucionesInfinitas()) {
-          popSolucion.createEl("div", { text: t().solucion.infinitasCoinciden });
+          popSolucion.createDiv({ text: t().solucion.infinitasCoinciden });
           return;
         }
         const pts = escena.intersecciones();
         if (sistemaPeriodico && (escena.interseccionesSaturadas() || pts.length >= MIN_PERIODICO)) {
-          popSolucion.createEl("div", { text: t().solucion.infinitasPeriodico });
+          popSolucion.createDiv({ text: t().solucion.infinitasPeriodico });
           return;
         }
         if (escena.interseccionesSaturadas()) {
-          popSolucion.createEl("div", { text: t().solucion.demasiadas });
+          popSolucion.createDiv({ text: t().solucion.demasiadas });
           return;
         }
         if (pts.length === 0) {
-          popSolucion.createEl("div", { text: t().solucion.sinSolucion });
+          popSolucion.createDiv({ text: t().solucion.sinSolucion });
           return;
         }
-        popSolucion.createEl("div", {
+        popSolucion.createDiv({
           text: pts.length === 1 ? t().solucion.unaSolucion : t().solucion.nSoluciones(pts.length),
           attr: { style: "font-weight:600; margin-bottom:4px;" }
         });
         for (const p of pts.slice(0, MAX_LISTA)) {
-          popSolucion.createEl("div", {
+          popSolucion.createDiv({
             text: `(${formatearNumero(p.x)}, ${formatearNumero(p.y)})`
           });
         }
         if (pts.length > MAX_LISTA) {
-          popSolucion.createEl("div", {
+          popSolucion.createDiv({
             text: t().solucion.yMas(pts.length - MAX_LISTA),
             attr: { style: "opacity:0.6;" }
           });
         }
-        popSolucion.createEl("div", {
+        popSolucion.createDiv({
           text: t().solucion.enVista,
           attr: { style: "margin-top:4px; opacity:0.6;" }
         });
@@ -56259,8 +56233,8 @@ var MotorExperimental = class {
         else
           lineas.push(T.noVertices);
         for (const linea of lineas)
-          pop.createEl("div", { text: linea });
-        pop.createEl("div", {
+          pop.createDiv({ text: linea });
+        pop.createDiv({
           text: T.enVista,
           attr: { style: "margin-top:4px; opacity:0.6;" }
         });
@@ -56397,7 +56371,7 @@ var MotorExperimental = class {
         a.area.scrollLeft = 0;
       }
       soltarAreas = () => disposers.forEach((d) => d());
-      requestAnimationFrame(
+      window.requestAnimationFrame(
         () => areas.forEach((a) => {
           a.actualizarFade();
           const maxY = a.area.scrollHeight - a.area.clientHeight;
@@ -56534,14 +56508,14 @@ var MotorExperimental = class {
         }
         sincronizar();
       };
-      btnOriginal.addEventListener("click", async () => {
+      btnOriginal.addEventListener("click", () => void (async () => {
         abierto = false;
         if (!esOriginal()) {
           estado = base;
           await renderLatex(original);
         }
         sincronizar();
-      });
+      })());
       btnOpciones.addEventListener("click", (e3) => {
         e3.stopPropagation();
         abierto = !abierto;
@@ -56625,14 +56599,14 @@ var MotorExperimental = class {
       }
       sincronizar();
     };
-    btnOriginal.addEventListener("click", async () => {
+    btnOriginal.addEventListener("click", () => void (async () => {
       abierto = false;
       if (vista !== "operador") {
         vista = "operador";
         await renderLatex(operador);
       }
       sincronizar();
-    });
+    })());
     btnOpciones.addEventListener("click", (e3) => {
       e3.stopPropagation();
       abierto = !abierto;
@@ -56720,14 +56694,14 @@ var MotorExperimental = class {
       }
       sincronizar();
     };
-    btnOriginal.addEventListener("click", async () => {
+    btnOriginal.addEventListener("click", () => void (async () => {
       abierto = false;
       if (vista !== "operador") {
         vista = "operador";
         await renderLatex(operador);
       }
       sincronizar();
-    });
+    })());
     btnOpciones.addEventListener("click", (e3) => {
       e3.stopPropagation();
       abierto = !abierto;
@@ -56932,7 +56906,7 @@ var MotorExperimental = class {
     const pop = wrap.createDiv();
     pop.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:rgba(20,20,20,0.95); border:1px solid rgba(255,255,255,0.12); border-radius:6px; font-size:11px; line-height:1.5; color:rgba(230,230,235,0.92); z-index:5; box-shadow:0 4px 12px rgba(0,0,0,0.4);";
     for (const l of lineas) {
-      const div2 = pop.createEl("div", { text: l.texto });
+      const div2 = pop.createDiv({ text: l.texto });
       if (l.tex)
         this.montarEtiquetaMath(div2.createSpan(), l.tex, ctx);
     }
@@ -57224,7 +57198,6 @@ var LMathPlugin = class extends import_obsidian4.Plugin {
     this.ajustes = { ...AJUSTES_POR_DEFECTO };
   }
   async onload() {
-    console.log("LMath: plugin cargado");
     await this.cargarAjustes();
     new import_obsidian4.Notice(t().aviso.cargado);
     this.addSettingTab(new PestanaAjustesLMath(this.app, this));
@@ -57252,10 +57225,8 @@ var LMathPlugin = class extends import_obsidian4.Plugin {
       (source, el, ctx) => motorIntegral.process(source, el, ctx)
     );
     window[NOMBRE_GLOBAL] = crearConsolaDev();
-    console.log(`LMath: consola de desarrollo lista \u2192 ${NOMBRE_GLOBAL}.ayuda()`);
   }
   onunload() {
-    console.log("LMath: plugin descargado:");
     delete window[NOMBRE_GLOBAL];
   }
   /** Carga las preferencias (loadData) copiando SOLO las claves vigentes (las de

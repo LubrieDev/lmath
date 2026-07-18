@@ -21,7 +21,7 @@ export function crearPrograma(gl: WebGLRenderingContext): WebGLProgram {
     uniform vec4 u_color;
     void main() { gl_FragColor = u_color; }
   `);
-  const prog = gl.createProgram()!;
+  const prog = gl.createProgram();
   gl.attachShader(prog, vert);
   gl.attachShader(prog, frag);
   gl.linkProgram(prog);

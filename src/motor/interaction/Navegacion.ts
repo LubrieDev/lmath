@@ -143,7 +143,7 @@ export class Navegacion {
       e.preventDefault();
       e.stopPropagation();
       this.teclas.add(d);
-      if (this.raf === null) this.raf = requestAnimationFrame(this.paso);
+      if (this.raf === null) this.raf = window.requestAnimationFrame(this.paso);
     };
     const onKeyUp = (e: KeyboardEvent) => {
       this.fino = e.shiftKey;
@@ -241,7 +241,7 @@ export class Navegacion {
         }
       }
     }
-    this.raf = requestAnimationFrame(this.paso);
+    this.raf = window.requestAnimationFrame(this.paso);
   };
 
   /**
@@ -471,7 +471,7 @@ export class Navegacion {
   get railY(): number | null { return this._railY; }
 
   destruir(): void {
-    if (this.raf !== null) cancelAnimationFrame(this.raf);
+    if (this.raf !== null) window.cancelAnimationFrame(this.raf);
     for (const f of this.limpiezas) f();
   }
 }

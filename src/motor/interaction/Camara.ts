@@ -238,7 +238,7 @@ export class Camara {
 
   /** Corta cualquier animación de vista en curso: un gesto del usuario manda sobre ella. */
   private cancelarAnimacion(): void {
-    if (this.rafAnim !== null) cancelAnimationFrame(this.rafAnim);
+    if (this.rafAnim !== null) window.cancelAnimationFrame(this.rafAnim);
     this.rafAnim = null;
     this.logZoomPendiente = 0;
     this.volviendoAInicio = false;
@@ -260,10 +260,10 @@ export class Camara {
       const avance = 1 - Math.exp(-dt / TAU_ZOOM_MS);
       const sigue = this.pasoAnimacion(avance);
       this.cb.onViewport();
-      this.rafAnim = sigue ? requestAnimationFrame(paso) : null;
+      this.rafAnim = sigue ? window.requestAnimationFrame(paso) : null;
       if (!sigue) this.volviendoAInicio = false;
     };
-    this.rafAnim = requestAnimationFrame(paso);
+    this.rafAnim = window.requestAnimationFrame(paso);
   }
 
   /** Un frame de la animación activa. Devuelve `true` si aún queda camino. */

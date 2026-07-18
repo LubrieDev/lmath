@@ -102,6 +102,12 @@ LMath is an [Obsidian](https://obsidian.md) plugin for graphing functions, syste
 
 ## Installation
 
+### From Obsidian (recommended)
+
+1. Open **Settings → Community plugins** and turn off **Restricted mode** if it is on.
+2. Click **Browse**, search for **LMath**, and click **Install**.
+3. Click **Enable**.
+
 ### Manual
 
 1. Download `main.js`, `manifest.json` and `styles.css` from the latest release.
@@ -303,7 +309,7 @@ The plugin adds a settings tab (**Settings → LMath**):
 
 ## Development
 
-Architecture and engine internals are documented in the [Technical Reference](./docs/TECHNICAL-REFERENCE.md).
+Architecture and engine internals are documented in the [Technical Reference](https://github.com/LubrieDev/lmath/blob/main/docs/TECHNICAL-REFERENCE.md).
 
 Requirements: Node.js, npm, TypeScript.
 
@@ -321,8 +327,4 @@ Recommended workflow: edit the code → `npm run build` → copy `main.js` to a 
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
-
-## Repository
-
-[github.com/LubrieDev/lmath](https://github.com/LubrieDev/lmath)
+MIT — see [LICENSE](https://github.com/LubrieDev/lmath/blob/main/LICENSE).
