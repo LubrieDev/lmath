@@ -184,6 +184,11 @@ const MONOMIOS: readonly MonomioY[] = [
   // 1/|y| (par): 1/|x|+1/|y|=1 ⇒ |y| = 1/g ⇒ y = ±1/g, solo donde g>0.
   { nombre: "1/|y|", M: (y) => 1 / Math.abs(y), nRamas: 2,
     inversa: (g) => (g > 0 ? [1 / g, -1 / g] : []) },
+  // √|y| (par): √|y|+tan x=π ⇒ |y| = g² ⇒ y = ±g², solo donde g≥0. Sin esta base,
+  // la ecuación caía a la continuación por rejilla, que pierde las astillas junto a
+  // los polos de tan al alejar el zoom (mismo mal que motivó toda esta familia).
+  { nombre: "√|y|", M: (y) => Math.sqrt(Math.abs(y)), nRamas: 2,
+    inversa: (g) => (g >= 0 ? [g * g, -g * g] : []) },
   // 1/y (impar): 1/x+1/y=1 ⇒ y = 1/g (real para todo g≠0).
   { nombre: "1/y", M: (y) => 1 / y, nRamas: 1,
     inversa: (g) => (g !== 0 && Number.isFinite(g) ? [1 / g] : []) },
@@ -247,24 +252,63 @@ export function ramasMonomioY(F: CampoEscalar): FuncionReal[] | null {
 }
 
 /**
- * ¿F tiene POLOS (asíntotas verticales) en c(x)=F(x,0)? Escanea F(x,0) y detecta un
- * cambio de signo donde la magnitud es GRANDE a ambos lados (firma de polo +∞↔−∞;
- * un cero real tiene |F| pequeño cerca). Distingue tan(x)−2 (poled) de x²−9 (no). El
- * gate que decide continuación (cónica suave) vs ramas explícitas (separable con polos).
+ * ¿|F(x,0)| DIVERGE a ∞ hacia un polo dentro de (xa,xb)? Localiza el máximo de |F| por
+ * búsqueda ternaria y comprueba que la magnitud ACELERA sin cota al acercarse: a distancia
+ * ε/100 crece MÁS de lo que creció de ε a ε/10 ((m3−m2) ≥ (m2−m1)). Un polo real (−3x⁻²)
+ * explota sin cota; un pico suave FINITO (el |x²−9| de una cónica, máximo acotado en su
+ * vértice) DESACELERA hacia su valor límite → false. Esa aceleración —no la mera magnitud— es
+ * lo que separa la singularidad de un bache alto pero finito (misma idea que
+ * `detectarAsintotasMismaRama` del sampler explícito).
+ */
+function divergeEnPolo(F: CampoEscalar, xa: number, xb: number): boolean {
+  const absF = (x: number): number => {
+    const w = F.eval(x, 0);
+    return Number.isFinite(w) ? Math.abs(w) : Infinity;
+  };
+  let lo = xa, hi = xb;
+  for (let k = 0; k < 50; k++) {
+    const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3;
+    if (absF(m1) < absF(m2)) lo = m1; else hi = m2;   // ternaria hacia el máximo de |F|
+  }
+  const xp = (lo + hi) / 2;
+  const eps = Math.max(1e-9, Math.abs(xp) * 1e-6);
+  const m1 = Math.max(absF(xp - eps), absF(xp + eps));
+  const m2 = Math.max(absF(xp - eps / 10), absF(xp + eps / 10));
+  const m3 = Math.max(absF(xp - eps / 100), absF(xp + eps / 100));
+  return Number.isFinite(m1) && m3 > m2 && m2 > m1 && (m3 - m2) >= (m2 - m1) && m3 > 1e3;
+}
+
+/**
+ * ¿F tiene POLOS (asíntotas verticales) en c(x)=F(x,0)? Dos firmas:
+ *   • IMPAR: cambio de signo con |F| GRANDE a ambos lados (+∞↔−∞) — un cero real tiene |F|
+ *     pequeño cerca. Distingue tan(x)−2 (poled) de x²−9 (no).
+ *   • PAR: |F(x,0)|→∞ SIN cambio de signo (−3x⁻² diverge a −∞ por AMBOS lados). El escaneo de
+ *     signo lo pierde; se busca un valor central no finito, o un máximo local de |F| enorme, con
+ *     los flancos del MISMO signo, y se CONFIRMA con `divergeEnPolo` (que descarta el bache
+ *     finito de una cónica por su desaceleración). Sin esta rama, `y=±√g` con g≈3/x² (la eq.
+ *     `x²+3x+y²−3x⁻²=…`) caía a la continuación genérica, que pierde sus brazos asintóticos
+ *     junto a x=0 al alejar el zoom, en vez de al sampler 1D que sí los dibuja a cualquier zoom.
+ * El gate que decide continuación (cónica suave → lazos) vs ramas explícitas (separable con polos).
  */
 export function tienePolos(F: CampoEscalar): boolean {
   const N = 2000, x0 = -50, x1 = 50;
   const paso = (x1 - x0) / N;
-  let prev = F.eval(x0, 0);
-  for (let i = 1; i <= N; i++) {
-    const x = x0 + i * paso;
-    const v = F.eval(x, 0);
-    if (!Number.isFinite(v)) { prev = v; continue; }
-    if (Number.isFinite(prev) && prev * v < 0) {
-      // cambio de signo: pequeño en ambos lados = cero real; grande = polo.
-      if (Math.min(Math.abs(prev), Math.abs(v)) > 1) return true;
-    }
-    prev = v;
+  const xs: number[] = [], v: number[] = [];
+  for (let i = 0; i <= N; i++) { xs.push(x0 + i * paso); v.push(F.eval(xs[i], 0)); }
+
+  // Polo IMPAR: cambio de signo con |F| grande a ambos lados.
+  for (let i = 1; i <= N; i++)
+    if (Number.isFinite(v[i - 1]) && Number.isFinite(v[i]) && v[i - 1] * v[i] < 0 &&
+        Math.min(Math.abs(v[i - 1]), Math.abs(v[i])) > 1) return true;
+
+  // Polo PAR: |F|→∞ sin cambio de signo. Candidato = flancos finitos del MISMO signo (a·c>0)
+  // con el centro no finito o un máximo local de |F| enorme; se confirma con `divergeEnPolo`.
+  for (let i = 1; i < N; i++) {
+    const a = v[i - 1], b = v[i], c = v[i + 1];
+    if (!Number.isFinite(a) || !Number.isFinite(c) || a * c <= 0) continue;
+    const pico = !Number.isFinite(b) ||
+      (Math.abs(b) > Math.abs(a) && Math.abs(b) > Math.abs(c) && Math.abs(b) > 1e3);
+    if (pico && divergeEnPolo(F, xs[i - 1], xs[i + 1])) return true;
   }
   return false;
 }
@@ -276,19 +320,23 @@ export function tienePolos(F: CampoEscalar): boolean {
  * las ramas en los polos que el sampler 1D no detecta cuando la raíz los comprime (p.ej.
  * ∛ aplana el polo: `cbrt(2−tan x)` no dispara el corte por |y|→∞ a muestreo grueso).
  */
-export function localizarPolos(F: CampoEscalar, x0: number, x1: number): number[] {
-  // Paso fino (≤0.08 de mundo) para bracketar polos densos (tan tiene uno cada π).
-  // Acotado para no disparar el coste en vistas enormes; suficiente para ~40/periodo.
-  const N = Math.min(20000, Math.max(1500, Math.ceil((x1 - x0) / 0.08)));
-  const paso = (x1 - x0) / N;
+/** Semiventana CENTRAL fija (independiente del zoom/paneo) para DETECTAR el período de la
+ *  retícula de polos: garantiza ≥2 polos aunque la vista esté lejísimos o su propio escaneo
+ *  (paso acotado) salte los polos a zoom-out. tan/cot/sec/csc tienen período ≤π → ±40 sobra. */
+const CENTRO_POLOS = 40;
+
+/** Escanea [a,b] (paso ≤0.08, N acotado) y bisecta cada cambio de signo con |F| grande a ambos
+ *  lados (polo +∞↔−∞) hasta la asíntota. Devuelve las x de los polos IMPARES hallados en [a,b]. */
+function escanearPolos(F: CampoEscalar, a: number, b: number): number[] {
+  const N = Math.min(20000, Math.max(1500, Math.ceil((b - a) / 0.08)));
+  const paso = (b - a) / N;
   const polos: number[] = [];
-  let xa = x0, fa = F.eval(x0, 0);
+  let xa = a, fa = F.eval(a, 0);
   for (let i = 1; i <= N; i++) {
-    const xb = x0 + i * paso;
+    const xb = a + i * paso;
     const fb = F.eval(xb, 0);
     if (Number.isFinite(fa) && Number.isFinite(fb) && fa * fb < 0 &&
         Math.min(Math.abs(fa), Math.abs(fb)) > 1) {
-      // Bisección hacia el cambio de signo (la asíntota) dentro de [xa,xb].
       let lo = xa, hi = xb, flo = fa;
       for (let k = 0; k < 50; k++) {
         const m = (lo + hi) / 2, fm = F.eval(m, 0);
@@ -299,4 +347,92 @@ export function localizarPolos(F: CampoEscalar, x0: number, x1: number): number[
     xa = xb; fa = fb;
   }
   return polos;
+}
+
+/** Ordena y colapsa valores más cercanos que `tol` (une el mismo polo hallado por dos escaneos). */
+function dedupOrdenado(xs: number[], tol: number): number[] {
+  const s = [...xs].sort((a, b) => a - b);
+  const out: number[] = [];
+  for (const x of s) if (out.length === 0 || x - out[out.length - 1] > tol) out.push(x);
+  return out;
+}
+
+/**
+ * Localiza las x de los POLOS de c(x)=F(x,0) dentro de [x0,x1] (asíntotas verticales de las
+ * ramas despejadas). El PERÍODO de la retícula se ancla a una ventana CENTRAL fija
+ * (`CENTRO_POLOS`), NO a la vista: así, aunque a zoom-out el paso del escaneo de la vista supere
+ * el espaciado de los polos —o el paneo aleje la vista del centro—, `extenderPolosPeriodicos`
+ * siempre dispone de ≥2 polos para deducir el paso y GENERAR la retícula analíticamente sobre
+ * [x0,x1] (verificando cada candidato con el sondeo a ±ε). Antes, con solo el escaneo de la
+ * vista, los polos lejanos de tan(x) se perdían a zoom-out y las astillas parpadeaban.
+ *
+ * NB: no se reutiliza `detectarPeriodos` (periodicidadCampo) porque mide la periodicidad del
+ * CAMPO —F(x+P,y)=F(x,y)—, y aquí el campo NO es periódico (x²+x+tan x) aunque sus POLOS sí lo
+ * sean; el período correcto es el de la retícula de polos, que deduce `extenderPolosPeriodicos`.
+ *
+ * El escaneo de la VISTA se suma para el zoom-in (la ventana central no lo toca) y para
+ * distribuciones de polos NO periódicas (tan(x²)), que la extensión deja intactas. Solo se
+ * devuelven los polos dentro de [x0,x1] (los centrales fuera de rango sirven SOLO para el paso).
+ */
+export function localizarPolos(F: CampoEscalar, x0: number, x1: number): number[] {
+  const centrales = escanearPolos(F, -CENTRO_POLOS, CENTRO_POLOS);
+  const enVista = escanearPolos(F, x0, x1);
+  const todos = dedupOrdenado([...centrales, ...enVista], 1e-7);
+  // Verificación FINAL de cada polo con el sondeo a ±ε (|c|→∞ y cambio de signo): el escaneo
+  // (umbral |F|>1) también bracketea el CERO que se pega a cada polo (c=x²+x+tan x−C tiene uno
+  // junto a cada asíntota) y lo reporta como polo ESPURIO —una x que varía con el paso del
+  // escaneo (⇒ con el zoom) y que haría a `partirEnPolos` cortar la rama donde NO hay
+  // discontinuidad—. Filtrar por `esPoloVerificado` deja SOLO los polos reales, un conjunto
+  // determinista independiente de la vista: misma retícula a cualquier zoom/paneo.
+  return extenderPolosPeriodicos(F, todos, x0, x1)
+    .filter((p) => p >= x0 && p <= x1 && esPoloVerificado(F, p));
+}
+
+/** ¿Hay un polo de c(x)=F(x,0) EXACTAMENTE en px? Sondea a ±ε: salto ±∞↔∓∞ (enorme y de
+ *  signos opuestos). Un cero empinado de c —que el escaneo confunde con polo— da valores
+ *  pequeños al acercarse y responde false. */
+function esPoloVerificado(F: CampoEscalar, px: number): boolean {
+  const eps = Math.max(1e-9, Math.abs(px) * 1e-11);
+  const a = F.eval(px - eps, 0), b = F.eval(px + eps, 0);
+  return Number.isFinite(a) && Number.isFinite(b) && a * b < 0 &&
+         Math.min(Math.abs(a), Math.abs(b)) > 1e3;
+}
+
+/**
+ * Completa una retícula PERIÓDICA de polos que el escaneo solo ve cerca del centro.
+ * En c(x) = x²+x+tan x−C, lejos del origen el CERO de c se pega al polo a ~1/x²: dentro
+ * de un paso de escaneo c va de +grande a +grande pasando por ±∞ y por 0 —los extremos
+ * tienen el MISMO signo— y ni el polo ni el cero dejan huella en NINGÚN muestreo regular.
+ * Pero los polos de una c así son EXACTAMENTE periódicos aunque c no lo sea (c(x+π)−c(x)
+ * es un polinomio): con ≥2 polos verificados cerca del centro se deduce el paso (mínimo
+ * espaciado; los demás deben ser múltiplos enteros), se extiende la retícula k·paso a
+ * todo [x0,x1] y se VERIFICA cada candidato con el sondeo a ±ε — un candidato falso
+ * (polos no periódicos: tan(x²)) no pasa la verificación y no se inventa nada.
+ */
+function extenderPolosPeriodicos(F: CampoEscalar, polos: number[], x0: number, x1: number): number[] {
+  const verificados = polos.filter((p) => esPoloVerificado(F, p));
+  if (verificados.length < 2) return polos;
+  // Paso base: espaciado MÍNIMO entre verificados; el resto debe ser múltiplo entero.
+  let d = Infinity;
+  for (let i = 1; i < verificados.length; i++) d = Math.min(d, verificados[i] - verificados[i - 1]);
+  if (!(d > 1e-9)) return polos;
+  for (let i = 1; i < verificados.length; i++) {
+    const m = (verificados[i] - verificados[i - 1]) / d;
+    if (Math.abs(m - Math.round(m)) > 1e-4) return polos;   // no periódicos → tal cual
+  }
+  // Afina d con la BASE más larga disponible (promedia el error de bisección).
+  const span = verificados[verificados.length - 1] - verificados[0];
+  d = span / Math.round(span / d);
+
+  const MAX_CANDIDATOS = 4000;                               // más allá, son subpíxel seguro
+  const p0 = verificados[0];
+  const kLo = Math.ceil((x0 - p0) / d), kHi = Math.floor((x1 - p0) / d);
+  if (kHi - kLo + 1 > MAX_CANDIDATOS) return polos;
+  const salida = new Set<number>(polos);
+  for (let k = kLo; k <= kHi; k++) {
+    const cand = p0 + k * d;
+    if (polos.some((q) => Math.abs(q - cand) < d / 4)) continue;  // ya lo tenía el escaneo
+    if (esPoloVerificado(F, cand)) salida.add(cand);
+  }
+  return [...salida].sort((a, b) => a - b);
 }

@@ -1,5 +1,6 @@
 import { parse, simplify } from "mathjs";
 
+import { trigDeY, inversionTrig, despejeTrigCuadratico } from "./despejeInverso";
 import { normalizarEntrada, contieneYLibre } from "./parser";
 import { insertarProductoImplicito } from "./motor/parsing/productoImplicito";
 import { componenteParametrica } from "./motor/parsing/componentesParametricas";
@@ -184,6 +185,47 @@ function despejeRaiz(t: Termino, derecha: Termino[]): { ecuacion: string; comple
   return { ecuacion: `y = (${ladoDerecho(t, derecha, libres, renderCanonico)})^${n}`, completo: true };
 }
 
+/** Índice de raíz `n` y potencia `m` si el nodo es `ⁿ√(y^m)` —una raíz (sqrt/cbrt/nthRoot)
+ *  cuyo radicando es una POTENCIA de y (base exactamente y, m entero ≥2)—: `∛(y²)`→{n:3,m:2}.
+ *  La raíz de la y DESNUDA (m=1) es asunto de `despejeRaiz`; aquí solo m≥2. null si no encaja. */
+function raizDePotenciaY(n0: Nodo): { n: number; m: number } | null {
+  const nodo = desParen(n0);
+  if (nodo.type !== "FunctionNode") return null;
+  const nombre = nodo.fn?.name;
+  let n: number | null = null;
+  let rad: Nodo | undefined;
+  if (nombre === "sqrt" && nodo.args.length === 1) { n = 2; rad = nodo.args[0]; }
+  else if (nombre === "cbrt" && nodo.args.length === 1) { n = 3; rad = nodo.args[0]; }
+  else if (nombre === "nthRoot" && nodo.args.length === 2) {
+    const k = desParen(nodo.args[1]);
+    if (k.type === "ConstantNode" && Number.isInteger(k.value) && k.value >= 2) { n = k.value; rad = nodo.args[0]; }
+  }
+  if (n === null || rad === undefined) return null;
+  const m = exponenteY(rad); // `y^m` con base exactamente y, m entero ≥2
+  return m === null ? null : { n, m };
+}
+
+/** Único término-y de la forma (libres)·ⁿ√(y^m): pasa los libres al otro lado, ELEVA a n
+ *  para invertir la raíz (`y^m = Rⁿ`) y saca la raíz m-ésima para aislar y. El astroide
+ *  `∛(y²)=1−∛(x²)` → `y² = (1−∛(x²))³` → `y = ±√((1−∛(x²))³)`. m PAR → las DOS ramas (centinela
+ *  `pm`); m IMPAR → raíz real única. Como `∛(y²)≥0` obliga a R≥0, elevar no añade soluciones
+ *  espurias: donde R<0 (fuera del dominio) el radicando sale negativo y la raíz par es NaN, es
+ *  decir sin curva —igual que la original—. Completo. null si el factor con y no es `ⁿ√(y^m)`. */
+function despejeRaizDePotencia(t: Termino, derecha: Termino[]): { ecuacion: string; completo: boolean } | null {
+  const fs = factores(t.nodo);
+  const conYf = fs.filter((f) => contieneY(f.nodo));
+  const libres = fs.filter((f) => !contieneY(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== 1) return null;
+  const info = raizDePotenciaY(conYf[0].nodo);
+  if (info === null) return null;
+  const { n, m } = info;
+  // ⁿ√(y^m) = R (libres al otro lado, radicando con positivos primero) ⇒ y^m = Rⁿ.
+  const base = `(${ladoDerecho(t, derecha, libres)})^${n}`;
+  if (m % 2 === 1) return { ecuacion: `y = nthRoot(${base}, ${m})`, completo: true };
+  const raizM = m === 2 ? `sqrt(${base})` : `nthRoot(${base}, ${m})`;
+  return { ecuacion: `y = pm(${raizM})`, completo: true };
+}
+
 /** Valor ENTERO de un exponente. Usa `valorConstanteFactor` (compartido) porque la entrada
  *  `|y|^{-1}` normaliza a `abs(y)^(-1)`, cuyo exponente mathjs NO parsea como
  *  `ConstantNode(−1)` sino como paréntesis sobre un menos unario: sin desenvolverlo, el
@@ -202,26 +244,76 @@ function esAbsDeY(n: Nodo): boolean {
   return arg.type === "SymbolNode" && arg.name === "y";
 }
 
-/** Único término-y de la forma (libres)·abs(y)^e: exponente EFECTIVO `e` de abs(y) (entero,
- *  incl. negativo si va en el denominador —`1/|y|` es abs(y)^(-1)— o por una potencia
- *  explícita `|y|^{k}`) y los factores libres de y. null si el factor con y no es abs(y)
- *  puro. Unifica las dos formas con que puede llegar `1/|y|`: cruda `abs(y)^(-1)` (un solo
- *  factor con potencia) o ya simplificada `1/abs(y)` (factor en denominador, `exp=-1`). */
-function absYExponente(t: Termino): { e: number; libres: Factor[] } | null {
+/** Reduce num/den a términos mínimos con den>0. null si den es 0. */
+function normalizarFraccion(num: number, den: number): { num: number; den: number } | null {
+  if (den === 0) return null;
+  if (den < 0) { num = -num; den = -den; }
+  const g = mcdEnteros(Math.abs(num), den) || 1;
+  return { num: num / g, den: den / g };
+}
+
+/** Valor RACIONAL de un exponente constante como fracción num/den (num con signo). Va más
+ *  allá de `exponenteEntero` para reconocer los exponentes fraccionarios `|y|^{1/2}` (que
+ *  mathjs parsea como el `OperatorNode` `/`, no un ConstantNode). null si no es una fracción
+ *  de enteros (un símbolo como `pi`, un decimal raro…). */
+function racionalConstante(n: Nodo): { num: number; den: number } | null {
+  const nodo = desParen(n);
+  if (nodo.type === "OperatorNode" && nodo.op === "/" && nodo.args.length === 2) {
+    const a = racionalConstante(nodo.args[0]);
+    const b = racionalConstante(nodo.args[1]);
+    if (a === null || b === null || b.num === 0) return null;
+    return normalizarFraccion(a.num * b.den, a.den * b.num);
+  }
+  if (nodo.type === "OperatorNode" && nodo.op === "-" && nodo.args.length === 1) {
+    const a = racionalConstante(nodo.args[0]);
+    return a === null ? null : { num: -a.num, den: a.den };
+  }
+  const v = valorConstanteFactor(nodo);
+  return v !== null && Number.isInteger(v) ? { num: v, den: 1 } : null;
+}
+
+/** Índice n y radicando de una RAÍZ (sqrt→2, cbrt→3, nthRoot(·,n)→n, n entero ≥2), o null.
+ *  `√|y|` es `sqrt(abs(y))`, es decir `|y|^{1/2}`: la raíz es un exponente fraccionario más. */
+function indiceRaiz(n: Nodo): { n: number; rad: Nodo } | null {
+  const nodo = desParen(n);
+  if (nodo.type !== "FunctionNode") return null;
+  const nombre = nodo.fn?.name;
+  if (nombre === "sqrt" && nodo.args.length === 1) return { n: 2, rad: nodo.args[0] };
+  if (nombre === "cbrt" && nodo.args.length === 1) return { n: 3, rad: nodo.args[0] };
+  if (nombre === "nthRoot" && nodo.args.length === 2) {
+    const k = exponenteEntero(nodo.args[1]);
+    if (k !== null && k >= 2) return { n: k, rad: nodo.args[0] };
+  }
+  return null;
+}
+
+/** Único término-y de la forma (libres)·abs(y)^e: exponente EFECTIVO `e = num/den` de abs(y)
+ *  (RACIONAL, no solo entero) y los factores libres de y. null si el factor con y no es abs(y)
+ *  puro. El exponente puede venir de: el signo del factor (±1, num/denominador de la fracción
+ *  —`1/|y|` es abs(y)^(-1)—), una potencia explícita `|y|^{k}` con k racional (`|y|^{1/2}`), o
+ *  una RAÍZ envolvente `ⁿ√|y|` (`√|y|` = `|y|^{1/2}`). Unifica también las dos formas de `1/|y|`:
+ *  cruda `abs(y)^(-1)` (potencia) o simplificada `1/abs(y)` (factor en denominador, `exp=-1`). */
+function absYExponente(t: Termino): { num: number; den: number; libres: Factor[] } | null {
   const fs = factores(t.nodo);
   const conYf = fs.filter((f) => contieneY(f.nodo));
   const libres = fs.filter((f) => !contieneY(f.nodo));
   if (conYf.length !== 1) return null;
-  let e: number = conYf[0].exp;                 // ±1 según numerador/denominador
+  let num = conYf[0].exp, den = 1;              // ±1 según numerador/denominador
   let nucleo = desParen(conYf[0].nodo);
-  // Potencia entera explícita `abs(y)^k` (la que `factores` no separa): acumula el k.
+  // Potencia explícita `abs(y)^k` (k racional; la que `factores` no separa): acumula el k.
   if (nucleo.type === "OperatorNode" && nucleo.op === "^" && nucleo.args.length === 2) {
-    const k = exponenteEntero(nucleo.args[1]);
-    if (k === null || k === 0) return null;
-    e *= k;
+    const k = racionalConstante(nucleo.args[1]);
+    if (k === null || k.num === 0) return null;
+    num *= k.num; den *= k.den;
     nucleo = desParen(nucleo.args[0]);
+  } else {
+    // Raíz envolvente `ⁿ√(abs(y))` (√|y|, ∛|y|, ⁿ√|y|): un exponente 1/n más sobre abs(y).
+    const r = indiceRaiz(nucleo);
+    if (r !== null) { den *= r.n; nucleo = desParen(r.rad); }
   }
-  return esAbsDeY(nucleo) ? { e, libres } : null;
+  if (!esAbsDeY(nucleo)) return null;
+  const frac = normalizarFraccion(num, den);
+  return frac === null ? null : { ...frac, libres };
 }
 
 /** Aplana la expresión de |y| a una sola fracción legible (`1/(1−1/|x|)` → `|x|/(|x|−1)`):
@@ -233,28 +325,59 @@ function limpiarAbsoluto(s: string): string {
   catch { return s; }
 }
 
-/** Único término-y de la forma (libres)·abs(y)^e (e entero): aísla |y| y saca las DOS ramas
- *  del absoluto. `1/|x|+1/|y|=1` → `|y| = |x|/(|x|−1)` → `y = ±|x|/(|x|−1)`. Se pasan los
- *  libres al otro lado (`abs(y)^e = R`), se invierte el exponente (`|y| = R^{1/e}`) y se
- *  emite `y = ±(…)` con el centinela `pm`. Como el despeje de raíz, añade formalmente la
- *  rama del signo opuesto (licencia de "álgebra de manual"); deja y aislada → completo.
- *  null si la parte con y no es un abs(y) puro. */
+/** Único término-y de la forma (libres)·abs(y)^e (e RACIONAL): aísla |y| y saca las DOS ramas
+ *  del absoluto. `1/|x|+1/|y|=1` → `|y| = |x|/(|x|−1)` → `y = ±|x|/(|x|−1)`; `√|y|+tan x=2` →
+ *  `|y| = (2−tan x)²` → `y = ±(2−tan x)²`. Se pasan los libres al otro lado (`abs(y)^e = R`) y
+ *  se INVIERTE el exponente para aislar `|y| = R^{1/e}`; con `e = num/den`, `1/e = den/num` es la
+ *  fracción `a/b` (a=den, b=|num|, con el signo de num haciendo el recíproco). Como el despeje de
+ *  raíz, añade formalmente la rama del signo opuesto (licencia de "álgebra de manual"); deja y
+ *  aislada → completo. null si la parte con y no es un abs(y) puro.
+ *
+ *  El radicando/base va en orden CANÓNICO (`renderCanonico`, como en `despejeRaiz`): es la base
+ *  de una potencia de nivel superior, así `(2−x²)` sale `-x^2 + 2`, no `2 - x^2`. */
 function despejeAbsoluto(t: Termino, derecha: Termino[]): { ecuacion: string; completo: boolean } | null {
   const info = absYExponente(t);
   if (!info) return null;
-  const { e, libres } = info;
+  const { num, den, libres } = info;
   // abs(y)^e = R (los factores libres pasan dividiendo/multiplicando al otro lado).
-  const R = ladoDerecho(t, derecha, libres);
-  // Invertir el exponente para aislar |y| = R^{1/e}. e=±1 son los casos comunes (1/|y|);
-  // |e|≥2 introduce una raíz e-ésima. n=2 usa `sqrt` (→ `\sqrt`, sin índice) y n≥3
-  // `nthRoot` (→ `\sqrt[n]`), la MISMA convención que `despejePotencia`.
+  const R = ladoDerecho(t, derecha, libres, renderCanonico);
+  // |y| = R^{1/e} = R^{a/b}, con a=den, b=|num|; num<0 hace el recíproco. Una raíz b-ésima
+  // usa `sqrt` (b=2, → `\sqrt` sin índice) o `nthRoot` (b≥3, → `\sqrt[b]`), la MISMA convención
+  // que `despejePotencia`; una potencia entera (b=1, a≥2) se ELEVA literalmente, como el inverso
+  // de la raíz en `despejeRaiz` (`|y|^{1/2}=R` ⇒ `|y|=R²`).
+  const a = den, b = Math.abs(num), neg = num < 0;
   const raizDe = (r: string, n: number) => (n === 2 ? `sqrt(${r})` : `nthRoot((${r}), ${n})`);
-  const aby =
-    e === 1 ? R :
-    e === -1 ? `1/(${R})` :
-    e > 0 ? raizDe(R, e) :
-    `1/(${raizDe(R, -e)})`;
-  return { ecuacion: `y = pm(${limpiarAbsoluto(aby)})`, completo: true };
+  let mag: string;
+  let esPotencia = false;   // ¿|y| es una BASE elevada a un entero? → no aplanar (expandiría)
+  if (b === 1) {
+    if (a === 1) mag = R;                             // |y| = R
+    else { mag = `(${R})^${a}`; esPotencia = true; } // |y| = Rᵃ
+  } else if (a === 1) {
+    mag = raizDe(R, b);                              // |y| = ᵇ√R
+  } else {
+    mag = `nthRoot((${R})^${a}, ${b})`;             // |y| = ᵇ√(Rᵃ)
+    esPotencia = true;
+  }
+  const aby = neg ? `1/(${mag})` : mag;
+  // Las formas con potencia se dejan literales (como `despejeRaiz`): `limpiarAbsoluto` EXPANDIRÍA
+  // `(-x²+2)²`. El resto (recíprocos, raíces, e=1) sí se aplanan a una fracción legible.
+  const cuerpo = esPotencia ? aby : limpiarAbsoluto(aby);
+  return { ecuacion: `y = pm(${cuerpo})`, completo: true };
+}
+
+/** Único término-y de la forma (libres)·T(y) con T trig PERIÓDICA de la y desnuda:
+ *  pasa los libres al otro lado e invierte con la solución GENERAL —una FAMILIA
+ *  discreta infinita, no una función—: `tan(y)+x=2` → `y = atan(2 - x) + fam(k, pi)`
+ *  (= arctan(2−x)+kπ, k∈ℤ). La tabla de inversas y la semántica del centinela `fam`
+ *  viven en despejeInverso.ts; aquí solo la manipulación de términos. Completo. */
+function despejeTrigInverso(t: Termino, derecha: Termino[]): { ecuacion: string; completo: boolean } | null {
+  const fs = factores(t.nodo);
+  const conYf = fs.filter((f) => contieneY(f.nodo));
+  const libres = fs.filter((f) => !contieneY(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== 1) return null;
+  const tipo = trigDeY(conYf[0].nodo);
+  if (tipo === null) return null;
+  return { ecuacion: `y = ${inversionTrig(tipo, ladoDerecho(t, derecha, libres))}`, completo: true };
 }
 
 /** Un único término-y que es un PRODUCTO: divide los factores libres de y al otro
@@ -640,19 +763,45 @@ function despejar(ecuacion: string): { ecuacion: string; completo: boolean } | n
     // multiplicativo, que dejaría `√y = …` incompleto en vez de aislar y.
     const raiz = despejeRaiz(conY[0], derecha);
     if (raiz) return raiz;
+    // (libres)·ⁿ√(y^m) → elevar a n y sacar la raíz m-ésima. El astroide `∛(y²)=1−∛(x²)`
+    // → `y = ±√((1−∛(x²))³)`. Antes que el multiplicativo (que dejaría `∛(y²)=…` incompleto).
+    const raizPot = despejeRaizDePotencia(conY[0], derecha);
+    if (raizPot) return raizPot;
     // (libres)·abs(y)^e → aislar |y| y sacar las dos ramas (`y = ±…`). Antes que el
     // multiplicativo, que dejaría `1/|y| = …` incompleto en vez de aislar y.
     const abs = despejeAbsoluto(conY[0], derecha);
     if (abs) return abs;
+    // (libres)·T(y) trig periódica → solución GENERAL y = T⁻¹(…) + k·período (familia
+    // infinita, centinela `fam`; despejeInverso.ts). Antes que el multiplicativo, que
+    // dejaría `tan(y) = …` incompleto en vez de aislar y.
+    const trig = despejeTrigInverso(conY[0], derecha);
+    if (trig) return trig;
     // Otros factores libres de y en un producto → se dividen al otro lado.
     const mult = despejeMultiplicativo(conY[0], derecha);
-    if (mult) return { ecuacion: mult, completo: false };
+    if (mult) {
+      // Si la y quedó ATRAPADA en el numerador de una fracción (la simplificación
+      // reúne `x²+…−3x⁻²` en `(x⁴+3x³+x²y²−3)/x²`), `despejeMultiplicativo` solo despeja
+      // el denominador y deja un resultado PARCIAL, aunque la ecuación sea perfectamente
+      // aislable. Pero el string que produce YA es polinómico (sin fracción): al
+      // re-despejarlo, `y²` es un término propio y sale `y = ±√(…)`. La recursión es de
+      // un solo nivel (el clearing quita el denominador → no vuelve a esta rama) y solo
+      // se acepta si COMPLETA; si no, se conserva el parcial de siempre.
+      const limpio = despejar(mult);
+      if (limpio && limpio.completo) return limpio;
+      return { ecuacion: mult, completo: false };
+    }
   }
 
   // Varios términos-y: ¿es CUADRÁTICA en y^g (bicuadrática/cuadrática)? → fórmula reducida.
   // `(x²+y²)²−2(x²−y²)=0` → `y=±√(−(x²+1)+√(4x²+1))`. Validada numéricamente contra la original.
   const cuad = despejeCuadratico(D, DVal);
   if (cuad) return cuad;
+
+  // ¿CUADRÁTICA EN cos(y) tras expandir la trig de argumentos compuestos (cos(x±y),
+  // cos(2y)…)? → fórmula general en u=cos y e inversión y = ±arccos(u) + 2kπ (familia).
+  // También validada contra la original. Tabla y pipeline en despejeInverso.ts.
+  const trigCuad = despejeTrigCuadratico(D, DVal);
+  if (trigCuad) return trigCuad;
 
   // No lineal irreducible o varios términos-y: forma aislada (RHS en orden canónico).
   return { ecuacion: `${renderTerminos(conY)} = ${renderCanonico(derecha)}`, completo: false };

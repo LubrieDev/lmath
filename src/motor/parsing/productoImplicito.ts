@@ -36,6 +36,12 @@ const FUNCIONES = new Set([
   // motor los expande en las DOS ramas (motor/parsing/dobleSigno.ts). `toTex` los pinta
   // `\pm` / `\mp` (latex.ts).
   "pm", "mp",
+  // Centinela de FAMILIA PERIÓDICA (`y = atan(g) + fam(k, pi)` = arctan(g)+kπ, k∈ℤ),
+  // que emite el despeje por inversión trig (despejeInverso.ts). Átomo (si no, se
+  // partiría en `f*a*m`); NO se evalúa ni se expande para graficar (el despeje es
+  // presentación: lo graficado es siempre la ecuación original). `toTex` lo pinta
+  // `k\pi`/`2k\pi` y añade la coletilla `, k∈ℤ` (latex.ts).
+  "fam",
 ]);
 // Constantes/variables de varias letras que NO deben partirse.
 const CONSTANTES = new Set(["pi", "theta", "tau", "phi", "Infinity", "NaN"]);

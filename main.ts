@@ -4,6 +4,7 @@ import { GraphEngine } from "./src/engines/obs-graph/GraphEngine";
 import { MotorExperimental } from "./src/host-obsidian/MotorExperimental";
 import { registrarFuenteLora } from "./src/host-obsidian/fuentes";
 import { crearConsolaDev, NOMBRE_GLOBAL } from "./src/host-obsidian/consolaDev";
+import { fijarIdioma, t } from "./src/i18n";
 import {
   AJUSTES_POR_DEFECTO,
   PestanaAjustesObsiMath,
@@ -28,10 +29,12 @@ export default class ObsiMathPlugin extends Plugin implements PluginConAjustes {
 
   async onload() {
     console.log("Obsi Math: plugin cargado");
-    new Notice("¡Obsi Math se ha cargado correctamente!");
 
-    // Ajustes persistentes ANTES de registrar los motores (los capturan por referencia).
+    // Ajustes persistentes ANTES de registrar los motores (los capturan por referencia) y
+    // ANTES de cualquier texto de interfaz: `cargarAjustes` fija el idioma activo (i18n) a
+    // partir de la preferencia guardada, así el aviso y la pestaña ya salen en ese idioma.
     await this.cargarAjustes();
+    new Notice(t().aviso.cargado);
     this.addSettingTab(new PestanaAjustesObsiMath(this.app, this));
 
     // Fuente Lora para el texto de la interfaz del plugin (se aplica en styles.css,
@@ -110,6 +113,10 @@ export default class ObsiMathPlugin extends Plugin implements PluginConAjustes {
       if (typeof disco[k] === typeof ajustes[k]) (ajustes[k] as unknown) = disco[k];
     }
     this.ajustes = ajustes;
+    // Activa el idioma de la interfaz (i18n) según la preferencia cargada. Debe correr aquí,
+    // en cuanto los ajustes están listos, para que TODO texto posterior (aviso, pestaña,
+    // bloques) use el idioma correcto. `fijarIdioma` valida y cae a inglés si es desconocido.
+    fijarIdioma(this.ajustes.idioma);
     // Si el disco traía claves fósiles, se re-persiste ya filtrado: el data.json queda
     // limpio en esta misma carga, no en el siguiente cambio de ajustes.
     if (Object.keys(disco).some((k) => !(k in ajustes))) await this.guardarAjustes();
@@ -121,4 +128,4 @@ export default class ObsiMathPlugin extends Plugin implements PluginConAjustes {
   }
 }
 
-// https://github.com/RughustDev/obsi-math
+// https://github.com/LubrieDev/obsi-math

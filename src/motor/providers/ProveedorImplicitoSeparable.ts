@@ -71,6 +71,12 @@ export class ProveedorImplicitoSeparable implements ProveedorGeometria {
       const r = this.trazador.trazar(f, this.objetoId, viewport, tolerancia);
       for (const rama of r.ramas) for (const sub of partirEnPolos(rama, polos, yTop, yBot)) ramas.push(sub);
       for (const a of r.asintotas) asintotas.push(a);
+      // Astillas ESCONDIDAS junto a los polos: donde el dominio de la rama es un
+      // intervalo de ancho ~1/x² pegado al polo, el muestreo regular no lo pisa
+      // nunca y la rama entera desaparecía (x²+x+|y|+tan x=C perdía TODAS las
+      // astillas lejos del centro al alejar el zoom). Se siembran a mano con una
+      // escalera logarítmica anclada en cada polo, que el muestreo no puede dar.
+      for (const rama of ramasJuntoAPolos(f, this.objetoId, polos, viewport)) ramas.push(rama);
     }
     // Dos pasadas (igual que ProveedorExplicito): los extras solo en la final.
     const esFinal = tolerancia.pasada === "final";
@@ -85,6 +91,92 @@ export class ProveedorImplicitoSeparable implements ProveedorGeometria {
       asintotas: esFinal ? dedupAsintotas(asintotas) : [],
     };
   }
+}
+
+/**
+ * Ramas ASINTÓTICAS escondidas junto a los polos de c(x). En una separable tipo
+ * |y| = C−x²−x−tan x, justo a un lado de CADA polo hay una astilla casi vertical
+ * (g barre de +∞ a 0 en un intervalo de ancho ~1/x²) que es dominio-completo de la
+ * rama... y ese intervalo es tan fino que NINGÚN muestreo regular lo pisa: lejos del
+ * centro el sampler ve NaN a ambos lados y la astilla desaparece del dibujo.
+ *
+ * Como los polos YA están localizados, se sondea f a distancia ε≈1e-9 de cada lado:
+ * si es finita y está fuera de la banda visible (|f| enorme), hay astilla asintótica →
+ * se construye su polilínea con una ESCALERA logarítmica (δ, 2δ, 4δ…): y baja del
+ * borde de banda hacia el interior en ~un punto por bisección de y, hasta el borde del
+ * dominio (bisecado para clavar el extremo) o hasta media distancia al polo vecino
+ * (de ahí en adelante el muestreo regular sí la ve; el solape ocasional solo re-dibuja
+ * los mismos píxeles). LIMITACIÓN: una astilla asintótica hacia el BORDE del dominio
+ * en vez de hacia el polo (1/y²+tan x=c) no se detecta con este sondeo; ninguna curva
+ * del repertorio la produce.
+ */
+function ramasJuntoAPolos(
+  f: FuncionReal, objetoId: string, polos: readonly number[], vp: Viewport
+): Rama[] {
+  if (polos.length === 0) return [];
+  const H = vp.domY[1] - vp.domY[0];
+  const yTop = vp.domY[1] + H, yBot = vp.domY[0] - H;
+  const bandaAbs = Math.max(Math.abs(yTop), Math.abs(yBot));
+  const out: Rama[] = [];
+
+  for (let i = 0; i < polos.length; i++) {
+    const px = polos[i];
+    // Alcance de la escalera: hasta media distancia al polo vecino (o un cuarto de
+    // vista), donde el muestreo regular ya resuelve por sí solo.
+    const alcance = Math.min(
+      i > 0 ? px - polos[i - 1] : Infinity,
+      i < polos.length - 1 ? polos[i + 1] - px : Infinity,
+      (vp.domX[1] - vp.domX[0]) / 4
+    ) / 2;
+    const dMin = 1e-9 * Math.max(1, Math.abs(px));
+    if (!(alcance > dMin * 8)) continue;
+
+    for (const s of [1, -1] as const) {
+      const v0 = f.eval(px + s * dMin);
+      if (!Number.isFinite(v0) || Math.abs(v0) <= bandaAbs) continue; // sin astilla asintótica
+      const pts: number[] = [];
+      let prevX = px + s * dMin, prevY = v0;
+      let dentro = false;
+      for (let d = dMin * 2; d <= alcance; d *= 2) {
+        const x = px + s * d;
+        const y = f.eval(x);
+        if (!Number.isFinite(y)) {
+          // Borde del dominio entre prev y x: bisecarlo para clavar el extremo de la astilla.
+          let lo = prevX, hi = x;
+          for (let k = 0; k < 50; k++) {
+            const m = (lo + hi) / 2;
+            if (Number.isFinite(f.eval(m))) lo = m; else hi = m;
+          }
+          const ye = f.eval(lo);
+          if (Number.isFinite(ye)) {
+            if (!dentro && Math.abs(ye) <= bandaAbs) pts.push(prevX, prevY >= 0 ? yTop : yBot);
+            pts.push(lo, ye);
+          }
+          break;
+        }
+        if (!dentro && Math.abs(y) <= bandaAbs) {
+          // Entra en la banda visible: se ancla el arranque en el borde (asíntota vertical).
+          pts.push(prevX, prevY >= 0 ? yTop : yBot);
+          dentro = true;
+        }
+        if (dentro) pts.push(x, y);
+        prevX = x; prevY = y;
+      }
+      if (pts.length < 4) continue;
+      // Parámetro = x creciente (la lee el carril y `partirEnPolos` aguas abajo no aplica).
+      const n = pts.length / 2;
+      const puntos = new Float64Array(pts.length);
+      const parametro = new Float64Array(n);
+      for (let k = 0; k < n; k++) {
+        const j = s === 1 ? k : n - 1 - k;         // s=−1 sale del polo hacia x decreciente
+        puntos[k * 2] = pts[j * 2];
+        puntos[k * 2 + 1] = pts[j * 2 + 1];
+        parametro[k] = pts[j * 2];
+      }
+      out.push({ puntos, cerrada: false, calidad: "best-effort", objetoId, parametro });
+    }
+  }
+  return out;
 }
 
 /**

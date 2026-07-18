@@ -1,6 +1,7 @@
-import { OperatorNode, parse } from "mathjs";
+import { FunctionNode, OperatorNode, SymbolNode, parse } from "mathjs";
 
 import { normalizarEntrada, contieneYLibre } from "./parser";
+import { tieneFamilia } from "./despejeInverso";
 import { insertarProductoImplicito } from "./motor/parsing/productoImplicito";
 import { funcionDelParametro } from "./motor/parsing/componentesParametricas";
 
@@ -56,7 +57,18 @@ const NOMBRE_FUNCION_TEX: Record<string, string> = {
  * mathjs. Recurre con `arg.toTex(options)` para que la política se propague a
  * funciones anidadas.
  */
+// Centinela de "parentizar SIEMPRE": mathjs, con `parenthesis:"auto"`, descarta un
+// ParenthesisNode que juzga redundante ante un producto —así que no se puede forzar
+// `\left(\cos x\right)` con paréntesis reales—. En su lugar, `agruparFuncionesDesnudasEnProducto`
+// envuelve el factor en `parenDesnuda(u)` (un FunctionNode con este nombre) y el handler lo
+// pinta como `\left(<u>\right)`: un nodo de función SIEMPRE se renderiza, mathjs no lo poda.
+const PAREN_DESNUDA = "parenDesnuda";
+
 function manejadorFuncionesTex(node: any, options: any): string | undefined {
+  // Centinela de parentización forzada: `parenDesnuda(u)` → `\left(<u>\right)`.
+  if (node.type === "FunctionNode" && node.fn?.name === PAREN_DESNUDA && node.args.length === 1)
+    return `\\left(${node.args[0].toTex(options)}\\right)`;
+
   // Argumento de una función trig: `\sin x` (átomo) o `\sin\left(x+1\right)` (compuesto).
   const argFuncion = (arg: any, nombreTex: string): string => {
     const argTex = arg.toTex(options);
@@ -87,6 +99,25 @@ function manejadorFuncionesTex(node: any, options: any): string | undefined {
   if (node.type === "OperatorNode" && node.op === "+" && node.args?.length === 2 &&
       node.args[1].type === "FunctionNode" && SIGNO_TEX[node.args[1].fn?.name]) {
     return `${node.args[0].toTex(options)} ${node.args[1].toTex(options)}`;
+  }
+
+  // Centinela de FAMILIA PERIÓDICA (despejeInverso.ts): `fam(k, p)` es el término
+  // `k·p` de una solución general trig (`y = arctan(g) + fam(k, pi)` = …+kπ, k∈ℤ; la
+  // coletilla `, k∈ℤ` la añade ecuacionALatex a nivel de ecuación). El coeficiente
+  // numérico del período va DELANTE del parámetro, como se escribe a mano:
+  // `fam(k, pi)` → `k\pi`, `fam(k, 2*pi)` → `2k\pi`. Período no reconocido →
+  // `k\left(p\right)` (paréntesis para que el producto no se lea mal).
+  if (node.type === "FunctionNode" && node.fn?.name === "fam" && node.args.length === 2) {
+    const kTex = node.args[0].toTex(options).trim();
+    let p = node.args[1];
+    while (p.type === "ParenthesisNode") p = p.content;
+    if (p.type === "SymbolNode" && p.name === "pi") return `${kTex}\\pi`;
+    if (p.type === "OperatorNode" && p.op === "*" && p.args?.length === 2 &&
+        p.args[0].type === "ConstantNode" && p.args[1].type === "SymbolNode" &&
+        p.args[1].name === "pi") {
+      return `${p.args[0].toTex(options)}${kTex}\\pi`;
+    }
+    return `${kTex}\\left(${p.toTex(options)}\\right)`;
   }
 
   if (node.type === "FunctionNode" && node.args.length === 1) {
@@ -286,6 +317,101 @@ function ordenarPolinomioDescendente(node: any): any {
   return acc;
 }
 
+// ─────────────────────────────────────────────
+// Funciones "desnudas" agrupadas en el producto (desambiguación tipográfica)
+// ─────────────────────────────────────────────
+//
+// Una función con nombre y argumento ATÓMICO se pinta SIN paréntesis (`\cos x`, política
+// de manejadorFuncionesTex). Eso es correcto cuando la función es lo ÚLTIMO del producto
+// (`e^x\cos x`), pero si le sigue OTRO factor su argumento parece tragárselo: `cos(x)·e^x`
+// salía `\cos x{e}^{x}`, que se lee como cos(x·e^x). En un producto que MEZCLA funciones
+// desnudas con factores no-función se aplican dos retoques puramente tipográficos (la
+// multiplicación es CONMUTATIVA, así que NO cambia el string mathjs que grafica el motor):
+//   1) SIEMPRE se REORDENA de forma estable llevando las funciones desnudas al FINAL, donde
+//      su argumento sin paréntesis ya no puede tragarse el factor siguiente (`2\cos x`,
+//      `x\sin x`, `e^x\cos x`).
+//   2) SOLO si algún factor acompañante es una POTENCIA (`e^x`, `x^2`, `3^x` —algo con
+//      superíndice, visualmente denso junto a la función) se PARENTIZA además la función
+//      (`e^x\left(\cos x\right)`). Con un coeficiente numérico o una variable suelta se deja
+//      limpio (`2\cos x`, no `2\left(\cos x\right)`). Los paréntesis reales no sirven (mathjs
+//      los poda por redundantes ante un producto), así que se fuerzan con el centinela
+//      PAREN_DESNUDA.
+// Misma filosofía que ordenarPolinomioDescendente para las sumas.
+
+/** Nombre mathjs de un factor que se pinta como `\nombre <átomo>` sin paréntesis (una
+ *  función de NOMBRE_FUNCION_TEX con un único argumento atómico), o undefined. */
+function nombreFuncionDesnuda(n: any): string | undefined {
+  if (n.type === "FunctionNode" && n.args?.length === 1 && NOMBRE_FUNCION_TEX[n.fn?.name]) {
+    const a = n.args[0];
+    if (a.type === "SymbolNode" || a.type === "ConstantNode") return n.fn.name;
+  }
+  return undefined;
+}
+
+/** ¿El factor se pinta con un argumento atómico SIN paréntesis que un factor a su derecha
+ *  podría parecer tragarse? Cubre `\cos x` y la potencia de función `\cos^{2} x` (exponente
+ *  constante no negativo, la forma que emite manejadorFuncionesTex). */
+function esFuncionDesnuda(n: any): boolean {
+  if (nombreFuncionDesnuda(n)) return true;
+  if (n.type === "OperatorNode" && n.op === "^" && n.args.length === 2) {
+    let base = n.args[0];
+    while (base.type === "ParenthesisNode") base = base.content;
+    const exp = n.args[1];
+    return !!nombreFuncionDesnuda(base) &&
+      exp.type === "ConstantNode" && typeof exp.value === "number" && exp.value >= 0;
+  }
+  return false;
+}
+
+/** ¿El factor es una POTENCIA (`e^x`, `x^2`, `3^x`)? Su superíndice lo hace visualmente denso
+ *  junto a una función desnuda, y es el caso donde se prefieren los paréntesis. */
+function esPotencia(n: any): boolean {
+  while (n.type === "ParenthesisNode") n = n.content;
+  return n.type === "OperatorNode" && n.op === "^" && n.args.length === 2;
+}
+
+/**
+ * Reescribe RECURSIVAMENTE cada cadena de productos `a*b*c…` de nivel superior que MEZCLE
+ * funciones desnudas (ver `esFuncionDesnuda`) con factores no-función: las funciones se
+ * llevan al final de forma ESTABLE y —solo si algún factor acompañante es una POTENCIA— se
+ * envuelven en el centinela `parenDesnuda` para que el handler las parentice (`cos(x)·e^x` →
+ * `e^x\left(\cos x\right)`, pero `2·cos x` → `2\cos x`). Si no hay mezcla, deja el nodo
+ * intacto. Conmutatividad → no cambia el valor; puramente tipográfico.
+ */
+function agruparFuncionesDesnudasEnProducto(node: any): any {
+  // Fuera de un producto: recurre a las subexpresiones (argumentos de función, denominadores…).
+  if (!(node.type === "OperatorNode" && node.op === "*" && node.args.length === 2))
+    return node.map(agruparFuncionesDesnudasEnProducto);
+
+  // En el `*` MÁS EXTERNO se aplana TODA la cadena de una vez (no se recurre por los sub-`*`,
+  // que son el mismo producto): así el reordenamiento se decide sobre todos los factores
+  // juntos. Cada factor SÍ se procesa por dentro (su árbol interno puede tener más productos).
+  const factores: any[] = [];
+  const aplanar = (n: any): void => {
+    if (n.type === "OperatorNode" && n.op === "*" && n.args.length === 2) {
+      aplanar(n.args[0]); aplanar(n.args[1]);
+    } else factores.push(agruparFuncionesDesnudasEnProducto(n));
+  };
+  aplanar(node);
+
+  const funcs = factores.filter(esFuncionDesnuda);
+  const resto = factores.filter((f) => !esFuncionDesnuda(f));
+  // Sin mezcla (nada que reordenar): se preserva la ESTRUCTURA original del producto —con
+  // sus flags de multiplicación implícita/explícita, de los que depende el espaciado que
+  // limpiarTex protege (`\pi\cdot x` → `\pi{x}`)— recorriendo por `map` en vez de reconstruir.
+  if (funcs.length === 0 || resto.length === 0) return node.map(agruparFuncionesDesnudasEnProducto);
+
+  // Parentizar solo si algún factor acompañante es una potencia (si no, se deja limpio).
+  const parentizar = resto.some(esPotencia);
+  const alFinal = parentizar
+    ? funcs.map((f) => new FunctionNode(new SymbolNode(PAREN_DESNUDA), [f]))
+    : funcs;
+  // Reconstruye el producto (no-función primero, en orden estable; luego las funciones al
+  // final) con `\cdot` explícito: limpiarTex lo colapsa a yuxtaposición donde corresponde y
+  // lo CONSERVA entre dos números (evita fundir `2\cdot 3` en `23`).
+  return [...resto, ...alFinal].reduce((acc, f) => new OperatorNode("*", "multiply", [acc, f]));
+}
+
 // Convierte UN lado de una ecuación a LaTeX por el MISMO pipeline que obs-graph:
 // normalizarEntrada (texto o LaTeX → sintaxis mathjs) → parse → toTex(OPCIONES_TEX)
 // → limpiarTex. Así la tipografía (exponentes, paréntesis mínimos, raíces, trig e
@@ -303,9 +429,13 @@ function ladoALatex(lado: string): string {
   // cursiva. Se muestra el marcador de "sin expresión".
   if (norm === "") return "\\text{[...]}";
   try {
-    // Antes de pintar: reordena la suma polinómica de nivel superior a grado descendente
-    // (`2x + x^2` → `x^2 + 2x`), pura presentación (no cambia lo que grafica el motor).
-    return limpiarTex(ordenarPolinomioDescendente(parse(norm)).toTex(OPCIONES_TEX));
+    // Antes de pintar, dos retoques puramente tipográficos (no cambian lo que grafica el
+    // motor): las funciones desnudas de cada producto se agrupan y parentizan al final
+    // (`cos(x)·e^x` → `e^x\left(\cos x\right)`, evita que `\cos x` parezca tragarse el factor
+    // siguiente) y luego la suma polinómica de nivel superior a grado descendente
+    // (`2x + x^2` → `x^2 + 2x`).
+    const arbol = ordenarPolinomioDescendente(agruparFuncionesDesnudasEnProducto(parse(norm)));
+    return limpiarTex(arbol.toTex(OPCIONES_TEX));
   } catch {
     return norm;
   }
@@ -332,7 +462,11 @@ export function ecuacionALatex(ecuacion: string, alineada = false): string {
   // normalizarEntrada ya convierte el LaTeX de entrada a mathjs, así que esa ruta
   // sobraba: ahora obs-system y obs-graph comparten EXACTAMENTE el mismo pipeline.
   const signo = alineada ? "&=" : "=";
-  return ladoALatex(partes[0]) + signo + ladoALatex(partes[1]);
+  // Coletilla de FAMILIA PERIÓDICA: una ecuación con el centinela `fam` es una familia
+  // discreta de soluciones (despeje trig inverso: `y = arctan(g)+kπ`), y el `k∈ℤ` es
+  // parte de la MATEMÁTICA, no un adorno —sin él, `+kπ` se leería como una constante—.
+  const coletilla = tieneFamilia(ecuacion) ? ",\\ k\\in\\mathbb{Z}" : "";
+  return ladoALatex(partes[0]) + signo + ladoALatex(partes[1]) + coletilla;
 }
 
 /**

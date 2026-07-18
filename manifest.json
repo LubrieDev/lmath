@@ -1,11 +1,11 @@
 {
   "id": "obsi-math",
   "name": "Obsi Math",
-  "version": "1.0.0",
-  "minAppVersion": "0.15.0",
-  "description": "Visualiza funciones matematicas en bloques obs-graph.",
+  "version": "1.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Graph functions, systems, derivatives and integrals in interactive blocks.",
   "author": "Lenin",
-  "authorUrl": "",
+  "authorUrl": "https://github.com/RughustDev",
   "isDesktopOnly": false,
   "main": "main.js"
 }

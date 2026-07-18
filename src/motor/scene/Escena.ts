@@ -296,15 +296,26 @@ export class Escena {
   curvaRecorrible(): boolean {
     const it = this.items[this.seleccion];
     if (!it) return false;
-    const rangos = it.geometria.ramas
-      .filter((r) => r.parametro !== undefined && r.parametro.length >= 2)
+    // Ramas con geometría REAL (≥2 puntos); una rama degenerada (un punto) no cuenta.
+    const conGeometria = it.geometria.ramas.filter((r) => r.puntos.length >= 4);
+    if (conGeometria.length === 0) return false;
+    // TODA rama debe ser función de x: x-monótona, es decir con `parametro` (lo adjunta
+    // parametrizarMonotonasEnX en las implícitas, y el sampler en las explícitas). Una sola
+    // rama que se PLIEGUE en x —sin parametro: la semirrama inferior del astroide, un óvalo,
+    // un lazo— ya hace la curva MULTIVALUADA aunque las demás sí sean monótonas: el crosshair
+    // vertical no tendría una y única. Antes esas ramas se filtraban y, si las monótonas
+    // restantes quedaban disjuntas en x, la curva se declaraba recorrible por error (el
+    // astroide x^{2/3}+y^{2/3}=1: sus dos arcos superiores son monótonos y disjuntos, pero los
+    // inferiores, plegados, cubren la misma franja de x).
+    if (conGeometria.some((r) => r.parametro === undefined || r.parametro.length < 2))
+      return false;
+    const rangos = conGeometria
       .map((r): readonly [number, number] => {
         const t = r.parametro!;
         const a = t[0], b = t[t.length - 1];
         return a <= b ? [a, b] : [b, a];
       })
       .sort((p, q) => p[0] - q[0]);
-    if (rangos.length === 0) return false;
     // Función de x ⇔ las franjas de x de las ramas NO se solapan (salvo un roce mínimo,
     // p.ej. el borde de un polo donde el muestreo se pasa un pelo). Un solape apreciable
     // ⇒ multivaluada ⇒ el crosshair vertical es ambiguo → no recorrible.

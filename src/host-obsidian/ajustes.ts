@@ -14,6 +14,8 @@
 
 import { App, PluginSettingTab, Setting, type Plugin } from "obsidian";
 
+import { IDIOMA_POR_DEFECTO, fijarIdioma, t, type Idioma } from "../i18n";
+
 /** Preferencias persistentes del plugin. (La simplificación es SIEMPRE automática e
  *  incondicional, no es un ajuste: ver `baseAutomatica` en MotorExperimental.) */
 export interface AjustesTransformaciones {
@@ -25,14 +27,20 @@ export interface AjustesTransformaciones {
   puntosNotables: boolean;
   /** ¿Acercar la vista inicial a las curvas ACOTADAS que dejan mucho plano vacío? (autoencuadre) */
   encuadreAuto: boolean;
+  /** Idioma de la INTERFAZ del plugin ("en"|"es"). No es una transformación; se guarda en
+   *  este mismo objeto porque comparte la maquinaria de persistencia (loadData/saveData). El
+   *  idioma ACTIVO lo lleva el módulo i18n (`fijarIdioma`); esta clave es su copia persistida. */
+  idioma: Idioma;
 }
 
 /** Valores por defecto (no despejar automáticamente; simplificar SIEMPRE se aplica;
- *  los puntos notables se pintan, que es el comportamiento histórico del plugin). */
+ *  los puntos notables se pintan, que es el comportamiento histórico del plugin; el idioma
+ *  por defecto es inglés, ver i18n.IDIOMA_POR_DEFECTO). */
 export const AJUSTES_POR_DEFECTO: AjustesTransformaciones = {
   despejarAuto: false,
   puntosNotables: true,
   encuadreAuto: true,
+  idioma: IDIOMA_POR_DEFECTO,
 };
 
 /**
@@ -60,48 +68,56 @@ export class PestanaAjustesObsiMath extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    new Setting(containerEl).setName("Transformaciones").setHeading();
+    const txt = t();
+
+    // Idioma PRIMERO: cambiarlo re-renderiza esta misma pestaña en el nuevo idioma.
+    new Setting(containerEl).setName(txt.ajustes.idioma.seccion).setHeading();
 
     new Setting(containerEl)
-      .setName("Despejar automáticamente")
-      .setDesc(
-        "Al renderizar una ecuación, muestra directamente el resultado despejado " +
-        "(y = f(x)) sin pulsar «Despejar». El botón «Despejar» se oculta del panel."
-      )
-      .addToggle((t) =>
-        t.setValue(this.plugin.ajustes.despejarAuto).onChange(async (v) => {
+      .setName(txt.ajustes.idioma.nombre)
+      .setDesc(txt.ajustes.idioma.desc)
+      .addDropdown((d) =>
+        d
+          .addOption("en", txt.ajustes.idioma.opcionEn)
+          .addOption("es", txt.ajustes.idioma.opcionEs)
+          .setValue(this.plugin.ajustes.idioma)
+          .onChange(async (v) => {
+            this.plugin.ajustes.idioma = v as Idioma;
+            fijarIdioma(v);
+            await this.plugin.guardarAjustes();
+            this.display(); // repinta la pestaña con los textos del nuevo idioma
+          })
+      );
+
+    new Setting(containerEl).setName(txt.ajustes.transformaciones).setHeading();
+
+    new Setting(containerEl)
+      .setName(txt.ajustes.despejarAuto.etiqueta)
+      .setDesc(txt.ajustes.despejarAuto.detalle)
+      .addToggle((tg) =>
+        tg.setValue(this.plugin.ajustes.despejarAuto).onChange(async (v) => {
           this.plugin.ajustes.despejarAuto = v;
           await this.plugin.guardarAjustes();
         })
       );
 
-    new Setting(containerEl).setName("Plano").setHeading();
+    new Setting(containerEl).setName(txt.ajustes.plano).setHeading();
 
     new Setting(containerEl)
-      .setName("Mostrar puntos notables")
-      .setDesc(
-        "Pinta en el plano los marcadores de raíces, vértices, cortes con Y y las " +
-        "soluciones (cruces) de los sistemas. Al desactivarlo el plano queda limpio: " +
-        "el resumen ⓘ los sigue listando, y el crosshair y el modo carril no cambian. " +
-        "Se aplica al volver a renderizar el bloque."
-      )
-      .addToggle((t) =>
-        t.setValue(this.plugin.ajustes.puntosNotables).onChange(async (v) => {
+      .setName(txt.ajustes.puntosNotables.etiqueta)
+      .setDesc(txt.ajustes.puntosNotables.detalle)
+      .addToggle((tg) =>
+        tg.setValue(this.plugin.ajustes.puntosNotables).onChange(async (v) => {
           this.plugin.ajustes.puntosNotables = v;
           await this.plugin.guardarAjustes();
         })
       );
 
     new Setting(containerEl)
-      .setName("Encuadre automático")
-      .setDesc(
-        "Acerca la vista inicial cuando la curva es acotada y deja mucho plano vacío " +
-        "(corazón, lemniscata, astroide…). Solo acerca, nunca aleja: si la curva llega al " +
-        "borde de la vista se deja el encuadre de siempre. La vista queda centrada en el " +
-        "origen y es a la que vuelve la tecla de restaurar. Se aplica al volver a renderizar el bloque."
-      )
-      .addToggle((t) =>
-        t.setValue(this.plugin.ajustes.encuadreAuto).onChange(async (v) => {
+      .setName(txt.ajustes.encuadreAuto.etiqueta)
+      .setDesc(txt.ajustes.encuadreAuto.detalle)
+      .addToggle((tg) =>
+        tg.setValue(this.plugin.ajustes.encuadreAuto).onChange(async (v) => {
           this.plugin.ajustes.encuadreAuto = v;
           await this.plugin.guardarAjustes();
         })

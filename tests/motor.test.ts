@@ -23,12 +23,14 @@ import { TrazadorParametricoAdaptativo } from "../src/motor/tracing/parametric/T
 import { DescubrimientoMuestreado } from "../src/motor/discovery/sampled/DescubrimientoMuestreado";
 import { ProveedorConCache } from "../src/motor/providers/ProveedorConCache";
 import { ProveedorImplicitoSeparable } from "../src/motor/providers/ProveedorImplicitoSeparable";
-import { despejarRamas, tienePolos, separarTrigY, ramasMonomioY } from "../src/motor/analysis/separarImplicita";
+import { despejarRamas, tienePolos, separarTrigY, ramasMonomioY, localizarPolos } from "../src/motor/analysis/separarImplicita";
+import { detectarPeriodos } from "../src/motor/analysis/periodicidadCampo";
 import { ProveedorImplicitoPeriodico } from "../src/motor/providers/ProveedorImplicitoPeriodico";
 import { yEnRamas, avanzarPorArco, factorRampaVerticalidad, existeRamaVecina, recortarRamasPorPendiente, PENDIENTE_CORTE_CARRIL, podarVerticesDePolo } from "../src/motor/analysis/lecturaRama";
 import { analizarPuntosNotables, resumenPuntosNotables } from "../src/motor/analysis/puntosNotablesDeRama";
 import { estadoGrupo, analizarFuncion, raicesALatex } from "../src/analisis";
 import { despejarEcuaciones, despejarY } from "../src/despejar";
+import { clasificarDespeje, tieneFamilia } from "../src/despejeInverso";
 import { simplificarEcuaciones } from "../src/simplificar";
 import { costeExpansion, rationalizeSeguro, LIMITE_EXPANSION } from "../src/formatoExpr";
 import { derivadaLatex, derivarExpr } from "../src/derivar";
@@ -48,7 +50,8 @@ import { insertarProductoImplicito } from "../src/motor/parsing/productoImplicit
 import { dividirEcuaciones } from "../src/motor/parsing/dividirEcuaciones";
 import { crearProveedor, construirObjetosEscena } from "../src/motor/app/composicion";
 import { ProveedorExplicito } from "../src/motor/providers/ProveedorExplicito";
-import { ProveedorImplicito } from "../src/motor/providers/ProveedorImplicito";
+import { ProveedorImplicitoRasterizado } from "../src/motor/providers/ProveedorImplicitoRasterizado";
+import { contornosMarchingSquares } from "../src/motor/tracing/raster/marchingSquares";
 import { ProveedorParametrico } from "../src/motor/providers/ProveedorParametrico";
 import type {
   FuncionReal, CampoEscalar, Viewport, Tolerancia, Rama, Geometria, ObjetoExplicito,
@@ -120,6 +123,45 @@ describe("Sampler explícito: paridad con muestreoExplicito (solo difiere el rec
       });
     }
   }
+});
+
+// ════════════════════════════════════════════════
+describe("Sampler explícito: oscilación de amplitud EXPONENCIAL (curva suave, sin asíntotas)", () => {
+  // Bug: e^x(cos x−sin x) es SUAVE (sin polos), pero en x grande su amplitud crece tanto que
+  //  (1) el refinado se agotaba en los cruces por cero → la línea se rompía y se marcaba una
+  //      asíntota fantasma (a partir de ~x=16 no se dibujaba nada visible);
+  //  (2) cada pico x=kπ (con f''~e^{kπ}) pasaba la prueba de divergencia y se marcaba también
+  //      como asíntota.
+  // Debe trazarse como curva CONTINUA que barre la banda hasta el borde, SIN asíntotas.
+  const VP_ANCHO = crearViewport([-80, 80], [-40, 40], 1000, 500, 1);
+  const Hbanda = VP_ANCHO.domY[1] - VP_ANCHO.domY[0];
+  // Nº de tramos casi verticales que barren toda la banda visible con x por encima de `xMin`.
+  const barridosBanda = (ramas: readonly Rama[], xMin: number): number => {
+    let n = 0;
+    for (const rama of ramas) {
+      const p = rama.puntos;
+      for (let i = 0; i + 3 < p.length; i += 2) {
+        const ya = p[i + 1], yb = p[i + 3];
+        const barre = Math.min(ya, yb) < VP_ANCHO.domY[1] && Math.max(ya, yb) > VP_ANCHO.domY[0] &&
+          Math.abs(yb - ya) > Hbanda;
+        if (barre && Math.min(p[i], p[i + 2]) > xMin) n++;
+      }
+    }
+    return n;
+  };
+
+  test("e^x(cos x−sin x): curva continua hasta el borde, SIN asíntotas fantasma", () => {
+    const res = new TrazadorExplicitoAdaptativo()
+      .trazar(fr((x) => Math.exp(x) * (Math.cos(x) - Math.sin(x))), "id", VP_ANCHO, TOL_FINAL);
+    igual(res.asintotas.length, 0, "una función suave no genera asíntotas");
+    assert(barridosBanda(res.ramas, 20) >= 10,
+      `la curva barre la banda también lejos del origen (x>20): ${barridosBanda(res.ramas, 20)}`);
+  });
+
+  test("los polos REALES sí se detectan (tan x mantiene sus asíntotas)", () => {
+    const res = new TrazadorExplicitoAdaptativo().trazar(fr(Math.tan), "id", VP_ANCHO, TOL_FINAL);
+    assert(res.asintotas.length > 20, `tan(x) registra sus muchos polos: ${res.asintotas.length}`);
+  });
 });
 
 // ════════════════════════════════════════════════
@@ -493,6 +535,20 @@ describe("Transformaciones del panel: Despejar y / Simplificar", () => {
     igual(despLatex("2 y^3 = x"), "y=\\sqrt[3]{\\frac{x}{2}}", "coef+potencia → raíz de la fracción");
   });
 
+  test("Despejar y: raíz de una POTENCIA de y (astroide) se aísla hasta y = ±√((…)ⁿ)", () => {
+    // Antes quedaba PARCIAL en `∛(y²)=1−∛(x²)`: el factor con y es ∛(y²) —raíz de una POTENCIA
+    // de y—, que no encajaba en ninguna estrategia (`despejeRaiz` solo cubre ⁿ√y desnuda). Ahora
+    // se eleva al índice (y²=(1−∛(x²))³) y se saca la raíz par → las dos ramas con el ± (`pm`).
+    igual(despLatex("x^{2/3}+y^{2/3}=1"), "y=\\pm \\sqrt{{\\left(1-\\sqrt[3]{x^{2}}\\right)}^{3}}",
+      "astroide → y=±√((1−∛(x²))³)");
+    // El despeje grafica REALMENTE el astroide: residual 0 en el dominio |x|≤1 (ambas ramas).
+    const rama = crearFuncionReal("sqrt((1 - nthRoot(x^2,3))^3)");
+    for (const x of [-0.9, -0.4, 0, 0.5, 0.9]) {
+      const y = rama.eval(x) as number;
+      aprox(Math.cbrt(x * x) + Math.cbrt(y * y) - 1, 0, 1e-9, `∛(x²)+∛(y²)=1 en x=${x}`);
+    }
+  });
+
   test("Despejar y: valor ABSOLUTO de y (incl. recíproco) se aísla hasta y = ±(…)", () => {
     // Antes se quedaba PARCIAL en `1/|y| = 1 − 1/|x|`: el factor con y no era `y`, `yⁿ` ni
     // `ⁿ√y`, así que solo actuaba el despeje multiplicativo. Ahora se invierte el exponente
@@ -503,6 +559,15 @@ describe("Transformaciones del panel: Despejar y / Simplificar", () => {
     igual(despLatex("|y|^{2} = x"), "y=\\pm \\sqrt{x}", "|y|²=x → y=±√x (sqrt, sin índice)");
     // El argumento del ± con una SUMA necesita paréntesis: `\pm x-1` se leería `(\pm x)-1`.
     igual(despLatex("|y| = x - 1"), "y=\\pm\\left( x-1\\right)", "|y|=x−1 → y=±(x−1), con paréntesis");
+    // RAÍZ / exponente FRACCIONARIO de |y|: se invierte ELEVANDO (|y|=R^{1/e}), no se toma
+    // `abs` por variable. `|y|^{1/2}` (antes se normalizaba a `abssqrt((y))`: abs colgando) y
+    // `√|y|` = `sqrt(abs(y))` llevan al MISMO despeje y = ±R². El radicando en orden canónico.
+    igual(despLatex("|y|^{1/2}+x^2=2"), "y=\\pm {\\left(-x^{2}+2\\right)}^{2}",
+      "|y|^{1/2}+x²=2 → y=±(−x²+2)²");
+    igual(despLatex(String.raw`\sqrt{|y|}+\tan{x}=2`), "y=\\pm {\\left(2-\\tan x\\right)}^{2}",
+      "√|y|+tan x=2 → y=±(2−tan x)²");
+    igual(despLatex("|y|^{1/3}+x=1"), "y=\\pm {\\left(- x+1\\right)}^{3}",
+      "|y|^{1/3}+x=1 → y=±(−x+1)³ (índice 3 → cubo)");
   });
 
   test("Despejar y: potencia PAR se despeja hasta y = ±√(…) (radicando 'positivos primero')", () => {
@@ -516,6 +581,16 @@ describe("Transformaciones del panel: Despejar y / Simplificar", () => {
     igual(bloqueALatex(despejarEcuaciones(["x^2+y^2=25", "y=x+1"])),
       "\\begin{cases}\\begin{aligned}y&=\\pm \\sqrt{25-x^{2}}\\\\[1ex]y&=x+1\\end{aligned}\\end{cases}",
       "sistema: y=±√(25−x²) ; y=x+1");
+  });
+
+  test("Despejar y: y² ATRAPADA en el numerador de una fracción se aísla del todo", () => {
+    // Regresión #1: Simplificar reúne `x²+3x+y²−3x⁻²` en `(x⁴+3x³+x²y²−3)/x²`, con y² dentro
+    // del numerador. El despeje veía la fracción como UN término y solo despejaba el
+    // denominador → `(x⁴+…)=(e+8)x²` (PARCIAL). Ahora re-despeja la forma ya sin fracción →
+    // y=±√(…). El panel encadena sobre la SIMPLIFICADA, así que se prueba esa cadena (el fallo).
+    const chain = bloqueALatex(despejarEcuaciones(simplificarEcuaciones(["x^{2}+3x+y^{2}-3x^{-2}=e+8"])));
+    igual(chain, "y=\\pm \\sqrt{\\frac{3+\\left( e+8\\right)x^{2}-x^{4}-3x^{3}}{x^{2}}}",
+      "cadena simplificar→despejar: y aislada del todo");
   });
 
   test("Despejar y: CUADRÁTICA en y² (bicuadrática) por la fórmula reducida", () => {
@@ -568,8 +643,11 @@ describe("Transformaciones del panel: Despejar y / Simplificar", () => {
   test("Despejar y: expresión SUELTA con y libre se despeja como expr=0", () => {
     // Sin `=` pero con y libre: misma convención que construirObjeto (expr=0) — antes
     // `despejar` devolvía null y el menú quedaba deshabilitado (bug reportado).
-    igual(despLatex("tan(y)(x^2+1)-sqrt(x+1)"), "\\tan y=\\frac{\\sqrt{x+1}}{x^{2}+1}",
-      "tan(y)(x²+1)-√(x+1) → tan(y)=√(x+1)/(x²+1)");
+    // Ahora el despeje trig inverso la COMPLETA (antes quedaba en tan(y)=…): la familia
+    // general con su k∈ℤ. La misma con `=` da lo mismo (ver test de trig inversa).
+    igual(despLatex("tan(y)(x^2+1)-sqrt(x+1)"),
+      despLatex("tan(y)(x^2+1)=sqrt(x+1)"),
+      "tan(y)(x²+1)-√(x+1) → mismo despeje que con `=`");
     igual(despLatex("x^3+y^3-9"), "y=\\sqrt[3]{9-x^{3}}", "x³+y³−9 → mismo despeje que con =9");
     // Sin y libre no hay nada que despejar: la expresión suelta queda intacta.
     igual(despejarEcuaciones(["x^2+1"])[0], "x^2+1", "sin y: intacta (sigue siendo f(x))");
@@ -577,7 +655,10 @@ describe("Transformaciones del panel: Despejar y / Simplificar", () => {
 
   test("Despejar y: trig y multiplicativo conservan 'positivos primero'", () => {
     igual(despLatex("tan(x) + y = 2"), "y=2-\\tan x", "trig: y=2−tan(x) (no −tan(x)+2)");
-    igual(despLatex("tan(y)(x^2+1)=sqrt(x+1)"), "\\tan y=\\frac{\\sqrt{x+1}}{x^{2}+1}", "multiplicativo");
+    // El multiplicativo puro (dividir los libres, sin invertir) queda para las funciones
+    // de y SIN inversa registrada: `y^y·(x²+1)=√(x+1)` → `y^y = √(x+1)/(x²+1)` (parcial).
+    // (tan(y)·(x²+1) ya no es su ejemplo: el despeje trig inverso la completa.)
+    igual(despLatex("y^y*(x^2+1)=sqrt(x+1)"), "y^{y}=\\frac{\\sqrt{x+1}}{x^{2}+1}", "multiplicativo");
     // Sin `=`, sin y → se deja igual (el botón se deshabilitaría).
     igual(despejarEcuaciones(["x+x+x"])[0], "x+x+x", "sin `=` → sin cambio");
     igual(despejarEcuaciones(["y=x^2"])[0].replace(/\s/g, ""), "y=x^2", "ya despejada → sin cambio");
@@ -848,6 +929,22 @@ describe("latex.ts: símbolo·variable y paréntesis escalables", () => {
     igual(exprALatex("3xy"), "3xy", "producto implícito puro: intacto");
     // Regresión: NO debe aparecer \mathrm{xsqrt}/\mathrm{xsin} en ninguno.
     assert(!/mathrm\{x(sqrt|sin)/.test(exprALatex(String.raw`2x\sqrt{x}`)), "sin \\mathrm{xsqrt}");
+  });
+
+  test("función desnuda en producto: al final; parentizada SOLO junto a una potencia", () => {
+    // Bug: `cos(x)·e^x` salía `\cos x{e}^{x}`, que se lee como cos(x·e^x). La función desnuda
+    // (`\cos x`, sin paréntesis) se reordena al FINAL para que no parezca tragarse el factor
+    // siguiente; y como el acompañante es una POTENCIA (`e^x`), además se parentiza.
+    igual(exprALatex("cos(x)*e^x"), "e^{x}\\left(\\cos x\\right)", "función·potencia → e^x(cos x)");
+    igual(exprALatex("x^2*ln(x)"), "x^{2}\\left(\\ln x\\right)", "x²·ln x → x²(ln x)");
+    // Coeficiente numérico o variable suelta: se reordena pero NO se parentiza (queda limpio).
+    igual(exprALatex("cos(x)*2"), "2\\cos x", "cos(x)·2 → 2 cos x (número: sin paréntesis)");
+    igual(exprALatex("sin(x)*x"), "x\\sin x", "sin(x)·x → x sin x (variable: sin paréntesis)");
+    // Función con argumento NO atómico ya lleva sus paréntesis: no es 'desnuda', no se toca.
+    igual(exprALatex("sin(x+1)*x"), "\\sin\\left( x+1\\right)x", "sin(x+1)·x: no se reordena");
+    // Varias funciones con una potencia: todas parentizadas al final, en orden estable.
+    igual(exprALatex("sin(x)*e^x*cos(x)"), "e^{x}\\left(\\sin x\\right)\\left(\\cos x\\right)",
+      "e^x·sin x·cos x → e^x(sin x)(cos x)");
   });
 });
 
@@ -2017,6 +2114,29 @@ describe("Implícitas separables con polos (Etapa 7)", () => {
     assert(!tienePolos(ce2((x, y) => x * x + y * y - 9)), "círculo NO tiene polos");
     assert(!tienePolos(ce2((x, y) => x * x / 16 + y * y / 4 - 1)), "elipse NO tiene polos");
     assert(!tienePolos(ce2((x, y) => x * x - y * y - 1)), "hipérbola NO tiene polos");
+    // Polo PAR: |F(x,0)|→∞ SIN cambio de signo (−3x⁻² diverge a −∞ por ambos lados). Antes
+    // `tienePolos` lo daba false y la eq. `x²+3x+y²−3x⁻²` caía a la continuación genérica, que
+    // pierde sus brazos asintóticos junto a x=0 al alejar el zoom; ahora enruta al sampler 1D.
+    assert(tienePolos(ce2((x, y) => x * x + 3 * x + y * y - 3 / (x * x) - (Math.E + 8))),
+      "x²+3x+y²−3x⁻² tiene polo PAR");
+    // Control: un bache interior de |F| GRANDE pero FINITO (x⁴−100x², máx |F|=2500) NO es polo:
+    // `divergeEnPolo` lo descarta por su desaceleración (no acelera sin cota como una asíntota).
+    assert(!tienePolos(ce2((x, y) => x * x * x * x - 100 * x * x + y * y)),
+      "polinomio con bache interior grande pero finito NO tiene polos");
+  });
+
+  test("tienePolos par → la eq. enruta al ProveedorImplicitoSeparable (brazos a cualquier zoom)", () => {
+    const prov = crearProveedor(construirObjeto("x^{2}+3x+y^{2}-3x^{-2}=e+8", "z"));
+    igual(prov.constructor.name, "ProveedorImplicitoSeparable", "enruta al separable, no al genérico");
+    // Los brazos asintóticos junto a x=0 se dibujan a zoom-out (antes desaparecían).
+    for (const semiY of [8, 40, 120]) {
+      const vp = crearViewport([-semiY * 1.5, semiY * 1.5], [-semiY, semiY], 490, 330, 1);
+      const g = prov.geometria(vp, { desviacionMaxPx: 0.5, pasoMaxPx: 2, pasada: "final" });
+      let cercaEje = 0;
+      for (const r of g.ramas) for (let k = 0; k < r.puntos.length; k += 2)
+        if (Math.abs(r.puntos[k]) < 0.5) cercaEje++;
+      assert(cercaEje > 20, `semiY=${semiY}: los brazos junto a x=0 se trazan (${cercaEje} vértices)`);
+    }
   });
 
   test("tan x+y²=2 por ramas explícitas: limpio a TODO zoom (sin ramas espurias)", () => {
@@ -2256,7 +2376,7 @@ describe("Sistemas: varias ecuaciones (Etapa 9)", () => {
 
   test("crearProveedor elige el proveedor por tipo de objeto", () => {
     assert(crearProveedor(construirObjeto("y=x^2", "id")) instanceof ProveedorExplicito, "explícita");
-    assert(crearProveedor(construirObjeto("x^2+y^2=9", "id")) instanceof ProveedorImplicito, "implícita suave → continuación");
+    assert(crearProveedor(construirObjeto("x^2+y^2=9", "id")) instanceof ProveedorImplicitoRasterizado, "implícita suave → ruta genérica (raster-wrapper; delega a continuación mientras no sea densa)");
     assert(crearProveedor(construirObjeto("tan(x)+y^2=2", "id")) instanceof ProveedorImplicitoSeparable, "separable con polos");
     assert(crearProveedor(construirObjeto("(cos(t),sin(t))", "id")) instanceof ProveedorParametrico, "paramétrica");
     assert(crearProveedor(construirObjeto("r=1+cos(theta)", "id")) instanceof ProveedorParametrico, "polar");
@@ -2428,8 +2548,8 @@ describe("Separables en X (transpuestas) + saturación de intersecciones (Etapa 
       "separable en x con polos → ProveedorImplicitoSeparable (transpuesta)");
     assert(crearProveedor(construirObjeto("tan(x)+y^2=2", "id")) instanceof ProveedorImplicitoSeparable,
       "separable en y sigue igual (sin regresión)");
-    assert(crearProveedor(construirObjeto("x^2+y^2=9", "id")) instanceof ProveedorImplicito,
-      "cónica suave sigue por continuación (sin regresión)");
+    assert(crearProveedor(construirObjeto("x^2+y^2=9", "id")) instanceof ProveedorImplicitoRasterizado,
+      "cónica suave sigue por la ruta genérica (raster-wrapper → continuación; sin regresión)");
   });
 
   test("campoTranspuesto + despejarRamas: tan(y)+x=5 se despeja como x = 5−tan(y)", () => {
@@ -2583,8 +2703,8 @@ describe("Trig periódica en y: a(x)·T(y)+c(x)=0 (Etapa 13)", () => {
       "separable transpuesta sigue por su ruta (Etapa 12)");
     assert(crearProveedor(construirObjeto("tan(x)+y^2=2", "id")) instanceof ProveedorImplicitoSeparable,
       "separable en y sigue igual (Etapa 7)");
-    assert(crearProveedor(construirObjeto("x^2+y^2=9", "id")) instanceof ProveedorImplicito,
-      "cónica suave sigue por continuación");
+    assert(crearProveedor(construirObjeto("x^2+y^2=9", "id")) instanceof ProveedorImplicitoRasterizado,
+      "cónica suave sigue por la ruta genérica (raster-wrapper → continuación)");
   });
 
   test("expresión SUELTA con y libre → implícita expr=0 (no un falso f(x))", () => {
@@ -2651,6 +2771,25 @@ describe("Trig periódica en y: a(x)·T(y)+c(x)=0 (Etapa 13)", () => {
     assert(!escena.curvaRecorrible(), "multivaluada → no recorrible");
   });
 
+  test("astroide x^{2/3}+y^{2/3}=1: multivaluada (arcos superiores e inferiores) → sin crosshair", () => {
+    // Bug: sus arcos SUPERIORES son x-monótonos (llevan `parametro`) pero los INFERIORES se
+    // pliegan en x (sin `parametro`) cubriendo la MISMA franja de x → curva multivaluada.
+    // curvaRecorrible filtraba las ramas sin parametro y, viendo solo los arcos superiores
+    // disjuntos, la declaraba recorrible → el crosshair aparecía sobre el astroide. Debe ser
+    // NO recorrible en cualquier encuadre (con o sin arcos monótonos según el zoom).
+    const ctxNulo = null as unknown as CanvasRenderingContext2D;
+    for (const vp of [
+      crearViewport([-7, 7], [-7, 7], 768, 512, 1),
+      crearViewport([-1.3, 1.3], [-1.3, 1.3], 768, 512, 1),
+      crearViewport([-1.1, 1.1], [-1.1, 1.1], 768, 512, 1),
+    ]) {
+      const escena = new Escena(construirObjetosEscena("x^{2/3}+y^{2/3}=1"),
+        new Overlay(ctxNulo), new RendererCanvas2D(ctxNulo), new Crosshair(ctxNulo));
+      escena.actualizar(vp, "final");
+      assert(!escena.curvaRecorrible(), `astroide no recorrible @ [${vp.domX.join(",")}]`);
+    }
+  });
+
   test("transpuesta tan(x)(y^2+1)=sqrt(y+1): columnas verticales completas, sin `parametro`", () => {
     const prov = crearProveedor(construirObjeto("tan(x)(y^2+1)=sqrt(y+1)", "id"));
     const domX: [number, number] = [-38, 38];
@@ -2707,6 +2846,38 @@ describe("Parser: potencia de función func^n(x) → pow(func(x), n)", () => {
     // `a\tan^{2}(x)` = a·tan²(x): el `\` deja claro que es `tan`, NO parte de `atan`.
     const norm = normalizarEntrada(String.raw`a\tan^{2}(x)`);
     assert(norm.includes("(tan(x))") && !norm.includes("atan"), "a·tan²(x): tan, no atan");
+  });
+});
+
+describe("Parser: trig SIN backslash con llaves y exponente vacío", () => {
+  test("`tan{x}` (sin backslash) → tan(x); no MathJS 'Unexpected operator {'", () => {
+    // Notación informal que MathJS no acepta: antes quedaba `tan{x}` crudo → parse fallaba →
+    // el panel caía al texto normalizado (`sqrt(...)` en vez de `\sqrt{...}`) y no graficaba.
+    igual(normalizarEntrada("tan{x}"), "tan(x)", "tan{x} → tan(x)");
+    igual(normalizarEntrada("sin{2x}"), "sin(2x)", "sin{2x} → sin(2x)");
+    // La guarda NO debe romper la inversa `\arctan{x}` (ya convertida a atan por su vía).
+    assert(!normalizarEntrada(String.raw`\arctan{x}`).includes("{"), "arctan{x}: sin llaves residuales");
+  });
+
+  test("exponente VACÍO `x^{}` se colapsa a la base (como lo pinta KaTeX)", () => {
+    igual(normalizarEntrada("x^{}"), "x", "x^{} → x");
+    igual(normalizarEntrada("e^{x^{}}"), "e^(x)", "e^{x^{}} → e^(x) (no e^(x^()))");
+  });
+
+  test("caso reportado: √|y|+tan{x}+1/(e^{x^{}})=π parsea y despeja", () => {
+    // Regresión #4: normaliza limpio (√|y| como abs, tan(x), e^x) en vez del texto crudo.
+    igual(normalizarEntrada(String.raw`\sqrt{|y|}+tan{x}+1/(e^{x^{}})=\pi`),
+      "sqrt(abs(y))+tan(x)+1/(e^(x))=pi", "normalización completa del caso reportado");
+  });
+
+  test("exponente fraccionario de una FUNCIÓN: `abs(y)^{1/2}` no deja el `abs` colgando", () => {
+    // Regresión: la regla `base^{m/n}`→raíz casaba el `(y)` de `abs(y)^{1/2}` como base y
+    // dejaba `abs` suelto delante → `abssqrt((y))` = `abs*sqrt((y))` (abs de variable → NaN).
+    // El lookbehind evita tomar un `(…)` pegado a una función por base; cae a `abs(y)^(1/2)`.
+    igual(normalizarEntrada("|y|^{1/2}"), "abs(y)^(1/2)", "|y|^{1/2} → abs(y)^(1/2), sin abs colgando");
+    igual(normalizarEntrada("abs(x)^{1/2}"), "abs(x)^(1/2)", "abs(x)^{1/2} → abs(x)^(1/2)");
+    // Un `(…)` SIN función delante sí es la base de la raíz (comportamiento intacto).
+    igual(normalizarEntrada("(x+1)^{1/2}"), "sqrt((x+1))", "(x+1)^{1/2} → sqrt((x+1))");
   });
 });
 
@@ -3552,7 +3723,9 @@ describe("Derivada de exponencial base≠e: \\ln k simbólico, no decimal (regre
     assert(g !== null && /log\(3\)/.test(g), `el string graficado usa log(3): ${g}`);
     assert(!/1\.0986/.test(g!), `sin el decimal de ln 3: ${g}`);
     const tex = derivadaLatex(["3^x"]);
-    assert(/3\^\{x\}\\ln 3/.test(tex), `LaTeX = 3^{x}\\ln 3: ${tex}`);
+    // La función desnuda `\ln 3` acompaña una POTENCIA (`3^x`): se parentiza para acotar el
+    // argumento junto al superíndice → `3^{x}\left(\ln 3\right)` (política de latex.ts).
+    assert(/3\^\{x\}\\left\(\\ln 3\\right\)/.test(tex), `LaTeX = 3^{x}\\left(\\ln 3\\right): ${tex}`);
     assert(!/1\.09/.test(tex), `el LaTeX no lleva el decimal roto: ${tex}`);
   });
 
@@ -3587,6 +3760,112 @@ const CURVAS_ESTRES: ReadonlyArray<{ nombre: string; fuente: string }> = [
   { nombre: "astroide x^{2/3}+y^{2/3}=1", fuente: "x^{2/3}+y^{2/3}=1" },
   { nombre: "potencia alta (x+1)¹²", fuente: "(x+1)^{12}" },
 ];
+
+describe("Periodicidad del campo (detección numérica para el teselado)", () => {
+  const C = (f: (x: number, y: number) => number): CampoEscalar => ({ eval: f });
+
+  test("red de lazos: período 2π en AMBOS ejes (la llave del teselado)", () => {
+    const F = (construirObjeto(
+      "4(cos(x)+cos(y))+2cos(x+y)+2cos(x-y)-2cos(2x)-2cos(2y)-7=0", "p"
+    ) as ObjetoImplicito).F;
+    const per = detectarPeriodos(F);
+    aprox(per.px ?? 0, 2 * Math.PI, 1e-12, "período en x");
+    aprox(per.py ?? 0, 2 * Math.PI, 1e-12, "período en y");
+  });
+
+  test("períodos mínimos por eje: tan→π, sin(πx)→2, eje sin trig→null", () => {
+    const t = detectarPeriodos(C((x, y) => Math.tan(x) - y));
+    aprox(t.px ?? 0, Math.PI, 1e-12, "tan x es π-periódico");
+    igual(t.py, null, "y aparece lineal: sin período");
+    const s = detectarPeriodos(C((x, y) => Math.sin(Math.PI * x) + y * y * y));
+    aprox(s.px ?? 0, 2, 1e-12, "sin(πx) es 2-periódico");
+    igual(s.py, null, "y³ no es periódico");
+  });
+
+  test("campos NO periódicos: null en ambos ejes (círculo, sin(x·y))", () => {
+    for (const f of [C((x, y) => x * x + y * y - 9), C((x, y) => Math.sin(x * y))]) {
+      const per = detectarPeriodos(f);
+      igual(per.px, null, "px");
+      igual(per.py, null, "py");
+    }
+  });
+
+  test("dominio no periódico NO engaña: √x+cos x no declara período", () => {
+    const per = detectarPeriodos(C((x, _y) => Math.sqrt(x) + Math.cos(x)));
+    igual(per.px, null, "√x rompe la periodicidad del dominio");
+  });
+
+  test("la composición enruta la red de lazos al proveedor teselado", () => {
+    const p = crearProveedor(construirObjeto("cos(x)+cos(y)+cos(x+y)=0.5", "p"));
+    igual(p.constructor.name, "ProveedorImplicitoTeselado", "ruta del dispatcher");
+    // …y una implícita corriente (no periódica) va al raster-wrapper de la ruta genérica,
+    // que delega en la continuación mientras la curva no sea de alta frecuencia.
+    const q = crearProveedor(construirObjeto("x^3+y^3=9", "p"));
+    igual(q.constructor.name, "ProveedorImplicitoRasterizado", "sin período → ruta genérica (raster-wrapper)");
+  });
+});
+
+describe("Polos y monomios: astillas junto a los polos (regresión zoom-out)", () => {
+  test("monomio √|y|: √|y|+tan x=2 se separa en 2 ramas explícitas y=±g²", () => {
+    const F: CampoEscalar = { eval: (x, y) => Math.sqrt(Math.abs(y)) + Math.tan(x) - 2 };
+    const ramas = ramasMonomioY(F);
+    assert(ramas !== null && ramas.length === 2, "2 ramas ±");
+    // En x=0: √|y| = 2 ⇒ y = ±4.
+    aprox(ramas![0].eval(0), 4, 1e-9, "rama +");
+    aprox(ramas![1].eval(0), -4, 1e-9, "rama −");
+  });
+
+  test("localizarPolos completa la retícula periódica que el escaneo no ve", () => {
+    // En c(x)=x²+x+tan x−C el CERO se pega al polo a ~1/x²: dentro de un paso de
+    // escaneo c pasa por ±∞ y por 0 con extremos del MISMO signo → lejos del centro
+    // el polo era invisible y las astillas de x²+x+|y|+tan x=C desaparecían del
+    // dibujo. La extensión periódica verificada debe encontrarlos TODOS.
+    const F: CampoEscalar = { eval: (x, y) => x * x + x + Math.abs(y) + Math.tan(x) - (2 * Math.PI + 3) };
+    const polos = localizarPolos(F, -100, 100);
+    const esperados = Math.floor(200 / Math.PI);         // uno cada π
+    assert(polos.length >= esperados - 2, `${polos.length} polos (esperados ~${esperados})`);
+    // Y todos son polos DE VERDAD (ninguno inventado): |c| enorme y signo opuesto a ±ε.
+    let extendidos = 0;
+    for (const p of polos) {
+      const eps = Math.max(1e-9, Math.abs(p) * 1e-11);
+      const a = F.eval(p - eps, 0), b = F.eval(p + eps, 0);
+      if (Number.isFinite(a) && Number.isFinite(b) && a * b < 0 &&
+          Math.min(Math.abs(a), Math.abs(b)) > 1e3) extendidos++;
+    }
+    assert(extendidos >= esperados - 2, "los candidatos extendidos están verificados");
+  });
+
+  test("polos NO periódicos: la extensión no inventa nada (tan(x²))", () => {
+    const F: CampoEscalar = { eval: (x, y) => Math.tan(x * x) + y };
+    const polos = localizarPolos(F, 1, 10);
+    // Los polos reales están en x=√(π/2+kπ): espaciado DECRECIENTE, no uniforme.
+    for (const p of polos) {
+      const k = (p * p - Math.PI / 2) / Math.PI;
+      aprox(k, Math.round(k), 1e-4, `polo espurio en x=${p}`);
+    }
+  });
+
+  test("localizarPolos: MISMO conjunto de polos a cualquier zoom/paneo (sin espurios)", () => {
+    // El período de la retícula se ancla a una ventana CENTRAL fija, no a la vista, y cada polo
+    // se verifica con el sondeo a ±ε → conjunto DETERMINISTA, independiente del zoom/paneo.
+    const F: CampoEscalar = { eval: (x, y) => x * x + x + Math.abs(y) + Math.tan(x) - (2 * Math.PI + 3) };
+    const enComun = (a: number, b: number) => localizarPolos(F, a, b).filter((p) => p >= -15 && p <= 15);
+    const base = enComun(-30, 30);
+    // 10 polos reales de tan en [-15,15] (x=π/2+kπ), ni uno más (el CERO pegado a cada polo,
+    // que el escaneo antes reportaba como polo espurio variable con el zoom, ya se filtra).
+    igual(base.length, 10, "10 polos reales en [-15,15]");
+    for (const [a, b] of [[-100, 100], [-500, 500], [-2000, 2000]] as [number, number][]) {
+      const otro = enComun(a, b);
+      igual(otro.length, base.length, `[${a},${b}]: mismo nº de polos en [-15,15]`);
+      for (let i = 0; i < base.length; i++) aprox(otro[i], base[i], 1e-6, `[${a},${b}]: polo ${i} coincide`);
+    }
+    // Todos son polos REALES de tan (x=π/2+kπ), ninguno espurio.
+    for (const p of base) aprox((p - Math.PI / 2) / Math.PI, Math.round((p - Math.PI / 2) / Math.PI), 1e-3, `polo real en x=${p.toFixed(3)}`);
+    // Y una vista lejana (paneo) encuentra TODOS sus polos locales (antes se perdían).
+    const lejos = localizarPolos(F, 200, 400);
+    assert(lejos.length >= Math.floor(200 / Math.PI) - 2, `vista lejana [200,400]: ${lejos.length} polos (~64)`);
+  });
+});
 
 // Presupuestos HOLGADOS: no miden rendimiento (sería frágil), sino la diferencia entre
 // "termina" y "no termina". Antes del arreglo, el corazón no acababa NUNCA.
@@ -3737,8 +4016,95 @@ describe("Despejar y: raíz impar + cuadrática general (familia del corazón)",
   test("lo NO despejable sigue siendo parcial (no se fuerza nada)", () => {
     assert(!/^y = /.test(despejarEcuaciones(["x^3+y^3=3*x*y"])[0]), "folium: parcial");
     assert(!/^y = /.test(despejarEcuaciones(["y^y=3-x^x"])[0]), "y^y: parcial");
-    assert(/^\(tan\(y\)\)/.test(despejarEcuaciones(["tan(y)*(x^2+1)=sqrt(x+1)"])[0]),
+    // Trascendente SIN inversa registrada: solo el despeje multiplicativo (parcial).
+    // (tan(y)·(…) ya no es el ejemplo: el trig inverso la completa; ver su test.)
+    assert(/^\(y \^ y\)/.test(despejarEcuaciones(["y^y*(x^2+1)=sqrt(x+1)"])[0]),
       "trascendente: solo el despeje multiplicativo");
+    // La trig de un INTERIOR compuesto no se invierte (despejar 2y sería otro problema).
+    assert(!/^y = /.test(despejarEcuaciones(["tan(2y)+x=2"])[0]), "tan(2y): parcial");
+  });
+
+  test("trig PERIÓDICA de y → solución GENERAL: familia y = T⁻¹(g) + k·período (k∈ℤ)", () => {
+    // El caso pedido: tan(y)+x=2 ⇒ y = arctan(2−x) + kπ, k∈ℤ. El centinela `fam(k, pi)`
+    // representa la familia DISCRETA infinita (no una constante): string re-parseable.
+    igual(despejarEcuaciones(["tan(y)+x=2"])[0], "y = atan((2 - x)) + fam(k, pi)",
+      "tan(y)+x=2 ⇒ y = arctan(2−x) + kπ");
+    // La familia es CORRECTA para todo k: cada rama cumple la ecuación original.
+    for (const k of [-2, -1, 0, 1, 3]) {
+      for (const x of [-1.3, 0.4, 2.7]) {
+        const y = Math.atan(2 - x) + k * Math.PI;
+        aprox(Math.tan(y) + x, 2, 1e-9, `tan(y)+x=2 en x=${x}, k=${k}`);
+      }
+    }
+    // Coeficiente libre: se divide antes de invertir. cos → ± (dos bases) + período 2π.
+    igual(despejarEcuaciones(["cos(y)*2=x"])[0], "y = pm(acos((x)/((2)))) + fam(k, 2*pi)",
+      "2cos(y)=x ⇒ y = ±arccos(x/2) + 2kπ");
+    // sin: forma única π/2 ± arccos(g) (≡ arcsin g / π−arcsin g). Verificación numérica.
+    igual(despejarEcuaciones(["sin(y)=x"])[0], "y = pi/2 + pm(acos(x)) + fam(k, 2*pi)",
+      "sin(y)=x ⇒ y = π/2 ± arccos(x) + 2kπ");
+    for (const s of [1, -1]) {
+      for (const k of [-1, 0, 2]) {
+        for (const g of [-0.8, 0.3, 0.9]) {
+          const y = Math.PI / 2 + s * Math.acos(g) + 2 * k * Math.PI;
+          aprox(Math.sin(y), g, 1e-9, `sin(y)=${g} (rama ${s > 0 ? "+" : "−"}, k=${k})`);
+        }
+      }
+    }
+    // El k∈ℤ viaja hasta el LaTeX: familia pintada `…+k\pi` con su coletilla.
+    const latex = despejarY("\\tan(y)+x=2");
+    assert(latex !== null && latex.completo, "tan(y)+x=2: despeje completo");
+    assert(latex!.latex.includes("\\arctan"), `arctan visible: ${latex!.latex}`);
+    assert(latex!.latex.includes("k\\pi"), `k\\pi visible: ${latex!.latex}`);
+    assert(latex!.latex.includes("k\\in\\mathbb{Z}"), `coletilla k∈ℤ: ${latex!.latex}`);
+    // Clasificación por centinelas: las tres formas se distinguen.
+    igual(clasificarDespeje(despejarEcuaciones(["tan(y)+x=2"])[0]), "familia-periodica", "familia");
+    igual(clasificarDespeje(despejarEcuaciones(["x^2+y^2=16"])[0]), "ramas-finitas", "±√ finitas");
+    igual(clasificarDespeje(despejarEcuaciones(["2x+y=6"])[0]), "unica", "y=f(x) única");
+    // `tieneFamilia` no confunde identificadores que terminen en "fam".
+    assert(!tieneFamilia("aleufam(x)"), "sufijo 'fam' de otro identificador: no es familia");
+  });
+
+  test("CUADRÁTICA en cos(y) (trig de argumentos compuestos): ±arccos(…±√…) + 2kπ", () => {
+    // El caso pedido: 4(cosx+cosy)+2cos(x+y)+2cos(x−y)−2cos2x−2cos2y−7=0. Tras expandir
+    // (cos(x±y) cancela los sin y; cos2y aporta el u²) es cuadrática en u=cos y:
+    // y = ±arccos((cosx+1 ± √(1−3(cosx−1)²))/2) + 2kπ, k∈ℤ. El radicando sale con el
+    // CUADRADO COMPLETADO (muestra el dominio), no como polinomio expandido.
+    const corazon = "4\\left(\\cos x+\\cos y\\right)+2\\cos\\left(x+y\\right)+2\\cos\\left(x-y\\right)-2\\cos 2x-2\\cos 2y-7=0";
+    igual(despejarEcuaciones([corazon])[0],
+      "y = pm(acos(((cos(x) + 1) + pm(sqrt(1 - 3 * (cos(x) - 1) ^ 2))) / (2))) + fam(k, 2*pi)",
+      "cuadrática en cos y con cuadrado completado");
+    // La familia es CORRECTA: ambos ± son independientes y cada combinación válida
+    // (|u|≤1) cumple la ecuación original, para todo k.
+    const F = (x: number, y: number) =>
+      4 * (Math.cos(x) + Math.cos(y)) + 2 * Math.cos(x + y) + 2 * Math.cos(x - y) -
+      2 * Math.cos(2 * x) - 2 * Math.cos(2 * y) - 7;
+    let combinaciones = 0;
+    for (const s2 of [1, -1]) {
+      for (const s1 of [1, -1]) {
+        for (const k of [-1, 0, 2]) {
+          for (let x = -1.2; x <= 1.2; x += 0.1) {
+            const d = 1 - 3 * (Math.cos(x) - 1) ** 2;
+            if (d < 0) continue;
+            const u = (Math.cos(x) + 1 + s2 * Math.sqrt(d)) / 2;
+            if (Math.abs(u) > 1) continue;
+            const y = s1 * Math.acos(u) + 2 * k * Math.PI;
+            aprox(F(x, y), 0, 1e-9, `corazón trig en x=${x.toFixed(1)} (±=${s1},${s2}, k=${k})`);
+            combinaciones++;
+          }
+        }
+      }
+    }
+    assert(combinaciones > 20, `la muestra ejercitó ambas raíces y ambos arccos (${combinaciones})`);
+    // Cuadrática DIRECTA en cos y y LINEAL en cos y (adición pura).
+    igual(despejarEcuaciones(["cos(y)^2 - cos(y) = x"])[0],
+      "y = pm(acos(((1) + pm(sqrt(4 * x + 1))) / (2))) + fam(k, 2*pi)", "cos²y−cosy=x");
+    igual(despejarEcuaciones(["cos(x+y) + cos(x-y) = 1"])[0],
+      "y = pm(acos((1) / (2 * cos(x)))) + fam(k, 2*pi)", "2cosx·cosy=1 (lineal en cos y)");
+    // sin²y entra por la pitagórica (SY²→1−CY²); la fracción común se reduce del todo.
+    igual(despejarEcuaciones(["sin(y)^2 = x"])[0],
+      "y = pm(acos(pm(sqrt(1 - x)))) + fam(k, 2*pi)", "sin²y=x");
+    // sin y IMPAR no es polinomio en cos y: se queda PARCIAL, no se inventa nada.
+    assert(!/^y = /.test(despejarEcuaciones(["sin(y) + cos(y) = x"])[0]), "siny+cosy=x: parcial");
   });
 });
 
@@ -3999,6 +4365,54 @@ describe("Autoencuadre: acercar la vista a la curva pequeña, nunca alejarla", (
   test("sin geometría, o degenerada a un punto, no se encuadra", () => {
     igual(semiYAutoencuadre([], vpDefecto), null, "sin ramas");
     igual(semiYAutoencuadre([rama([2, 3, 2, 3])], vpDefecto), null, "un punto no tiene tamaño");
+  });
+});
+
+describe("Rasterizado por signo (marching squares) para campos de alta frecuencia", () => {
+  const TOLF: Tolerancia = { desviacionMaxPx: 0.5, pasoMaxPx: 2, pasada: "final" };
+  const largoG = (g: Geometria) => {
+    let L = 0; for (const r of g.ramas) for (let k = 2; k < r.puntos.length; k += 2)
+      L += Math.hypot(r.puntos[k] - r.puntos[k - 2], r.puntos[k + 1] - r.puntos[k - 1]);
+    return L;
+  };
+
+  test("contornosMarchingSquares recupera el círculo x²+y²=25 (perímetro ≈ 2πr)", () => {
+    const F: CampoEscalar = { eval: (x, y) => x * x + y * y - 25 };
+    const vp = crearViewport([-8, 8], [-8, 8], 400, 400, 1);
+    const ramas = contornosMarchingSquares(F, vp, "z", 1, 400_000);
+    let L = 0; for (const r of ramas) for (let k = 2; k < r.puntos.length; k += 2)
+      L += Math.hypot(r.puntos[k] - r.puntos[k - 2], r.puntos[k + 1] - r.puntos[k - 1]);
+    aprox(L, 2 * Math.PI * 5, 0.5, `perímetro trazado ${L.toFixed(2)} ≈ 31.42`);
+    // Y cada vértice está SOBRE la curva (|F| ≈ 0).
+    for (const r of ramas) for (let k = 0; k < r.puntos.length; k += 2)
+      assert(Math.abs(F.eval(r.puntos[k], r.puntos[k + 1])) < 0.3, "vértice sobre F=0");
+  });
+
+  test("eq. cos(xy)=∛(y²): a zoom-out rasteriza (banda LLENA, no rayado disperso)", () => {
+    const src = "\\ln{x^{2}+1}+\\cos{xy}=\\sqrt[3]{y^{2}}";
+    const prov = crearProveedor(construirObjeto(src, "z"));
+    igual(prov.constructor.name, "ProveedorImplicitoRasterizado", "eq.3 → rasterizado");
+    const vp = crearViewport([-45, 45], [-22, 22], 560, 330, 1);
+    const g = prov.geometria(vp, TOLF);
+    // La continuación daba ~130 ramas / ~1300 u (≈10%); el raster da MILES de hebras y varias
+    // veces esa longitud → banda llena. Cotas holgadas (no miden píxeles exactos).
+    assert(g.ramas.length > 1000, `muchas hebras: ${g.ramas.length}`);
+    assert(largoG(g) > 4000, `banda llena: largo ${largoG(g).toFixed(0)} u (continuación daba ~1300)`);
+  });
+
+  test("zoom-IN de la misma curva: vuelve a la continuación (curva suave, pocas hebras)", () => {
+    const src = "\\ln{x^{2}+1}+\\cos{xy}=\\sqrt[3]{y^{2}}";
+    const g = crearProveedor(construirObjeto(src, "z"))
+      .geometria(crearViewport([-3, 3], [-2, 2], 560, 330, 1), TOLF);
+    assert(g.ramas.length < 20, `pocas ramas (continuación): ${g.ramas.length}`);
+  });
+
+  test("las curvas SUAVES no se rasterizan: delegan a la continuación (lazos, no miles de hebras)", () => {
+    const vp = crearViewport([-45, 45], [-22, 22], 560, 330, 1);
+    for (const [n, s] of [["círculo", "x^2+y^2=9"], ["folium", "x^3+y^3=3*x*y"], ["hipérbola", "x^2-y^2=4"]] as const) {
+      const g = crearProveedor(construirObjeto(s, "z")).geometria(vp, TOLF);
+      assert(g.ramas.length < 10, `${n}: sigue por continuación (${g.ramas.length} ramas, no rasterizado)`);
+    }
   });
 });
 

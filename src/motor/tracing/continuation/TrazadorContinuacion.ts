@@ -67,6 +67,18 @@ const MAX_EVALS_INTERACTIVO = 180_000; // cota por frame durante un gesto
 const COS_GIRO_MAX = 0.7;      // giro máx por paso normal (~45°); si se supera, reduce
 const COS_GIRO_RECTO = 0.5;    // el cruce recto debe seguir a < 60° del avance previo
 const FWD_MIN = 0.2;           // progreso mínimo hacia delante (evita pasos "de vuelta")
+// Flecha máxima de una CUERDA como fracción de su longitud (ver `cuerdaSobreCurva`). Con el
+// giro por paso ya acotado a 45°, la flecha real de un arco legítimo es ≤ ~0.10·L; en un salto
+// entre componentes el punto medio queda en el valle entre ambas, a ~0.5·L o más. 0.25 deja
+// margen holgado por los dos lados.
+const FLECHA_MAX = 0.25;
+// Suelo VISUAL del test de cuerda, en píxeles: una cuerda cuyo punto medio queda a menos de
+// esto de la curva es indistinguible de ella en pantalla y se acepta aunque su flecha relativa
+// sea grande. Sin este suelo, un campo de oscilación SUBPÍXEL (cos(x·y)=∛(y²) con zoom-out:
+// longitud de onda 2π/x ≈ ⅓ px) rechazaba toda cuerda que puentea ondulaciones invisibles, el
+// paso colapsaba y la curva salía hecha CONFETI de guiones quemando el presupuesto. Los
+// puentes reales entre componentes (la red de lazos) miden varios píxeles → siguen rechazados.
+const CUERDA_PX_VISUAL = 0.75;
 
 // ─────────────────────────────────────────────
 // Dos escalas distintas, y NO hay que confundirlas (lo hice, y costó caro)
@@ -111,6 +123,10 @@ function escalaCurva(semillas: readonly Semilla[]): number {
 }
 
 export class TrazadorContinuacion implements ITrazadorContinuacion {
+  /** Suelo visual del test de cuerda EN MUNDO (≈ CUERDA_PX_VISUAL px del viewport en curso).
+   *  Estado por-trazado, fijado al entrar en `trazar` (las llamadas son secuenciales). */
+  private dVisual = 0;
+
   trazar(
     F: CampoEscalar,
     objetoId: string,
@@ -120,6 +136,7 @@ export class TrazadorContinuacion implements ITrazadorContinuacion {
     tolerancia: Tolerancia
   ): readonly Rama[] {
     const anchoMundo = viewport.domX[1] - viewport.domX[0];
+    this.dVisual = (anchoMundo / Math.max(1, viewport.anchoPx)) * CUERDA_PX_VISUAL;
     const h = anchoMundo * 1e-5 || 1e-9;                 // paso de diferencias finitas
     const pasoPx = tolerancia.pasada === "interactiva" ? PASO_PX_INTERACTIVO : PASO_PX_FINAL;
     // PASO (calidad/coste): píxeles, con un mínimo de pasos a lo ancho de la curva para que una
@@ -362,6 +379,41 @@ export class TrazadorContinuacion implements ITrazadorContinuacion {
     return Number.isFinite(F.eval(x, y)) ? { x, y } : null;
   }
 
+  /**
+   * ¿El SEGMENTO p→q sigue la curva, o la abandona y "puentea" hasta OTRA componente?
+   *
+   * El predictor-corrector solo garantiza que los EXTREMOS están sobre F=0. En un campo con
+   * muchas componentes más pequeñas que el paso (la red de lazos de
+   * 4(cos x+cos y)+2cos(x+y)+…=0 con mucho zoom-out), el corrector aterriza en el lazo VECINO,
+   * el giro del salto es casi recto → el paso se aceptaba, y encadenados dibujaban LÍNEAS
+   * RECTAS falsas atravesando toda la pantalla (medido: 28% de segmentos con |F(medio)|≈15).
+   *
+   * El criterio es la distancia del punto MEDIO a la curva, estimada al primer orden
+   * d ≈ |F(m)|/|∇F|, comparada con la longitud de la cuerda: se exige d ≤ FLECHA_MAX·L.
+   * En un paso legítimo el medio dista ≤ la flecha del arco (≤ ~0.10·L, con el giro acotado);
+   * en un salto queda en el valle entre componentes (~0.5·L o más) → se rechaza y el paso se
+   * reduce, hasta caber DENTRO de la componente. Casos límite: F no finito en el medio (la
+   * cuerda cruza un polo o un hueco de dominio) → rechazo; ∇F≈0 con F≈0 (singularidad SOBRE la
+   * curva: el nodo de la lemniscata en el cruce recto) → el término absoluto 1e-12 lo acepta;
+   * ∇F≈0 con |F| grande (máximo del campo en el valle entre lazos) → rechazo.
+   *
+   * `g` es la norma del gradiente con que se ESCALA |F(m)| a distancia. El llamador pasa la
+   * que ya tenga: el paso normal, la de ∇F(p) —calculada de todos modos para la tangente—,
+   * porque recalcular ∇F en el medio son 4 evaluaciones más POR PASO y ese 20% de presupuesto
+   * se pagaba en cobertura: en sin(x·y)=0 con zoom-out (el peor caso documentado, acotado por
+   * presupuesto) la mitad superior de la vista se quedaba SIN trazar. Como cota de ESCALA la
+   * norma en p vale igual (el salto entre lazos da |F(m)| ~15 contra ~0.5 legítimo: el margen
+   * es de un orden de magnitud, no de un factor fino). El cruce recto sí la calcula en el
+   * medio: ahí p es casi singular (∇F(p)≈0) y su norma no escala nada.
+   */
+  private cuerdaSobreCurva(F: CampoEscalar, p: Vec, q: Vec, g: number): boolean {
+    const f = F.eval((p.x + q.x) / 2, (p.y + q.y) / 2);
+    if (!Number.isFinite(f) || !Number.isFinite(g)) return false;
+    const L = Math.hypot(q.x - p.x, q.y - p.y);
+    // `dVisual` (≈¾ px en mundo) es el suelo: desviaciones subpíxel son visualmente exactas.
+    return Math.abs(f) <= Math.max(FLECHA_MAX * L, this.dVisual) * g + 1e-12;
+  }
+
   private fueraDeLimites(p: Vec, vp: Viewport): boolean {
     const mx = (vp.domX[1] - vp.domX[0]) * 0.5;
     const my = (vp.domY[1] - vp.domY[0]) * 0.5;
@@ -379,9 +431,14 @@ export class TrazadorContinuacion implements ITrazadorContinuacion {
     // La tangente se calcula UNA vez: ni `p` ni `dirAnt` cambian entre reintentos, así que
     // recalcularla dentro del bucle era evaluar el MISMO gradiente en el MISMO punto hasta 9
     // veces (4 evaluaciones de F cada una). Puro desperdicio, y justo donde más duele: en las
-    // zonas de mucha curvatura, que son las que agotan los reintentos.
-    const T = this.tangente(grad, p, dirAnt);
-    if (!T) return null;                         // ∇F≈0 → que decida el cruce recto
+    // zonas de mucha curvatura, que son las que agotan los reintentos. Se calcula EN LÍNEA
+    // (no vía `tangente`) para conservar la NORMA del gradiente, que escala el test de cuerda.
+    const [gpx, gpy] = grad(p.x, p.y);
+    const gp = Math.hypot(gpx, gpy);
+    if (!Number.isFinite(gp) || gp < 1e-30) return null; // ∇F≈0 → que decida el cruce recto
+    let tx = -gpy / gp, ty = gpx / gp;
+    if (tx * dirAnt.x + ty * dirAnt.y < 0) { tx = -tx; ty = -ty; }
+    const T = { x: tx, y: ty };
     let hh = h;
     for (let intento = 0; intento < 9; intento++) {
       const pc = this.corregir(F, grad, { x: p.x + T.x * hh, y: p.y + T.y * hh }, hh);
@@ -392,7 +449,8 @@ export class TrazadorContinuacion implements ITrazadorContinuacion {
           const ux = dx / L, uy = dy / L;
           const giro = ux * dirAnt.x + uy * dirAnt.y;   // cos del giro vs avance previo
           const fwd = ux * T.x + uy * T.y;              // progreso a lo largo de la tangente
-          if (fwd > FWD_MIN && giro > COS_GIRO_MAX) {
+          if (fwd > FWD_MIN && giro > COS_GIRO_MAX &&
+              this.cuerdaSobreCurva(F, p, pc, gp)) {
             return { punto: pc, dir: { x: ux, y: uy }, h: hh };
           }
         }
@@ -417,7 +475,12 @@ export class TrazadorContinuacion implements ITrazadorContinuacion {
       if (L < hMin * 0.5) continue;              // no avanzó (volvió al mismo punto)
       const ux = dx / L, uy = dy / L;
       if (ux * dirAnt.x + uy * dirAnt.y > COS_GIRO_RECTO) {
-        return { punto: pc, dir: { x: ux, y: uy }, h: hh };
+        // Aquí p es casi singular (∇F(p)≈0): la escala del test de cuerda se toma en el
+        // punto MEDIO (4 evaluaciones extra, pero este camino es raro: solo singularidades).
+        const [gmx, gmy] = grad((p.x + pc.x) / 2, (p.y + pc.y) / 2);
+        if (this.cuerdaSobreCurva(F, p, pc, Math.hypot(gmx, gmy))) {
+          return { punto: pc, dir: { x: ux, y: uy }, h: hh };
+        }
       }
     }
     return null;

@@ -131,7 +131,14 @@ export class TrazadorExplicitoAdaptativo implements TrazadorExplicito {
         const m1 = magLado(xPolo, 1e-3);
         const m2 = magLado(xPolo, 1e-7);
         const m3 = magLado(xPolo, 1e-11);
-        const diverge = Number.isFinite(m3) && m3 > m2 + 2 && m2 > m1 + 2;
+        // Divergencia REAL (polo) vs PICO suave enorme: ambos hacen crecer |f| al acercarse
+        // (m3>m2>m1), pero un polo ACELERA sin cota (1/x²: m3−m2 ≫ m2−m1) mientras que un
+        // máximo suave DESACELERA hacia un valor finito (parábola: m3−m2 ≪ m2−m1). Sin exigir
+        // que acelere, una oscilación de amplitud exponencial (e^x·(cos x−sin x)) marcaba cada
+        // pico x=kπ —donde f'' vale ~e^{kπ}— como asíntota fantasma. La aceleración distingue
+        // la singularidad no acotada del pico alto pero finito.
+        const diverge = Number.isFinite(m3) && Number.isFinite(m2) && Number.isFinite(m1) &&
+          m3 > m2 + 2 && m2 > m1 + 2 && (m3 - m2) >= (m2 - m1);
         if (diverge && !out.some((q) => Math.abs(q - xPolo) < paso)) out.push(xPolo);
       };
       let xA = domX[0],
@@ -190,6 +197,22 @@ export class TrazadorExplicitoAdaptativo implements TrazadorExplicito {
       return true;
     };
 
+    // ¿El tramo con el refinado AGOTADO que barre toda la banda (cruza de +∞-visible a
+    // −∞-visible) es un CRUCE CONTINUO empinado, no un polo? Una función suave que oscila
+    // con amplitud enorme (e^x·(cos x−sin x) en x grande) cruza el cero con una pendiente
+    // gigantesca: entre dos muestras subpíxel el refinado se agota SIN que sea una asíntota.
+    // Prueba de linealidad: sobre un intervalo subpíxel una función CONTINUA es casi lineal
+    // (su valor medio ≈ el promedio de los extremos), mientras que un polo real diverge
+    // hacia dentro (|f(medio)| ≫ los extremos, o no finito). Así se CONECTA la línea casi
+    // vertical (como Desmos) en vez de romperla y dibujar una asíntota punteada fantasma.
+    const esCruceContinuo = (xa: number, ya: number, xb: number, yb: number): boolean => {
+      const ym = evalX((xa + xb) / 2);
+      if (!Number.isFinite(ym)) return false; // polo exacto en el medio → NO continuo
+      const yLin = (ya + yb) / 2; // predicción lineal (interpolación de los extremos)
+      const escala = Math.max(Math.abs(ya), Math.abs(yb), 1);
+      return Math.abs(ym - yLin) <= 1e-2 * escala;
+    };
+
     // Procesa el intervalo (xa, xb]. NO emite (xa,ya): lo asume ya emitido.
     // Subdivide donde la pendiente en píxeles es grande y CORTA al localizar polo.
     const tramo = (xa: number, ya: number, xb: number, yb: number, prof: number) => {
@@ -219,6 +242,17 @@ export class TrazadorExplicitoAdaptativo implements TrazadorExplicito {
 
       const cruza =
         (ya > domY[1] && yb < domY[0]) || (ya < domY[0] && yb > domY[1]);
+      // Cruce continuo empinado (no polo): función suave que barre toda la banda entre dos
+      // muestras subpíxel (el refinado se agotó porque su amplitud crece exponencialmente,
+      // p. ej. e^x(cos x−sin x) en x grande). Se CONECTA la línea casi vertical, como Desmos,
+      // en vez de romperla y registrar una asíntota fantasma. `cruza` sólo llega aquí con el
+      // refinado agotado (antes, `cambioSigno` lo habría subdividido). AMBOS extremos deben
+      // ser FINITOS: un cruce continuo los tiene (enormes pero finitos); si uno es ±∞ es un
+      // polo real (1/x en 0) y lo resuelve la lógica de siempre más abajo.
+      if (cruza && prof >= PROF_MAX && finA && finB && esCruceContinuo(xa, ya, xb, yb)) {
+        emit(xb, yb);
+        return;
+      }
       const algunNoFinito = !finA || !finB;
       const poloMismoLado = poloEnTramo && finA && finB && !cruza && ya * yb > 0;
       if (cruza || algunNoFinito || poloMismoLado) {

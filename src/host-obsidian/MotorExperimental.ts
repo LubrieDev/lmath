@@ -37,6 +37,7 @@ import {
   integralPrimitivaLatex, cuerpoAreaLatexExacto, etiquetaIntegral,
 } from "../integral";
 import { AJUSTES_POR_DEFECTO, type AjustesTransformaciones } from "./ajustes";
+import { t, localizarVelo } from "../i18n";
 import { normalizarEntrada, contieneYLibre, comandosNoSoportados } from "../parser";
 import { compilarFuncion } from "../evaluador";
 import { clasificarDegenerada, type FuncionDegenerada } from "../degeneradas";
@@ -133,10 +134,10 @@ export class MotorExperimental {
     badge.setAttribute(
       "title",
       this.sistema
-        ? "Motor experimental — sistema de ecuaciones"
+        ? t().badge.sistema
         : this.integral
-          ? "Motor experimental — integral definida (área bajo la curva)"
-          : "Motor experimental — explícitas · implícitas · paramétricas · polares"
+          ? t().badge.integral
+          : t().badge.general
     );
     badge.style.cssText =
       "position:absolute; top:6px; right:8px; font-size:12px; z-index:5; " +
@@ -151,7 +152,7 @@ export class MotorExperimental {
 
     const ctx2d = canvas.getContext("2d");
     if (!ctx2d) {
-      wrap.createEl("p", { text: "Error: Canvas 2D no disponible" });
+      wrap.createEl("p", { text: t().canvasNoDisponible });
       return;
     }
 
@@ -170,7 +171,11 @@ export class MotorExperimental {
     // Bloque vacío o función degenerada (0/0, log base 1, √−1…): el plano queda
     // interactivo (zoom/pan) pero oscurecido, con la etiqueta formal flotando
     // delante (mismas capas pointer-events:none que el GraphEngine original).
-    const degenerada = degeneradaOrigen ?? this.clasificarBloque(graficadas, source);
+    // `clasificarBloque`/`degeneradaOrigen` pueden traer etiquetas del NÚCLEO en español
+    // canónico (degeneradas.ts / integral.ts); `localizarVelo` las pasa al idioma activo
+    // (las del propio host ya salen traducidas por `t()`, y las deja intactas).
+    const degeneradaCruda = degeneradaOrigen ?? this.clasificarBloque(graficadas, source);
+    const degenerada = degeneradaCruda ? localizarVelo(degeneradaCruda) : null;
     if (degenerada) {
       const velo = wrap.createDiv();
       velo.style.cssText =
@@ -372,16 +377,16 @@ export class MotorExperimental {
       "color:rgba(220,220,220,0.85); background:rgba(30,30,30,0.85); " +
       "border:1px solid rgba(255,255,255,0.18);";
     const btnInicio = wrap.createDiv({ text: "🏠︎" });
-    btnInicio.setAttribute("title", "Vista inicial (deshace zoom y desplazamiento)");
+    btnInicio.setAttribute("title", t().botones.vistaInicial);
     // El glifo de casa es EMOJI (🏠︎): la fuente lo pinta con su propia caja, más grande y con más
     // tinta que un signo tipográfico como + o −, así que a la misma medida se ve desproporcionado
     // dentro del botón. Se le baja el cuerpo para que pese lo mismo que sus vecinos.
     btnInicio.style.cssText = estiloZoom(26) + "font-size:12px;";
     const btnMas = wrap.createDiv({ text: "+" });
-    btnMas.setAttribute("title", "Acercar (zoom +)");
+    btnMas.setAttribute("title", t().botones.acercar);
     btnMas.style.cssText = estiloZoom(52);
     const btnMenos = wrap.createDiv({ text: "−" });
-    btnMenos.setAttribute("title", "Alejar (zoom −)");
+    btnMenos.setAttribute("title", t().botones.alejar);
     btnMenos.style.cssText = estiloZoom(78);
     btnInicio.addEventListener("click", () => camara.volverAVistaBase());
     btnMas.addEventListener("click", () => camara.zoomCentrado(true));
@@ -395,7 +400,7 @@ export class MotorExperimental {
     // al no haber y). `redimensionar()` ya corrió una pasada, así que la recorribilidad
     // (propiedad del TIPO de curva, no del zoom) es estable aquí.
     const btnCarril = wrap.createDiv();
-    btnCarril.setAttribute("title", "Carril: recorrer la curva con A/D, zoom con W/S (Shift = precisión)");
+    btnCarril.setAttribute("title", t().botones.carril);
     // Mismo formato EXACTO que el botón ⌖ (btnFijar) de obs-graph/GraphEngine.
     const estiloBtn = (activo: boolean) => {
       btnCarril.style.cssText =
@@ -426,7 +431,7 @@ export class MotorExperimental {
     if (colores.length >= 2) {
       colores.forEach((c, i) => {
         const b = wrap.createDiv();
-        b.setAttribute("title", `Seleccionar ecuación ${i + 1}`);
+        b.setAttribute("title", t().botones.seleccionarEcuacion(i + 1));
         const rgb = `rgb(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)})`;
         const estilo = (sel: boolean) => {
           b.style.cssText =
@@ -463,7 +468,7 @@ export class MotorExperimental {
     // vista actual, en la última pasada final). Mismos estilos que el original.
     if (this.sistema) {
       const btnSolucion = wrap.createDiv({ text: "ⓘ" });
-      btnSolucion.setAttribute("title", "Soluciones del sistema");
+      btnSolucion.setAttribute("title", t().botones.solucionesSistema);
       btnSolucion.style.cssText =
         "position:absolute; bottom:8px; right:8px; width:22px; height:22px; " +
         "display:flex; align-items:center; justify-content:center; font-size:14px; " +
@@ -494,24 +499,17 @@ export class MotorExperimental {
         popSolucion.empty();
         // Un sistema necesita ≥2 ecuaciones: sin ellas no hay soluciones que buscar.
         if (visibles.length === 0) {
-          popSolucion.createEl("div", {
-            text: "No hay ningún sistema. Escribe al menos dos ecuaciones (una por línea).",
-          });
+          popSolucion.createEl("div", { text: t().solucion.sinSistema });
           return;
         }
         if (visibles.length === 1) {
-          popSolucion.createEl("div", {
-            text: "Sistema incompleto: falta al menos una ecuación. Un sistema " +
-              "necesita como mínimo dos ecuaciones y dos incógnitas.",
-          });
+          popSolucion.createEl("div", { text: t().solucion.sistemaIncompleto });
           return;
         }
         // Infinitas (curvas que coinciden en un tramo) ANTES que la saturación: son
         // cosas distintas —una solución continua, no "muchos puntos aislados".
         if (escena.solucionesInfinitas()) {
-          popSolucion.createEl("div", {
-            text: "Infinitas soluciones: las curvas coinciden en un tramo (son la misma).",
-          });
+          popSolucion.createEl("div", { text: t().solucion.infinitasCoinciden });
           return;
         }
         const pts = escena.intersecciones();
@@ -519,23 +517,19 @@ export class MotorExperimental {
         // soluciones (o satura el cap) las repite sin fin. Va ANTES de "demasiadas":
         // esto es infinito de verdad, no solo muchas finitas por estar muy alejado.
         if (sistemaPeriodico && (escena.interseccionesSaturadas() || pts.length >= MIN_PERIODICO)) {
-          popSolucion.createEl("div", {
-            text: "Infinitas soluciones: el sistema es periódico (las soluciones se repiten sin fin).",
-          });
+          popSolucion.createEl("div", { text: t().solucion.infinitasPeriodico });
           return;
         }
         if (escena.interseccionesSaturadas()) {
-          popSolucion.createEl("div", {
-            text: "Demasiadas soluciones en esta vista para enumerarlas; acerca el zoom.",
-          });
+          popSolucion.createEl("div", { text: t().solucion.demasiadas });
           return;
         }
         if (pts.length === 0) {
-          popSolucion.createEl("div", { text: "Sin solución en la vista actual." });
+          popSolucion.createEl("div", { text: t().solucion.sinSolucion });
           return;
         }
         popSolucion.createEl("div", {
-          text: pts.length === 1 ? "Solución:" : `Soluciones (${pts.length}):`,
+          text: pts.length === 1 ? t().solucion.unaSolucion : t().solucion.nSoluciones(pts.length),
           attr: { style: "font-weight:600; margin-bottom:4px;" },
         });
         for (const p of pts.slice(0, MAX_LISTA)) {
@@ -545,12 +539,12 @@ export class MotorExperimental {
         }
         if (pts.length > MAX_LISTA) {
           popSolucion.createEl("div", {
-            text: `… y ${pts.length - MAX_LISTA} más`,
+            text: t().solucion.yMas(pts.length - MAX_LISTA),
             attr: { style: "opacity:0.6;" },
           });
         }
         popSolucion.createEl("div", {
-          text: "En la vista actual.",
+          text: t().solucion.enVista,
           attr: { style: "margin-top:4px; opacity:0.6;" },
         });
       };
@@ -592,7 +586,7 @@ export class MotorExperimental {
         tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado.trim()))));
 
       const btnInfo = wrap.createDiv();
-      btnInfo.setAttribute("title", "Resumen de puntos notables");
+      btnInfo.setAttribute("title", t().botones.resumenNotables);
       btnInfo.style.cssText =
         "position:absolute; bottom:8px; right:8px; width:22px; height:22px; " +
         "display:flex; align-items:center; justify-content:center; font-size:14px; " +
@@ -614,32 +608,33 @@ export class MotorExperimental {
         const r = escena.resumenNotables(camara.viewport());
         const lineas: string[] = [];
 
+        const T = t().resumen;
         const estIY = estadoGrupo(r.interseccionesY.length, esTrig);
-        if (estIY === "infinitas") lineas.push("Intersecciones con el eje Y: infinitas");
-        else if (estIY === "demasiadas") lineas.push("Intersecciones con el eje Y: demasiadas para mostrar");
+        if (estIY === "infinitas") lineas.push(T.interseccionesYInfinitas);
+        else if (estIY === "demasiadas") lineas.push(T.interseccionesYDemasiadas);
         else if (r.interseccionesY.length > 0)
           for (const p of r.interseccionesY)
-            lineas.push(`Intersección Y: (0, ${p.punto.y.toFixed(4)})`);
-        else lineas.push("No corta el eje Y");
+            lineas.push(T.interseccionY(p.punto.y.toFixed(4)));
+        else lineas.push(T.noCortaY);
 
         const estR = estadoGrupo(r.raices.length, esTrig);
-        if (estR === "infinitas") lineas.push("Raíces: infinitas");
-        else if (estR === "demasiadas") lineas.push("Raíces: demasiadas para mostrar");
+        if (estR === "infinitas") lineas.push(T.raicesInfinitas);
+        else if (estR === "demasiadas") lineas.push(T.raicesDemasiadas);
         else if (r.raices.length > 0)
-          lineas.push("Raíces: " + r.raices.map((p) => p.punto.x.toFixed(4)).join(", "));
-        else lineas.push("No hay raíces reales");
+          lineas.push(T.raicesPrefijo + r.raices.map((p) => p.punto.x.toFixed(4)).join(", "));
+        else lineas.push(T.noRaices);
 
         const estV = estadoGrupo(r.vertices.length, esTrig);
-        if (estV === "infinitas") lineas.push("Vértices: infinitos");
-        else if (estV === "demasiadas") lineas.push("Vértices: demasiados para mostrar");
+        if (estV === "infinitas") lineas.push(T.verticesInfinitos);
+        else if (estV === "demasiadas") lineas.push(T.verticesDemasiados);
         else if (r.vertices.length > 0)
           for (const v of r.vertices)
-            lineas.push(`Vértice: (${v.punto.x.toFixed(4)}, ${v.punto.y.toFixed(4)})`);
-        else lineas.push("No hay vértices");
+            lineas.push(T.vertice(v.punto.x.toFixed(4), v.punto.y.toFixed(4)));
+        else lineas.push(T.noVertices);
 
-        for (const t of lineas) pop.createEl("div", { text: t });
+        for (const linea of lineas) pop.createEl("div", { text: linea });
         pop.createEl("div", {
-          text: "En la vista actual.",
+          text: T.enVista,
           attr: { style: "margin-top:4px; opacity:0.6;" },
         });
       };
@@ -685,8 +680,14 @@ export class MotorExperimental {
     const PAD_LADO = 8;       // px de hueco lateral e inferior
     const HUECO = 10;         // px entre tarjetas apiladas ("ambas")
     // Alto de UNA ranura del par "ambas" = alto útil (con 2 cajas y su hueco) / 2. Es el
-    // alto FIJO de la tarjeta única, para que se vea idéntica a una del par (=105.5px).
+    // alto MÍNIMO (y por defecto) de la tarjeta: una fórmula que cabe se ve idéntica en todos
+    // los bloques (=105.5px). Una tarjeta única con una fórmula que CABE se queda aquí (no
+    // crece); solo si el contenido SUPERA este mínimo se ajusta hacia arriba (altura dinámica).
     const ALTO_TARJETA = (ALTO_PANEL - PAD_SUP - PAD_LADO - HUECO) / 2;
+    // Techo del alto DINÁMICO de la tarjeta única: una fórmula alta (un despeje con fracción y
+    // raíz anidadas) CRECE hasta aquí en vez de quedar cortada. Deja simétrico el hueco de la
+    // barra de toggle; si ni así cabe, el área gana su propio scroll VERTICAL.
+    const ALTO_TARJETA_MAX = ALTO_PANEL - 2 * PAD_SUP;
 
     const panelLatex = contenedor.createDiv({ cls: "obsi-math-latex" });
     panelLatex.style.cssText =
@@ -697,6 +698,8 @@ export class MotorExperimental {
     // sobre `panelLatex`), por eso vaciarla no borra la barra. Columna: en "ambas"
     // apila los dos sub-paneles; con una sola fórmula, su única área la llena.
     const zona = panelLatex.createDiv();
+    // Sin overflow propio: cada tarjeta tiene alto FIJO y su PROPIO scroll vertical interno
+    // (barra INDEPENDIENTE por fórmula); la `zona` solo las apila.
     zona.style.cssText =
       "position:absolute; inset:0; display:flex; flex-direction:column; box-sizing:border-box;";
 
@@ -710,11 +713,10 @@ export class MotorExperimental {
     // que el panel (`rgba(0,0,0,.22)` = oscurece lo que haya detrás, sin fijar un color
     // de tema); "plano" la deja sin recuadro llenando el hueco (reservado a futuros
     // paneles; el panel actual usa siempre "enmarcado"). `compartirAlto` es un eje
-    // ORTOGONAL al estilo (layout, no aspecto): true → la tarjeta CRECE para repartir a
-    // partes iguales la altura de la columna (varias tarjetas de la vista "ambas");
-    // false → toma el alto FIJO de una ranura del par (`ALTO_TARJETA`, `flex:0 0 auto`) y
-    // la `zona` la centra vertical (una sola tarjeta: mismo tamaño y centrado que una del
-    // par, no se estira a llenar el panel).
+    // ORTOGONAL al estilo (layout, no aspecto): true → la tarjeta reparte a partes iguales la
+    // altura de la columna (varias tarjetas de la vista "ambas", cada una = ALTO_TARJETA, sin
+    // crecer); false → una sola tarjeta arranca en ese mínimo y CRECE con el contenido si lo
+    // supera (`ajustarAlto`, hasta `ALTO_TARJETA_MAX`), con la `zona` centrándola en vertical.
     // Devuelve el área donde pintar, su `actualizarFade` (para recalcular tras el render)
     // y un `soltar` que retira sus listeners globales (evita fugas al alternar de vista).
     const crearArea = (
@@ -723,13 +725,12 @@ export class MotorExperimental {
       compartirAlto: boolean
     ): { area: HTMLElement; actualizarFade: () => void; soltar: () => void } => {
       const enmarcado = estilo === "enmarcado";
-      // Alto del marco. Varias tarjetas CRECEN y reparten la columna a partes iguales
-      // (`flex:1 1 0`). Una SOLA toma el alto FIJO de una ranura del par (`ALTO_TARJETA`)
-      // en vez de estirarse a llenar el panel; la `zona` la centra vertical
-      // (`justify-content:center`), así una sola tarjeta se ve IDÉNTICA a una del par,
-      // solo que sin la segunda debajo.
+      // Alto del marco. Varias ("ambas") reparten la columna a partes iguales (`flex:1 1 0` →
+      // cada una = ALTO_TARJETA, sin crecer; una fórmula alta gana su scroll propio). Una SOLA
+      // arranca en ese mínimo (`flex:0 0 auto; height:ALTO_TARJETA`) y `ajustarAlto` la CRECE
+      // si el contenido lo supera; la `zona` la centra en vertical (se ve como una del par).
       const flexMarco = compartirAlto
-        ? (enmarcado ? "flex:1 1 0;" : "flex:1 1 auto;")
+        ? "flex:1 1 0;"
         : `flex:0 0 auto; height:${ALTO_TARJETA}px;`;
       const marco = padre.createDiv();
       marco.style.cssText =
@@ -745,10 +746,12 @@ export class MotorExperimental {
       // el marco (`height:100%`): el marco tiene siempre alto DEFINIDO (flex o `calc`),
       // así el interior —padding, centrado, scroll— es idéntico con una o varias tarjetas.
       const area = marco.createDiv({ cls: "obsi-math-latex" });
+      // `safe center` TAMBIÉN en vertical: si la fórmula desborda a lo alto (gana
+      // scroll-Y), el inicio queda alcanzable en vez de recortado por el centrado.
       area.style.cssText =
         "width:100%; height:100%; box-sizing:border-box; " +
-        `padding:${enmarcado ? "14px 24px" : "24px"}; ` +
-        "display:flex; align-items:center; justify-content:safe center; " +
+        `padding:${enmarcado ? "8px 24px" : "24px"}; ` +
+        "display:flex; align-items:safe center; justify-content:safe center; " +
         "overflow-x:hidden; overflow-y:hidden;";
       area.style.scrollbarWidth = "thin";
       area.style.scrollbarColor = "#3a3a3a #1e1e1e";
@@ -785,6 +788,37 @@ export class MotorExperimental {
       };
       area.addEventListener("scroll", actualizarFade);
 
+      // Alto de la tarjeta ÚNICA con UMBRAL: mientras la fórmula CABE en el mínimo (una
+      // integral, una derivada, un despeje corto) la tarjeta se queda en `ALTO_TARJETA` —no se
+      // agranda ni saca barra—; solo cuando el contenido SUPERA ese mínimo se ajusta hacia
+      // arriba (crece con el contenido hasta `ALTO_TARJETA_MAX`). Si ni el techo alcanza, el
+      // área gana su propio scroll vertical, con el contenido centrado (`safe center`). Las
+      // tarjetas del par "ambas" NO crecen (reparten la columna): solo su scroll independiente.
+      const ajustarAlto = () => {
+        if (!compartirAlto) {
+          // Se mide el alto INTRÍNSECO del CONTENIDO (el hijo renderizado), NO `area.scrollHeight`.
+          // `scrollHeight` nunca baja de `clientHeight`, así que al fijar el alto del marco —que
+          // agranda el área— la siguiente medición salía mayor y realimentaba: el marco se disparaba
+          // hasta el techo y quedaba ATASCADO ahí (el bug al reactivar el plugin: KaTeX medía alto
+          // con la fuente de reserva, cruzaba el umbral y arrancaba el bucle, sin volver atrás). El
+          // hijo NO se estira (`safe center`, no `stretch`): su alto es el del contenido, INDEPENDIENTE
+          // del de la tarjeta, así que la medición es estable y el crecimiento, reversible.
+          const hijo = area.firstElementChild as HTMLElement | null;
+          const padV = enmarcado ? 16 : 48;          // padding vertical del área (8+8 / 24+24)
+          const necesario = (hijo?.scrollHeight ?? 0) + padV + 2;   // + padding y bordes del marco
+          const alto = necesario > ALTO_TARJETA + TOLERANCIA_SCROLL
+            ? Math.min(ALTO_TARJETA_MAX, necesario)   // supera el mínimo → altura dinámica
+            : ALTO_TARJETA;                           // cabe → se queda en el mínimo
+          marco.style.height = `${alto}px`;
+        }
+        area.style.overflowY =
+          area.scrollHeight - area.clientHeight > TOLERANCIA_SCROLL ? "auto" : "hidden";
+      };
+      // Refresco completo (alto + fades): para el render inicial, el resize y el
+      // ResizeObserver. El listener de scroll queda SOLO con los fades (recalcular el
+      // alto en cada tick de scroll forzaría reflow sin necesidad: el tamaño no cambia).
+      const refrescar = () => { ajustarAlto(); actualizarFade(); };
+
       // Rueda del ratón sobre la fórmula → scroll horizontal directo, limitado a ±40px
       // por tick (≈ un clic en las flechas de la scrollbar nativa).
       const onWheel = (e: WheelEvent) => {
@@ -798,14 +832,14 @@ export class MotorExperimental {
       // El layout de KaTeX no está medido hasta el siguiente frame; se recalcula al
       // cambiar el tamaño de la ventana y cuando las fuentes asíncronas de KaTeX
       // reajustan el ancho real (ResizeObserver).
-      window.addEventListener("resize", actualizarFade);
-      const observador = new ResizeObserver(() => actualizarFade());
+      window.addEventListener("resize", refrescar);
+      const observador = new ResizeObserver(() => refrescar());
       observador.observe(area);
       const soltar = () => {
-        window.removeEventListener("resize", actualizarFade);
+        window.removeEventListener("resize", refrescar);
         observador.disconnect();
       };
-      return { area, actualizarFade, soltar };
+      return { area, actualizarFade: refrescar, soltar };
     };
 
     // Áreas de la vista actual y su liberación diferida (se sueltan al re-renderizar
@@ -821,8 +855,9 @@ export class MotorExperimental {
     // colocada IGUAL en todos los bloques (consistencia visual) y varias ("ambas") se
     // separan con `gap`. La barra de toggle es opcional: sin ella (obs-graph sin
     // transformaciones) el margen superior es solo aire uniforme, coherente con el resto.
-    // Solo VARIAS tarjetas se reparten la altura (`compartirAlto`); una sola se ciñe a su
-    // contenido (alto natural, hueco de abajo libre), no se estira a llenar el panel.
+    // VARIAS tarjetas se reparten la altura (`compartirAlto`, sin crecer, con scroll propio si
+    // no caben); una sola arranca en el alto de ranura y CRECE con su contenido cuando lo supera
+    // (altura dinámica hasta `ALTO_TARJETA_MAX`; una fórmula que cabe se queda en el mínimo).
     const renderLatex = async (latex: string | readonly string[]) => {
       soltarAreas();
       zona.empty();
@@ -838,7 +873,7 @@ export class MotorExperimental {
       zona.style.gap = `${HUECO}px`;
       zona.style.justifyContent = compartirAlto ? "flex-start" : "center";
 
-      const areas: Array<{ actualizarFade: () => void }> = [];
+      const areas: Array<{ area: HTMLElement; actualizarFade: () => void }> = [];
       const disposers: Array<() => void> = [];
       for (const formula of formulas) {
         const a = crearArea(zona, "enmarcado", compartirAlto);
@@ -850,7 +885,17 @@ export class MotorExperimental {
         a.area.scrollLeft = 0;
       }
       soltarAreas = () => disposers.forEach((d) => d());
-      requestAnimationFrame(() => areas.forEach((a) => a.actualizarFade()));
+      // Tras medir el layout (rAF): recalcula alto/fades y CENTRA el scroll vertical. Si la
+      // fórmula desborda (una tarjeta del par "ambas" con un operador alto), el thumb queda a
+      // media altura —el contenido se ve centrado y se sube/baja por igual— en vez de arrancar
+      // pegado arriba (`scrollTop = 0`). El horizontal ya arranca en 0 (lectura de izq. a der.).
+      requestAnimationFrame(() =>
+        areas.forEach((a) => {
+          a.actualizarFade();
+          const maxY = a.area.scrollHeight - a.area.clientHeight;
+          if (maxY > TOLERANCIA_SCROLL) a.area.scrollTop = maxY / 2;
+        })
+      );
     };
 
     return { panelLatex, renderLatex };
@@ -976,7 +1021,7 @@ export class MotorExperimental {
       etiqueta: string; tex: string; auto: boolean; fn: (e: readonly string[]) => string[];
     }> = [
       // `etiqueta` = título accesible; `tex` = glifo matemático RENDERIZADO en el botón.
-      { etiqueta: "Despejar y", tex: "y=f(x)", auto: ajustes.despejarAuto, fn: despejarEcuaciones },
+      { etiqueta: t().botones.despejarY, tex: "y=f(x)", auto: ajustes.despejarAuto, fn: despejarEcuaciones },
     ];
     const transformaciones = todas.filter((t) => !t.auto);
 
@@ -993,13 +1038,13 @@ export class MotorExperimental {
       // "Original" ahora es un GLIFO matemático: `f(x)` en obs-graph; el sistema
       // `\scriptscriptstyle\begin{cases}~\\[1.1ex]~\end{cases}` (filas vacías) en obs-system. Título accesible aparte.
       const btnOriginal = barra.createDiv();
-      btnOriginal.setAttribute("title", "Original");
+      btnOriginal.setAttribute("title", t().botones.original);
       this.montarEtiquetaMath(
         btnOriginal,
         this.sistema ? "\\scriptscriptstyle\\begin{cases}~\\\\[1.1ex]~\\end{cases}" : "f(x)",
         ctx
       );
-      const btnOpciones = this.crearBotonOpciones(barra, "Transformaciones");
+      const btnOpciones = this.crearBotonOpciones(barra, t().botones.transformaciones);
 
       // Menú desplegable de transformaciones (bajo la barra, centrado).
       const menu = panelLatex.createDiv();
@@ -1122,9 +1167,9 @@ export class MotorExperimental {
       "position:absolute; top:8px; left:0; right:0; z-index:6; display:flex; gap:6px; " +
       "justify-content:center; pointer-events:none;";
     const btnOriginal = barra.createDiv();
-    btnOriginal.setAttribute("title", "Operador");
+    btnOriginal.setAttribute("title", t().botones.operador);
     this.montarEtiquetaMath(btnOriginal, "\\frac{d}{dx}\\left(f(x)\\right)", ctx);
-    const btnOpciones = this.crearBotonOpciones(barra, "Derivada evaluada");
+    const btnOpciones = this.crearBotonOpciones(barra, t().botones.derivadaEvaluada);
 
     // Menú desplegable (bajo la barra, centrado), idéntico al de obs-graph.
     const menu = panelLatex.createDiv();
@@ -1150,11 +1195,11 @@ export class MotorExperimental {
     // Única opción del menú: la derivada evaluada, con el glifo `f'(x)`. Se habilita/
     // deshabilita según cambie o no la fórmula mostrada, igual que el resto del toggle.
     const opciones: ReadonlyArray<{ etiqueta: string; tex: string; vista: Vista }> = [
-      { etiqueta: "Derivada", tex: "f'(x)", vista: "derivada" },
+      { etiqueta: t().botones.derivada, tex: "f'(x)", vista: "derivada" },
       // Vista combinada: su glifo APILA el operador sobre la derivada (representa que
       // muestra ambas expresiones a la vez, una debajo de la otra).
       {
-        etiqueta: "Operador y derivada",
+        etiqueta: t().botones.operadorYDerivada,
         tex: "\\begin{matrix}\\frac{d}{dx}\\left(f(x)\\right)\\\\ f'\\left(x\\right)\\end{matrix}",
         vista: "ambas",
       },
@@ -1263,11 +1308,11 @@ export class MotorExperimental {
       "position:absolute; top:8px; left:0; right:0; z-index:6; display:flex; gap:6px; " +
       "justify-content:center; pointer-events:none;";
     const btnOriginal = barra.createDiv();
-    btnOriginal.setAttribute("title", "Operador");
+    btnOriginal.setAttribute("title", t().botones.operador);
     // Glifo del botón principal: el operador integral (`∫ₐᵇ f dx`), análogo al `d/dx(f(x))`
     // del botón "Operador" de obs-derivate.
     this.montarEtiquetaMath(btnOriginal, "\\int_a^b f(x)\\,dx", ctx);
-    const btnOpciones = this.crearBotonOpciones(barra, "Primitiva evaluada");
+    const btnOpciones = this.crearBotonOpciones(barra, t().botones.primitivaEvaluada);
 
     const menu = panelLatex.createDiv();
     menu.style.cssText =
@@ -1292,9 +1337,9 @@ export class MotorExperimental {
     // Dos opciones del menú: la PRIMITIVA evaluada (glifo `[F(x)]_a^b`) y AMBAS (operador
     // apilado sobre primitiva). Espejo de "Derivada" / "Operador y derivada" de obs-derivate.
     const opciones: ReadonlyArray<{ etiqueta: string; tex: string; vista: Vista }> = [
-      { etiqueta: "Primitiva", tex: "\\left[F(x)\\right]_a^b", vista: "resultado" },
+      { etiqueta: t().botones.primitiva, tex: "\\left[F(x)\\right]_a^b", vista: "resultado" },
       {
-        etiqueta: "Operador y primitiva",
+        etiqueta: t().botones.operadorYPrimitiva,
         tex: "\\begin{matrix}\\int_a^b f\\,dx\\\\ \\left[F(x)\\right]_a^b\\end{matrix}",
         vista: "ambas",
       },
@@ -1359,9 +1404,8 @@ export class MotorExperimental {
     const noSoportados = comandosNoSoportados(source);
     if (noSoportados.length > 0) {
       return {
-        etiqueta: noSoportados.length === 1 ? "Símbolo no soportado" : "Símbolos no soportados",
-        detalle: `El motor no reconoce ${noSoportados.join(", ")}. Reescribe la expresión sin ` +
-          `ese símbolo (o usa su equivalente: \\cdot, \\times, \\div, \\pm, \\sqrt, \\frac…).`,
+        etiqueta: noSoportados.length === 1 ? t().velo.simboloNoSoportado : t().velo.simbolosNoSoportados,
+        detalle: t().velo.simboloDetalle(noSoportados.join(", ")),
       };
     }
 
@@ -1374,16 +1418,9 @@ export class MotorExperimental {
       // `\int_0^1 (x²+y²−1)³=x²y³ dx`; ver `esIntegrandoValido`). Decirlo, y decir a dónde va
       // ese contenido: de una curva implícita no se integra nada, se GRAFICA (obs-graph).
       if (/\\int/.test(source)) {
-        return {
-          etiqueta: "Integrando no válido",
-          detalle: "El integrando debe ser una función de x. Una ecuación (curva implícita, " +
-            "con `=` o con `y`) no se integra: grafícala en un bloque obs-graph.",
-        };
+        return { ...t().velo.integrandoNoValido };
       }
-      return {
-        etiqueta: "Sin integral",
-        detalle: "Escribe una integral definida en LaTeX, p. ej. \\int_{a}^{b} f(x)\\,dx.",
-      };
+      return { ...t().velo.sinIntegral };
     }
     // Integral SIN valor: el integrando no toma valores reales (Nivel 1) o el número no existe
     // (Nivel 2: divergente, `\int_{-\infty}`, hueco del dominio). TODAS las etiquetas del bloque
@@ -1397,25 +1434,15 @@ export class MotorExperimental {
     // clasifica por número de ecuaciones; con 2+ no se clasifica (grafica normal).
     if (this.sistema) {
       if (ecuaciones.length === 0) {
-        return {
-          etiqueta: "Sin sistema",
-          detalle: "Escribe un sistema de ecuaciones, una por línea (mínimo dos).",
-        };
+        return { ...t().velo.sinSistema };
       }
       if (ecuaciones.length === 1) {
-        return {
-          etiqueta: "Sistema incompleto",
-          detalle: "Falta al menos una ecuación: un sistema necesita como mínimo " +
-            "dos ecuaciones y dos incógnitas.",
-        };
+        return { ...t().velo.sistemaIncompleto };
       }
       return null;
     }
     if (ecuaciones.length === 0) {
-      return {
-        etiqueta: "Sin función",
-        detalle: "Escribe una expresión matemática para graficar.",
-      };
+      return { ...t().velo.sinFuncion };
     }
     return this.degeneradaDeEcuacion(ecuaciones[0]);
   }
@@ -1451,10 +1478,7 @@ export class MotorExperimental {
     if (expr === null) return null; // no es y=f(x): sin clasificación
     if (expr.trim() === "") {
       // "y=" a medio escribir: no es una indeterminación, aún no hay expresión.
-      return {
-        etiqueta: "Sin función",
-        detalle: "Escribe una expresión matemática para graficar.",
-      };
+      return { ...t().velo.sinFuncion };
     }
     try {
       // MISMA normalización que grafica el motor (`construirObjeto.norm`): incluye el
@@ -1545,38 +1569,39 @@ export class MotorExperimental {
     // lleva `tex`, esa parte MATEMÁTICA se renderiza con KaTeX a continuación del
     // texto. Así el prefijo "Raíces:" queda como texto normal (Lora) y solo la
     // expresión del conjunto (`x∈(1,∞)`) va en LaTeX.
+    const T = t().resumen;
     const lineas: { texto: string; tex?: string }[] = [];
     if (idénticamenteCero) {
-      lineas.push({ texto: "Intersección Y: (0, 0)" });
-      lineas.push({ texto: "Todos los valores de x son raíces (función idénticamente cero)." });
+      lineas.push({ texto: T.interseccionYCero });
+      lineas.push({ texto: T.identicamenteCero });
     } else {
       lineas.push({
         texto: Number.isFinite(interseccionY)
-          ? `Intersección Y: (0, ${(interseccionY as number).toFixed(4)})`
-          : "Intersección Y: no definida (discontinuidad en x=0)",
+          ? T.interseccionY((interseccionY as number).toFixed(4))
+          : T.interseccionYNoDefinida,
       });
-      if (estadoRaices === "infinitas") lineas.push({ texto: "Raíces: infinitas" });
-      else if (estadoRaices === "demasiadas") lineas.push({ texto: "Raíces: demasiadas para mostrar" });
+      if (estadoRaices === "infinitas") lineas.push({ texto: T.raicesInfinitas });
+      else if (estadoRaices === "demasiadas") lineas.push({ texto: T.raicesDemasiadas });
       else if (analisis.intervalosRaiz.length > 0)
         // Raíces por TRAMOS (escalones): "Raíces:" como texto normal (Lora) y el
         // conjunto en notación de intervalos renderizado en KaTeX a continuación.
-        lineas.push({ texto: "Raíces: ", tex: raicesALatex(analisis.intervalosRaiz, analisis.raices) });
+        lineas.push({ texto: T.raicesPrefijo, tex: raicesALatex(analisis.intervalosRaiz, analisis.raices) });
       else if (analisis.raices.length > 0)
-        lineas.push({ texto: "Raíces: " + analisis.raices.map((r) => r.toFixed(4)).join(", ") });
-      else lineas.push({ texto: "No hay raíces reales" });
+        lineas.push({ texto: T.raicesPrefijo + analisis.raices.map((r) => r.toFixed(4)).join(", ") });
+      else lineas.push({ texto: T.noRaices });
 
-      if (estadoVertices === "infinitas") lineas.push({ texto: "Vértices: infinitos" });
-      else if (estadoVertices === "demasiadas") lineas.push({ texto: "Vértices: demasiados para mostrar" });
+      if (estadoVertices === "infinitas") lineas.push({ texto: T.verticesInfinitos });
+      else if (estadoVertices === "demasiadas") lineas.push({ texto: T.verticesDemasiados });
       else if (analisis.vertices.length > 0)
         for (const v of analisis.vertices)
           lineas.push({
-            texto: `Vértice ${v.tipo === "min" ? "mínimo" : "máximo"}: (${v.x.toFixed(4)}, ${v.y.toFixed(4)})`,
+            texto: (v.tipo === "min" ? T.verticeMin : T.verticeMax)(v.x.toFixed(4), v.y.toFixed(4)),
           });
-      else lineas.push({ texto: "No hay vértices" });
+      else lineas.push({ texto: T.noVertices });
     }
 
     const btnInfo = wrap.createDiv();
-    btnInfo.setAttribute("title", "Resumen de puntos notables");
+    btnInfo.setAttribute("title", t().botones.resumenNotables);
     btnInfo.style.cssText =
       "position:absolute; bottom:8px; right:8px; width:22px; height:22px; " +
       "display:flex; align-items:center; justify-content:center; font-size:14px; " +

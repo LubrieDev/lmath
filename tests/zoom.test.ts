@@ -23,7 +23,7 @@
 // dibuja (nunca cero ramas) y con el mismo nº de arcos que a zoom normal en el rango
 // donde la figura aún tiene tamaño de sobra en pantalla.
 
-import { describe, test, assert, resumen } from "./runner";
+import { describe, test, assert, igual, resumen } from "./runner";
 import { crearViewport } from "../src/motor/scene/viewport-utils";
 import { TrazadorContinuacion } from "../src/motor/tracing/continuation/TrazadorContinuacion";
 import { construirObjeto } from "../src/motor/parsing/construirObjeto";
@@ -131,6 +131,107 @@ describe("Zoom-out: las curvas acotadas no desaparecen ni parpadean", () => {
     for (const r of ramas)
       for (let k = 0; k < r.puntos.length; k += 2)
         assert(Math.abs(F.eval(r.puntos[k], r.puntos[k + 1])) < 1e-2, "los puntos están sobre la curva");
+  });
+});
+
+describe("Zoom-out: campos PERIÓDICOS (teselado) — completos, estables y sin puentes", () => {
+  // Regresión del "al alejar el zoom salen líneas rectas falsas / la red se dibuja a trozos".
+  // La red de lazos tiene UNA componente cerrada por celda de 2π×2π: miles al alejar el zoom.
+  // Antes: la pasada interactiva daba pasos más grandes que el lazo y el corrector saltaba al
+  // lazo VECINO (28% de segmentos con |F(medio)|≈15 → rejas falsas cruzando la pantalla), y la
+  // final se quedaba en MAX_COMPONENTES=200 lazos de ~3700 (curva a trozos). Ahora el test de
+  // CUERDA rechaza los puentes y el TESELADO traza una celda y la traslada: se exige que todo
+  // segmento esté sobre la curva, que haya ~un lazo por celda visible y que ambas pasadas
+  // coincidan exactamente.
+  const RED = "4(cos(x)+cos(y))+2cos(x+y)+2cos(x-y)-2cos(2x)-2cos(2y)-7=0";
+
+  test("red de lazos: completa y sin segmentos-puente a cualquier zoom", () => {
+    const F = (construirObjeto(RED, "z") as ObjetoImplicito).F;
+    for (const semiY of [10, 30, 60, 120]) {
+      const vp = vpZoom(semiY, 880, 340);
+      const porPasada: number[] = [];
+      for (const tol of [TOL_INT, TOL_FINAL]) {
+        const g = crearProveedor(construirObjeto(RED, "z")).geometria(vp, tol);
+        // (a) NINGÚN segmento abandona la curva (los puentes daban |F(medio)|≈15).
+        let peor = 0;
+        for (const r of g.ramas)
+          for (let k = 2; k < r.puntos.length; k += 2) {
+            const fm = Math.abs(F.eval(
+              (r.puntos[k - 2] + r.puntos[k]) / 2, (r.puntos[k - 1] + r.puntos[k + 1]) / 2
+            ));
+            if (fm > peor) peor = fm;
+          }
+        assert(peor < 2, `semiY=${semiY} ${tol.pasada}: segmento-puente con |F(medio)|=${peor.toFixed(1)}`);
+        // (b) COMPLETA: al menos un lazo por celda de 2π×2π enteramente visible.
+        const P = 2 * Math.PI;
+        const celdas = Math.floor((vp.domX[1] - vp.domX[0]) / P) * Math.floor((vp.domY[1] - vp.domY[0]) / P);
+        assert(
+          g.ramas.length >= celdas,
+          `semiY=${semiY} ${tol.pasada}: ${g.ramas.length} ramas para ${celdas} celdas visibles`
+        );
+        porPasada.push(g.ramas.length);
+      }
+      // (c) SIN parpadeo: las dos pasadas trazan el mismo número de componentes.
+      igual(porPasada[0], porPasada[1], `semiY=${semiY}: interactiva vs final`);
+    }
+  });
+
+  test("componentes NO acotadas (cos(x+y)=0.3): las diagonales llegan a las 4 esquinas", () => {
+    // Regresión del recorte-a-celda: conservar ramas ENTERAS de la ventana duplicaba ~20× los
+    // tramos de la MISMA recta (copias que resbalan por ella), quemaba el tope de puntos y
+    // dejaba las ESQUINAS de la vista vacías (se veía un rombo de curva sobre fondo negro).
+    for (const semiY of [30, 120]) {
+      const vp = vpZoom(semiY, 880, 340);
+      for (const tol of [TOL_INT, TOL_FINAL]) {
+        const g = crearProveedor(construirObjeto("cos(x+y)=0.3", "z")).geometria(vp, tol);
+        const esquinas: Array<[number, number]> = [
+          [vp.domX[0], vp.domY[0]], [vp.domX[1], vp.domY[0]],
+          [vp.domX[0], vp.domY[1]], [vp.domX[1], vp.domY[1]],
+        ];
+        // Radio de cobertura: el espaciado entre rectas consecutivas es < 2π/√2 ≈ 4.44, así
+        // que a < 5 unidades de CUALQUIER punto de la vista debe pasar una recta trazada.
+        for (const [ex, ey] of esquinas) {
+          let d2 = Infinity;
+          for (const r of g.ramas)
+            for (let k = 0; k < r.puntos.length; k += 2) {
+              const dx = r.puntos[k] - ex, dy = r.puntos[k + 1] - ey;
+              const d = dx * dx + dy * dy;
+              if (d < d2) d2 = d;
+            }
+          assert(
+            Math.sqrt(d2) < 5,
+            `semiY=${semiY} ${tol.pasada}: esquina (${ex.toFixed(0)},${ey.toFixed(0)}) sin curva a ${Math.sqrt(d2).toFixed(1)} unidades`
+          );
+        }
+      }
+    }
+  });
+
+  test("astillas junto a CADA polo de tan: x²+x+|y|+tan x=2π+3 no pierde ramas lejos del centro", () => {
+    // La curva tiene un par de ramas casi verticales pegado a CADA polo de tan (el dominio
+    // de la rama despejada es un intervalo de ancho ~1/x² que ningún muestreo regular pisa).
+    // Antes solo se dibujaban las ~5 del centro; con la retícula de polos extendida y la
+    // escalera logarítmica deben aparecer TODAS las visibles, a cualquier zoom y pasada.
+    const FUENTE = "x^2+x+sqrt(y^2)+tan(x)=2*pi+3";
+    for (const semiY of [40, 120]) {
+      const vp = vpZoom(semiY, 880, 340);
+      const polosVisibles = Math.floor((vp.domX[1] - vp.domX[0]) / Math.PI);
+      for (const tol of [TOL_INT, TOL_FINAL]) {
+        const g = crearProveedor(construirObjeto(FUENTE, "z")).geometria(vp, tol);
+        assert(
+          g.ramas.length >= polosVisibles,
+          `semiY=${semiY} ${tol.pasada}: ${g.ramas.length} ramas para ${polosVisibles} polos visibles`
+        );
+      }
+    }
+  });
+
+  test("con zoom-in el teselado delega en el genérico (misma geometría de siempre)", () => {
+    // A semiY=5 caben < 4 celdas en y: la vista se traza con el pipeline genérico. La longitud
+    // debe ser la de los lazos visibles (≈9.1 de perímetro cada uno), no cero ni el doble.
+    const g = crearProveedor(construirObjeto(RED, "z")).geometria(vpZoom(5, 880, 340), TOL_FINAL);
+    assert(g.ramas.length >= 4, `lazos visibles a semiY=5: ${g.ramas.length}`);
+    assert(longitudTrazada(g) > 4 * 8, "los lazos se trazan enteros");
   });
 });
 

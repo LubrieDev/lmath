@@ -675,13 +675,23 @@ export function normalizarEntrada(raw: string): string {
   //   y para que se renderice como radical `\sqrt[n]{x^m}`. Casos:
   //     m=1 → radicando = base (sin `^1`);  n=2 → sqrt() para que salga `\sqrt{…}`
   //     sin el índice "2".
+  // La base-paréntesis `(…)` lleva un lookbehind `(?<![a-zA-Z])`: sin él, en `abs(y)^{1/2}`
+  // (el `|y|` ya convertido) la alternativa casaba el `(y)` como base y dejaba el `abs`
+  // COLGANDO delante → `abssqrt((y))` = `abs*sqrt((y))` (abs como variable suelta → NaN, y el
+  // despeje leía una y inventada). Con el lookbehind, un `(…)` pegado a una función NO se toma
+  // por base aquí; cae a `convertirExponentes` como `abs(y)^(1/2)`, que el despeje ya invierte.
   expr = expr.replace(
-    /([a-zA-Z][a-zA-Z0-9._]*|\d+(?:\.\d+)?|\([^()]+\))\^\{\s*\(?\s*(\d+)\s*\)?\s*\/\s*\(?\s*(\d+)\s*\)?\s*\}/g,
+    /([a-zA-Z][a-zA-Z0-9._]*|\d+(?:\.\d+)?|(?<![a-zA-Z])\([^()]+\))\^\{\s*\(?\s*(\d+)\s*\)?\s*\/\s*\(?\s*(\d+)\s*\)?\s*\}/g,
     (_, base, m, n) => {
       const radicando = m === "1" ? base : `${base}^${m}`;
       return n === "2" ? `sqrt(${radicando})` : `nthRoot(${radicando},${n})`;
     }
   );
+
+  // Exponente VACÍO `x^{}` (superíndice a medio escribir): KaTeX lo pinta como la
+  // base sola, pero `convertirExponentes` lo dejaría en `x^()` y MathJS falla. Se borra
+  // ANTES de convertir (así `e^{x^{}}` → `e^{x}` → `e^(x)`, no `e^(x^())`).
+  expr = expr.replace(/\^\{\s*\}/g, "");
 
   // — Exponentes con llaves (incluye anidados como x^{3^{\pi}}) —
   expr = convertirExponentes(expr);
@@ -714,6 +724,14 @@ export function normalizarEntrada(raw: string): string {
   expr = expr.replace(
     new RegExp(`\\\\(${TRIG_PATRON})\\s*\\{([^{}]+)\\}`, "g"),
     "$1($2)"
+  );
+  // Trig SIN backslash con argumento en llaves (`tan{x}` → `tan(x)`): notación informal
+  // que MathJS no acepta (dejaría `tan{x}` → "Unexpected operator {"). La guarda inicial
+  // —principio de cadena o carácter que NO es identificador ni `\`— evita casar el `tan`
+  // de `atan{` (ya convertido por las inversas) y la forma con backslash (regla de arriba).
+  expr = expr.replace(
+    new RegExp(`(^|[^A-Za-z0-9\\\\])(${TRIG_PATRON})\\s*\\{([^{}]+)\\}`, "g"),
+    "$1$2($3)"
   );
   // Solo si tras el número NO viene un símbolo (`\cos 5t`, `\sin 3\theta`): ahí el número
   // es el COEFICIENTE del argumento, no el argumento entero — lo resuelve la regla general

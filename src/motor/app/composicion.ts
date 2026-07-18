@@ -24,11 +24,14 @@ import { ProveedorExplicito } from "../providers/ProveedorExplicito";
 import { ProveedorImplicito } from "../providers/ProveedorImplicito";
 import { ProveedorImplicitoSeparable } from "../providers/ProveedorImplicitoSeparable";
 import { ProveedorImplicitoPeriodico } from "../providers/ProveedorImplicitoPeriodico";
+import { ProveedorImplicitoTeselado } from "../providers/ProveedorImplicitoTeselado";
+import { ProveedorImplicitoRasterizado } from "../providers/ProveedorImplicitoRasterizado";
 import { ProveedorParametrico } from "../providers/ProveedorParametrico";
 import { ProveedorConCache } from "../providers/ProveedorConCache";
 import { ProveedorSinPuntosEje } from "../providers/ProveedorSinPuntosEje";
 import { ProveedorUnion } from "../providers/ProveedorUnion";
 import { despejarRamas, tienePolos, campoTranspuesto, separarTrigY, ramasMonomioY } from "../analysis/separarImplicita";
+import { detectarPeriodos } from "../analysis/periodicidadCampo";
 import { RendererCanvas2D } from "../rendering/RendererCanvas2D";
 import { Overlay } from "../rendering/overlay/Overlay";
 import { Crosshair } from "../rendering/Crosshair";
@@ -92,10 +95,25 @@ export function crearProveedor(objeto: ObjetoMatematico): ProveedorGeometria {
     if (monX) {
       return new ProveedorImplicitoSeparable(objeto.id, monX, new TrazadorExplicitoAdaptativo(), Ft, true);
     }
-    return new ProveedorImplicito(
+    const generico = new ProveedorImplicito(
       objeto as ObjetoImplicito, new DescubrimientoMuestreado(), new TrazadorContinuacion(),
       new TrazadorExplicitoAdaptativo() // para puntos notables por despeje (invariantes)
     );
+    // Campo PERIÓDICO en x/y (la red de lazos de 4(cos x+cos y)+2cos(x+y)+…=7) → con
+    // zoom-out se traza UNA celda y se tesela con traslaciones exactas; el pipeline
+    // genérico no puede con miles de componentes (tope de componentes → incompleta).
+    // Con zoom-in el teselado delega en `generico` (misma geometría que siempre).
+    const periodos = detectarPeriodos(F);
+    if (periodos.px !== null || periodos.py !== null) {
+      return new ProveedorImplicitoTeselado(
+        objeto.id, F, periodos, new DescubrimientoMuestreado(), new TrazadorContinuacion(), generico
+      );
+    }
+    // Campo de ALTA FRECUENCIA no periódico por eje (la maraña de hebras hiperbólicas de
+    // cos(xy)=∛(y²) al alejar el zoom) → rasterizado por signo (marching squares por píxel,
+    // coste fijo); la continuación solo dibujaría ~10% (tope de componentes/presupuesto). Con
+    // zoom-in (curva suave) el rasterizado delega en `generico` (misma geometría de siempre).
+    return new ProveedorImplicitoRasterizado(objeto.id, F, generico);
   }
   if (objeto.tipo === "parametrica" || objeto.tipo === "polar") {
     return new ProveedorParametrico(objeto as ObjetoParametrico | ObjetoPolar, new TrazadorParametricoAdaptativo());
