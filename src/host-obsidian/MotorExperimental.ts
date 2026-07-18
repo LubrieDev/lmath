@@ -147,8 +147,9 @@ export class MotorExperimental {
     // cursor:none oculta el cursor del sistema SOLO sobre el área del plano (los
     // botones, con su propio cursor:pointer, no se ven afectados). En su lugar el
     // motor dibuja su propia cruz (Crosshair.dibujarCursorCruz), igual que obs-system.
-    canvas.style.cssText =
-      "position:absolute; top:0; left:0; width:100%; height:100%; cursor:none;";
+    canvas.setCssStyles({
+      position: "absolute", top: "0", left: "0", width: "100%", height: "100%", cursor: "none",
+    });
 
     const ctx2d = canvas.getContext("2d");
     if (!ctx2d) {
@@ -187,8 +188,7 @@ export class MotorExperimental {
         "align-items:center; justify-content:center; text-align:center; " +
         "gap:8px; padding:24px; box-sizing:border-box; pointer-events:none;";
       const titulo = msg.createDiv({ text: degenerada.etiqueta });
-      titulo.style.cssText =
-        "font-size:20px; font-weight:600; color:rgba(200,210,255,0.95);";
+      titulo.setCssStyles({ fontSize: "20px", fontWeight: "600", color: "rgba(200,210,255,0.95)" });
       const detalle = msg.createDiv({ text: degenerada.detalle });
       detalle.style.cssText =
         "font-size:12px; line-height:1.4; max-width:320px; " +
@@ -416,8 +416,7 @@ export class MotorExperimental {
     estiloBtn(false);
     // Glifo ⌖ subido SOLO en vertical (métrica de la fuente). El span persiste aunque
     // estiloBtn reescriba el cssText del div en cada toggle.
-    btnCarril.createSpan({ text: "⌖" }).style.cssText =
-      "line-height:1; transform:translateY(-1px);";
+    btnCarril.createSpan({ text: "⌖" }).setCssStyles({ lineHeight: "1", transform: "translateY(-1px)" });
     btnCarril.addEventListener("click", () => {
       navegacion.alternarCarril();
       estiloBtn(navegacion.railOn);
@@ -593,7 +592,7 @@ export class MotorExperimental {
         "line-height:1; color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); " +
         "border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; " +
         "user-select:none; z-index:5;";
-      btnInfo.createSpan({ text: "ⓘ" }).style.cssText = "line-height:1; transform:translateY(-1px);";
+      btnInfo.createSpan({ text: "ⓘ" }).setCssStyles({ lineHeight: "1", transform: "translateY(-1px)" });
 
       const pop = wrap.createDiv();
       pop.style.cssText =
@@ -700,8 +699,9 @@ export class MotorExperimental {
     const zona = panelLatex.createDiv();
     // Sin overflow propio: cada tarjeta tiene alto FIJO y su PROPIO scroll vertical interno
     // (barra INDEPENDIENTE por fórmula); la `zona` solo las apila.
-    zona.style.cssText =
-      "position:absolute; inset:0; display:flex; flex-direction:column; box-sizing:border-box;";
+    zona.setCssStyles({
+      position: "absolute", inset: "0", display: "flex", flexDirection: "column", boxSizing: "border-box",
+    });
 
     // KaTeX puede dejar 1–2px de desbordamiento sub-pixel aunque la fórmula quepa de
     // sobra; solo se considera que desborda (scroll + fades) por encima de esto.
@@ -753,8 +753,7 @@ export class MotorExperimental {
         `padding:${enmarcado ? "8px 24px" : "24px"}; ` +
         "display:flex; align-items:safe center; justify-content:safe center; " +
         "overflow-x:hidden; overflow-y:hidden;";
-      area.style.scrollbarWidth = "thin";
-      area.style.scrollbarColor = "#3a3a3a #1e1e1e";
+      area.setCssStyles({ scrollbarWidth: "thin", scrollbarColor: "#3a3a3a #1e1e1e" });
 
       // Overlay de fade: HERMANO del área (un absolute dentro del scroller viajaría con
       // el contenido). Se ciñe al marco redondeado con el mismo recorte.
@@ -880,7 +879,7 @@ export class MotorExperimental {
         areas.push(a);
         disposers.push(a.soltar);
         await MarkdownRenderer.render(
-          this.plugin.app, "$$" + formula + "$$", a.area, ctx.sourcePath, this.plugin
+          this.plugin.app, "$$" + formula + "$$", a.area, ctx.sourcePath, limpieza
         );
         a.area.scrollLeft = 0;
       }
@@ -959,7 +958,11 @@ export class MotorExperimental {
     el: HTMLElement, tex: string, ctx: MarkdownPostProcessorContext
   ): void {
     el.empty();
-    void MarkdownRenderer.render(this.plugin.app, `$${tex}$`, el, ctx.sourcePath, this.plugin)
+    // Lifecycle propio atado al bloque (via ctx): NUNCA el plugin como componente
+    // (su vida es demasiado larga → fuga). Obsidian lo descarga al quitar el bloque.
+    const hijo = new MarkdownRenderChild(el);
+    ctx.addChild(hijo);
+    void MarkdownRenderer.render(this.plugin.app, `$${tex}$`, el, ctx.sourcePath, hijo)
       .then(() => {
         const p = el.querySelector("p");
         if (p) { while (p.firstChild) el.appendChild(p.firstChild); p.remove(); }

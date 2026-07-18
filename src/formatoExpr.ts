@@ -14,7 +14,6 @@ import { parse, fraction, rationalize, OperatorNode } from "mathjs";
 // Ambas son IDEMPOTENTES en formato → permiten detectar de forma fiable "no cambia nada"
 // y que Simplificar tras Despejar (que comparten `renderCanonico`) sea un no-op.
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Nodo = any;
 export interface Termino { signo: 1 | -1; nodo: Nodo }
 /** Factor de un producto; `exp` = +1 numerador, −1 denominador. */

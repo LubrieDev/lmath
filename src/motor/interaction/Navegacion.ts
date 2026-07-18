@@ -134,7 +134,7 @@ export class Navegacion {
     private readonly onCambio: () => void
   ) {
     canvas.tabIndex = 0;
-    canvas.style.outline = "none";
+    canvas.setCssStyles({ outline: "none" });
 
     const onKeyDown = (e: KeyboardEvent) => {
       this.fino = e.shiftKey; // sincroniza el modo precisión en cada evento
@@ -154,10 +154,10 @@ export class Navegacion {
     // perder el foco se limpian las teclas para que no queden "pegadas" si se
     // soltaron fuera del canvas (mismo comportamiento que el GraphEngine).
     const onFocus = () => {
-      canvas.style.outline = "1px solid rgba(100,150,255,0.35)";
+      canvas.setCssStyles({ outline: "1px solid rgba(100,150,255,0.35)" });
     };
     const onBlur = () => {
-      canvas.style.outline = "none";
+      canvas.setCssStyles({ outline: "none" });
       this.teclas.clear();
       this.fino = false;
     };

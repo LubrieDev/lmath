@@ -68,8 +68,9 @@ export class GraphEngine {
           // del área scrolleable (no hijo): un elemento absolute dentro de un
           // scroller se desplaza junto al contenido y el fade "viajaría".
           const panelLatex = contenedor.createDiv({ cls: "lmath-latex" });
-          panelLatex.style.cssText =
-            "position:relative; width:50%; height:261px; padding:0; overflow:hidden;";
+          panelLatex.setCssStyles({
+            position: "relative", width: "50%", height: "261px", padding: "0", overflow: "hidden",
+          });
 
           // Área scrolleable horizontal. Conserva la clase para heredar el
           // tamaño de fuente de KaTeX (no se reduce ni se escala el contenido).
@@ -83,17 +84,16 @@ export class GraphEngine {
             "display:flex; align-items:center; justify-content:safe center; " +
             "overflow-x:hidden; overflow-y:hidden;";
           // Barra de scroll discreta: delgada y en tonos oscuros del plugin.
-          contenedorLatex.style.scrollbarWidth = "thin";
-          contenedorLatex.style.scrollbarColor = "#3a3a3a #1e1e1e";
+          contenedorLatex.setCssStyles({ scrollbarWidth: "thin", scrollbarColor: "#3a3a3a #1e1e1e" });
 
           await MarkdownRenderer.render(
-            this.plugin.app, "$$" + latex + "$$", contenedorLatex, ctx.sourcePath, this.plugin
+            this.plugin.app, "$$" + latex + "$$", contenedorLatex, ctx.sourcePath, limpieza
           );
 
           // Overlay de fade en los bordes (no intercepta el ratón). Dos
           // gradientes laterales de rgba(30,30,30,0.85) → transparente, ~32px.
           const fadeOverlay = panelLatex.createDiv();
-          fadeOverlay.style.cssText = "position:absolute; inset:0; pointer-events:none;";
+          fadeOverlay.setCssStyles({ position: "absolute", inset: "0", pointerEvents: "none" });
           const fadeColor = "rgba(30, 30, 30, 0.85)";
           const fadeIzq = fadeOverlay.createDiv();
           fadeIzq.style.cssText =
@@ -764,8 +764,7 @@ if (degenerada) {
     "align-items:center; justify-content:center; text-align:center; " +
     "gap:8px; padding:24px; box-sizing:border-box; pointer-events:none;";
   const titulo = msg.createDiv({ text: degenerada.etiqueta });
-  titulo.style.cssText =
-    "font-size:20px; font-weight:600; color:rgba(200,210,255,0.95);";
+  titulo.setCssStyles({ fontSize: "20px", fontWeight: "600", color: "rgba(200,210,255,0.95)" });
   const detalle = msg.createDiv({ text: degenerada.detalle });
   detalle.style.cssText =
     "font-size:12px; line-height:1.4; max-width:320px; " +
@@ -880,7 +879,7 @@ canvasGL.addEventListener("wheel", e => {
 // convierte a unidades de mundo con rx/ry, así el ritmo es el mismo a cualquier
 // zoom; la diagonal se normaliza para no ir más rápido.
 canvasGL.tabIndex = 0;
-canvasGL.style.outline = "none";
+canvasGL.setCssStyles({ outline: "none" });
 const VEL_PAN_PX = 175;                       // velocidad de desplazamiento (px/seg)
 const VEL_ZOOM_POR_SEG = 2.5;                 // factor de zoom por segundo (W/S en carril)
 const MAPA_TECLAS: Record<string, string> = { // tecla → dirección
@@ -961,10 +960,10 @@ canvasGL.addEventListener("keyup", e => {
 // Realimentación visual de que la gráfica está activa para WASD; al perder el foco
 // se limpian las teclas para que no queden "pegadas" si se soltó fuera del canvas.
 canvasGL.addEventListener("focus", () => {
-  canvasGL.style.outline = "1px solid rgba(100,150,255,0.35)";
+  canvasGL.setCssStyles({ outline: "1px solid rgba(100,150,255,0.35)" });
 });
 canvasGL.addEventListener("blur", () => {
-  canvasGL.style.outline = "none";
+  canvasGL.setCssStyles({ outline: "none" });
   teclasPan.clear();
 });
 limpieza.register(() => { if (rafTeclado !== null) cancelAnimationFrame(rafTeclado); });
@@ -989,9 +988,8 @@ const estiloBtnFijar = (activo: boolean) => {
 estiloBtnFijar(false);
 // El glifo ⌖ se renderiza un pelín bajo; lo subimos SOLO en vertical. El span persiste
 // aunque estiloBtnFijar reescriba el cssText del div (solo afecta al div).
-btnFijar.createSpan({ text: "⌖" }).style.cssText =
-  "line-height:1; transform:translateY(-1px);";
-if (degenerada) btnFijar.style.display = "none";
+btnFijar.createSpan({ text: "⌖" }).setCssStyles({ lineHeight: "1", transform: "translateY(-1px)" });
+if (degenerada) btnFijar.setCssStyles({ display: "none" });
 
 btnFijar.addEventListener("click", () => {
   if (railX !== null) {
@@ -1039,8 +1037,7 @@ btnFijar.addEventListener("click", () => {
               "background:rgba(30,30,30,0.85); border:1px solid rgba(255,160,40,0.5); " +
               "border-radius:50%; cursor:pointer; user-select:none; z-index:5;";
             // Glifo ⓘ subido SOLO en vertical (métrica de la fuente; no toca horizontal).
-            btnResumen.createSpan({ text: "ⓘ" }).style.cssText =
-              "line-height:1; transform:translateY(-1px);";
+            btnResumen.createSpan({ text: "ⓘ" }).setCssStyles({ lineHeight: "1", transform: "translateY(-1px)" });
 
             const popResumen = wrapGrafica.createDiv();
             popResumen.style.cssText =

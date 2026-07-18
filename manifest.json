@@ -1,11 +1,10 @@
 {
   "id": "lmath",
   "name": "LMath",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "minAppVersion": "1.5.0",
   "description": "Graph functions, systems, derivatives and integrals in interactive blocks.",
   "author": "Lenin",
   "authorUrl": "https://github.com/LubrieDev",
-  "isDesktopOnly": false,
-  "main": "main.js"
+  "isDesktopOnly": false
 }

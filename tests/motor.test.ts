@@ -1056,6 +1056,7 @@ describe("Carril: tangente vertical de x³+y³=9 (siempre sobre la curva)", () =
       const handlers: Record<string, (e: unknown) => void> = {};
       return {
         handlers, tabIndex: 0, style: {} as Record<string, string>,
+        setCssStyles(s: Record<string, string>) { Object.assign(this.style, s); },
         focus() {}, addEventListener(tipo: string, fn: (e: unknown) => void) { handlers[tipo] = fn; },
         removeEventListener() {}, setPointerCapture() {}, releasePointerCapture() {},
       };
@@ -1321,6 +1322,7 @@ const arnesCarril = (fuente: string) => {
   const fakeCanvas = () => {
     const handlers: Record<string, (e: unknown) => void> = {};
     return { handlers, tabIndex: 0, style: {} as Record<string, string>,
+      setCssStyles(s: Record<string, string>) { Object.assign(this.style, s); },
       focus() {}, addEventListener(tipo: string, fn: (e: unknown) => void) { handlers[tipo] = fn; },
       removeEventListener() {}, setPointerCapture() {}, releasePointerCapture() {} };
   };
@@ -1567,6 +1569,7 @@ describe("Carril: arranque cuando x=0 no está en la curva (1/x, dominio x>0)", 
     const fakeCanvas = () => {
       const handlers: Record<string, (e: unknown) => void> = {};
       return { handlers, tabIndex: 0, style: {} as Record<string, string>,
+        setCssStyles(s: Record<string, string>) { Object.assign(this.style, s); },
         focus() {}, addEventListener(tipo: string, fn: (e: unknown) => void) { handlers[tipo] = fn; },
         removeEventListener() {}, setPointerCapture() {}, releasePointerCapture() {} };
     };

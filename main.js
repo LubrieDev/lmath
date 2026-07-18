@@ -48341,20 +48341,25 @@ var GraphEngine = class {
         console.warn("LMath: no se pudo generar LaTeX para", expr, e3);
       }
       const panelLatex = contenedor.createDiv({ cls: "lmath-latex" });
-      panelLatex.style.cssText = "position:relative; width:50%; height:261px; padding:0; overflow:hidden;";
+      panelLatex.setCssStyles({
+        position: "relative",
+        width: "50%",
+        height: "261px",
+        padding: "0",
+        overflow: "hidden"
+      });
       const contenedorLatex = panelLatex.createDiv({ cls: "lmath-latex" });
       contenedorLatex.style.cssText = "width:100%; height:100%; padding:24px; box-sizing:border-box; display:flex; align-items:center; justify-content:safe center; overflow-x:hidden; overflow-y:hidden;";
-      contenedorLatex.style.scrollbarWidth = "thin";
-      contenedorLatex.style.scrollbarColor = "#3a3a3a #1e1e1e";
+      contenedorLatex.setCssStyles({ scrollbarWidth: "thin", scrollbarColor: "#3a3a3a #1e1e1e" });
       await import_obsidian.MarkdownRenderer.render(
         this.plugin.app,
         "$$" + latex + "$$",
         contenedorLatex,
         ctx.sourcePath,
-        this.plugin
+        limpieza
       );
       const fadeOverlay = panelLatex.createDiv();
-      fadeOverlay.style.cssText = "position:absolute; inset:0; pointer-events:none;";
+      fadeOverlay.setCssStyles({ position: "absolute", inset: "0", pointerEvents: "none" });
       const fadeColor = "rgba(30, 30, 30, 0.85)";
       const fadeIzq = fadeOverlay.createDiv();
       fadeIzq.style.cssText = `position:absolute; top:0; bottom:0; left:0; width:32px; opacity:0; transition:opacity 0.15s ease; background:linear-gradient(to right, ${fadeColor}, transparent);`;
@@ -48845,7 +48850,7 @@ var GraphEngine = class {
           const msg = wrapGrafica.createDiv();
           msg.style.cssText = "position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:8px; padding:24px; box-sizing:border-box; pointer-events:none;";
           const titulo = msg.createDiv({ text: degenerada.etiqueta });
-          titulo.style.cssText = "font-size:20px; font-weight:600; color:rgba(200,210,255,0.95);";
+          titulo.setCssStyles({ fontSize: "20px", fontWeight: "600", color: "rgba(200,210,255,0.95)" });
           const detalle = msg.createDiv({ text: degenerada.detalle });
           detalle.style.cssText = "font-size:12px; line-height:1.4; max-width:320px; color:rgba(190,195,210,0.85);";
         }
@@ -48939,7 +48944,7 @@ var GraphEngine = class {
           programarFinal();
         }, { passive: false });
         canvasGL.tabIndex = 0;
-        canvasGL.style.outline = "none";
+        canvasGL.setCssStyles({ outline: "none" });
         const VEL_PAN_PX2 = 175;
         const VEL_ZOOM_POR_SEG2 = 2.5;
         const MAPA_TECLAS = {
@@ -49032,10 +49037,10 @@ var GraphEngine = class {
           }
         });
         canvasGL.addEventListener("focus", () => {
-          canvasGL.style.outline = "1px solid rgba(100,150,255,0.35)";
+          canvasGL.setCssStyles({ outline: "1px solid rgba(100,150,255,0.35)" });
         });
         canvasGL.addEventListener("blur", () => {
-          canvasGL.style.outline = "none";
+          canvasGL.setCssStyles({ outline: "none" });
           teclasPan.clear();
         });
         limpieza.register(() => {
@@ -49048,9 +49053,9 @@ var GraphEngine = class {
           btnFijar.style.cssText = "position:absolute; bottom:8px; left:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; " + (activo ? "color:rgba(20,20,20,0.95); background:rgba(255,170,60,0.95); border:1px solid rgba(255,170,60,0.95);" : "color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); border:1px solid rgba(255,160,40,0.5);");
         };
         estiloBtnFijar(false);
-        btnFijar.createSpan({ text: "\u2316" }).style.cssText = "line-height:1; transform:translateY(-1px);";
+        btnFijar.createSpan({ text: "\u2316" }).setCssStyles({ lineHeight: "1", transform: "translateY(-1px)" });
         if (degenerada)
-          btnFijar.style.display = "none";
+          btnFijar.setCssStyles({ display: "none" });
         btnFijar.addEventListener("click", () => {
           if (railX !== null) {
             railX = null;
@@ -49076,7 +49081,7 @@ var GraphEngine = class {
         const btnResumen = wrapGrafica.createDiv();
         btnResumen.setAttribute("title", "Resumen de puntos notables");
         btnResumen.style.cssText = "position:absolute; bottom:8px; right:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; user-select:none; z-index:5;";
-        btnResumen.createSpan({ text: "\u24D8" }).style.cssText = "line-height:1; transform:translateY(-1px);";
+        btnResumen.createSpan({ text: "\u24D8" }).setCssStyles({ lineHeight: "1", transform: "translateY(-1px)" });
         const popResumen = wrapGrafica.createDiv();
         popResumen.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:230px; padding:8px 10px; box-sizing:border-box; background:rgba(20,20,20,0.95); border:1px solid rgba(255,255,255,0.12); border-radius:6px; font-size:11px; line-height:1.5; white-space:nowrap; color:rgba(230,230,235,0.92); z-index:5; box-shadow:0 4px 12px rgba(0,0,0,0.4);";
         if (msgRaices)
@@ -49790,7 +49795,7 @@ var Navegacion = class {
       this.raf = requestAnimationFrame(this.paso);
     };
     canvas.tabIndex = 0;
-    canvas.style.outline = "none";
+    canvas.setCssStyles({ outline: "none" });
     const onKeyDown = (e3) => {
       this.fino = e3.shiftKey;
       const d = MAPA[e3.key.toLowerCase()];
@@ -49811,10 +49816,10 @@ var Navegacion = class {
       }
     };
     const onFocus = () => {
-      canvas.style.outline = "1px solid rgba(100,150,255,0.35)";
+      canvas.setCssStyles({ outline: "1px solid rgba(100,150,255,0.35)" });
     };
     const onBlur = () => {
-      canvas.style.outline = "none";
+      canvas.setCssStyles({ outline: "none" });
       this.teclas.clear();
       this.fino = false;
     };
@@ -55923,7 +55928,14 @@ var MotorExperimental = class {
     );
     badge.style.cssText = "position:absolute; top:6px; right:8px; font-size:12px; z-index:5; color:rgba(120,180,255,0.55); cursor:default; user-select:none;";
     const canvas = wrap.createEl("canvas");
-    canvas.style.cssText = "position:absolute; top:0; left:0; width:100%; height:100%; cursor:none;";
+    canvas.setCssStyles({
+      position: "absolute",
+      top: "0",
+      left: "0",
+      width: "100%",
+      height: "100%",
+      cursor: "none"
+    });
     const ctx2d = canvas.getContext("2d");
     if (!ctx2d) {
       wrap.createEl("p", { text: t().canvasNoDisponible });
@@ -55943,7 +55955,7 @@ var MotorExperimental = class {
       const msg = wrap.createDiv();
       msg.style.cssText = "position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:8px; padding:24px; box-sizing:border-box; pointer-events:none;";
       const titulo = msg.createDiv({ text: degenerada.etiqueta });
-      titulo.style.cssText = "font-size:20px; font-weight:600; color:rgba(200,210,255,0.95);";
+      titulo.setCssStyles({ fontSize: "20px", fontWeight: "600", color: "rgba(200,210,255,0.95)" });
       const detalle = msg.createDiv({ text: degenerada.detalle });
       detalle.style.cssText = "font-size:12px; line-height:1.4; max-width:320px; color:rgba(190,195,210,0.85);";
     }
@@ -56094,7 +56106,7 @@ var MotorExperimental = class {
       btnCarril.style.cssText = "position:absolute; bottom:8px; left:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; " + (activo ? "color:rgba(20,20,20,0.95); background:rgba(255,170,60,0.95); border:1px solid rgba(255,170,60,0.95);" : "color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); border:1px solid rgba(255,160,40,0.5);");
     };
     estiloBtn(false);
-    btnCarril.createSpan({ text: "\u2316" }).style.cssText = "line-height:1; transform:translateY(-1px);";
+    btnCarril.createSpan({ text: "\u2316" }).setCssStyles({ lineHeight: "1", transform: "translateY(-1px)" });
     btnCarril.addEventListener("click", () => {
       navegacion.alternarCarril();
       estiloBtn(navegacion.railOn);
@@ -56209,7 +56221,7 @@ var MotorExperimental = class {
       const btnInfo = wrap.createDiv();
       btnInfo.setAttribute("title", t().botones.resumenNotables);
       btnInfo.style.cssText = "position:absolute; bottom:8px; right:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; user-select:none; z-index:5;";
-      btnInfo.createSpan({ text: "\u24D8" }).style.cssText = "line-height:1; transform:translateY(-1px);";
+      btnInfo.createSpan({ text: "\u24D8" }).setCssStyles({ lineHeight: "1", transform: "translateY(-1px)" });
       const pop = wrap.createDiv();
       pop.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:rgba(20,20,20,0.95); border:1px solid rgba(255,255,255,0.12); border-radius:6px; font-size:11px; line-height:1.5; color:rgba(230,230,235,0.92); z-index:5; box-shadow:0 4px 12px rgba(0,0,0,0.4);";
       const refrescarInfo = () => {
@@ -56294,7 +56306,13 @@ var MotorExperimental = class {
     const panelLatex = contenedor.createDiv({ cls: "lmath-latex" });
     panelLatex.style.cssText = `position:relative; width:50%; height:${ALTO_PANEL}px; padding:0; overflow:hidden;`;
     const zona = panelLatex.createDiv();
-    zona.style.cssText = "position:absolute; inset:0; display:flex; flex-direction:column; box-sizing:border-box;";
+    zona.setCssStyles({
+      position: "absolute",
+      inset: "0",
+      display: "flex",
+      flexDirection: "column",
+      boxSizing: "border-box"
+    });
     const TOLERANCIA_SCROLL = 3;
     const crearArea = (padre, estilo, compartirAlto) => {
       const enmarcado = estilo === "enmarcado";
@@ -56303,8 +56321,7 @@ var MotorExperimental = class {
       marco.style.cssText = "position:relative; overflow:hidden; min-height:0; " + flexMarco + (enmarcado ? " border:1px solid rgba(255,255,255,0.11); border-radius:12px; background:rgba(0,0,0,0.22);" : "");
       const area = marco.createDiv({ cls: "lmath-latex" });
       area.style.cssText = `width:100%; height:100%; box-sizing:border-box; padding:${enmarcado ? "8px 24px" : "24px"}; display:flex; align-items:safe center; justify-content:safe center; overflow-x:hidden; overflow-y:hidden;`;
-      area.style.scrollbarWidth = "thin";
-      area.style.scrollbarColor = "#3a3a3a #1e1e1e";
+      area.setCssStyles({ scrollbarWidth: "thin", scrollbarColor: "#3a3a3a #1e1e1e" });
       const fadeOverlay = marco.createDiv();
       fadeOverlay.style.cssText = "position:absolute; inset:0; pointer-events:none; overflow:hidden; " + (enmarcado ? "border-radius:12px;" : "");
       const fadeColor = "rgba(30, 30, 30, 0.85)";
@@ -56375,7 +56392,7 @@ var MotorExperimental = class {
           "$$" + formula + "$$",
           a.area,
           ctx.sourcePath,
-          this.plugin
+          limpieza
         );
         a.area.scrollLeft = 0;
       }
@@ -56427,7 +56444,9 @@ var MotorExperimental = class {
    *  fuerza color), así sigue el resaltado activo/inactivo. Async (no bloquea el montaje). */
   montarEtiquetaMath(el, tex, ctx) {
     el.empty();
-    void import_obsidian3.MarkdownRenderer.render(this.plugin.app, `$${tex}$`, el, ctx.sourcePath, this.plugin).then(() => {
+    const hijo = new import_obsidian3.MarkdownRenderChild(el);
+    ctx.addChild(hijo);
+    void import_obsidian3.MarkdownRenderer.render(this.plugin.app, `$${tex}$`, el, ctx.sourcePath, hijo).then(() => {
       const p = el.querySelector("p");
       if (p) {
         while (p.firstChild)
