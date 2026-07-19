@@ -14,7 +14,7 @@ import { FUNCIONES_INVERSAS_EXTRA, FUNCIONES_ESCALON_RAPIDAS, FUNCIONES_SIGNO } 
 // nodo se compila UNA sola vez; la función devuelta reutiliza esa compilación.
 export function compilarExpresion(
   expr: string
-): (scope: Record<string, number>) => any {
+): (scope: Record<string, number>) => unknown {
   const compilada = parse(expr).compile();
   // FUNCIONES_ESCALON_RAPIDAS sombrea floor/ceil de mathjs (12× más caras por el
   // dispatch typed-function; ver constantes.ts) — mismo mecanismo que las inversas.
@@ -22,9 +22,11 @@ export function compilarExpresion(
     try {
       // FUNCIONES_SIGNO (pm/mp) da valor a la rama PRINCIPAL del doble signo: sin ellas
       // `±` sería un símbolo libre y toda la expresión evaluaría NaN (ver constantes.ts).
+      // mathjs tipa `evaluate` como `any`; se acota a `unknown` para que el valor
+      // (number | Complex | NaN…) obligue a los consumidores a estrecharlo.
       return compilada.evaluate({
         ...scope, ...FUNCIONES_INVERSAS_EXTRA, ...FUNCIONES_ESCALON_RAPIDAS, ...FUNCIONES_SIGNO,
-      });
+      }) as unknown;
     }
     catch { return NaN; }
   };
@@ -36,7 +38,7 @@ export function compilarExpresion(
 export function compilarFuncion(
   expr: string,
   varName: string
-): (v: number) => any {
+): (v: number) => unknown {
   const evaluar = compilarExpresion(expr);
   return (v) => evaluar({ [varName]: v });
 }

@@ -1532,7 +1532,12 @@ export class MotorExperimental {
     // Defensivo: si `expr` no compila como f(x) (p.ej. una tupla paramétrica que se
     // colara), NO lanzar —abortaría el render del plano—, simplemente no montar el ⓘ.
     let evalX: (x: number) => number;
-    try { evalX = compilarFuncion(expr, "x"); } catch { return; }
+    // mathjs puede devolver un Complex (sqrt(-1)…) → fuera del dominio real = NaN
+    // (mismo contrato que `crearFuncionReal`); aquí solo se usa como f(x) numérica.
+    try {
+      const evalXRaw = compilarFuncion(expr, "x");
+      evalX = (x) => { const v = evalXRaw(x); return typeof v === "number" ? v : NaN; };
+    } catch { return; }
     const analisis = analizarFuncion(evalX);
     const interseccionY = evalX(0);
     const esTrig = tieneTrigonometria(expr);

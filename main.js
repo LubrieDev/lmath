@@ -48420,12 +48420,16 @@ var GraphEngine = class {
         );
       }
       const evalX = compilarFuncion(expr, "x");
+      const evalXNum = (x) => {
+        const v = evalX(x);
+        return typeof v === "number" ? v : NaN;
+      };
       const degenerada = expr.trim() === "" ? {
         etiqueta: "Sin funci\xF3n",
         detalle: "Escribe una expresi\xF3n matem\xE1tica para graficar."
       } : clasificarDegenerada(evalX);
-      const analisis = degenerada ? { raices: [], vertices: [] } : analizarFuncion(evalX);
-      const interseccionY = evalX(0);
+      const analisis = degenerada ? { raices: [], vertices: [] } : analizarFuncion(evalXNum);
+      const interseccionY = evalXNum(0);
       const esTrig = tieneTrigonometria(expr);
       const estadoRaices = estadoGrupo(analisis.raices.length, esTrig);
       const estadoVertices = estadoGrupo(analisis.vertices.length, esTrig);
@@ -48447,7 +48451,7 @@ var GraphEngine = class {
         const evaluarCarrilSeguro = (x) => {
           let y;
           try {
-            y = evalX(x);
+            y = evalXNum(x);
           } catch (e3) {
             return { estado: "indef" };
           }
@@ -48574,7 +48578,7 @@ var GraphEngine = class {
           } else {
             return;
           }
-          const yMath = evalX(xMath);
+          const yMath = evalXNum(xMath);
           const finita = Number.isFinite(yMath);
           const py = finita ? sy(yMath) : null;
           const yVisible = py !== null && py >= 0 && py <= H;
@@ -48796,7 +48800,7 @@ var GraphEngine = class {
             ctx2d.restore();
           };
           const { polilineas, asintotas } = muestrearFuncion({
-            evalX,
+            evalX: evalXNum,
             domX: [domX[0], domX[1]],
             domY: [domY[0], domY[1]],
             H,
@@ -53387,13 +53391,16 @@ var HUGE = 1e10;
 var CAP_DIVERGENCIA = 1e15;
 var TOL_SIMPSON = 1e-11;
 var PROF_MAX2 = 50;
+var MAX_NODOS = 2e5;
 var TOL_CONV = 1e-4;
 var ITERS_EPS = 40;
 var signo = (v) => v > 0 ? 1 : v < 0 ? -1 : 0;
 function simpson(fa, fm, fb, a, b) {
   return (b - a) / 6 * (fa + 4 * fm + fb);
 }
-function adaptativo(f, a, b, fa, fb, fm, entero, tol, prof) {
+function adaptativo(f, a, b, fa, fb, fm, entero, tol, prof, presupuesto) {
+  if (--presupuesto.n < 0)
+    return NaN;
   const m = (a + b) / 2;
   const lm = (a + m) / 2, rm = (m + b) / 2;
   const flm = f(lm), frm = f(rm);
@@ -53404,7 +53411,7 @@ function adaptativo(f, a, b, fa, fb, fm, entero, tol, prof) {
   const suma = izq + der;
   if (prof <= 0 || Math.abs(suma - entero) <= 15 * tol)
     return suma + (suma - entero) / 15;
-  return adaptativo(f, a, m, fa, fm, flm, izq, tol / 2, prof - 1) + adaptativo(f, m, b, fm, fb, frm, der, tol / 2, prof - 1);
+  return adaptativo(f, a, m, fa, fm, flm, izq, tol / 2, prof - 1, presupuesto) + adaptativo(f, m, b, fm, fb, frm, der, tol / 2, prof - 1, presupuesto);
 }
 function integrar(f, a, b) {
   const fa = f(a), fb = f(b), fm = f((a + b) / 2);
@@ -53412,7 +53419,7 @@ function integrar(f, a, b) {
     return NaN;
   const entero = simpson(fa, fm, fb, a, b);
   const tol = TOL_SIMPSON * (1 + Math.abs(entero));
-  return adaptativo(f, a, b, fa, fb, fm, entero, tol, PROF_MAX2);
+  return adaptativo(f, a, b, fa, fb, fm, entero, tol, PROF_MAX2, { n: MAX_NODOS });
 }
 function poloEntreSignos(f, x1, x2) {
   let a = x1, b = x2, fa = f(a);
@@ -56851,7 +56858,11 @@ var MotorExperimental = class {
   montarBotonInfo(wrap, expr, ctx) {
     let evalX;
     try {
-      evalX = compilarFuncion(expr, "x");
+      const evalXRaw = compilarFuncion(expr, "x");
+      evalX = (x) => {
+        const v = evalXRaw(x);
+        return typeof v === "number" ? v : NaN;
+      };
     } catch (e3) {
       return;
     }

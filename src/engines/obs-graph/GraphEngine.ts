@@ -203,6 +203,15 @@ export class GraphEngine {
           // e inyecta las trig inversas extra. Así ambos motores reconocen las
           // mismas funciones (ver compilarFuncion / FUNCIONES_INVERSAS_EXTRA).
           const evalX = compilarFuncion(expr, "x");
+          // Versión coaccionada a `number` para el graficado/análisis: mathjs puede
+          // devolver un Complex (sqrt(-1)…), que en el plano real = fuera de dominio → NaN
+          // (mismo contrato que `crearFuncionReal`). La versión CRUDA `evalX` se conserva
+          // para `clasificarDegenerada`, que necesita el Complex para distinguir "No
+          // definida en ℝ" de "Indeterminada" (ver degeneradas.ts).
+          const evalXNum = (x: number): number => {
+            const v = evalX(x);
+            return typeof v === "number" ? v : NaN;
+          };
 
           // Funciones que no toman ningún valor real (log en base 1, 0/0,
           // sqrt(-1)…) no se grafican: se muestra una etiqueta formal en su
@@ -223,8 +232,8 @@ export class GraphEngine {
           // graficables (degeneradas) no hay nada que analizar.
           const analisis = degenerada
             ? { raices: [] as number[], vertices: [] as Vertice[] }
-            : analizarFuncion(evalX);
-          const interseccionY = evalX(0);
+            : analizarFuncion(evalXNum);
+          const interseccionY = evalXNum(0);
           // Estado de cada grupo (normal / infinitas / demasiadas), calculado una
           // sola vez y reutilizado por la gráfica, el botón de resumen y el panel.
           // Las trigonométricas (sin/cos/tan/sec/csc/cot) con puntos notables se
@@ -279,7 +288,7 @@ export class GraphEngine {
               | { estado: "peligro" };
             const evaluarCarrilSeguro = (x: number): EstadoCarril => {
               let y: number;
-              try { y = evalX(x); } catch { return { estado: "indef" }; }
+              try { y = evalXNum(x); } catch { return { estado: "indef" }; }
               if (!Number.isFinite(y)) return { estado: "indef" };          // NaN o ±Infinity
               if (Math.abs(y) > LIMITE_CARRIL_Y) return { estado: "peligro" };
               return { estado: "ok", y };
@@ -446,7 +455,7 @@ export class GraphEngine {
                 return; // ni carril ni cursor: nada que dibujar
               }
 
-              const yMath = evalX(xMath);
+              const yMath = evalXNum(xMath);
               const finita = Number.isFinite(yMath);
               const py = finita ? sy(yMath) : null;
               const yVisible = py !== null && py >= 0 && py <= H;
@@ -701,7 +710,7 @@ const dibujarAsintota = (xa: number) => {
 // usa el MISMO módulo). Devuelve ramas continuas en MUNDO + las x de las asíntotas
 // verticales; aquí se mapean a clip y se dibujan con el grosor constante de siempre.
 const { polilineas, asintotas } = muestrearFuncion({
-  evalX, domX: [domX[0], domX[1]], domY: [domY[0], domY[1]], H, interactivo,
+  evalX: evalXNum, domX: [domX[0], domX[1]], domY: [domY[0], domY[1]], H, interactivo,
 });
 for (const poli of polilineas) {
   const clip: number[] = [];

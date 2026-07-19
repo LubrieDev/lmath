@@ -61,6 +61,7 @@ const HUGE = 1e10;              // magnitud que confirma un blow-up (polo)
 const CAP_DIVERGENCIA = 1e15;   // |área| por encima → se considera divergente
 const TOL_SIMPSON = 1e-11;      // tolerancia relativa del Simpson adaptativo
 const PROF_MAX = 50;            // profundidad máxima de la recursión de Simpson
+const MAX_NODOS = 200_000;      // tope de subdivisiones por integración (corta el peor caso exponencial)
 const TOL_CONV = 1e-4;          // Δ relativo para dar por convergida una impropia
 const ITERS_EPS = 40;           // pasos de encogido de ε en el extremo singular
 
@@ -75,13 +76,22 @@ function simpson(fa: number, fm: number, fb: number, a: number, b: number): numb
  * Simpson adaptativo recursivo. Devuelve NaN si topa con un valor no finito dentro (un polo
  * que el escaneo no filtró): el llamador lo trata como divergente. Refina donde el error
  * estimado (regla de Richardson, factor 15) supera la tolerancia.
+ *
+ * `PROF_MAX` acota la PROFUNDIDAD, pero la recursión es BINARIA (refina las dos mitades): sin
+ * más freno el peor caso son ~2^prof nodos. Un integrando "dentado" a escala de máquina —p. ej.
+ * `1/(csc 2x−cot 2x)` cerca de 0, donde la cancelación catastrófica añade ruido— hace que el
+ * error nunca baje de la tolerancia y ambas mitades se subdividan hasta el fondo, colgando la
+ * app. Por eso un `presupuesto` COMPARTIDO (por referencia entre las dos ramas) cuenta los
+ * nodos totales y, agotado, corta a NaN → el llamador lo trata como divergente.
  */
 function adaptativo(
   f: (x: number) => number,
   a: number, b: number,
   fa: number, fb: number, fm: number,
-  entero: number, tol: number, prof: number
+  entero: number, tol: number, prof: number,
+  presupuesto: { n: number }
 ): number {
+  if (--presupuesto.n < 0) return NaN; // presupuesto de nodos agotado → divergente/no integrable
   const m = (a + b) / 2;
   const lm = (a + m) / 2, rm = (m + b) / 2;
   const flm = f(lm), frm = f(rm);
@@ -92,19 +102,19 @@ function adaptativo(
   if (prof <= 0 || Math.abs(suma - entero) <= 15 * tol)
     return suma + (suma - entero) / 15;
   return (
-    adaptativo(f, a, m, fa, fm, flm, izq, tol / 2, prof - 1) +
-    adaptativo(f, m, b, fm, fb, frm, der, tol / 2, prof - 1)
+    adaptativo(f, a, m, fa, fm, flm, izq, tol / 2, prof - 1, presupuesto) +
+    adaptativo(f, m, b, fm, fb, frm, der, tol / 2, prof - 1, presupuesto)
   );
 }
 
 /** Integral de f sobre [a,b] por Simpson adaptativo (a,b sin singularidades). NaN si
- *  algún sub-punto es no finito. */
+ *  algún sub-punto es no finito o si se agota el presupuesto de nodos (`MAX_NODOS`). */
 function integrar(f: (x: number) => number, a: number, b: number): number {
   const fa = f(a), fb = f(b), fm = f((a + b) / 2);
   if (!Number.isFinite(fa) || !Number.isFinite(fb) || !Number.isFinite(fm)) return NaN;
   const entero = simpson(fa, fm, fb, a, b);
   const tol = TOL_SIMPSON * (1 + Math.abs(entero));
-  return adaptativo(f, a, b, fa, fb, fm, entero, tol, PROF_MAX);
+  return adaptativo(f, a, b, fa, fb, fm, entero, tol, PROF_MAX, { n: MAX_NODOS });
 }
 
 /**
