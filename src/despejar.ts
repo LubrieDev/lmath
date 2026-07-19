@@ -321,7 +321,7 @@ function absYExponente(t: Termino): { num: number; den: number; libres: Factor[]
  *  Simplificar (que rechazaría la cancelación por diferir en x=0): aquí el ± ya cambia el
  *  dominio a propósito. String mathjs re-parseable. */
 function limpiarAbsoluto(s: string): string {
-  try { return formatearCanonico(racionalizarFracciones(combinarFracciones(parse(s)))); }
+  try { return formatearCanonico(racionalizarFracciones(combinarFracciones(parse(s) as unknown as Nodo))); }
   catch { return s; }
 }
 
@@ -420,7 +420,7 @@ function simpDesp(s: string): string {
 /** Simplifica SOLO si la expresión es constante (sin x): limpia los casos numéricos
  *  (`√4`→`2`, `−(−5/2)`→`5/2`) sin distribuir ni reordenar los simbólicos (`−(x²+1)` intacto). */
 function simpSiConstante(s: string): string {
-  try { return contieneX(parse(s)) ? s : simpDesp(s); } catch { return s; }
+  try { return contieneX(parse(s) as unknown as Nodo) ? s : simpDesp(s); } catch { return s; }
 }
 const sumarStrings = (a: string[]): string => (a.length ? a.map((s) => `(${s})`).join(" + ") : "0");
 
@@ -547,7 +547,7 @@ function reducirRaizImpar(L: Nodo, R: Nodo): Nodo | null {
     // `simplify` sí las cancela. Si a cambio FACTORIZA algo, no importa: la vía cuadrática
     // vuelve a expandir con `simplificarExpr` antes de leer los coeficientes.
     try {
-      const D = simplify(parse(`(${base.toString()}) - (${raiz})`));
+      const D = simplify(parse(`(${base.toString()}) - (${raiz})`)) as unknown as Nodo;
       return D && contieneY(D) ? D : null;
     } catch { return null; }
   };
@@ -579,7 +579,7 @@ function reducirRaizImparPorTerminos(D: Nodo): Nodo | null {
     const resto = ts.filter((_, j) => j !== i);
     const otroLado = ts[i].signo === 1 ? flip(resto) : resto;
     let R: Nodo;
-    try { R = parse(renderTerminos(otroLado)); } catch { continue; }
+    try { R = parse(renderTerminos(otroLado)) as unknown as Nodo; } catch { continue; }
     const reducido = reducirRaizImpar(p, R);
     if (reducido) return reducido;
   }
@@ -598,7 +598,7 @@ function plegarRaicesImpares(n: Nodo): Nodo {
       if (base.args.length !== 2) return nn;
       const idx = exponenteEntero(base.args[1]);
       if (idx === null || idx < 3 || idx % 2 === 0) return nn;
-      return parse(`nthRoot((${base.args[0].toString()})^(${k}), ${idx})`);
+      return parse(`nthRoot((${base.args[0].toString()})^(${k}), ${idx})`) as unknown as Nodo;
     });
   } catch { return n; }
 }
@@ -641,7 +641,7 @@ function despejeCuadratico(D0: Nodo, DVal: Nodo = D0): { ecuacion: string; compl
   // contra la reducida: si la reducción por raíz impar fuese incorrecta, la rama no cumpliría la
   // original y se descartaría. Corrección garantizada.
   let evalD: (x: number, y: number) => number;
-  try { const c = DVal.compile(); evalD = (x, y) => { try { return c.evaluate({ x, y }) as number; } catch { return NaN; } }; }
+  try { const c = DVal.compile(); evalD = (x, y) => { try { return c.evaluate({ x, y }); } catch { return NaN; } }; }
   catch { return null; }
 
   // Sin término de grado 2 en u → la ecuación es LINEAL en u=y^g: A·y^g + C = 0 ⇒ y = ᵍ√(−C/A),
@@ -665,7 +665,7 @@ function despejeCuadratico(D0: Nodo, DVal: Nodo = D0): { ecuacion: string; compl
     // B² y −4AC se simplifican POR SEPARADO y luego se suman: juntos, `simplify` (que es quien
     // actúa cuando hay una raíz, porque `rationalize` se rinde) deja el `−4·(x²−1)` sin
     // distribuir. Por partes, cada trozo es polinómico y `rationalize` sí lo expande.
-    const b2 = plegarRaicesImpares(parse(simpDesp(`(${B})^2`))).toString();
+    const b2 = plegarRaicesImpares(parse(simpDesp(`(${B})^2`)) as unknown as Nodo).toString();
     const m4ac = simpDesp(`-4*(${A})*(${C})`);
     const disc = simpDesp(`(${b2}) + (${m4ac})`);
     const num = simpDesp(`-(${B})`);
@@ -683,7 +683,7 @@ function despejeCuadratico(D0: Nodo, DVal: Nodo = D0): { ecuacion: string; compl
     const unica = den === "1" ? conPm(raiz, num) : `(${conPm(raiz, num)})/(${den})`;
     const separada = conPm(simpDesp(`(${raiz})/(${den})`), simpDesp(`(${num})/(${den})`));
     const barata = [unica, separada]
-      .map((s) => ({ s, prof: profundidadFraccion(parse(s)), len: s.length }))
+      .map((s) => ({ s, prof: profundidadFraccion(parse(s) as unknown as Nodo), len: s.length }))
       .sort((a, b) => (a.prof !== b.prof ? a.prof - b.prof : a.len - b.len))[0].s;
     return { ecuacion: `y = ${barata}`, completo: true };
   }
@@ -724,9 +724,9 @@ function despejar(ecuacion: string): { ecuacion: string; completo: boolean } | n
   let D: Nodo;
   let L: Nodo, R: Nodo;
   try {
-    L = parse(norm(partes[0]));
-    R = parse(norm(partes[1]));
-    D = parse(`(${norm(partes[0])})-(${norm(partes[1])})`);
+    L = parse(norm(partes[0])) as unknown as Nodo;
+    R = parse(norm(partes[1])) as unknown as Nodo;
+    D = parse(`(${norm(partes[0])})-(${norm(partes[1])})`) as unknown as Nodo;
   } catch { return null; }
   if (!contieneY(D)) return null;
 

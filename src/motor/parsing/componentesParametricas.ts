@@ -17,7 +17,8 @@
 // mathjs se llena con `t`). Admitir otra letra exigiría reescribir la expresión, y una
 // sustitución textual de una variable es justo el tipo de "arreglo" que rompe `\cot s`.
 
-import { SymbolNode, parse } from "mathjs";
+import { parse } from "mathjs";
+import { simboloNodo, type Nodo } from "../../formatoExpr";
 import { normalizarEntrada } from "../../parser";
 import { insertarProductoImplicito } from "./productoImplicito";
 
@@ -104,7 +105,7 @@ function esExpresionEnT(expr: string): boolean {
 function simbolosLibres(exprNorm: string): Set<string> {
   const libres = new Set<string>();
   try {
-    parse(exprNorm).traverse((nodo: any, path: string, padre: any) => {
+    (parse(exprNorm) as unknown as Nodo).traverse((nodo: Nodo, path: string, padre: Nodo | null) => {
       if (nodo.isSymbolNode && !(padre?.isFunctionNode && path === "fn")) libres.add(nodo.name);
     });
   } catch {
@@ -121,9 +122,9 @@ function simbolosLibres(exprNorm: string): Set<string> {
  */
 export function renombrarParametroAX(exprNorm: string): string {
   try {
-    const arbol = parse(exprNorm).transform((nodo: any, path: string, padre: any) =>
+    const arbol = (parse(exprNorm) as unknown as Nodo).transform((nodo: Nodo, path: string, padre: Nodo | null) =>
       nodo.isSymbolNode && nodo.name === "t" && !(padre?.isFunctionNode && path === "fn")
-        ? new SymbolNode("x")
+        ? simboloNodo("x")
         : nodo
     );
     return arbol.toString();

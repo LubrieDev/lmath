@@ -46232,6 +46232,10 @@ function compilarFuncion(expr, varName) {
 }
 
 // src/formatoExpr.ts
+var opNodo = (op, fn, args, implicit) => new OperatorNode(op, fn, args, implicit);
+var constNodo = (value) => new ConstantNode(value);
+var simboloNodo = (name314) => new SymbolNode(name314);
+var funcNodo = (fn, args) => new FunctionNode(fn, args);
 function contieneVariable(n, nombre) {
   return n.filter((nn) => nn.type === "SymbolNode" && nn.name === nombre).length > 0;
 }
@@ -46368,13 +46372,13 @@ function coeficientesAlFrente(n) {
       return t2;
     const val = nums.reduce((a, f) => a * valorConstanteFactor(f), 1);
     if (Math.abs(val) === 1) {
-      const cuerpo = resto.reduce((a, b) => new OperatorNode("*", "multiply", [a, b]));
-      return val === 1 ? cuerpo : new OperatorNode("-", "unaryMinus", [cuerpo]);
+      const cuerpo = resto.reduce((a, b) => opNodo("*", "multiply", [a, b]));
+      return val === 1 ? cuerpo : opNodo("-", "unaryMinus", [cuerpo]);
     }
     const orden = [...nums, ...resto];
     if (orden.every((f, i2) => f === fs[i2]))
       return t2;
-    return orden.reduce((a, b) => new OperatorNode("*", "multiply", [a, b]));
+    return orden.reduce((a, b) => opNodo("*", "multiply", [a, b]));
   };
   return rec(n);
 }
@@ -46777,9 +46781,9 @@ function resimbolizarConstantes(n) {
     const t2 = m.map(logAlFinal);
     if (t2.type === "OperatorNode" && t2.op === "*" && t2.args.length === 2) {
       const [l, r] = t2.args;
-      const dep = (x) => x.filter((y) => y.isSymbolNode && y.name === "x").length > 0;
+      const dep = (x) => x.filter((y) => y.isSymbolNode === true && y.name === "x").length > 0;
       if (contieneLog(l) && !dep(l) && dep(r))
-        return new OperatorNode("*", "multiply", [r, l]);
+        return opNodo("*", "multiply", [r, l]);
     }
     return t2;
   };
@@ -47521,7 +47525,7 @@ function simbolosLibres(exprNorm) {
 function renombrarParametroAX(exprNorm) {
   try {
     const arbol = parse2(exprNorm).transform(
-      (nodo, path, padre) => nodo.isSymbolNode && nodo.name === "t" && !((padre == null ? void 0 : padre.isFunctionNode) && path === "fn") ? new SymbolNode("x") : nodo
+      (nodo, path, padre) => nodo.isSymbolNode && nodo.name === "t" && !((padre == null ? void 0 : padre.isFunctionNode) && path === "fn") ? simboloNodo("x") : nodo
     );
     return arbol.toString();
   } catch (e3) {
@@ -47696,10 +47700,10 @@ function ordenarPolinomioDescendente(node) {
   if (orden.every((i2, k) => i2 === k))
     return node;
   const primero = terminos2[orden[0]];
-  let acc = primero.signo < 0 ? new OperatorNode("-", "unaryMinus", [primero.nodo]) : primero.nodo;
+  let acc = primero.signo < 0 ? opNodo("-", "unaryMinus", [primero.nodo]) : primero.nodo;
   for (let k = 1; k < orden.length; k++) {
     const t2 = terminos2[orden[k]];
-    acc = t2.signo < 0 ? new OperatorNode("-", "subtract", [acc, t2.nodo]) : new OperatorNode("+", "add", [acc, t2.nodo]);
+    acc = t2.signo < 0 ? opNodo("-", "subtract", [acc, t2.nodo]) : opNodo("+", "add", [acc, t2.nodo]);
   }
   return acc;
 }
@@ -47746,8 +47750,8 @@ function agruparFuncionesDesnudasEnProducto(node) {
   if (funcs.length === 0 || resto.length === 0)
     return node.map(agruparFuncionesDesnudasEnProducto);
   const parentizar = resto.some(esPotencia);
-  const alFinal = parentizar ? funcs.map((f) => new FunctionNode(new SymbolNode(PAREN_DESNUDA), [f])) : funcs;
-  return [...resto, ...alFinal].reduce((acc, f) => new OperatorNode("*", "multiply", [acc, f]));
+  const alFinal = parentizar ? funcs.map((f) => funcNodo(simboloNodo(PAREN_DESNUDA), [f])) : funcs;
+  return [...resto, ...alFinal].reduce((acc, f) => opNodo("*", "multiply", [acc, f]));
 }
 function ladoALatex(lado) {
   const norm3 = insertarProductoImplicito(normalizarEntrada(lado.trim()));
@@ -51196,7 +51200,7 @@ function dominioPolar(exprR) {
   try {
     const arbol = parse2(exprR);
     const trigs = arbol.filter(
-      (n) => n.type === "FunctionNode" && n.fn && TRIG.has(n.fn.name)
+      (n) => n.type === "FunctionNode" && TRIG.has(n.fn.name)
     );
     for (const t2 of trigs) {
       const arg2 = t2.args[0];
@@ -54832,15 +54836,15 @@ function extraerSigno(n) {
     }
     if (n.op === "/" && n.args.length === 2) {
       const a = extraerSigno(n.args[0]);
-      return { signo: a.signo, mag: new OperatorNode("/", "divide", [a.mag, n.args[1]]) };
+      return { signo: a.signo, mag: opNodo("/", "divide", [a.mag, n.args[1]]) };
     }
     if (n.op === "*" && n.args.length === 2) {
       const a = extraerSigno(n.args[0]), b = extraerSigno(n.args[1]);
-      return { signo: a.signo * b.signo, mag: new OperatorNode("*", "multiply", [a.mag, b.mag]) };
+      return { signo: a.signo * b.signo, mag: opNodo("*", "multiply", [a.mag, b.mag]) };
     }
   }
   if (n.type === "ConstantNode" && typeof n.value === "number" && n.value < 0)
-    return { signo: -1, mag: new ConstantNode(-n.value) };
+    return { signo: -1, mag: constNodo(-n.value) };
   return { signo: 1, mag: n };
 }
 function derivadaDistribuida(norm3) {
@@ -54866,7 +54870,7 @@ function derivadaDistribuida(norm3) {
     let termino = di;
     for (let j = 0; j < fs.length; j++)
       if (j !== i2)
-        termino = new OperatorNode("*", "multiply", [termino, fs[j]]);
+        termino = opNodo("*", "multiply", [termino, fs[j]]);
     try {
       termino = combinarFracciones(simplify(termino, REGLAS_DERIVADA));
     } catch (e3) {
@@ -54932,7 +54936,7 @@ function derivarConEscalones(norm3) {
     if (m.type === "FunctionNode" && ((_a = m.args) == null ? void 0 : _a.length) === 1 && FUNCIONES_ESCALON.has((_b = m.fn) == null ? void 0 : _b.name)) {
       const nombre = `escalonInterno${escalones.length}`;
       escalones.push({ nombre, original: n, arg: m.args[0] });
-      return new SymbolNode(nombre);
+      return simboloNodo(nombre);
     }
     return m;
   };
@@ -54944,8 +54948,8 @@ function derivarConEscalones(norm3) {
     const du = derivative(e3.arg, VAR);
     if (du.type === "ConstantNode")
       continue;
-    const termino = new OperatorNode("*", "multiply", [new ConstantNode(0), du]);
-    total = esCeroLiteral(total) ? termino : new OperatorNode("+", "add", [total, termino]);
+    const termino = opNodo("*", "multiply", [constNodo(0), du]);
+    total = esCeroLiteral(total) ? termino : opNodo("+", "add", [total, termino]);
   }
   const porNombre = new Map(escalones.map((e3) => [e3.nombre, e3.original]));
   const restaurar = (n) => {
@@ -54963,15 +54967,15 @@ function contarSimbolo(n, nombre) {
   });
   return total + (n.type === "SymbolNode" && n.name === nombre ? 1 : 0);
 }
-var producto = (a, b) => a.type === "ConstantNode" && a.value === 1 ? b : b.type === "ConstantNode" && b.value === 1 ? a : new OperatorNode("*", "multiply", [a, b]);
+var producto = (a, b) => a.type === "ConstantNode" && a.value === 1 ? b : b.type === "ConstantNode" && b.value === 1 ? a : opNodo("*", "multiply", [a, b]);
 function sacarFactorSimbolo(n, nombre) {
   if (n.type === "SymbolNode" && n.name === nombre)
-    return new ConstantNode(1);
+    return constNodo(1);
   if (n.type === "ParenthesisNode")
     return sacarFactorSimbolo(n.content, nombre);
   if (n.type === "OperatorNode" && n.op === "-" && n.args.length === 1) {
     const a = sacarFactorSimbolo(n.args[0], nombre);
-    return a && new OperatorNode("-", "unaryMinus", [a]);
+    return a && opNodo("-", "unaryMinus", [a]);
   }
   if (n.type === "OperatorNode" && n.args.length === 2) {
     if (n.op === "*") {
@@ -54983,14 +54987,14 @@ function sacarFactorSimbolo(n, nombre) {
     }
     if (n.op === "/") {
       const num = sacarFactorSimbolo(n.args[0], nombre);
-      return num && new OperatorNode("/", "divide", [num, n.args[1]]);
+      return num && opNodo("/", "divide", [num, n.args[1]]);
     }
   }
   return null;
 }
 function restaurarSignos(n) {
   if (n.type === "OperatorNode" && (n.op === "+" || n.op === "-") && n.args.length === 2)
-    return new OperatorNode(n.op, n.fn, [restaurarSignos(n.args[0]), restaurarSignos(n.args[1])]);
+    return opNodo(n.op, n.fn, [restaurarSignos(n.args[0]), restaurarSignos(n.args[1])]);
   if (n.type === "ParenthesisNode")
     return restaurarSignos(n.content);
   for (const [simbolo, centinela] of CENTINELA_DE_SIMBOLO) {
@@ -55000,7 +55004,7 @@ function restaurarSignos(n) {
     const sin3 = veces === 1 ? sacarFactorSimbolo(n, simbolo) : null;
     if (!sin3)
       throw new Error("signo no factorizable");
-    return new FunctionNode(new SymbolNode(centinela), [sin3]);
+    return funcNodo(simboloNodo(centinela), [sin3]);
   }
   return n;
 }
@@ -55014,7 +55018,7 @@ function sustituirSignos(norm3) {
     if (!s)
       return m;
     hay = true;
-    return new OperatorNode("*", "multiply", [new SymbolNode(s), m.args[0]]);
+    return opNodo("*", "multiply", [simboloNodo(s), m.args[0]]);
   };
   const expr = sustituir(raiz).toString();
   return { expr, hay };
@@ -55075,7 +55079,7 @@ function derivadaLatex(ecuaciones) {
 var VAR2 = "x";
 var MUESTRAS = [-7.3, -2.6, -1.2, -0.7, -0.3, 0.4, 1.1, 2.7, 5.8, 11.4];
 function dependeDeX(n) {
-  return n.filter((nodo) => nodo.isSymbolNode && nodo.name === VAR2).length > 0;
+  return n.filter((nodo) => nodo.isSymbolNode === true && nodo.name === VAR2).length > 0;
 }
 function valorConstante(n) {
   try {

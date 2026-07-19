@@ -22,6 +22,7 @@
 
 import { parse } from "mathjs";
 import { compilarFuncion } from "../../evaluador";
+import type { Nodo } from "../../formatoExpr";
 
 const DOS_PI = 2 * Math.PI;
 export const DOMINIO_POLAR_DEFECTO: readonly [number, number] = [0, DOS_PI];
@@ -54,13 +55,13 @@ function numeradorFraccion(x: number, maxDen = 1000): number | null {
 }
 
 /** ¿El subárbol referencia θ (`theta`)? */
-function contieneTheta(n: any): boolean {
-  return n.filter((nn: any) => nn.type === "SymbolNode" && nn.name === "theta").length > 0;
+function contieneTheta(n: Nodo): boolean {
+  return n.filter((nn: Nodo) => nn.type === "SymbolNode" && nn.name === "theta").length > 0;
 }
 
 /** Pendiente a de un argumento AFÍN en θ (arg = a·θ + b), o null si no es lineal. */
-function pendienteLineal(arg: any): number | null {
-  let g: (v: number) => any;
+function pendienteLineal(arg: Nodo): number | null {
+  let g: (v: number) => unknown;
   try { g = compilarFuncion(arg.toString(), "theta"); } catch { return null; }
   const y0 = aNumero(g(0.3)), y1 = aNumero(g(1.3)), y2 = aNumero(g(2.3));
   if (![y0, y1, y2].every(Number.isFinite)) return null;
@@ -71,7 +72,7 @@ function pendienteLineal(arg: any): number | null {
 
 /** Verifica numéricamente que r(θ+P) ≈ r(θ) en varios θ (≥2 comprobados finitos). */
 function periodoValido(exprR: string, P: number): boolean {
-  let g: (v: number) => any;
+  let g: (v: number) => unknown;
   try { g = compilarFuncion(exprR, "theta"); } catch { return false; }
   let ok = 0;
   for (const th of [0.1, 0.9, 1.7, 2.6, 3.9, 5.1]) {
@@ -89,9 +90,9 @@ export function dominioPolar(exprR: string): readonly [number, number] {
   let m = 1;
   let algunTrig = false;
   try {
-    const arbol: any = parse(exprR);
+    const arbol = parse(exprR) as unknown as Nodo;
     const trigs = arbol.filter(
-      (n: any) => n.type === "FunctionNode" && n.fn && TRIG.has(n.fn.name)
+      (n: Nodo) => n.type === "FunctionNode" && TRIG.has(n.fn.name)
     );
     for (const t of trigs) {
       const arg = t.args[0];

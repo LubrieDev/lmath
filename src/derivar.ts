@@ -1,10 +1,10 @@
-import { ConstantNode, FunctionNode, OperatorNode, SymbolNode, derivative, parse, simplify } from "mathjs";
+import { derivative, parse, simplify, type MathNode } from "mathjs";
 
 import { normalizarEntrada, contieneYLibre } from "./parser";
 import { insertarProductoImplicito } from "./motor/parsing/productoImplicito";
 import { exprALatex } from "./latex";
 import { simplificarEcuaciones } from "./simplificar";
-import { racionalizarFracciones, combinarFracciones, resimbolizarConstantes, terminos as terminosAditivos, profundidadFraccion, type Nodo } from "./formatoExpr";
+import { racionalizarFracciones, combinarFracciones, resimbolizarConstantes, terminos as terminosAditivos, profundidadFraccion, opNodo, constNodo, simboloNodo, funcNodo, type Nodo } from "./formatoExpr";
 import { compilarFuncion } from "./evaluador";
 import { clasificarDegenerada } from "./degeneradas";
 
@@ -174,15 +174,15 @@ function extraerSigno(n: Nodo): { signo: 1 | -1; mag: Nodo } {
     }
     if (n.op === "/" && n.args.length === 2) {
       const a = extraerSigno(n.args[0]);
-      return { signo: a.signo, mag: new OperatorNode("/", "divide", [a.mag, n.args[1]]) };
+      return { signo: a.signo, mag: opNodo("/", "divide", [a.mag, n.args[1]]) };
     }
     if (n.op === "*" && n.args.length === 2) {
       const a = extraerSigno(n.args[0]), b = extraerSigno(n.args[1]);
-      return { signo: (a.signo * b.signo) as 1 | -1, mag: new OperatorNode("*", "multiply", [a.mag, b.mag]) };
+      return { signo: (a.signo * b.signo) as 1 | -1, mag: opNodo("*", "multiply", [a.mag, b.mag]) };
     }
   }
   if (n.type === "ConstantNode" && typeof n.value === "number" && n.value < 0)
-    return { signo: -1, mag: new ConstantNode(-n.value) };
+    return { signo: -1, mag: constNodo(-n.value) };
   return { signo: 1, mag: n };
 }
 
@@ -200,25 +200,25 @@ function extraerSigno(n: Nodo): { signo: 1 | -1; mag: Nodo } {
  */
 function derivadaDistribuida(norm: string): Nodo | null {
   let raiz: Nodo;
-  try { raiz = parse(norm); } catch { return null; }
+  try { raiz = parse(norm) as unknown as Nodo; } catch { return null; }
   const fs = factoresProducto(raiz);
   if (fs.length < 2) return null;
   const partes: { signo: 1 | -1; mag: Nodo }[] = [];
   for (let i = 0; i < fs.length; i++) {
     let di: Nodo;
-    try { di = derivative(fs[i] as never, VAR); } catch { return null; } // factor no derivable (escalón)
+    try { di = derivative(fs[i] as never, VAR) as unknown as Nodo; } catch { return null; } // factor no derivable (escalón)
     if (esCeroLiteral(di)) continue;                                     // factor constante: no aporta
     let termino: Nodo = di;
     for (let j = 0; j < fs.length; j++) if (j !== i)
-      termino = new OperatorNode("*", "multiply", [termino, fs[j]]);
-    try { termino = combinarFracciones(simplify(termino, REGLAS_DERIVADA as never)); }
+      termino = opNodo("*", "multiply", [termino, fs[j]]);
+    try { termino = combinarFracciones(simplify(termino as unknown as MathNode, REGLAS_DERIVADA as never) as unknown as Nodo); }
     catch { /* término crudo: sigue siendo correcto, solo menos pulido */ }
     for (const t of terminosAditivos(termino)) {
       const { signo, mag } = extraerSigno(t.nodo);
       partes.push({ signo: (t.signo * signo) as 1 | -1, mag });
     }
   }
-  if (partes.length === 0) return parse("0");
+  if (partes.length === 0) return parse("0") as unknown as Nodo;
   const orden = [...partes.filter((p) => p.signo === 1), ...partes.filter((p) => p.signo === -1)];
   let s = "";
   orden.forEach((p, i) => {
@@ -226,7 +226,7 @@ function derivadaDistribuida(norm: string): Nodo | null {
     if (i === 0) s = p.signo === 1 ? cuerpo : `-(${cuerpo})`;
     else s += p.signo === 1 ? ` + ${cuerpo}` : ` - (${cuerpo})`;
   });
-  try { return parse(s); } catch { return null; }
+  try { return parse(s) as unknown as Nodo; } catch { return null; }
 }
 
 /**
@@ -244,7 +244,7 @@ function simplificarDerivada(cruda: Nodo, norm: string): Nodo {
   const ref = cruda.toString();
   const candidatas: Nodo[] = [];
   try {
-    const conRaices = simplify(cruda, REGLAS_DERIVADA as never);
+    const conRaices = simplify(cruda as unknown as MathNode, REGLAS_DERIVADA as never) as unknown as Nodo;
     try { candidatas.push(combinarFracciones(conRaices)); } catch { /* estructura no soportada */ }
     candidatas.push(conRaices);
   } catch { /* sin candidatas: se queda la cruda */ }
@@ -294,28 +294,28 @@ function derivarConEscalones(norm: string): Nodo {
       // `arg` es el argumento YA sustituido, para derivar u′ tratando los escalones
       // anidados también como constantes.
       escalones.push({ nombre, original: n, arg: m.args[0] });
-      return new SymbolNode(nombre);
+      return simboloNodo(nombre);
     }
     return m;
   };
-  const cuerpo = sustituir(parse(norm));
-  if (escalones.length === 0) return derivative(norm, VAR); // sin escalones: intacto
+  const cuerpo = sustituir(parse(norm) as unknown as Nodo);
+  if (escalones.length === 0) return derivative(norm, VAR) as unknown as Nodo; // sin escalones: intacto
 
-  let total: Nodo = derivative(cuerpo as never, VAR);
+  let total: Nodo = derivative(cuerpo as never, VAR) as unknown as Nodo;
   for (const e of escalones) {
-    const du: Nodo = derivative(e.arg as never, VAR);
+    const du: Nodo = derivative(e.arg as never, VAR) as unknown as Nodo;
     // u′ constante = argumento derivable en toda la recta: su 0·u′ es un 0 liso que
     // no aporta dominio; se omite para no ensuciar la derivada mostrada.
     if (du.type === "ConstantNode") continue;
-    const termino = new OperatorNode("*", "multiply", [new ConstantNode(0), du]);
+    const termino = opNodo("*", "multiply", [constNodo(0), du]);
     total = esCeroLiteral(total)
       ? termino
-      : new OperatorNode("+", "add", [total, termino]);
+      : opNodo("+", "add", [total, termino]);
   }
   const porNombre = new Map(escalones.map((e) => [e.nombre, e.original]));
   const restaurar = (n: Nodo): Nodo => {
     const m = n.map(restaurar);
-    return m.type === "SymbolNode" && porNombre.has(m.name) ? porNombre.get(m.name) : m;
+    return m.type === "SymbolNode" && porNombre.has(m.name) ? porNombre.get(m.name)! : m;
   };
   return restaurar(total);
 }
@@ -343,17 +343,17 @@ function contarSimbolo(n: Nodo, nombre: string): number {
 const producto = (a: Nodo, b: Nodo): Nodo =>
   a.type === "ConstantNode" && a.value === 1 ? b
     : b.type === "ConstantNode" && b.value === 1 ? a
-      : new OperatorNode("*", "multiply", [a, b]);
+      : opNodo("*", "multiply", [a, b]);
 
 /** El nodo SIN el símbolo `nombre`, que debe estar como FACTOR multiplicativo (posiblemente
  *  en el numerador de una fracción o bajo un menos unario). null si no lo está: entonces el
  *  ± no se puede sacar factor común del término y la derivada no se representa con `pm`. */
 function sacarFactorSimbolo(n: Nodo, nombre: string): Nodo | null {
-  if (n.type === "SymbolNode" && n.name === nombre) return new ConstantNode(1);
+  if (n.type === "SymbolNode" && n.name === nombre) return constNodo(1);
   if (n.type === "ParenthesisNode") return sacarFactorSimbolo(n.content, nombre);
   if (n.type === "OperatorNode" && n.op === "-" && n.args.length === 1) {
     const a = sacarFactorSimbolo(n.args[0], nombre);
-    return a && new OperatorNode("-", "unaryMinus", [a]);
+    return a && opNodo("-", "unaryMinus", [a]);
   }
   if (n.type === "OperatorNode" && n.args.length === 2) {
     if (n.op === "*") {
@@ -364,7 +364,7 @@ function sacarFactorSimbolo(n: Nodo, nombre: string): Nodo | null {
     }
     if (n.op === "/") {
       const num = sacarFactorSimbolo(n.args[0], nombre);
-      return num && new OperatorNode("/", "divide", [num, n.args[1]]);
+      return num && opNodo("/", "divide", [num, n.args[1]]);
     }
   }
   return null;
@@ -376,7 +376,7 @@ function sacarFactorSimbolo(n: Nodo, nombre: string): Nodo | null {
  *  es representable con un solo ± y es preferible declararlo no derivable. */
 function restaurarSignos(n: Nodo): Nodo {
   if (n.type === "OperatorNode" && (n.op === "+" || n.op === "-") && n.args.length === 2)
-    return new OperatorNode(n.op, n.fn, [restaurarSignos(n.args[0]), restaurarSignos(n.args[1])]);
+    return opNodo(n.op, n.fn as unknown as string, [restaurarSignos(n.args[0]), restaurarSignos(n.args[1])]);
   if (n.type === "ParenthesisNode") return restaurarSignos(n.content);
 
   for (const [simbolo, centinela] of CENTINELA_DE_SIMBOLO) {
@@ -384,7 +384,7 @@ function restaurarSignos(n: Nodo): Nodo {
     if (veces === 0) continue;
     const sin = veces === 1 ? sacarFactorSimbolo(n, simbolo) : null;
     if (!sin) throw new Error("signo no factorizable");
-    return new FunctionNode(new SymbolNode(centinela), [sin]);
+    return funcNodo(simboloNodo(centinela), [sin]);
   }
   return n;
 }
@@ -392,14 +392,14 @@ function restaurarSignos(n: Nodo): Nodo {
 /** La expresión con los centinelas ± sustituidos por símbolos opacos (constantes para
  *  `derivative`). Devuelve el string mathjs y si hubo alguna sustitución. */
 function sustituirSignos(norm: string): { expr: string; hay: boolean } {
-  const raiz = parse(norm);
+  const raiz = parse(norm) as unknown as Nodo;
   let hay = false;
   const sustituir = (n: Nodo): Nodo => {
     const m = n.map(sustituir);
     const s = m.type === "FunctionNode" && m.args?.length === 1 ? SIMBOLO_SIGNO[m.fn?.name] : undefined;
     if (!s) return m;
     hay = true;
-    return new OperatorNode("*", "multiply", [new SymbolNode(s), m.args[0]]);
+    return opNodo("*", "multiply", [simboloNodo(s), m.args[0]]);
   };
   const expr = sustituir(raiz).toString();
   return { expr, hay };

@@ -1,5 +1,6 @@
-import { FunctionNode, OperatorNode, SymbolNode, parse } from "mathjs";
+import { parse } from "mathjs";
 
+import { opNodo, simboloNodo, funcNodo, type Nodo } from "./formatoExpr";
 import { normalizarEntrada, contieneYLibre } from "./parser";
 import { tieneFamilia } from "./despejeInverso";
 import { insertarProductoImplicito } from "./motor/parsing/productoImplicito";
@@ -64,13 +65,13 @@ const NOMBRE_FUNCION_TEX: Record<string, string> = {
 // pinta como `\left(<u>\right)`: un nodo de función SIEMPRE se renderiza, mathjs no lo poda.
 const PAREN_DESNUDA = "parenDesnuda";
 
-function manejadorFuncionesTex(node: any, options: any): string | undefined {
+function manejadorFuncionesTex(node: Nodo, options: object): string | undefined {
   // Centinela de parentización forzada: `parenDesnuda(u)` → `\left(<u>\right)`.
   if (node.type === "FunctionNode" && node.fn?.name === PAREN_DESNUDA && node.args.length === 1)
     return `\\left(${node.args[0].toTex(options)}\\right)`;
 
   // Argumento de una función trig: `\sin x` (átomo) o `\sin\left(x+1\right)` (compuesto).
-  const argFuncion = (arg: any, nombreTex: string): string => {
+  const argFuncion = (arg: Nodo, nombreTex: string): string => {
     const argTex = arg.toTex(options);
     const atomico = arg.type === "SymbolNode" || arg.type === "ConstantNode";
     return atomico ? `${nombreTex} ${argTex.trim()}` : `${nombreTex}\\left(${argTex}\\right)`;
@@ -226,8 +227,8 @@ export function quitarLlavesExternas(texto: string): string {
 const VAR_ORDEN = "x";
 
 /** ¿El subárbol contiene la variable de graficación en algún lugar? */
-function contieneVarOrden(n: any): boolean {
-  return n.filter((s: any) => s.type === "SymbolNode" && s.name === VAR_ORDEN).length > 0;
+function contieneVarOrden(n: Nodo): boolean {
+  return n.filter((s: Nodo) => s.type === "SymbolNode" && s.name === VAR_ORDEN).length > 0;
 }
 
 /**
@@ -239,7 +240,7 @@ function contieneVarOrden(n: any): boolean {
  * el exponente entero; suma anidada (base de una potencia, p. ej. `(x+1)^2`) toma el
  * máximo de sus sumandos.
  */
-function gradoEnX(n: any): number | null {
+function gradoEnX(n: Nodo): number | null {
   switch (n.type) {
     case "ParenthesisNode": return gradoEnX(n.content);
     case "ConstantNode": return 0;
@@ -285,10 +286,10 @@ function gradoEnX(n: any): number | null {
  * las subexpresiones anidadas (denominadores, bases de potencia) se pintan como las produce
  * mathjs (evita reordenar, p. ej., el denominador de una derivada de cociente).
  */
-function ordenarPolinomioDescendente(node: any): any {
+function ordenarPolinomioDescendente(node: Nodo): Nodo {
   // Aplana la cadena aditiva de nivel superior en términos con su signo (+/−).
-  const terminos: { signo: number; nodo: any }[] = [];
-  const aplanar = (n: any, signo: number): void => {
+  const terminos: { signo: number; nodo: Nodo }[] = [];
+  const aplanar = (n: Nodo, signo: number): void => {
     if (n.type === "OperatorNode" && n.args.length === 2 && (n.op === "+" || n.op === "-")) {
       aplanar(n.args[0], signo);
       aplanar(n.args[1], n.op === "-" ? -signo : signo);
@@ -307,12 +308,12 @@ function ordenarPolinomioDescendente(node: any): any {
   // Reconstruye la suma en el nuevo orden respetando los signos (el primer término, si es
   // negativo, se envuelve en menos unario; los siguientes se encadenan con suma/resta).
   const primero = terminos[orden[0]];
-  let acc: any = primero.signo < 0 ? new OperatorNode("-", "unaryMinus", [primero.nodo]) : primero.nodo;
+  let acc: Nodo = primero.signo < 0 ? opNodo("-", "unaryMinus", [primero.nodo]) : primero.nodo;
   for (let k = 1; k < orden.length; k++) {
     const t = terminos[orden[k]];
     acc = t.signo < 0
-      ? new OperatorNode("-", "subtract", [acc, t.nodo])
-      : new OperatorNode("+", "add", [acc, t.nodo]);
+      ? opNodo("-", "subtract", [acc, t.nodo])
+      : opNodo("+", "add", [acc, t.nodo]);
   }
   return acc;
 }
@@ -340,7 +341,7 @@ function ordenarPolinomioDescendente(node: any): any {
 
 /** Nombre mathjs de un factor que se pinta como `\nombre <átomo>` sin paréntesis (una
  *  función de NOMBRE_FUNCION_TEX con un único argumento atómico), o undefined. */
-function nombreFuncionDesnuda(n: any): string | undefined {
+function nombreFuncionDesnuda(n: Nodo): string | undefined {
   if (n.type === "FunctionNode" && n.args?.length === 1 && NOMBRE_FUNCION_TEX[n.fn?.name]) {
     const a = n.args[0];
     if (a.type === "SymbolNode" || a.type === "ConstantNode") return n.fn.name;
@@ -351,7 +352,7 @@ function nombreFuncionDesnuda(n: any): string | undefined {
 /** ¿El factor se pinta con un argumento atómico SIN paréntesis que un factor a su derecha
  *  podría parecer tragarse? Cubre `\cos x` y la potencia de función `\cos^{2} x` (exponente
  *  constante no negativo, la forma que emite manejadorFuncionesTex). */
-function esFuncionDesnuda(n: any): boolean {
+function esFuncionDesnuda(n: Nodo): boolean {
   if (nombreFuncionDesnuda(n)) return true;
   if (n.type === "OperatorNode" && n.op === "^" && n.args.length === 2) {
     let base = n.args[0];
@@ -365,7 +366,7 @@ function esFuncionDesnuda(n: any): boolean {
 
 /** ¿El factor es una POTENCIA (`e^x`, `x^2`, `3^x`)? Su superíndice lo hace visualmente denso
  *  junto a una función desnuda, y es el caso donde se prefieren los paréntesis. */
-function esPotencia(n: any): boolean {
+function esPotencia(n: Nodo): boolean {
   while (n.type === "ParenthesisNode") n = n.content;
   return n.type === "OperatorNode" && n.op === "^" && n.args.length === 2;
 }
@@ -378,7 +379,7 @@ function esPotencia(n: any): boolean {
  * `e^x\left(\cos x\right)`, pero `2·cos x` → `2\cos x`). Si no hay mezcla, deja el nodo
  * intacto. Conmutatividad → no cambia el valor; puramente tipográfico.
  */
-function agruparFuncionesDesnudasEnProducto(node: any): any {
+function agruparFuncionesDesnudasEnProducto(node: Nodo): Nodo {
   // Fuera de un producto: recurre a las subexpresiones (argumentos de función, denominadores…).
   if (!(node.type === "OperatorNode" && node.op === "*" && node.args.length === 2))
     return node.map(agruparFuncionesDesnudasEnProducto);
@@ -386,8 +387,8 @@ function agruparFuncionesDesnudasEnProducto(node: any): any {
   // En el `*` MÁS EXTERNO se aplana TODA la cadena de una vez (no se recurre por los sub-`*`,
   // que son el mismo producto): así el reordenamiento se decide sobre todos los factores
   // juntos. Cada factor SÍ se procesa por dentro (su árbol interno puede tener más productos).
-  const factores: any[] = [];
-  const aplanar = (n: any): void => {
+  const factores: Nodo[] = [];
+  const aplanar = (n: Nodo): void => {
     if (n.type === "OperatorNode" && n.op === "*" && n.args.length === 2) {
       aplanar(n.args[0]); aplanar(n.args[1]);
     } else factores.push(agruparFuncionesDesnudasEnProducto(n));
@@ -404,12 +405,12 @@ function agruparFuncionesDesnudasEnProducto(node: any): any {
   // Parentizar solo si algún factor acompañante es una potencia (si no, se deja limpio).
   const parentizar = resto.some(esPotencia);
   const alFinal = parentizar
-    ? funcs.map((f) => new FunctionNode(new SymbolNode(PAREN_DESNUDA), [f]))
+    ? funcs.map((f) => funcNodo(simboloNodo(PAREN_DESNUDA), [f]))
     : funcs;
   // Reconstruye el producto (no-función primero, en orden estable; luego las funciones al
   // final) con `\cdot` explícito: limpiarTex lo colapsa a yuxtaposición donde corresponde y
   // lo CONSERVA entre dos números (evita fundir `2\cdot 3` en `23`).
-  return [...resto, ...alFinal].reduce((acc, f) => new OperatorNode("*", "multiply", [acc, f]));
+  return [...resto, ...alFinal].reduce((acc, f) => opNodo("*", "multiply", [acc, f]));
 }
 
 // Convierte UN lado de una ecuación a LaTeX por el MISMO pipeline que obs-graph:
@@ -434,7 +435,7 @@ function ladoALatex(lado: string): string {
     // (`cos(x)·e^x` → `e^x\left(\cos x\right)`, evita que `\cos x` parezca tragarse el factor
     // siguiente) y luego la suma polinómica de nivel superior a grado descendente
     // (`2x + x^2` → `x^2 + 2x`).
-    const arbol = ordenarPolinomioDescendente(agruparFuncionesDesnudasEnProducto(parse(norm)));
+    const arbol = ordenarPolinomioDescendente(agruparFuncionesDesnudasEnProducto(parse(norm) as unknown as Nodo));
     return limpiarTex(arbol.toTex(OPCIONES_TEX));
   } catch {
     return norm;

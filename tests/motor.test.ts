@@ -32,7 +32,7 @@ import { estadoGrupo, analizarFuncion, raicesALatex } from "../src/analisis";
 import { despejarEcuaciones, despejarY } from "../src/despejar";
 import { clasificarDespeje, tieneFamilia } from "../src/despejeInverso";
 import { simplificarEcuaciones } from "../src/simplificar";
-import { costeExpansion, rationalizeSeguro, LIMITE_EXPANSION } from "../src/formatoExpr";
+import { costeExpansion, rationalizeSeguro, LIMITE_EXPANSION, type Nodo } from "../src/formatoExpr";
 import { derivadaLatex, derivarExpr } from "../src/derivar";
 import { extraerIntegral, evaluarLimite, integralOperadorLatex, integralValorLatex, integralPrimitivaLatex, evaluarArea, cuerpoAreaLatex, cuerpoAreaLatexExacto, etiquetaIntegral } from "../src/integral";
 import { integrarExpr } from "../src/integrar";
@@ -4113,19 +4113,19 @@ describe("Despejar y: raíz impar + cuadrática general (familia del corazón)",
 
 describe("Guarda de expansión (presupuesto de monomios de rationalize)", () => {
   test("el coste es el nº de monomios de la expansión naive", () => {
-    igual(costeExpansion(parse("(x+y)^3")), 8, "(x+y)³ → 2³");
-    igual(costeExpansion(parse("(x^2+y^2-1)^3")), 27, "(x²+y²−1)³ → 3³ (el corazón)");
-    igual(costeExpansion(parse("(x+1)^12")), 4096, "(x+1)¹² → 2¹²");
-    igual(costeExpansion(parse("(x^2+y^2)^2-2*(x^2-y^2)")), 6, "lemniscata: dentro del presupuesto");
+    igual(costeExpansion(parse("(x+y)^3") as unknown as Nodo), 8, "(x+y)³ → 2³");
+    igual(costeExpansion(parse("(x^2+y^2-1)^3") as unknown as Nodo), 27, "(x²+y²−1)³ → 3³ (el corazón)");
+    igual(costeExpansion(parse("(x+1)^12") as unknown as Nodo), 4096, "(x+1)¹² → 2¹²");
+    igual(costeExpansion(parse("(x^2+y^2)^2-2*(x^2-y^2)") as unknown as Nodo), 6, "lemniscata: dentro del presupuesto");
   });
 
   test("un exponente absurdo no cuelga el propio cálculo del coste", () => {
-    assert(costeExpansion(parse("(x+1)^1000000")) === Infinity, "se resuelve en O(1), sin iterar");
+    assert(costeExpansion(parse("(x+1)^1000000") as unknown as Nodo) === Infinity, "se resuelve en O(1), sin iterar");
   });
 
   test("por encima del límite NO se expande (null); por debajo sí", () => {
     assert(rationalizeSeguro("(x^2+y^2-1)^3-x^2*y^3") === null, "el corazón se rechaza");
-    assert(costeExpansion(parse("(x^2+y^2)^2-2*(x^2-y^2)")) <= LIMITE_EXPANSION, "la lemniscata cabe");
+    assert(costeExpansion(parse("(x^2+y^2)^2-2*(x^2-y^2)") as unknown as Nodo) <= LIMITE_EXPANSION, "la lemniscata cabe");
     assert(rationalizeSeguro("(x^2+y^2)^2-2*(x^2-y^2)") !== null, "y por tanto sí se expande");
   });
 

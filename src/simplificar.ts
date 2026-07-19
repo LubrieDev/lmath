@@ -1,4 +1,4 @@
-import { parse, simplify } from "mathjs";
+import { parse, simplify, type MathNode } from "mathjs";
 
 import { normalizarEntrada } from "./parser";
 import { insertarProductoImplicito } from "./motor/parsing/productoImplicito";
@@ -46,10 +46,10 @@ const REGLAS_SIMPLIFY: unknown[] = (simplify as unknown as { rules: unknown[] })
  *  fórmula se muestra entonces sin desarrollar: degradación honesta, no congelación. */
 export function simplificarExpr(exprNorm: string): Nodo | null {
   let base: Nodo;
-  try { base = parse(exprNorm); } catch { return null; }
+  try { base = parse(exprNorm) as unknown as Nodo; } catch { return null; }
   const r = rationalizeSeguro(base);
   if (r) return r;
-  try { return simplify(base, REGLAS_SIMPLIFY as never); } catch { return base; }
+  try { return simplify(base as unknown as MathNode, REGLAS_SIMPLIFY as never) as unknown as Nodo; } catch { return base; }
 }
 
 // Constantes con NOMBRE que NO son variables libres (no se muestrean en la equivalencia).
@@ -69,10 +69,10 @@ function variablesLibres(expr: string): string[] {
     const nombres = new Set<string>();
     const esNombreDeFuncion = (padre: Nodo | null, camino: string) =>
       padre !== null && padre.type === "FunctionNode" && camino === "fn";
-    (parse(expr).filter(
+    (parse(expr) as unknown as Nodo).filter(
       (nn: Nodo, camino: string, padre: Nodo | null) =>
         nn.type === "SymbolNode" && !esNombreDeFuncion(padre, camino)
-    ) as Nodo[]).forEach((nn) => { if (!CONSTANTES_EVAL.has(nn.name)) nombres.add(nn.name); });
+    ).forEach((nn) => { if (!CONSTANTES_EVAL.has(nn.name)) nombres.add(nn.name); });
     return [...nombres];
   } catch { return []; }
 }
@@ -129,7 +129,7 @@ function simplificarLado(lado: string): string {
   // fracciones legible en una anidada, `arccot(x²)/(2√x) − 2x√x/(x⁴+1)` → `(…)/√x`). Todo lo
   // ya plano queda BYTE-IDÉNTICO a antes → idempotencia y tests intactos.
   let curNodo: Nodo;
-  try { curNodo = parse(actual); } catch { return actual; }
+  try { curNodo = parse(actual) as unknown as Nodo; } catch { return actual; }
   if (profundidadFraccion(curNodo) < 2) return actual;
   // Candidatas MÁS PLANAS (menos anidada, luego más corta):
   //  · la ENTRADA ORIGINAL formateada — si `simplify` la anidó de más, se RECUPERA la forma
@@ -138,12 +138,12 @@ function simplificarLado(lado: string): string {
   // Se adopta la de menor coste que sea numéricamente EQUIVALENTE al ORIGINAL (no cambiar el
   // dominio graficado: combinar puede cancelar √u/√u). Si ninguna mejora, se conserva `actual`.
   const candidatas: string[] = [];
-  try { candidatas.push(formatear(parse(norm))); } catch { /* original no reparseable */ }
+  try { candidatas.push(formatear(parse(norm) as unknown as Nodo)); } catch { /* original no reparseable */ }
   try { candidatas.push(formatear(combinarFracciones(n))); } catch { /* estructura no soportada */ }
   let mejorStr = actual, mejorCosto = costo(curNodo);
   for (const s of candidatas) {
     try {
-      const cost = costo(parse(s));
+      const cost = costo(parse(s) as unknown as Nodo);
       if (menor(cost, mejorCosto) && formasEquivalentes(s, norm)) { mejorStr = s; mejorCosto = cost; }
     } catch { /* candidata inválida */ }
   }

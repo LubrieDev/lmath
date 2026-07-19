@@ -1,4 +1,8 @@
-import { parse, fraction, rationalize, OperatorNode } from "mathjs";
+import {
+  parse, fraction, rationalize,
+  OperatorNode, ConstantNode, SymbolNode, FunctionNode,
+  type MathNode,
+} from "mathjs";
 
 // ─────────────────────────────────────────────
 // Formato algebraico compartido (términos con signo)
@@ -14,10 +18,70 @@ import { parse, fraction, rationalize, OperatorNode } from "mathjs";
 // Ambas son IDEMPOTENTES en formato → permiten detectar de forma fiable "no cambia nada"
 // y que Simplificar tras Despejar (que comparten `renderCanonico`) sea un no-op.
 
-export type Nodo = any;
+/**
+ * AST de mathjs con acceso estructural directo. mathjs expone `type` + métodos en el
+ * nodo base (`MathNode`) y reparte `args`/`op`/`fn`/`name`/`value`/`content` entre los
+ * subtipos (OperatorNode, ConstantNode, …), lo que obliga a un `narrowing` que este
+ * motor no hace: el código comprueba `.type` a mano y accede a la prop directamente.
+ * Este tipo lo modela como una vista PLANA (todas las props de subtipo presentes) con
+ * métodos de recorrido AUTORREFERENCIALES (operan y devuelven `Nodo`, no `MathNode`), de
+ * modo que las lecturas (`.op`, `.args[0]`) y los callbacks (`.map(sustituir)`,
+ * `.filter((n: Nodo) => …)`) quedan naturales. El `.type` es el discriminante que
+ * garantiza en runtime que la prop leída existe. Reemplaza al viejo `= any`, que
+ * propagaba `no-unsafe-*` por todo el motor. No es asignable a `MathNode` (los métodos
+ * autorreferenciales lo impiden por varianza), así que en la FRONTERA con mathjs se
+ * castea: `mathjs → Nodo` con `as Nodo`, y `Nodo → mathjs` mediante los ayudantes de
+ * construcción de nodos (`opNodo`, `funcNodo`, …) que encapsulan el cast inverso.
+ */
+export interface Nodo {
+  type: string;
+  op: string;
+  fn: Nodo;
+  name: string;
+  value: number;
+  args: Nodo[];
+  content: Nodo;
+  implicit?: boolean;
+  isConstantNode?: boolean;
+  isSymbolNode?: boolean;
+  isOperatorNode?: boolean;
+  isFunctionNode?: boolean;
+  isParenthesisNode?: boolean;
+  toString(options?: object): string;
+  toTex(options?: object): string;
+  filter(cb: (n: Nodo, path: string, parent: Nodo) => boolean): Nodo[];
+  forEach(cb: (n: Nodo, path: string, parent: Nodo) => void): void;
+  map(cb: (n: Nodo, path: string, parent: Nodo) => Nodo): Nodo;
+  transform(cb: (n: Nodo, path: string, parent: Nodo) => Nodo): Nodo;
+  traverse(cb: (n: Nodo, path: string, parent: Nodo) => void): void;
+  compile(): { evaluate(scope?: Record<string, number>): number };
+  evaluate(scope?: Record<string, number>): number;
+  clone(): Nodo;
+  cloneDeep(): Nodo;
+}
 export interface Termino { signo: 1 | -1; nodo: Nodo }
 /** Factor de un producto; `exp` = +1 numerador, −1 denominador. */
 export interface Factor { exp: 1 | -1; nodo: Nodo }
+
+// ─────────────────────────────────────────────
+// Construcción de nodos (frontera con mathjs)
+// ─────────────────────────────────────────────
+// Los constructores de mathjs devuelven subtipos de `MathNode` y exigen `MathNode[]` en
+// los hijos, no `Nodo`. Estos ayudantes encapsulan ese doble cast de frontera en un solo
+// sitio: aceptan/devuelven `Nodo` y el motor no vuelve a ver `MathNode` ni `any`.
+
+/** `OperatorNode`: `op` = símbolo (`+`, `*`, `/`…), `fn` = nombre mathjs (`add`, `multiply`…). */
+export const opNodo = (op: string, fn: string, args: Nodo[], implicit?: boolean): Nodo =>
+  new OperatorNode(op as never, fn as never, args as unknown as MathNode[], implicit) as unknown as Nodo;
+/** `ConstantNode`: literal numérico. */
+export const constNodo = (value: number): Nodo =>
+  new ConstantNode(value) as unknown as Nodo;
+/** `SymbolNode`: variable/constante con nombre (`x`, `pi`, centinelas…). */
+export const simboloNodo = (name: string): Nodo =>
+  new SymbolNode(name) as unknown as Nodo;
+/** `FunctionNode`: `fn` es el `SymbolNode` de la función (no un string). */
+export const funcNodo = (fn: Nodo, args: Nodo[]): Nodo =>
+  new FunctionNode(fn as unknown as SymbolNode, args as unknown as MathNode[]) as unknown as Nodo;
 
 /** ¿El subárbol referencia el símbolo `nombre`? */
 export function contieneVariable(n: Nodo, nombre: string): boolean {
@@ -61,7 +125,7 @@ export function costeExpansion(n: Nodo): number {
   if (!n || typeof n !== "object") return 1;
   if (n.type === "ParenthesisNode") return costeExpansion(n.content);
   if (n.type === "OperatorNode") {
-    const args = (n.args ?? []) as Nodo[];
+    const args = n.args ?? [];
     if (args.length === 1) return costeExpansion(args[0]);          // menos unario
     const a = costeExpansion(args[0]), b = costeExpansion(args[1]);
     if (n.op === "+" || n.op === "-") return a + b;
@@ -86,9 +150,9 @@ export function costeExpansion(n: Nodo): number {
  */
 export function rationalizeSeguro(expr: Nodo | string): Nodo | null {
   let nodo: Nodo;
-  try { nodo = typeof expr === "string" ? parse(expr) : expr; } catch { return null; }
+  try { nodo = typeof expr === "string" ? parse(expr) as unknown as Nodo : expr; } catch { return null; }
   if (costeExpansion(nodo) > LIMITE_EXPANSION) return null;
-  try { return rationalize(nodo); } catch { return null; }
+  try { return rationalize(nodo as unknown as MathNode) as unknown as Nodo; } catch { return null; }
 }
 
 /** ¿El término es constante (sin ningún símbolo/variable)? Un literal numérico. */
@@ -115,7 +179,7 @@ export function terminos(n: Nodo, signo: 1 | -1 = 1): Termino[] {
       return terminos(n.args[0], (-signo) as 1 | -1);
   }
   if (n.type === "ConstantNode" && typeof n.value === "number" && n.value < 0)
-    return [{ signo: (-signo) as 1 | -1, nodo: parse(String(-n.value)) }];
+    return [{ signo: (-signo) as 1 | -1, nodo: parse(String(-n.value)) as unknown as Nodo }];
   return [{ signo, nodo: n }];
 }
 
@@ -215,12 +279,12 @@ export function coeficientesAlFrente(n: Nodo): Nodo {
     // `\frac{-1\pi}{6}`, que se lee "menos uno por π"). Se colapsa al signo: `-pi/6`.
     const val = nums.reduce((a, f) => a * (valorConstanteFactor(f) as number), 1);
     if (Math.abs(val) === 1) {
-      const cuerpo = resto.reduce((a, b) => new OperatorNode("*", "multiply", [a, b]));
-      return val === 1 ? cuerpo : new OperatorNode("-", "unaryMinus", [cuerpo]);
+      const cuerpo = resto.reduce((a, b) => opNodo("*", "multiply", [a, b]));
+      return val === 1 ? cuerpo : opNodo("-", "unaryMinus", [cuerpo]);
     }
     const orden = [...nums, ...resto];
     if (orden.every((f, i) => f === fs[i])) return t;          // ya estaban delante
-    return orden.reduce((a, b) => new OperatorNode("*", "multiply", [a, b]));
+    return orden.reduce((a, b) => opNodo("*", "multiply", [a, b]));
   };
   return rec(n);
 }
@@ -341,7 +405,7 @@ export function racionalizarFracciones(n: Nodo): Nodo {
       else out += t.signo === 1 ? ` + ${s}` : ` - ${s}`;
     }
   });
-  try { return parse(out); } catch { return n; }
+  try { return parse(out) as unknown as Nodo; } catch { return n; }
 }
 
 // ─────────────────────────────────────────────
@@ -430,7 +494,7 @@ export function combinarYordenar(n: Nodo): Nodo {
   // Emisión: no-constantes en orden de aparición, la constante (firma "/") al final; ceros fuera.
   const entradas = [...grupos.entries()].filter(([, g]) => g.n !== 0);
   const grps = [...entradas.filter(([k]) => k !== "/"), ...entradas.filter(([k]) => k === "/")].map(([, g]) => g);
-  if (grps.length === 0) return parse("0");
+  if (grps.length === 0) return parse("0") as unknown as Nodo;
   let out = "";
   grps.forEach((g, i) => {
     const signo = g.n < 0 ? -1 : 1, valN = Math.abs(g.n);
@@ -440,7 +504,7 @@ export function combinarYordenar(n: Nodo): Nodo {
     if (i === 0) out = signo === 1 ? cuerpo(numStr) : cuerpo(`-${numStr}`);
     else out += signo === 1 ? ` + ${cuerpo(numStr)}` : ` - ${cuerpo(numStr)}`;
   });
-  try { return parse(out); } catch { return n; }
+  try { return parse(out) as unknown as Nodo; } catch { return n; }
 }
 
 // ─────────────────────────────────────────────
@@ -483,7 +547,7 @@ function aFraccionPot(n: Nodo): FraccionPot {
     }
     if (n.op === "-" && n.args.length === 1) {
       const A = aFraccionPot(a);
-      return { num: [...A.num, { nodo: parse("-1"), exp: 1 }], den: A.den };
+      return { num: [...A.num, { nodo: parse("-1") as unknown as Nodo, exp: 1 }], den: A.den };
     }
     if ((n.op === "+" || n.op === "-") && n.args.length === 2) {
       const A = aFraccionPot(a), B = aFraccionPot(b);
@@ -494,7 +558,7 @@ function aFraccionPot(n: Nodo): FraccionPot {
       const tA = renderFactoresPot([...A.num, ...restaPot(denU, A.den)]);
       const tB = renderFactoresPot([...B.num, ...restaPot(denU, B.den)]);
       const suma = n.op === "+" ? `${tA} + ${tB}` : `${tA} - (${tB})`;
-      return { num: [{ nodo: parse(suma), exp: 1 }], den: denU };
+      return { num: [{ nodo: parse(suma) as unknown as Nodo, exp: 1 }], den: denU };
     }
     // Exponente entero: `valorConstanteFactor` (no `b.type === "ConstantNode"`) porque la
     // entrada `x^{-1}` normaliza a `x^(-1)`, cuyo exponente mathjs deja como PARÉNTESIS
@@ -600,7 +664,7 @@ function expandirSumaPolinomica(n: Nodo): Nodo {
   if (!r0) return n;
   try {
     const r = combinarYordenar(r0);
-    return parse(formatearCanonico(racionalizarFracciones(r)));
+    return parse(formatearCanonico(racionalizarFracciones(r))) as unknown as Nodo;
   } catch { return n; }
 }
 
@@ -615,8 +679,8 @@ export function combinarFracciones(n: Nodo): Nodo {
   const num = restaPot(fr.num, fr.den).map((f) => ({ ...f, nodo: expandirSumaPolinomica(f.nodo) }));
   const den = restaPot(fr.den, fr.num);
   const numS = renderFactoresPot(num);
-  if (den.length === 0) return parse(numS);
-  return parse(`(${numS}) / (${renderFactoresPot(den)})`);
+  if (den.length === 0) return parse(numS) as unknown as Nodo;
+  return parse(`(${numS}) / (${renderFactoresPot(den)})`) as unknown as Nodo;
 }
 
 /** Profundidad de ANIDAMIENTO de fracciones de un árbol: 0 sin división; 1 = fracción
@@ -688,7 +752,7 @@ export function resimbolizarConstantes(n: Nodo): Nodo {
   const resimbolizado = n.transform((node: Nodo) => {
     if (node.isConstantNode && typeof node.value === "number") {
       const s = formaSimbolica(node.value);
-      if (s) return parse(s);
+      if (s) return parse(s) as unknown as Nodo;
     }
     return node;
   });
@@ -696,9 +760,9 @@ export function resimbolizarConstantes(n: Nodo): Nodo {
     const t = m.map(logAlFinal);
     if (t.type === "OperatorNode" && t.op === "*" && t.args.length === 2) {
       const [l, r] = t.args;
-      const dep = (x: Nodo) => x.filter((y: Nodo) => y.isSymbolNode && y.name === "x").length > 0;
+      const dep = (x: Nodo) => x.filter((y: Nodo) => y.isSymbolNode === true && y.name === "x").length > 0;
       // Constante con logaritmo × algo con la variable → variable primero, log al final.
-      if (contieneLog(l) && !dep(l) && dep(r)) return new OperatorNode("*", "multiply", [r, l]);
+      if (contieneLog(l) && !dep(l) && dep(r)) return opNodo("*", "multiply", [r, l]);
     }
     return t;
   };

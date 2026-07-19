@@ -191,8 +191,8 @@ function sincosExpandido(fn: "sin" | "cos", arg: Nodo): string | null {
   // arg = A + B (A el primer término, B el resto): adición, recursivo sobre cada parte.
   let A: Nodo, B: Nodo;
   try {
-    A = parse(renderTerminos1(ts[0]));
-    B = parse(terminosAStr(ts.slice(1)));
+    A = parse(renderTerminos1(ts[0])) as unknown as Nodo;
+    B = parse(terminosAStr(ts.slice(1))) as unknown as Nodo;
   } catch { return null; }
   const sA = sincosExpandido("sin", A), cA = sincosExpandido("cos", A);
   const sB = sincosExpandido("sin", B), cB = sincosExpandido("cos", B);
@@ -220,7 +220,7 @@ function expandirTrig(D: Nodo): Nodo | null {
       if (arg.type === "SymbolNode") return n; // ya atómico
       const s = sincosExpandido(fn, arg);
       if (s === null) { if (contieneY(n)) fallo = true; return n; }
-      try { return parse(s); } catch { fallo = true; return n; }
+      try { return parse(s) as unknown as Nodo; } catch { fallo = true; return n; }
     });
   } catch { return null; }
   return fallo ? null : out;
@@ -248,7 +248,7 @@ function sustituirAtomos(n: Nodo, st: Sustitucion): Nodo | null {
     if (contieneY(n)) {
       const arg = n.args?.length === 1 ? desParen(n.args[0]) : null;
       if ((fn === "sin" || fn === "cos") && arg?.type === "SymbolNode" && arg.name === "y")
-        return parse(fn === "cos" ? "CY" : "SY");
+        return parse(fn === "cos" ? "CY" : "SY") as unknown as Nodo;
       return null; // función de y no reducida a sin(y)/cos(y)
     }
     // sin/cos sin y: PAR por argumento. Se registran AMBOS restauradores al crear el par:
@@ -262,7 +262,7 @@ function sustituirAtomos(n: Nodo, st: Sustitucion): Nodo | null {
         st.inverso.set(par.sn, `sin(${argS})`);
         st.inverso.set(par.cs, `cos(${argS})`);
       }
-      return parse(fn === "sin" ? par.sn : par.cs);
+      return parse(fn === "sin" ? par.sn : par.cs) as unknown as Nodo;
     }
     const clave = n.toString();
     let sym = st.porClave.get(clave);
@@ -271,7 +271,7 @@ function sustituirAtomos(n: Nodo, st: Sustitucion): Nodo | null {
       st.porClave.set(clave, sym);
       st.inverso.set(sym, clave);
     }
-    return parse(sym);
+    return parse(sym) as unknown as Nodo;
   }
   if (n.type === "SymbolNode" && (n.name === "y" || RESERVADO.test(n.name))) return null;
   let fallo = false;
@@ -286,8 +286,8 @@ function sustituirAtomos(n: Nodo, st: Sustitucion): Nodo | null {
 /** Deshace la sustitución: cada símbolo auxᵢ vuelve a su función original. */
 function restaurarAtomos(s: string, inverso: Map<string, string>): string {
   try {
-    return parse(s).transform((n: Nodo) =>
-      n.type === "SymbolNode" && inverso.has(n.name) ? parse(inverso.get(n.name)!) : n
+    return (parse(s) as unknown as Nodo).transform((n: Nodo) =>
+      n.type === "SymbolNode" && inverso.has(n.name) ? parse(inverso.get(n.name)!) as unknown as Nodo : n
     ).toString();
   } catch { return s; }
 }
@@ -567,7 +567,7 @@ export function despejeTrigCuadratico(D: Nodo, DVal: Nodo): { ecuacion: string; 
   let evalF: (x: number, y: number) => number;
   try {
     const c = DVal.compile();
-    evalF = (x, y) => { try { return c.evaluate({ x, y }) as number; } catch { return NaN; } };
+    evalF = (x, y) => { try { return c.evaluate({ x, y }); } catch { return NaN; } };
   } catch { return null; }
 
   const emitir = (inner: string): { ecuacion: string; completo: boolean } =>

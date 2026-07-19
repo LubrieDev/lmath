@@ -1,4 +1,4 @@
-import { derivative, parse, simplify } from "mathjs";
+import { derivative, parse, simplify, type MathNode } from "mathjs";
 
 import { normalizarEntrada } from "./parser";
 import { insertarProductoImplicito } from "./motor/parsing/productoImplicito";
@@ -34,7 +34,7 @@ const MUESTRAS = [-7.3, -2.6, -1.2, -0.7, -0.3, 0.4, 1.1, 2.7, 5.8, 11.4];
 
 /** ¿La expresión contiene la variable de integración `x`? (un factor sin x es constante). */
 function dependeDeX(n: Nodo): boolean {
-  return n.filter((nodo: Nodo) => nodo.isSymbolNode && nodo.name === VAR).length > 0;
+  return n.filter((nodo: Nodo) => nodo.isSymbolNode === true && nodo.name === VAR).length > 0;
 }
 
 /** Valor numérico de un nodo CONSTANTE (sin x), o null si no evalúa a un número finito. */
@@ -55,7 +55,7 @@ function valorConstante(n: Nodo): number | null {
  */
 function coefLineal(u: Nodo): number | null {
   try {
-    const a = valorConstante(simplify(derivative(u, VAR)));
+    const a = valorConstante(simplify(derivative(u as unknown as MathNode, VAR)) as unknown as Nodo);
     return a !== null && a !== 0 ? a : null;
   } catch {
     return null;
@@ -103,7 +103,7 @@ function integrarReciproco(q: Nodo): string | null {
 function integrarArcotangente(q: Nodo): string | null {
   let d1: Nodo;
   try {
-    d1 = simplify(derivative(q, VAR)); // dq/dx debe ser 2k·x (lineal pura)
+    d1 = simplify(derivative(q as unknown as MathNode, VAR)) as unknown as Nodo; // dq/dx debe ser 2k·x (lineal pura)
   } catch {
     return null;
   }
@@ -258,7 +258,7 @@ export function integrarExpr(expr: string): string | null {
   if (norm === "") return null;
   let raiz: Nodo;
   try {
-    raiz = parse(norm);
+    raiz = parse(norm) as unknown as Nodo;
   } catch {
     return null;
   }
@@ -270,7 +270,7 @@ export function integrarExpr(expr: string): string | null {
   // paso para que simplify no las vuelva a decimalizar. Tolerante: conserva la cruda si falla.
   let limpio = cruda;
   try {
-    limpio = resimbolizarConstantes(racionalizarFracciones(simplify(cruda))).toString();
+    limpio = resimbolizarConstantes(racionalizarFracciones(simplify(cruda) as unknown as Nodo)).toString();
   } catch {
     try {
       limpio = simplify(cruda).toString();
