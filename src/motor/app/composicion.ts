@@ -9,8 +9,7 @@
 // descubridor, render) o añadir un tipo de objeto es editar SOLO este archivo (OCP).
 
 import type {
-  Estilo, ObjetoMatematico, ObjetoExplicito, ObjetoImplicito,
-  ObjetoParametrico, ObjetoPolar, ProveedorGeometria,
+  Estilo, ObjetoMatematico, ObjetoExplicito, ProveedorGeometria,
 } from "../contracts";
 import { TrazadorExplicitoAdaptativo } from "../tracing/explicit/TrazadorExplicitoAdaptativo";
 import { TrazadorContinuacion } from "../tracing/continuation/TrazadorContinuacion";

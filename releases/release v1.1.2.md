@@ -1,0 +1,1 @@
+Maintenance release: resolves remaining issues from Obsidian's automated review. No user-facing changes.

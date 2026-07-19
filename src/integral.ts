@@ -161,6 +161,7 @@ function parsearLineas(entrada: string): Integral | null {
  */
 function normalizarInvisibles(texto: string): string {
   return texto
+    // eslint-disable-next-line no-misleading-character-class -- Intentionally removes Unicode zero-width characters from pasted LaTeX.
     .replace(/[\u200B\u200C\u200D\uFEFF]/gu, "")
     .replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, " ");
 }
