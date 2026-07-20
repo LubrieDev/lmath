@@ -25,7 +25,7 @@ import {
 import { interseccionesDeGeometrias, MAX_PUNTOS } from "../analysis/interseccionesRamas";
 import { recortarRegion } from "../analysis/areaBajoRama";
 import { resumenPuntosNotables, type ResumenNotables } from "../analysis/puntosNotablesDeRama";
-import { semiYAutoencuadre } from "./autoencuadre";
+import { semiYAutoencuadre, semiYAcotado } from "./autoencuadre";
 
 export interface ObjetoEscena {
   readonly proveedor: ProveedorGeometria;
@@ -118,6 +118,17 @@ export class Escena {
   encuadreAutomatico(viewport: Viewport): number | null {
     const ramas = this.items.flatMap((it) => podarVerticesDePolo(it.geometria.ramas, viewport));
     return semiYAutoencuadre(ramas, viewport);
+  }
+
+  /**
+   * Semirrango vertical para encuadrar una curva ACOTADA que se SALE de la vista por defecto
+   * (astroide, círculo grande), o `null` si no procede (ilimitada, o cabe en la vista base).
+   * La geometría debe estar YA trazada en el SONDEO (`vpSondeo`, una vista grande): ver
+   * `semiYAcotado`. Complementa a `encuadreAutomatico`, que solo ACERCA curvas pequeñas.
+   */
+  encuadreAcotado(vpSondeo: Viewport, semiYDefecto: number): number | null {
+    const ramas = this.items.flatMap((it) => podarVerticesDePolo(it.geometria.ramas, vpSondeo));
+    return semiYAcotado(ramas, vpSondeo, semiYDefecto);
   }
 
   actualizar(viewport: Viewport, pasada: "interactiva" | "final" = "final"): void {

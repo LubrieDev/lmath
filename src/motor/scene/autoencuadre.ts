@@ -9,10 +9,13 @@
 //
 // TRES decisiones de diseño, y las tres son la razón de que esto sea seguro:
 //
-//  1. SOLO ACERCA, NUNCA ALEJA. Si la curva TOCA cualquier borde de la vista, no se
-//     toca nada: fuera del cuadro puede continuar indefinidamente (una recta, una
-//     parábola, tan x) y "encuadrarla" sería perseguir un infinito. El disparo exige
-//     contención ESTRICTA, con un colchón de unos píxeles.
+//  1. `semiYAutoencuadre` SOLO ACERCA, NUNCA ALEJA. Si la curva TOCA cualquier borde de la
+//     vista, no se toca nada: fuera del cuadro puede continuar indefinidamente (una recta, una
+//     parábola, tan x) y "encuadrarla" sería perseguir un infinito. El disparo exige contención
+//     ESTRICTA, con un colchón de unos píxeles. Su COMPLEMENTO `semiYAcotado` sí puede ALEJAR,
+//     pero solo tras confirmar —con un SONDEO en una vista grande— que la curva es ACOTADA
+//     (contenida en el sondeo): así se encuadra la astroide de radio 8 (que se sale de [-7,7])
+//     sin arriesgarse a perseguir el infinito de una ilimitada.
 //  2. CENTRO EN EL ORIGEN. Solo se escala; no se traslada. Los ejes siguen siempre en
 //     cuadro, que es lo que uno espera de un plano cartesiano (una circunferencia lejos
 //     del origen no deja la gráfica sin ejes de referencia).
@@ -67,14 +70,9 @@ export function cuantizarSemirrango(v: number): number {
   return 10 * base;
 }
 
-/**
- * Semirrango vertical al que debería ir la vista para encuadrar estas ramas, o `null`
- * si no procede (curva que toca un borde, curva que ya llena la vista, sin geometría,
- * curva degenerada a un punto). El llamador debe pasar las ramas YA PODADAS de vértices
- * sintéticos de polo (`podarVerticesDePolo`): esos vértices viven fuera de la vista a
- * propósito y harían fallar la contención de cualquier función con asíntota.
- */
-export function semiYAutoencuadre(ramas: readonly Rama[], vp: Viewport): number | null {
+/** Caja envolvente (mundo) de todos los puntos FINITOS de las ramas, o null si no hay ninguno. */
+interface Caja { x0: number; x1: number; y0: number; y1: number; }
+function bboxDeRamas(ramas: readonly Rama[]): Caja | null {
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (const r of ramas) {
     const p = r.puntos;
@@ -87,23 +85,42 @@ export function semiYAutoencuadre(ramas: readonly Rama[], vp: Viewport): number 
       if (y > y1) y1 = y;
     }
   }
-  if (!Number.isFinite(x0) || !Number.isFinite(y0)) return null; // sin geometría
-  if (x1 - x0 < TAMANO_MINIMO && y1 - y0 < TAMANO_MINIMO) return null; // punto degenerado
+  return Number.isFinite(x0) && Number.isFinite(y0) ? { x0, x1, y0, y1 } : null;
+}
 
-  // Contención ESTRICTA: si la curva llega al borde (o casi), asumimos que continúa
-  // fuera y no encuadramos. El colchón se mide en px y se traduce a mundo por eje.
+/** ¿La caja TOCA (o casi) algún borde del viewport? El colchón (COLCHON_PX) se mide en px
+ *  y se traduce a mundo por eje. Una curva que toca el borde se asume que continúa fuera. */
+function tocaBorde(c: Caja, vp: Viewport): boolean {
   const holguraX = ((vp.domX[1] - vp.domX[0]) / vp.anchoPx) * COLCHON_PX;
   const holguraY = ((vp.domY[1] - vp.domY[0]) / vp.altoPx) * COLCHON_PX;
-  if (x0 <= vp.domX[0] + holguraX || x1 >= vp.domX[1] - holguraX) return null;
-  if (y0 <= vp.domY[0] + holguraY || y1 >= vp.domY[1] - holguraY) return null;
+  return c.x0 <= vp.domX[0] + holguraX || c.x1 >= vp.domX[1] - holguraX ||
+         c.y0 <= vp.domY[0] + holguraY || c.y1 >= vp.domY[1] - holguraY;
+}
 
-  // Encuadre CENTRADO EN EL ORIGEN: el semirrango Y debe cubrir la extensión vertical de
-  // la curva Y TAMBIÉN la horizontal, porque semiX se deriva de semiY con celdas 1:1
-  // (semiX = semiY · ancho/alto) → una curva ancha y plana (la lemniscata) la gobierna X.
-  const maxAbsY = Math.max(Math.abs(y0), Math.abs(y1));
-  const maxAbsX = Math.max(Math.abs(x0), Math.abs(x1));
-  const semiNecesario =
-    Math.max(maxAbsY, (maxAbsX * vp.altoPx) / vp.anchoPx) / OCUPACION_MAXIMA;
+/** Semirrango Y (centro en el origen, celdas 1:1) al que la caja ocupa la fracción `ocup` del
+ *  cuadro. Cubre la extensión vertical Y TAMBIÉN la horizontal (semiX = semiY·ancho/alto), así
+ *  que una curva ANCHA y plana (la lemniscata) la gobierna la X. */
+function semiParaCaja(c: Caja, vp: Viewport, ocup: number): number {
+  const maxAbsY = Math.max(Math.abs(c.y0), Math.abs(c.y1));
+  const maxAbsX = Math.max(Math.abs(c.x0), Math.abs(c.x1));
+  return Math.max(maxAbsY, (maxAbsX * vp.altoPx) / vp.anchoPx) / ocup;
+}
+
+/**
+ * Semirrango vertical al que debería ir la vista para encuadrar estas ramas, o `null`
+ * si no procede (curva que toca un borde, curva que ya llena la vista, sin geometría,
+ * curva degenerada a un punto). El llamador debe pasar las ramas YA PODADAS de vértices
+ * sintéticos de polo (`podarVerticesDePolo`): esos vértices viven fuera de la vista a
+ * propósito y harían fallar la contención de cualquier función con asíntota.
+ */
+export function semiYAutoencuadre(ramas: readonly Rama[], vp: Viewport): number | null {
+  const c = bboxDeRamas(ramas);
+  if (c === null) return null; // sin geometría
+  if (c.x1 - c.x0 < TAMANO_MINIMO && c.y1 - c.y0 < TAMANO_MINIMO) return null; // punto degenerado
+  // Contención ESTRICTA: si la curva llega al borde (o casi), asumimos que continúa fuera.
+  if (tocaBorde(c, vp)) return null;
+
+  const semiNecesario = semiParaCaja(c, vp, OCUPACION_MAXIMA);
   if (!Number.isFinite(semiNecesario) || semiNecesario <= 0) return null;
 
   const semiActual = (vp.domY[1] - vp.domY[0]) / 2;
@@ -113,4 +130,42 @@ export function semiYAutoencuadre(ramas: readonly Rama[], vp: Viewport): number 
   // La cuantización hacia arriba puede devolvernos al encuadre actual (o pasarse): en ese
   // caso no hay nada que ganar y se deja la vista por defecto.
   return semi < semiActual ? semi : null;
+}
+
+/** Ocupación de la curva ACOTADA que se ALEJA para encuadrar. Más llena que el zoom-in (0.6):
+ *  al alejar para que la curva quepa entera se quiere que OCUPE la vista, no que quede pequeña. */
+export const OCUPACION_ACOTADA = 0.8;
+
+/** Factor del SONDEO: la vista grande (× la por defecto) en la que se traza para averiguar si
+ *  una curva que se sale es ACOTADA (contenida en el sondeo) o ilimitada (toca su borde). */
+export const FACTOR_SONDEO = 8;
+
+/**
+ * Semirrango Y para encuadrar una curva ACOTADA que SE SALE de la vista por defecto y queda
+ * recortada (la astroide `x^{2/3}+y^{2/3}=4`, de radio 8, con la vista [-7,7]). Complementa a
+ * `semiYAutoencuadre` —que SOLO acerca curvas pequeñas—: aquí se puede ALEJAR. Las ramas vienen
+ * de un SONDEO en una vista GRANDE (`vpSondeo` = FACTOR_SONDEO × la por defecto): si ahí la
+ * curva está CONTENIDA es acotada y se encuadra a su extensión; si toca el borde del sondeo es
+ * ilimitada (recta, parábola) y se deja la vista por defecto (null). Solo dispara si la curva
+ * EXCEDE la vista por defecto (`semiYDefecto`); si cabe, la gobiernan el zoom-in o la vista base.
+ */
+export function semiYAcotado(
+  ramas: readonly Rama[], vpSondeo: Viewport, semiYDefecto: number
+): number | null {
+  const c = bboxDeRamas(ramas);
+  if (c === null) return null;
+  if (c.x1 - c.x0 < TAMANO_MINIMO && c.y1 - c.y0 < TAMANO_MINIMO) return null;
+  if (tocaBorde(c, vpSondeo)) return null; // toca el borde del SONDEO → ilimitada, no encuadrar
+
+  // Solo reencuadrar si la curva SE SALE de la vista por defecto (si cabe, no tocar nada: lo
+  // pequeño ya lo gobiernan `semiYAutoencuadre` o la propia vista base).
+  const maxAbsY = Math.max(Math.abs(c.y0), Math.abs(c.y1));
+  const maxAbsX = Math.max(Math.abs(c.x0), Math.abs(c.x1));
+  const semiXDefecto = (semiYDefecto * vpSondeo.anchoPx) / vpSondeo.altoPx;
+  if (maxAbsY <= semiYDefecto && maxAbsX <= semiXDefecto) return null;
+
+  const semiNecesario = semiParaCaja(c, vpSondeo, OCUPACION_ACOTADA);
+  if (!Number.isFinite(semiNecesario) || semiNecesario <= 0) return null;
+  const semi = cuantizarSemirrango(semiNecesario);
+  return semi > semiYDefecto ? semi : null; // debe ALEJAR (si no, nada que ganar)
 }

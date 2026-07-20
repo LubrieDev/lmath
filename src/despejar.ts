@@ -392,6 +392,88 @@ function despejeMultiplicativo(t: Termino, derecha: Termino[]): string | null {
   return `${renderProducto(conYf)} = ${ladoDerecho(t, derecha, libres)}`;
 }
 
+/** Único término-y de la forma (libres)·E⁻¹ con E conteniendo y (y en el DENOMINADOR):
+ *  invierte el recíproco —E sube, `derecha` baja— y RECURRE para aislar y de E, que ninguna
+ *  otra estrategia toca (todas exigen la y en el NUMERADOR, exp +1). `1/y=x` → `y=1/x`;
+ *  `x/y=2` → `y=x/2`; `1/(x²+y²)=kπ` → `x²+y²=1/(kπ)` → `y=±√(1/(kπ)−x²)`. Es EXACTO: un
+ *  recíproco `1/E` nunca vale 0, y donde `derecha=0` ambas formas quedan indefinidas (mismo
+ *  dominio). Solo se acepta si la recursión COMPLETA el despeje; si no, null → forma parcial de
+ *  siempre. La recursión es de un nivel: tras invertir, la y de E queda en el numerador. */
+function despejeReciproco(t: Termino, derecha: Termino[]): { ecuacion: string; completo: boolean } | null {
+  const fs = factores(t.nodo);
+  const conYf = fs.filter((f) => contieneY(f.nodo));
+  const libres = fs.filter((f) => !contieneY(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== -1) return null;
+  if (derecha.length === 0) return null; // `1/E = 0`: sin solución (el recíproco nunca es 0)
+  const E = conYf[0].nodo.toString();
+  const numFree = libres.filter((f) => f.exp === 1).map((f) => `(${f.nodo.toString()})`);
+  const denFree = libres.filter((f) => f.exp === -1).map((f) => `(${f.nodo.toString()})`);
+  // signo·numFree·E⁻¹ / denFree = derecha  ⇒  E = signo·numFree / (derecha·denFree).
+  const arriba = (t.signo === -1 ? "-" : "") + (numFree.length ? numFree.join("*") : "1");
+  // Los factores libres del denominador van DELANTE del valor de `derecha` (coeficiente
+  // numérico primero: `5/(2y)=x` → `y=5/(2x)`, no `5/(x2)` —`x·2` se pinta pegado y al revés).
+  const abajo = [...denFree, `(${renderTerminos(derecha)})`].join("*");
+  const rec = despejar(`${E} = (${arriba})/(${abajo})`);
+  return rec && rec.completo ? rec : null;
+}
+
+/** Familia de `T(u) = 0` (RHS de `u = …`): dónde se anula cada trig. `sin`/`tan` → kπ;
+ *  `cos`/`cot` → π/2 + kπ; `sec`/`csc` NUNCA se anulan (sin solución). */
+const TRIG_CERO: Record<string, { periodo: string; base: string | null } | null | undefined> = {
+  sin: { periodo: "pi", base: null }, tan: { periodo: "pi", base: null },
+  cos: { periodo: "pi", base: "pi/2" }, cot: { periodo: "pi", base: "pi/2" },
+  sec: null, csc: null,
+};
+
+/** ¿La expresión (aún con y sin aislar) es SIEMPRE > 0 sobre una malla del plano (x,y)?
+ *  Decide si la familia `kπ` de `sin(u)=0`/`tan(u)=0` es ℕ (kπ debe ser > 0 para que exista
+ *  curva: `u=1/(x²+y²)>0`) o ℤ. Conservador: cualquier valor ≤ 0 —o malla sin evidencia
+ *  suficiente— → false (ℤ). Mismo espíritu numérico que `ramaReal`. */
+function uSiemprePositivo(uStr: string): boolean {
+  let f: (s: Record<string, number>) => unknown;
+  try { const c = parse(insertarProductoImplicito(normalizarEntrada(uStr))).compile(); f = (s) => c.evaluate(s); }
+  catch { return false; }
+  const malla = [-8, -3.5, -1.5, -0.5, 0.3, 0.9, 2.2, 5.1];
+  let vistos = 0;
+  for (const x of malla) for (const y of malla) {
+    let v: unknown;
+    try { v = f({ x, y }); } catch { continue; }
+    if (typeof v !== "number" || !Number.isFinite(v)) continue;
+    if (v <= 1e-9) return false;
+    vistos++;
+  }
+  return vistos >= 8; // evidencia mínima: no declarar "positivo" por una malla casi toda NaN
+}
+
+/** `T(u) = 0` con T trig y u conteniendo y (NO desnuda) → invierte a la familia
+ *  `u = base + k·período` y RECURRE para aislar y de u. `sin(1/(x²+y²))=0` → `1/(x²+y²)=kπ`
+ *  → (recíproco + círculo) → `y = ±√(1/(kπ)−x²)`. Para `sin`/`tan` (familia kπ) el parámetro
+ *  es ℕ si u>0 en todo el plano (kπ debe ser positivo para que haya curva) y ℤ si no; `cos`/
+ *  `cot` (π/2+kπ) van a ℤ. Solo la forma pura `T(u)=0` sin factores libres —la del ejemplo—;
+ *  `T(y)` desnuda es de `despejeTrigInverso`. null si no encaja o la recursión no completa. */
+function despejeTrigCero(t: Termino, derecha: Termino[]): { ecuacion: string; completo: boolean } | null {
+  // Solo `T(u) = 0`: el lado libre de y debe ser 0 (el RHS `= 0` deja el término constante
+  // `0` en `derecha`, que aquí se ignora; un `T(u) = c≠0` sí se descarta —otra estrategia—).
+  const noNulos = derecha.filter((d) => {
+    const n = desParen(d.nodo);
+    return !(n.type === "ConstantNode" && n.value === 0);
+  });
+  if (noNulos.length !== 0) return null;
+  const nodo = desParen(t.nodo);
+  if (nodo.type !== "FunctionNode" || nodo.args?.length !== 1) return null;
+  const info = TRIG_CERO[nodo.fn?.name ?? ""];
+  if (!info) return null; // no es trig soportada, o sec/csc (nunca 0 → sin solución)
+  const u = desParen(nodo.args[0]);
+  if (!contieneY(u) || (u.type === "SymbolNode" && u.name === "y")) return null; // desnuda → otra vía
+  const uStr = u.toString();
+  const cero = info.base === null && uSiemprePositivo(uStr)
+    ? `famN(k, ${info.periodo})`   // sin/tan y u>0 ⇒ kπ con k∈ℕ
+    : `fam(k, ${info.periodo})`;   // resto ⇒ k∈ℤ
+  const rhs = info.base ? `${info.base} + ${cero}` : cero;
+  const rec = despejar(`${uStr} = ${rhs}`);
+  return rec && rec.completo ? rec : null;
+}
+
 // ─────────────────────────────────────────────
 // Despeje CUADRÁTICO en y^g (bicuadráticas y cuadráticas en y)
 // ─────────────────────────────────────────────
@@ -776,6 +858,13 @@ function despejar(ecuacion: string): { ecuacion: string; completo: boolean } | n
     // dejaría `tan(y) = …` incompleto en vez de aislar y.
     const trig = despejeTrigInverso(conY[0], derecha);
     if (trig) return trig;
+    // `T(u) = 0` con u COMPUESTA (y anidada) → invierte a `u = base + kπ` y recurre.
+    const trigCero = despejeTrigCero(conY[0], derecha);
+    if (trigCero) return trigCero;
+    // (libres)·E⁻¹ con y en el DENOMINADOR → invierte el recíproco y recurre para aislar y.
+    // Antes que el multiplicativo, que dejaría `1/E = …` (o su forma cruda) sin aislar y.
+    const recip = despejeReciproco(conY[0], derecha);
+    if (recip) return recip;
     // Otros factores libres de y en un producto → se dividen al otro lado.
     const mult = despejeMultiplicativo(conY[0], derecha);
     if (mult) {

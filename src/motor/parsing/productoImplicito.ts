@@ -40,8 +40,10 @@ const FUNCIONES = new Set([
   // que emite el despeje por inversión trig (despejeInverso.ts). Átomo (si no, se
   // partiría en `f*a*m`); NO se evalúa ni se expande para graficar (el despeje es
   // presentación: lo graficado es siempre la ecuación original). `toTex` lo pinta
-  // `k\pi`/`2k\pi` y añade la coletilla `, k∈ℤ` (latex.ts).
-  "fam",
+  // `k\pi`/`2k\pi` y añade la coletilla `, k∈ℤ` (latex.ts). `famN` es su hermano de
+  // dominio NATURAL (k∈ℕ): mismo render `k\pi`, pero la coletilla es `, k∈ℕ` —lo emite
+  // el despeje de `T(u)=0` cuando u>0 obliga a kπ>0 (`sin(1/(x²+y²))=0`, despejar.ts).
+  "fam", "famN",
 ]);
 // Constantes/variables de varias letras que NO deben partirse.
 const CONSTANTES = new Set(["pi", "theta", "tau", "phi", "Infinity", "NaN"]);

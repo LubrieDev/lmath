@@ -18,9 +18,9 @@
 // (comportamiento idéntico al de antes: no hay sistema, hay un solo objeto).
 //
 // Además DESENVUELVE la notación de definición de función nombrada `f(x)=rhs` → `rhs`
-// (azúcar estilo Desmos): aquí, porque es el ÚNICO punto por el que pasan a la vez el
-// grafo (composicion.ts), el panel (MotorExperimental) y el trazador → un solo sitio y
-// todo queda coherente.
+// (y su hermana polar `r(θ)=rhs` → `r=rhs`): azúcar estilo Desmos; aquí, porque es el ÚNICO
+// punto por el que pasan a la vez el grafo (composicion.ts), el panel (MotorExperimental) y
+// el trazador → un solo sitio y todo queda coherente.
 
 // Y FUSIONA las dos componentes de una paramétrica escritas por separado (`x(t)=…` en una
 // línea, `y(t)=…` en otra) en la tupla canónica `(X, Y)`: por el mismo motivo (un solo sitio
@@ -52,6 +52,23 @@ function desenvolverDefinicionFuncion(ec: string): string {
   return m[2].trim();
 }
 
+/**
+ * Hermano polar de `desenvolverDefinicionFuncion`: desenvuelve `r(θ) = rhs` → `r = rhs`
+ * cuando el argumento es el ÁNGULO polar (`\theta`, `θ` o `theta`). Sin esto,
+ * `construirObjeto` normaliza `r\left(\theta\right)` a `r*(theta)` (producto implícito),
+ * que ya no es el `r` exacto que exige su rama polar (`lhs === "r"`), y la curva cae en una
+ * IMPLÍCITA basura (`r*(theta) - rhs = 0`, "sin y que despejar"). Reescrito a `r = rhs`
+ * entra por la rama polar canónica (r = g(θ)) y grafo/panel/trazador quedan coherentes.
+ *
+ * El argumento se restringe al ÁNGULO: `r(t)=…` es una componente paramétrica (la trata
+ * `funcionDelParametro`), no polar, y no se toca. Tolera el `\left(…\right)` de LaTeX.
+ */
+function desenvolverDefinicionPolar(ec: string): string {
+  const m = /^r\s*(?:\\left)?\(\s*(?:\\theta|theta|θ)\s*(?:\\right)?\)\s*=([\s\S]+)$/.exec(ec);
+  if (!m) return ec;
+  return `r=${m[1].trim()}`;
+}
+
 export function dividirEcuaciones(source: string): string[] {
   let s = source.trim();
 
@@ -75,7 +92,9 @@ export function dividirEcuaciones(source: string): string[] {
     .map((l) => l.replace(/&/g, "").trim())
     .filter((l) => l.length > 0)
     // `f(x)=rhs` (definición de función nombrada) → `rhs` (explícita canónica).
-    .map(desenvolverDefinicionFuncion);
+    .map(desenvolverDefinicionFuncion)
+    // `r(θ)=rhs` (notación polar con argumento) → `r=rhs` (polar canónica).
+    .map(desenvolverDefinicionPolar);
 
   // `x(t)=X` + `y(t)=Y` (dos líneas) → `(X, Y)`: UNA paramétrica, no dos ecuaciones sueltas.
   return fusionarComponentes(lineas);

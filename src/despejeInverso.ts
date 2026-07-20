@@ -89,6 +89,13 @@ export function tieneFamilia(expr: string): boolean {
   return /(?<![a-zA-Z0-9_])fam\s*\(/.test(expr);
 }
 
+/** ¿El string contiene el centinela de familia NATURAL `famN(…)` (k∈ℕ)? Hermano de
+ *  `tieneFamilia`: `famN(` NO casa el patrón `fam\(` de aquélla (tras `fam` va una `N`, no
+ *  `(`), así que las dos coletillas —ℕ y ℤ— nunca se pisan. */
+export function tieneFamiliaN(expr: string): boolean {
+  return /(?<![a-zA-Z0-9_])famN\s*\(/.test(expr);
+}
+
 // ── Clasificación de un despeje por sus centinelas ───────────────────────────
 //
 // La forma de la solución se DERIVA del string (los centinelas son detectables), sin
@@ -103,7 +110,7 @@ export type FormaDespeje = "unica" | "ramas-finitas" | "familia-periodica";
 
 /** Forma de la solución que representa un despeje (string mathjs de despejar.ts). */
 export function clasificarDespeje(ecuacion: string): FormaDespeje {
-  if (tieneFamilia(ecuacion)) return "familia-periodica";
+  if (tieneFamilia(ecuacion) || tieneFamiliaN(ecuacion)) return "familia-periodica";
   if (/(?<![a-zA-Z0-9_])(pm|mp)\s*\(/.test(ecuacion)) return "ramas-finitas";
   return "unica";
 }

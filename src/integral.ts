@@ -30,14 +30,32 @@ export type { ResultadoArea };
 /** Descomposición de una integral definida escrita por el usuario. Las piezas son texto
  *  CRUDO (tal como se escribió), no normalizado: cada consumidor aplica su propia ruta. */
 export interface Integral {
-  /** Integrando f: expresión suelta re-parseable por el pipeline (p. ej. `x^{2}`). */
+  /** Integrando f para el CÓMPUTO (grafica/integra/área): la variable de integración se
+   *  renombra a `x` porque `integrar`/`derivar` y el motor trabajan SIEMPRE en `x` (ver
+   *  `integrandoEnX`). Así `\int_0^1 t^2\,dt` computa como `∫x²dx`, no con `t` libre. */
   integrando: string;
+  /** Integrando tal como se ESCRIBIÓ (variable original), solo para el panel operador. */
+  integrandoDisplay: string;
   /** Límite inferior, tal como se escribió (`a`, `0`, `\pi`, `-1`). Puede ser simbólico. */
   a: string;
   /** Límite superior, tal como se escribió. */
   b: string;
   /** Variable de integración leída del diferencial `dx`/`dt` (por defecto `x`). */
   variable: string;
+}
+
+/**
+ * Renombra la variable de integración a `x` en el integrando (texto crudo). El bloque grafica
+ * el integrando sobre el eje horizontal, e `integrar`/`derivar` trabajan SIEMPRE en `x` (su
+ * `VAR`), así que la variable de integración —sea `t`, `u`, `y`…— ES esa `x` con otro nombre.
+ * Sin este renombrado, `\int_0^1 t^2\,dt` (= 1/3) se compilaba con `t` libre → NaN en todo el
+ * intervalo → el bloque lo daba por "Fuera de dominio". El nombre es una LETRA suelta (la que
+ * capta el diferencial `d<letra>`); `\bvar\b` no toca la misma letra dentro de un comando
+ * (`\tan t` → `\tan x`, la `t` de `\tan` queda intacta) porque ahí no hay frontera de palabra.
+ */
+function integrandoEnX(integrando: string, variable: string): string {
+  if (variable === "x" || !/^[a-zA-Z]$/.test(variable)) return integrando;
+  return integrando.replace(new RegExp(`\\b${variable}\\b`, "g"), "x");
 }
 
 /**
@@ -113,7 +131,7 @@ function parsearLatex(entrada: string): Integral | null {
   if (dif) { variable = dif[1]; resto = resto.slice(0, dif.index).trim(); }
   if (resto === "") return null;
 
-  return { integrando: resto, a, b, variable };
+  return { integrando: integrandoEnX(resto, variable), integrandoDisplay: resto, a, b, variable };
 }
 
 /** Integrando de una línea `f(x)=expr`, `y=expr`/`expr=y` o una expresión suelta. Null si
@@ -148,7 +166,7 @@ function parsearLineas(entrada: string): Integral | null {
   }
   if (a === null || b === null || otras.length === 0) return null;
   const f = integrandoDeLinea(otras[0]);
-  return f ? { integrando: f, a, b, variable: "x" } : null;
+  return f ? { integrando: f, integrandoDisplay: f, a, b, variable: "x" } : null;
 }
 
 /**
@@ -229,7 +247,7 @@ export function integralOperadorLatex(source: string): string {
   // El integrando se muestra SIMPLIFICADO, igual que el operador de obs-derivate muestra la
   // función ya simplificada: misma filosofía "tu expresión original, adaptada al bloque".
   // Si la simplificación falla, se conserva el integrando crudo (nunca rompe el panel).
-  let integrando = it.integrando;
+  let integrando = it.integrandoDisplay;
   try { integrando = simplificarEcuaciones([integrando])[0]; } catch { /* conserva el crudo */ }
   return `\\int_{${latexSeguro(it.a)}}^{${latexSeguro(it.b)}} ${latexSeguro(integrando)}\\,d${it.variable}`;
 }
@@ -248,7 +266,12 @@ export function integralPrimitivaLatex(source: string): string | null {
   if (!it) return null;
   const primitiva = integrarExpr(it.integrando);
   if (!primitiva) return null;
-  return `\\left[${latexSeguro(primitiva)}\\right]_{${latexSeguro(it.a)}}^{${latexSeguro(it.b)}}`;
+  // La primitiva se computa en `x` (integrarExpr trabaja en su `VAR`); se re-expresa en la
+  // variable ESCRITA por el usuario para que el corchete de Barrow y el operador coincidan
+  // (`\int_0^1 t^2\,dt` → `[t^3/3]`, no `[x^3/3]`). Solo variables de una letra distintas de x.
+  const enVar = /^[a-zA-Z]$/.test(it.variable) && it.variable !== "x"
+    ? primitiva.replace(/\bx\b/g, it.variable) : primitiva;
+  return `\\left[${latexSeguro(enVar)}\\right]_{${latexSeguro(it.a)}}^{${latexSeguro(it.b)}}`;
 }
 
 /**

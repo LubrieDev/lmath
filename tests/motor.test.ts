@@ -58,7 +58,7 @@ import type {
   ObjetoImplicito, ObjetoParametrico, ObjetoPolar, Punto, ProveedorGeometria, Estilo,
   Semilla,
 } from "../src/motor/contracts";
-import { semiYAutoencuadre, cuantizarSemirrango } from "../src/motor/scene/autoencuadre";
+import { semiYAutoencuadre, semiYAcotado, cuantizarSemirrango } from "../src/motor/scene/autoencuadre";
 import { interseccionSegmentos, interseccionesDeGeometrias, MAX_PUNTOS } from "../src/motor/analysis/interseccionesRamas";
 import { campoTranspuesto } from "../src/motor/analysis/separarImplicita";
 import { Escena } from "../src/motor/scene/Escena";
@@ -593,6 +593,30 @@ describe("Transformaciones del panel: Despejar y / Simplificar", () => {
       "cadena simplificar→despejar: y aislada del todo");
   });
 
+  test("Despejar y: RECÍPROCO (y en el denominador) se invierte y aísla", () => {
+    // Regresión: la y bajo una fracción no la tocaba ninguna estrategia (todas exigen la y en
+    // el NUMERADOR) → forma parcial `1/y = x`. Ahora se invierte el recíproco y se recurre.
+    igual(despLatex("1/y = x"), "y=\\frac{1}{x}", "1/y=x → y=1/x");
+    igual(despLatex("x/y = 2"), "y=\\frac{x}{2}", "x/y=2 → y=x/2");
+    igual(despLatex("2/y + 3 = x"), "y=\\frac{2}{x-3}", "2/y+3=x → y=2/(x−3)");
+    igual(despLatex("5/(2y) = x"), "y=\\frac{5}{2x}", "coef en el denominador: 5/(2y)=x → y=5/(2x)");
+    igual(despLatex("1/y^2 = x"), "y=\\pm \\sqrt{\\frac{1}{x}}", "1/y²=x → y=±√(1/x) (dos ramas)");
+    igual(despLatex("1/(x^2+y^2) = 3"), "y=\\pm \\sqrt{\\frac{1}{3}-x^{2}}", "círculo: 1/(x²+y²)=3 → y=±√(1/3−x²)");
+  });
+
+  test("Despejar y: T(u)=0 con u compuesta → familia kπ, k∈ℕ si u>0", () => {
+    // `sin(1/(x²+y²))=0` ⇒ 1/(x²+y²)=kπ ⇒ (recíproco+círculo) y=±√(1/(kπ)−x²). Como
+    // 1/(x²+y²)>0 obliga a kπ>0, el parámetro es NATURAL (k∈ℕ), no ℤ: el centinela `famN`.
+    igual(despLatex("sin(1/(x^2+y^2)) = 0"), "y=\\pm \\sqrt{\\frac{1}{k\\pi}-x^{2}},\\ k\\in\\mathbb{N}",
+      "sin(1/(x²+y²))=0 → y=±√(1/(kπ)−x²), k∈ℕ");
+    igual(despLatex(String.raw`\sin\left(\frac{1}{x^2+y^2}\right)=0`),
+      "y=\\pm \\sqrt{\\frac{1}{k\\pi}-x^{2}},\\ k\\in\\mathbb{N}", "misma, en LaTeX del editor");
+    // u que toma cualquier signo (x+y) → la familia es ℤ, no ℕ.
+    igual(despLatex("sin(x+y) = 0"), "y=- x+k\\pi,\\ k\\in\\mathbb{Z}", "sin(x+y)=0 → y=−x+kπ, k∈ℤ");
+    // cos se anula en π/2+kπ (desplazada) → ℤ.
+    igual(despLatex("tan(x*y) = 0"), "y=\\frac{k\\pi}{x},\\ k\\in\\mathbb{Z}", "tan(xy)=0 → y=kπ/x, k∈ℤ");
+  });
+
   test("Despejar y: CUADRÁTICA en y² (bicuadrática) por la fórmula reducida", () => {
     // Caso reportado (lemniscata): (x²+y²)²−2(x²−y²)=0 es cuadrática en u=y²; se resuelve
     // por completar cuadrados → y=±√(−(x²+1)+√(4x²+1)). Antes daba el parcial 2x²y²+y⁴+2y²=…
@@ -699,8 +723,10 @@ describe("Transformaciones del panel: Despejar y / Simplificar", () => {
     igual(simpLatex("(x+2)/2"), "f(x)=\\frac{x}{2}+1", "distribuye: (x+2)/2 → x/2 + 1");
     igual(simpLatex("1/2 + 1/2"), "f(x)=1", "constantes: 1/2+1/2 → 1");
     igual(simpLatex("sin(x)/2"), "f(x)=\\frac{\\sin x}{2}", "función/constante intacta: sin(x)/2");
-    // Coeficiente IRRACIONAL: no se fuerza a fracción monstruosa (se deja el decimal).
-    igual(simpLatex("sqrt(2)*x"), "f(x)=1.4142135623730951x", "√2·x: irracional, no se racionaliza");
+    // Coeficiente IRRACIONAL: `rationalize`/`simplify` lo decimalizan (`√2`→`1.4142…`), pero
+    // `resimbolizarConstantes` (el paso que ya cierra derivar/integrar) RECUPERA la forma exacta.
+    igual(simpLatex("sqrt(2)*x"), "f(x)=\\sqrt{2}x", "√2·x: se conserva el radical, no el decimal");
+    igual(simpLatex("1/sqrt(2)"), "f(x)=\\frac{1}{\\sqrt{2}}", "1/√2: radical exacto, no 0.707…");
     // La expansión (rationalize) sigue viva y ahora convive con las fracciones.
     igual(simpLatex("(x+1)^2"), "f(x)=x^{2}+2x+1", "expandir sigue funcionando");
   });
@@ -2873,13 +2899,18 @@ describe("Parser: trig SIN backslash con llaves y exponente vacío", () => {
       "sqrt(abs(y))+tan(x)+1/(e^(x))=pi", "normalización completa del caso reportado");
   });
 
-  test("exponente fraccionario de una FUNCIÓN: `abs(y)^{1/2}` no deja el `abs` colgando", () => {
-    // Regresión: la regla `base^{m/n}`→raíz casaba el `(y)` de `abs(y)^{1/2}` como base y
-    // dejaba `abs` suelto delante → `abssqrt((y))` = `abs*sqrt((y))` (abs de variable → NaN).
-    // El lookbehind evita tomar un `(…)` pegado a una función por base; cae a `abs(y)^(1/2)`.
-    igual(normalizarEntrada("|y|^{1/2}"), "abs(y)^(1/2)", "|y|^{1/2} → abs(y)^(1/2), sin abs colgando");
-    igual(normalizarEntrada("abs(x)^{1/2}"), "abs(x)^(1/2)", "abs(x)^{1/2} → abs(x)^(1/2)");
-    // Un `(…)` SIN función delante sí es la base de la raíz (comportamiento intacto).
+  test("exponente fraccionario de una FUNCIÓN: `abs(y)^{1/2}` → `sqrt(abs(y))` (radical exacto)", () => {
+    // Una LLAMADA a función real (`abs(y)`, tras convertir `|y|`) es la base ENTERA de la raíz:
+    // `|y|^{1/2}` → `sqrt(abs(y))` (`\sqrt{|y|}`), no `abs(y)^(1/2)` (`{|y|}^{1/2}`). La regla NO
+    // debe casar el `(y)` suelto dejando `abs` colgando (`abssqrt((y))`): la alternativa de
+    // función toma `abs(y)` completo, y un `(…)` pegado a una VARIABLE (`x(x+1)`) sigue sin
+    // tomarse por base (producto implícito, no llamada).
+    igual(normalizarEntrada("|y|^{1/2}"), "sqrt(abs(y))", "|y|^{1/2} → sqrt(abs(y)) (radical, sin abs colgando)");
+    igual(normalizarEntrada("abs(x)^{1/2}"), "sqrt(abs(x))", "abs(x)^{1/2} → sqrt(abs(x))");
+    igual(normalizarEntrada("sin(x)^{1/2}"), "sqrt(sin(x))", "sin(x)^{1/2} → sqrt(sin(x))");
+    // Un `(…)` pegado a una VARIABLE es producto implícito `x·(x+1)^{1/2}`, no una base: intacto.
+    igual(normalizarEntrada("x(x+1)^{1/2}"), "x(x+1)^(1/2)", "x(x+1)^{1/2} → producto implícito, no raíz");
+    // Un `(…)` SIN nada delante sí es la base de la raíz (comportamiento intacto).
     igual(normalizarEntrada("(x+1)^{1/2}"), "sqrt((x+1))", "(x+1)^{1/2} → sqrt((x+1))");
   });
 });
@@ -3340,7 +3371,16 @@ describe("Integral definida: parser de la notación LaTeX (obs-integral)", () =>
   test("variable distinta de x en el diferencial", () => {
     const it = extraerIntegral("\\int_{0}^{1} t^2 \\, dt");
     igual(it!.variable, "t", "dt");
-    igual(it!.integrando, "t^2", "integrando en t");
+    // El integrando de CÓMPUTO renombra la variable a x (integrar/graficar trabajan en x),
+    // de modo que `∫₀¹ t²dt` computa como `∫₀¹ x²dx` (= 1/3) en vez de dar "Fuera de dominio"
+    // por una `t` libre. El panel operador conserva la variable escrita (integrandoDisplay).
+    igual(it!.integrando, "x^2", "integrando en x para el cómputo (t→x)");
+    igual(it!.integrandoDisplay, "t^2", "integrando como se escribió (panel operador)");
+  });
+
+  test("variable ≠ x: el área SÍ se computa (regresión: antes daba 'Fuera de dominio')", () => {
+    igual(evaluarArea("\\int_{0}^{1} t^2 \\, dt")?.tipo, "valor", "∫₀¹t²dt es un valor, no una etiqueta");
+    igual(evaluarArea("\\int_{0}^{1} y^2 \\, dy")?.tipo, "valor", "∫₀¹y²dy: la y del diferencial no es 'y libre'");
   });
 
   test("\\displaystyle y \\limits decorativos se toleran", () => {
@@ -4368,6 +4408,29 @@ describe("Autoencuadre: acercar la vista a la curva pequeña, nunca alejarla", (
   test("sin geometría, o degenerada a un punto, no se encuadra", () => {
     igual(semiYAutoencuadre([], vpDefecto), null, "sin ramas");
     igual(semiYAutoencuadre([rama([2, 3, 2, 3])], vpDefecto), null, "un punto no tiene tamaño");
+  });
+
+  // Sondeo (FACTOR_SONDEO=8 × la vista por defecto): la vista GRANDE en la que se decide si una
+  // curva que se sale es ACOTADA (contenida) o ilimitada (toca el borde del sondeo).
+  const vpSondeo = crearViewport([-12.8 * 8, 12.8 * 8], [-7 * 8, 7 * 8], 768, 420, 1);
+
+  test("curva ACOTADA que SE SALE de la vista por defecto (astroide r=8): se ALEJA para encuadrar", () => {
+    // La astroide x^{2/3}+y^{2/3}=4 llega a ±8, se sale de [-7,7] y queda recortada. En el sondeo
+    // está contenida → acotada → se encuadra a su extensión: semiY = 8/0.8 = 10 (llena el 80%).
+    const astroide = [rama([-8, 0, 0, 8, 8, 0, 0, -8, -8, 0])];
+    igual(semiYAcotado(astroide, vpSondeo, 7), 10, "astroide r=8 → semiY=10 (aleja de 7)");
+  });
+
+  test("curva ACOTADA que CABE en la vista por defecto (círculo r=5): no se toca (null)", () => {
+    // Cabe en [-7,7]: el zoom-in o la vista base ya la gobiernan; no hay que alejar.
+    const circulo = [rama([-5, 0, 0, 5, 5, 0, 0, -5, -5, 0])];
+    igual(semiYAcotado(circulo, vpSondeo, 7), null, "r=5 cabe en la vista base → sin reencuadre");
+  });
+
+  test("curva ILIMITADA (toca el borde del SONDEO): no se encuadra (null)", () => {
+    // Una recta llega a los bordes de la vista GRANDE → se asume que continúa fuera → ilimitada.
+    const recta = [rama([-12.8 * 8, -7 * 8, 12.8 * 8, 7 * 8])];
+    igual(semiYAcotado(recta, vpSondeo, 7), null, "recta que cruza el sondeo → sin encuadre");
   });
 });
 

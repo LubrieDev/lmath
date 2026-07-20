@@ -6,7 +6,7 @@ import { componenteParametrica } from "./motor/parsing/componentesParametricas";
 import { bloqueALatex } from "./latex";
 import {
   formatearCanonico, racionalizarFracciones, combinarYordenar, combinarFracciones,
-  profundidadFraccion, rationalizeSeguro, type Nodo,
+  profundidadFraccion, rationalizeSeguro, resimbolizarConstantes, type Nodo,
 } from "./formatoExpr";
 import { compilarExpresion } from "./evaluador";
 
@@ -99,10 +99,12 @@ function formasEquivalentes(a: string, b: string): boolean {
 }
 
 /** Formato final compartido: reordena factores/combina semejantes (`combinarYordenar`),
- *  recupera fracciones exactas de los decimales de `rationalize` (`0.5x`→`x/2`) y ordena
- *  canónico (variables antes que constantes). Idempotente en formato. */
+ *  recupera fracciones exactas de los decimales de `rationalize` (`0.5x`→`x/2`), RE-SIMBOLIZA
+ *  las constantes irracionales que `rationalize`/`simplify` decimalizan (`sqrt(2)`→`1.4142…`,
+ *  `\pi`, `\ln k`; mismo paso que cierra `derivar`/`integrar`) y ordena canónico (variables
+ *  antes que constantes). Idempotente en formato. */
 function formatear(n: Nodo): string {
-  return formatearCanonico(racionalizarFracciones(combinarYordenar(n)));
+  return formatearCanonico(resimbolizarConstantes(racionalizarFracciones(combinarYordenar(n))));
 }
 
 const costo = (n: Nodo): [number, number] => [profundidadFraccion(n), n.toString().length];

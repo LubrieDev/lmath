@@ -409,10 +409,22 @@ function casarPotenciaFuncion(
     if (fin === -1) return null;
     return { func, exp, arg: expr.slice(k + 1, fin), fin: fin + 1 };
   }
-  if (expr[k] !== "(") return null;
-  const fin = encontrarParentesisCierre(expr, k);
-  if (fin === -1) return null;
-  return { func, exp, arg: expr.slice(k + 1, fin), fin: fin + 1 };
+  if (expr[k] === "(") {
+    const fin = encontrarParentesisCierre(expr, k);
+    if (fin === -1) return null;
+    return { func, exp, arg: expr.slice(k + 1, fin), fin: fin + 1 };
+  }
+  // Argumento SIN agrupar: una LETRA suelta (`\sin^2 x`) o un comando griego (`\cos^2\theta`).
+  // A diferencia de `tan^n(x)` vs `tan(x^n)`, aquí NO hay ambigüedad —el exponente ya quedó
+  // fijado ANTES del argumento—, así que no se exige agrupación. La notación estándar
+  // `\sin^2 x + \cos^2 x` (identidad pitagórica) dependía de esto: sin ella, el nombre quedaba
+  // suelto (`sin^2 *x`) y `sin` se leía como variable libre. Solo una letra AISLADA (no una
+  // corrida `xy`, ambigua entre (sin x)²·y y sin(xy)): esa se deja al resto del pipeline.
+  const griego = /^\\(theta|pi|tau|phi)\b/.exec(expr.slice(k));
+  if (griego) return { func, exp, arg: griego[1], fin: k + griego[0].length };
+  if (/[a-zA-Z]/.test(expr[k] ?? "") && !/[a-zA-Z0-9]/.test(expr[k + 1] ?? ""))
+    return { func, exp, arg: expr[k], fin: k + 1 };
+  return null;
 }
 
 /**
@@ -675,13 +687,22 @@ export function normalizarEntrada(raw: string): string {
   //   y para que se renderice como radical `\sqrt[n]{x^m}`. Casos:
   //     m=1 → radicando = base (sin `^1`);  n=2 → sqrt() para que salga `\sqrt{…}`
   //     sin el índice "2".
-  // La base-paréntesis `(…)` lleva un lookbehind `(?<![a-zA-Z])`: sin él, en `abs(y)^{1/2}`
-  // (el `|y|` ya convertido) la alternativa casaba el `(y)` como base y dejaba el `abs`
-  // COLGANDO delante → `abssqrt((y))` = `abs*sqrt((y))` (abs como variable suelta → NaN, y el
-  // despeje leía una y inventada). Con el lookbehind, un `(…)` pegado a una función NO se toma
-  // por base aquí; cae a `convertirExponentes` como `abs(y)^(1/2)`, que el despeje ya invierte.
+  // La base-paréntesis `(…)` lleva un lookbehind `(?<![a-zA-Z])`: sin él, en `x(x+1)^{1/2}`
+  // (un producto implícito `x·(x+1)^{1/2}`) la alternativa casaría el `(x+1)` como base con la
+  // `x` COLGANDO delante y perdería la multiplicación. Con el lookbehind, un `(…)` pegado a una
+  // letra NO se toma por base aquí. La EXCEPCIÓN es una LLAMADA A FUNCIÓN real (`abs(y)`, tras
+  // convertir `|y|`; `sin(x)`, `sqrt(u)`…): ahí el `(…)` sí es un argumento y toda la llamada es
+  // la base, así que `|y|^{1/2}` → `sqrt(abs(y))` (`\sqrt{|y|}`) en vez de quedar como
+  // `abs(y)^(1/2)` (`{|y|}^{1/2}`). La alternativa de función va PRIMERA (más específica) y se
+  // restringe a nombres de función CONOCIDOS —nunca a `x(x+1)`, que es producto implícito—.
+  const FUNC_BASE = "abs|sqrt|cbrt|sin|cos|tan|sec|csc|cot|sinh|cosh|tanh|" +
+    "asin|acos|atan|asec|acsc|acot|log|ln|exp";
   expr = expr.replace(
-    /([a-zA-Z][a-zA-Z0-9._]*|\d+(?:\.\d+)?|(?<![a-zA-Z])\([^()]+\))\^\{\s*\(?\s*(\d+)\s*\)?\s*\/\s*\(?\s*(\d+)\s*\)?\s*\}/g,
+    new RegExp(
+      `((?:${FUNC_BASE})\\([^()]+\\)|[a-zA-Z][a-zA-Z0-9._]*|\\d+(?:\\.\\d+)?|(?<![a-zA-Z])\\([^()]+\\))` +
+      `\\^\\{\\s*\\(?\\s*(\\d+)\\s*\\)?\\s*/\\s*\\(?\\s*(\\d+)\\s*\\)?\\s*\\}`,
+      "g"
+    ),
     (_: string, base: string, m: string, n: string) => {
       const radicando = m === "1" ? base : `${base}^${m}`;
       return n === "2" ? `sqrt(${radicando})` : `nthRoot(${radicando},${n})`;
@@ -767,6 +788,16 @@ export function normalizarEntrada(raw: string): string {
         `(\\d+(?:\\.\\d+)?(?:\\s*${SIMBOLO_ARG})+|[a-zA-Z][a-zA-Z0-9]*|\\d+(?:\\.\\d+)?)`,
       "g"
     ),
+    "$1($2)"
+  );
+  //   Función seguida DIRECTAMENTE de un comando griego, sin espacio ni paréntesis:
+  //   `\sin\theta`, `\ln\pi`, `\sqrt\pi` y —caso clave— la polar `r=\sin\theta`. La regla
+  //   anterior exige `\s+` y un argumento que empiece por letra/dígito; un `\theta` pegado no
+  //   casa, así que el nombre quedaba suelto y el producto implícito lo multiplicaba por el
+  //   símbolo (`sin*theta`, NaN → nada se dibuja). Se restringe a los griegos de la lista
+  //   blanca (los mismos que reconoce el resto del pipeline como átomo).
+  expr = expr.replace(
+    new RegExp(`\\\\?\\b(${FUNCIONES_ARG_SUELTO})\\s*\\\\(theta|pi|tau|phi)\\b`, "g"),
     "$1($2)"
   );
 

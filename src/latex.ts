@@ -2,7 +2,7 @@ import { parse } from "mathjs";
 
 import { opNodo, simboloNodo, funcNodo, type Nodo } from "./formatoExpr";
 import { normalizarEntrada, contieneYLibre } from "./parser";
-import { tieneFamilia } from "./despejeInverso";
+import { tieneFamilia, tieneFamiliaN } from "./despejeInverso";
 import { insertarProductoImplicito } from "./motor/parsing/productoImplicito";
 import { funcionDelParametro } from "./motor/parsing/componentesParametricas";
 
@@ -108,7 +108,8 @@ function manejadorFuncionesTex(node: Nodo, options: object): string | undefined 
   // numérico del período va DELANTE del parámetro, como se escribe a mano:
   // `fam(k, pi)` → `k\pi`, `fam(k, 2*pi)` → `2k\pi`. Período no reconocido →
   // `k\left(p\right)` (paréntesis para que el producto no se lea mal).
-  if (node.type === "FunctionNode" && node.fn?.name === "fam" && node.args.length === 2) {
+  if (node.type === "FunctionNode" && (node.fn?.name === "fam" || node.fn?.name === "famN") &&
+      node.args.length === 2) {
     const kTex = node.args[0].toTex(options).trim();
     let p = node.args[1];
     while (p.type === "ParenthesisNode") p = p.content;
@@ -463,10 +464,12 @@ export function ecuacionALatex(ecuacion: string, alineada = false): string {
   // normalizarEntrada ya convierte el LaTeX de entrada a mathjs, así que esa ruta
   // sobraba: ahora obs-system y obs-graph comparten EXACTAMENTE el mismo pipeline.
   const signo = alineada ? "&=" : "=";
-  // Coletilla de FAMILIA PERIÓDICA: una ecuación con el centinela `fam` es una familia
-  // discreta de soluciones (despeje trig inverso: `y = arctan(g)+kπ`), y el `k∈ℤ` es
-  // parte de la MATEMÁTICA, no un adorno —sin él, `+kπ` se leería como una constante—.
-  const coletilla = tieneFamilia(ecuacion) ? ",\\ k\\in\\mathbb{Z}" : "";
+  // Coletilla de FAMILIA PERIÓDICA: una ecuación con el centinela `fam`/`famN` es una familia
+  // discreta de soluciones (despeje trig inverso: `y = arctan(g)+kπ`), y el rango de `k` es
+  // parte de la MATEMÁTICA, no un adorno —sin él, `+kπ` se leería como una constante—. `famN`
+  // restringe a k∈ℕ (`sin(1/(x²+y²))=0` → `y=±√(1/(kπ)−x²), k∈ℕ`); `fam`, a k∈ℤ.
+  const coletilla = tieneFamiliaN(ecuacion) ? ",\\ k\\in\\mathbb{N}"
+    : tieneFamilia(ecuacion) ? ",\\ k\\in\\mathbb{Z}" : "";
   return ladoALatex(partes[0]) + signo + ladoALatex(partes[1]) + coletilla;
 }
 

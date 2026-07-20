@@ -26,6 +26,7 @@ import { construirObjeto } from "../motor/parsing/construirObjeto";
 import { insertarProductoImplicito } from "../motor/parsing/productoImplicito";
 import { funcionDelParametro, renombrarParametroAX } from "../motor/parsing/componentesParametricas";
 import { aPantallaX } from "../motor/scene/viewport-utils";
+import { FACTOR_SONDEO } from "../motor/scene/autoencuadre";
 import { formatearNumero } from "../motor/rendering/overlay/Overlay";
 import { simplify } from "mathjs";
 import { bloqueALatex } from "../latex";
@@ -326,6 +327,25 @@ export class MotorExperimental {
       const semiY = escena.encuadreAutomatico(camara.viewport());
       if (semiY !== null) {
         camara.fijarEncuadreBase(semiY);
+        escena.actualizar(camara.viewport());
+        pintar();
+      } else {
+        // La curva TOCA un borde de la vista por defecto: puede ser ILIMITADA (recta, parábola)
+        // o ACOTADA pero MAYOR que la vista (la astroide de radio 8 con [-7,7], que sale
+        // recortada por arriba). Se traza un SONDEO en una vista FACTOR_SONDEO× más grande (pasada
+        // interactiva: barata y sin tocar los latches de asíntota/intersección de la final): si
+        // ahí la curva está CONTENIDA es acotada y se encuadra a su extensión (puede ALEJAR); si
+        // sigue tocando el borde del sondeo es ilimitada y se deja la vista por defecto.
+        const vp = camara.viewport();
+        const semiYDefecto = (vp.domY[1] - vp.domY[0]) / 2;
+        const sondeo = {
+          ...vp,
+          domX: [vp.domX[0] * FACTOR_SONDEO, vp.domX[1] * FACTOR_SONDEO] as [number, number],
+          domY: [vp.domY[0] * FACTOR_SONDEO, vp.domY[1] * FACTOR_SONDEO] as [number, number],
+        };
+        escena.actualizar(sondeo, "interactiva");
+        const semiAcotado = escena.encuadreAcotado(sondeo, semiYDefecto);
+        if (semiAcotado !== null) camara.fijarEncuadreBase(semiAcotado);
         escena.actualizar(camara.viewport());
         pintar();
       }

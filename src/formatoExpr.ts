@@ -731,7 +731,10 @@ function formaSimbolica(v: number): string | null {
   }
   for (let k = 2; k <= 40; k++) {
     const s = Math.sqrt(k);
-    if (!Number.isInteger(s) && cerca(Math.abs(v), s)) return v < 0 ? `-sqrt(${k})` : `sqrt(${k})`;
+    if (Number.isInteger(s)) continue;
+    if (cerca(Math.abs(v), s)) return v < 0 ? `-sqrt(${k})` : `sqrt(${k})`;
+    // Recíproco `1/√k` (denominador racionalizado: `simplify(1/√2)` = `0.7071…`, `√2/2` idem).
+    if (cerca(Math.abs(v), 1 / s)) return v < 0 ? `-1/sqrt(${k})` : `1/sqrt(${k})`;
   }
   return null;
 }

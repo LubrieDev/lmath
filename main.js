@@ -45797,14 +45797,15 @@ var FUNCIONES_POTENCIA = [
   "ln"
 ];
 function casarPotenciaFuncion(expr, i2) {
+  var _a, _b;
   const backslash = expr[i2] === "\\";
   if (!backslash && i2 > 0 && /[A-Za-z0-9_]/.test(expr[i2 - 1]))
     return null;
   const j = backslash ? i2 + 1 : i2;
   const func = FUNCIONES_POTENCIA.find(
     (n) => {
-      var _a;
-      return expr.startsWith(n, j) && !/[A-Za-z0-9_]/.test((_a = expr[j + n.length]) != null ? _a : "");
+      var _a2;
+      return expr.startsWith(n, j) && !/[A-Za-z0-9_]/.test((_a2 = expr[j + n.length]) != null ? _a2 : "");
     }
   );
   if (!func)
@@ -45819,11 +45820,11 @@ function casarPotenciaFuncion(expr, i2) {
     k++;
   let exp3;
   if (expr[k] === "{") {
-    const fin2 = encontrarLlaveCierre(expr, k);
-    if (fin2 === -1)
+    const fin = encontrarLlaveCierre(expr, k);
+    if (fin === -1)
       return null;
-    exp3 = expr.slice(k, fin2 + 1);
-    k = fin2 + 1;
+    exp3 = expr.slice(k, fin + 1);
+    k = fin + 1;
   } else {
     const s = k;
     if (expr[k] === "+" || expr[k] === "-")
@@ -45837,17 +45838,23 @@ function casarPotenciaFuncion(expr, i2) {
   while (expr[k] === " ")
     k++;
   if (expr[k] === "{") {
-    const fin2 = encontrarLlaveCierre(expr, k);
-    if (fin2 === -1)
+    const fin = encontrarLlaveCierre(expr, k);
+    if (fin === -1)
       return null;
-    return { func, exp: exp3, arg: expr.slice(k + 1, fin2), fin: fin2 + 1 };
+    return { func, exp: exp3, arg: expr.slice(k + 1, fin), fin: fin + 1 };
   }
-  if (expr[k] !== "(")
-    return null;
-  const fin = encontrarParentesisCierre(expr, k);
-  if (fin === -1)
-    return null;
-  return { func, exp: exp3, arg: expr.slice(k + 1, fin), fin: fin + 1 };
+  if (expr[k] === "(") {
+    const fin = encontrarParentesisCierre(expr, k);
+    if (fin === -1)
+      return null;
+    return { func, exp: exp3, arg: expr.slice(k + 1, fin), fin: fin + 1 };
+  }
+  const griego = /^\\(theta|pi|tau|phi)\b/.exec(expr.slice(k));
+  if (griego)
+    return { func, exp: exp3, arg: griego[1], fin: k + griego[0].length };
+  if (/[a-zA-Z]/.test((_a = expr[k]) != null ? _a : "") && !/[a-zA-Z0-9]/.test((_b = expr[k + 1]) != null ? _b : ""))
+    return { func, exp: exp3, arg: expr[k], fin: k + 1 };
+  return null;
 }
 function convertirPotenciaFuncion(expr) {
   let out = "";
@@ -46066,8 +46073,12 @@ function normalizarEntrada(raw) {
   );
   expr = expr.replace(/\(\s*\{([^{}]+)\}\s*\)/g, "($1)");
   expr = convertirFracciones(expr);
+  const FUNC_BASE = "abs|sqrt|cbrt|sin|cos|tan|sec|csc|cot|sinh|cosh|tanh|asin|acos|atan|asec|acsc|acot|log|ln|exp";
   expr = expr.replace(
-    /([a-zA-Z][a-zA-Z0-9._]*|\d+(?:\.\d+)?|(?<![a-zA-Z])\([^()]+\))\^\{\s*\(?\s*(\d+)\s*\)?\s*\/\s*\(?\s*(\d+)\s*\)?\s*\}/g,
+    new RegExp(
+      `((?:${FUNC_BASE})\\([^()]+\\)|[a-zA-Z][a-zA-Z0-9._]*|\\d+(?:\\.\\d+)?|(?<![a-zA-Z])\\([^()]+\\))\\^\\{\\s*\\(?\\s*(\\d+)\\s*\\)?\\s*/\\s*\\(?\\s*(\\d+)\\s*\\)?\\s*\\}`,
+      "g"
+    ),
     (_, base, m, n) => {
       const radicando = m === "1" ? base : `${base}^${m}`;
       return n === "2" ? `sqrt(${radicando})` : `nthRoot(${radicando},${n})`;
@@ -46112,6 +46123,10 @@ function normalizarEntrada(raw) {
       `\\\\?\\b(${FUNCIONES_ARG_SUELTO})\\s+(\\d+(?:\\.\\d+)?(?:\\s*${SIMBOLO_ARG})+|[a-zA-Z][a-zA-Z0-9]*|\\d+(?:\\.\\d+)?)`,
       "g"
     ),
+    "$1($2)"
+  );
+  expr = expr.replace(
+    new RegExp(`\\\\?\\b(${FUNCIONES_ARG_SUELTO})\\s*\\\\(theta|pi|tau|phi)\\b`, "g"),
     "$1($2)"
   );
   expr = convertirRaices(expr);
@@ -46757,8 +46772,12 @@ function formaSimbolica(v) {
   }
   for (let k = 2; k <= 40; k++) {
     const s = Math.sqrt(k);
-    if (!Number.isInteger(s) && cerca(Math.abs(v), s))
+    if (Number.isInteger(s))
+      continue;
+    if (cerca(Math.abs(v), s))
       return v < 0 ? `-sqrt(${k})` : `sqrt(${k})`;
+    if (cerca(Math.abs(v), 1 / s))
+      return v < 0 ? `-1/sqrt(${k})` : `1/sqrt(${k})`;
   }
   return null;
 }
@@ -46822,6 +46841,9 @@ function inversionTrig(tipo, g) {
 }
 function tieneFamilia(expr) {
   return /(?<![a-zA-Z0-9_])fam\s*\(/.test(expr);
+}
+function tieneFamiliaN(expr) {
+  return /(?<![a-zA-Z0-9_])famN\s*\(/.test(expr);
 }
 var MAX_ANGULO = 8;
 function multiploDeSimbolo(t2) {
@@ -47376,8 +47398,11 @@ var FUNCIONES = /* @__PURE__ */ new Set([
   // que emite el despeje por inversión trig (despejeInverso.ts). Átomo (si no, se
   // partiría en `f*a*m`); NO se evalúa ni se expande para graficar (el despeje es
   // presentación: lo graficado es siempre la ecuación original). `toTex` lo pinta
-  // `k\pi`/`2k\pi` y añade la coletilla `, k∈ℤ` (latex.ts).
-  "fam"
+  // `k\pi`/`2k\pi` y añade la coletilla `, k∈ℤ` (latex.ts). `famN` es su hermano de
+  // dominio NATURAL (k∈ℕ): mismo render `k\pi`, pero la coletilla es `, k∈ℕ` —lo emite
+  // el despeje de `T(u)=0` cuando u>0 obliga a kπ>0 (`sin(1/(x²+y²))=0`, despejar.ts).
+  "fam",
+  "famN"
 ]);
 var CONSTANTES = /* @__PURE__ */ new Set(["pi", "theta", "tau", "phi", "Infinity", "NaN"]);
 var ATOMOS = [...FUNCIONES, ...CONSTANTES].sort((a, b) => b.length - a.length);
@@ -47560,7 +47585,7 @@ var NOMBRE_FUNCION_TEX = {
 };
 var PAREN_DESNUDA = "parenDesnuda";
 function manejadorFuncionesTex(node, options) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
   if (node.type === "FunctionNode" && ((_a = node.fn) == null ? void 0 : _a.name) === PAREN_DESNUDA && node.args.length === 1)
     return `\\left(${node.args[0].toTex(options)}\\right)`;
   const argFuncion = (arg2, nombreTex) => {
@@ -47580,20 +47605,20 @@ function manejadorFuncionesTex(node, options) {
   if (node.type === "OperatorNode" && node.op === "+" && ((_d = node.args) == null ? void 0 : _d.length) === 2 && node.args[1].type === "FunctionNode" && SIGNO_TEX[(_e = node.args[1].fn) == null ? void 0 : _e.name]) {
     return `${node.args[0].toTex(options)} ${node.args[1].toTex(options)}`;
   }
-  if (node.type === "FunctionNode" && ((_f = node.fn) == null ? void 0 : _f.name) === "fam" && node.args.length === 2) {
+  if (node.type === "FunctionNode" && (((_f = node.fn) == null ? void 0 : _f.name) === "fam" || ((_g = node.fn) == null ? void 0 : _g.name) === "famN") && node.args.length === 2) {
     const kTex = node.args[0].toTex(options).trim();
     let p = node.args[1];
     while (p.type === "ParenthesisNode")
       p = p.content;
     if (p.type === "SymbolNode" && p.name === "pi")
       return `${kTex}\\pi`;
-    if (p.type === "OperatorNode" && p.op === "*" && ((_g = p.args) == null ? void 0 : _g.length) === 2 && p.args[0].type === "ConstantNode" && p.args[1].type === "SymbolNode" && p.args[1].name === "pi") {
+    if (p.type === "OperatorNode" && p.op === "*" && ((_h = p.args) == null ? void 0 : _h.length) === 2 && p.args[0].type === "ConstantNode" && p.args[1].type === "SymbolNode" && p.args[1].name === "pi") {
       return `${p.args[0].toTex(options)}${kTex}\\pi`;
     }
     return `${kTex}\\left(${p.toTex(options)}\\right)`;
   }
   if (node.type === "FunctionNode" && node.args.length === 1) {
-    const nombreTex = NOMBRE_FUNCION_TEX[(_h = node.fn) == null ? void 0 : _h.name];
+    const nombreTex = NOMBRE_FUNCION_TEX[(_i = node.fn) == null ? void 0 : _i.name];
     if (nombreTex)
       return argFuncion(node.args[0], nombreTex);
   }
@@ -47602,7 +47627,7 @@ function manejadorFuncionesTex(node, options) {
     let b = base;
     while (b.type === "ParenthesisNode")
       b = b.content;
-    const nombreTex = b.type === "FunctionNode" && b.args.length === 1 ? NOMBRE_FUNCION_TEX[(_i = b.fn) == null ? void 0 : _i.name] : void 0;
+    const nombreTex = b.type === "FunctionNode" && b.args.length === 1 ? NOMBRE_FUNCION_TEX[(_j = b.fn) == null ? void 0 : _j.name] : void 0;
     const expNegativo = exp3.type === "ConstantNode" && exp3.value < 0;
     if (nombreTex && !expNegativo)
       return argFuncion(b.args[0], `${nombreTex}^{${exp3.toTex(options)}}`);
@@ -47772,7 +47797,7 @@ function ecuacionALatex(ecuacion, alineada = false) {
   if (partes.length !== 2)
     return ecuacion;
   const signo2 = alineada ? "&=" : "=";
-  const coletilla = tieneFamilia(ecuacion) ? ",\\ k\\in\\mathbb{Z}" : "";
+  const coletilla = tieneFamiliaN(ecuacion) ? ",\\ k\\in\\mathbb{N}" : tieneFamilia(ecuacion) ? ",\\ k\\in\\mathbb{Z}" : "";
   return ladoALatex(partes[0]) + signo2 + ladoALatex(partes[1]) + coletilla;
 }
 function bloqueALatex(ecuaciones, sistema = false) {
@@ -51337,6 +51362,12 @@ function desenvolverDefinicionFuncion(ec) {
     return ec;
   return m[2].trim();
 }
+function desenvolverDefinicionPolar(ec) {
+  const m = /^r\s*(?:\\left)?\(\s*(?:\\theta|theta|θ)\s*(?:\\right)?\)\s*=([\s\S]+)$/.exec(ec);
+  if (!m)
+    return ec;
+  return `r=${m[1].trim()}`;
+}
 function dividirEcuaciones(source) {
   let s = source.trim();
   for (; ; ) {
@@ -51346,7 +51377,7 @@ function dividirEcuaciones(source) {
       break;
     s = s.slice(ini[0].length, s.length - fin[0].length);
   }
-  const lineas = s.split(/\r?\n|\\\\(?:\[[^\]]*\])?/).map((l) => l.replace(/&/g, "").trim()).filter((l) => l.length > 0).map(desenvolverDefinicionFuncion);
+  const lineas = s.split(/\r?\n|\\\\(?:\[[^\]]*\])?/).map((l) => l.replace(/&/g, "").trim()).filter((l) => l.length > 0).map(desenvolverDefinicionFuncion).map(desenvolverDefinicionPolar);
   return fusionarComponentes(lineas);
 }
 
@@ -53599,7 +53630,7 @@ function cuantizarSemirrango(v) {
       return cand * base;
   return 10 * base;
 }
-function semiYAutoencuadre(ramas, vp) {
+function bboxDeRamas(ramas) {
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (const r of ramas) {
     const p = r.puntos;
@@ -53617,19 +53648,27 @@ function semiYAutoencuadre(ramas, vp) {
         y1 = y;
     }
   }
-  if (!Number.isFinite(x0) || !Number.isFinite(y0))
-    return null;
-  if (x1 - x0 < TAMANO_MINIMO && y1 - y0 < TAMANO_MINIMO)
-    return null;
+  return Number.isFinite(x0) && Number.isFinite(y0) ? { x0, x1, y0, y1 } : null;
+}
+function tocaBorde(c, vp) {
   const holguraX = (vp.domX[1] - vp.domX[0]) / vp.anchoPx * COLCHON_PX;
   const holguraY = (vp.domY[1] - vp.domY[0]) / vp.altoPx * COLCHON_PX;
-  if (x0 <= vp.domX[0] + holguraX || x1 >= vp.domX[1] - holguraX)
+  return c.x0 <= vp.domX[0] + holguraX || c.x1 >= vp.domX[1] - holguraX || c.y0 <= vp.domY[0] + holguraY || c.y1 >= vp.domY[1] - holguraY;
+}
+function semiParaCaja(c, vp, ocup) {
+  const maxAbsY = Math.max(Math.abs(c.y0), Math.abs(c.y1));
+  const maxAbsX = Math.max(Math.abs(c.x0), Math.abs(c.x1));
+  return Math.max(maxAbsY, maxAbsX * vp.altoPx / vp.anchoPx) / ocup;
+}
+function semiYAutoencuadre(ramas, vp) {
+  const c = bboxDeRamas(ramas);
+  if (c === null)
     return null;
-  if (y0 <= vp.domY[0] + holguraY || y1 >= vp.domY[1] - holguraY)
+  if (c.x1 - c.x0 < TAMANO_MINIMO && c.y1 - c.y0 < TAMANO_MINIMO)
     return null;
-  const maxAbsY = Math.max(Math.abs(y0), Math.abs(y1));
-  const maxAbsX = Math.max(Math.abs(x0), Math.abs(x1));
-  const semiNecesario = Math.max(maxAbsY, maxAbsX * vp.altoPx / vp.anchoPx) / OCUPACION_MAXIMA;
+  if (tocaBorde(c, vp))
+    return null;
+  const semiNecesario = semiParaCaja(c, vp, OCUPACION_MAXIMA);
   if (!Number.isFinite(semiNecesario) || semiNecesario <= 0)
     return null;
   const semiActual = (vp.domY[1] - vp.domY[0]) / 2;
@@ -53637,6 +53676,27 @@ function semiYAutoencuadre(ramas, vp) {
     return null;
   const semi = cuantizarSemirrango(semiNecesario);
   return semi < semiActual ? semi : null;
+}
+var OCUPACION_ACOTADA = 0.8;
+var FACTOR_SONDEO = 8;
+function semiYAcotado(ramas, vpSondeo, semiYDefecto) {
+  const c = bboxDeRamas(ramas);
+  if (c === null)
+    return null;
+  if (c.x1 - c.x0 < TAMANO_MINIMO && c.y1 - c.y0 < TAMANO_MINIMO)
+    return null;
+  if (tocaBorde(c, vpSondeo))
+    return null;
+  const maxAbsY = Math.max(Math.abs(c.y0), Math.abs(c.y1));
+  const maxAbsX = Math.max(Math.abs(c.x0), Math.abs(c.x1));
+  const semiXDefecto = semiYDefecto * vpSondeo.anchoPx / vpSondeo.altoPx;
+  if (maxAbsY <= semiYDefecto && maxAbsX <= semiXDefecto)
+    return null;
+  const semiNecesario = semiParaCaja(c, vpSondeo, OCUPACION_ACOTADA);
+  if (!Number.isFinite(semiNecesario) || semiNecesario <= 0)
+    return null;
+  const semi = cuantizarSemirrango(semiNecesario);
+  return semi > semiYDefecto ? semi : null;
 }
 
 // src/motor/scene/Escena.ts
@@ -53719,6 +53779,16 @@ var Escena = class {
   encuadreAutomatico(viewport) {
     const ramas = this.items.flatMap((it) => podarVerticesDePolo(it.geometria.ramas, viewport));
     return semiYAutoencuadre(ramas, viewport);
+  }
+  /**
+   * Semirrango vertical para encuadrar una curva ACOTADA que se SALE de la vista por defecto
+   * (astroide, círculo grande), o `null` si no procede (ilimitada, o cabe en la vista base).
+   * La geometría debe estar YA trazada en el SONDEO (`vpSondeo`, una vista grande): ver
+   * `semiYAcotado`. Complementa a `encuadreAutomatico`, que solo ACERCA curvas pequeñas.
+   */
+  encuadreAcotado(vpSondeo, semiYDefecto) {
+    const ramas = this.items.flatMap((it) => podarVerticesDePolo(it.geometria.ramas, vpSondeo));
+    return semiYAcotado(ramas, vpSondeo, semiYDefecto);
   }
   actualizar(viewport, pasada = "final") {
     const tolerancia = { desviacionMaxPx: 0.5, pasoMaxPx: 2, pasada };
@@ -54067,7 +54137,7 @@ function formasEquivalentes(a, b) {
   }
 }
 function formatear(n) {
-  return formatearCanonico(racionalizarFracciones(combinarYordenar(n)));
+  return formatearCanonico(resimbolizarConstantes(racionalizarFracciones(combinarYordenar(n))));
 }
 var costo = (n) => [profundidadFraccion(n), n.toString().length];
 var menor = (a, b) => a[0] !== b[0] ? a[0] < b[0] : a[1] < b[1];
@@ -54403,6 +54473,79 @@ function despejeMultiplicativo(t2, derecha) {
     return null;
   return `${renderProducto(conYf)} = ${ladoDerecho(t2, derecha, libres)}`;
 }
+function despejeReciproco(t2, derecha) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  const libres = fs.filter((f) => !contieneY2(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== -1)
+    return null;
+  if (derecha.length === 0)
+    return null;
+  const E = conYf[0].nodo.toString();
+  const numFree = libres.filter((f) => f.exp === 1).map((f) => `(${f.nodo.toString()})`);
+  const denFree = libres.filter((f) => f.exp === -1).map((f) => `(${f.nodo.toString()})`);
+  const arriba = (t2.signo === -1 ? "-" : "") + (numFree.length ? numFree.join("*") : "1");
+  const abajo = [...denFree, `(${renderTerminos(derecha)})`].join("*");
+  const rec = despejar(`${E} = (${arriba})/(${abajo})`);
+  return rec && rec.completo ? rec : null;
+}
+var TRIG_CERO = {
+  sin: { periodo: "pi", base: null },
+  tan: { periodo: "pi", base: null },
+  cos: { periodo: "pi", base: "pi/2" },
+  cot: { periodo: "pi", base: "pi/2" },
+  sec: null,
+  csc: null
+};
+function uSiemprePositivo(uStr) {
+  let f;
+  try {
+    const c = parse2(insertarProductoImplicito(normalizarEntrada(uStr))).compile();
+    f = (s) => c.evaluate(s);
+  } catch (e3) {
+    return false;
+  }
+  const malla = [-8, -3.5, -1.5, -0.5, 0.3, 0.9, 2.2, 5.1];
+  let vistos = 0;
+  for (const x of malla)
+    for (const y of malla) {
+      let v;
+      try {
+        v = f({ x, y });
+      } catch (e3) {
+        continue;
+      }
+      if (typeof v !== "number" || !Number.isFinite(v))
+        continue;
+      if (v <= 1e-9)
+        return false;
+      vistos++;
+    }
+  return vistos >= 8;
+}
+function despejeTrigCero(t2, derecha) {
+  var _a, _b, _c;
+  const noNulos = derecha.filter((d) => {
+    const n = desParen2(d.nodo);
+    return !(n.type === "ConstantNode" && n.value === 0);
+  });
+  if (noNulos.length !== 0)
+    return null;
+  const nodo = desParen2(t2.nodo);
+  if (nodo.type !== "FunctionNode" || ((_a = nodo.args) == null ? void 0 : _a.length) !== 1)
+    return null;
+  const info = TRIG_CERO[(_c = (_b = nodo.fn) == null ? void 0 : _b.name) != null ? _c : ""];
+  if (!info)
+    return null;
+  const u = desParen2(nodo.args[0]);
+  if (!contieneY2(u) || u.type === "SymbolNode" && u.name === "y")
+    return null;
+  const uStr = u.toString();
+  const cero = info.base === null && uSiemprePositivo(uStr) ? `famN(k, ${info.periodo})` : `fam(k, ${info.periodo})`;
+  const rhs = info.base ? `${info.base} + ${cero}` : cero;
+  const rec = despejar(`${uStr} = ${rhs}`);
+  return rec && rec.completo ? rec : null;
+}
 var contieneX = (n) => contieneVariable(n, "x");
 var mcdEnteros = (a, b) => b === 0 ? Math.abs(a) : mcdEnteros(b, Math.abs(a % b));
 function simpDesp(s) {
@@ -54719,6 +54862,12 @@ function despejar(ecuacion) {
     const trig = despejeTrigInverso(conY[0], derecha);
     if (trig)
       return trig;
+    const trigCero = despejeTrigCero(conY[0], derecha);
+    if (trigCero)
+      return trigCero;
+    const recip = despejeReciproco(conY[0], derecha);
+    if (recip)
+      return recip;
     const mult = despejeMultiplicativo(conY[0], derecha);
     if (mult) {
       const limpio = despejar(mult);
@@ -55284,6 +55433,11 @@ function integrarExpr(expr) {
 }
 
 // src/integral.ts
+function integrandoEnX(integrando, variable) {
+  if (variable === "x" || !/^[a-zA-Z]$/.test(variable))
+    return integrando;
+  return integrando.replace(new RegExp(`\\b${variable}\\b`, "g"), "x");
+}
 function leerGrupo(s, i2) {
   while (i2 < s.length && /\s/.test(s[i2]))
     i2++;
@@ -55346,7 +55500,7 @@ function parsearLatex(entrada) {
   }
   if (resto === "")
     return null;
-  return { integrando: resto, a, b, variable };
+  return { integrando: integrandoEnX(resto, variable), integrandoDisplay: resto, a, b, variable };
 }
 function integrandoDeLinea(l) {
   const partes = l.split("=");
@@ -55380,7 +55534,7 @@ function parsearLineas(entrada) {
   if (a === null || b === null || otras.length === 0)
     return null;
   const f = integrandoDeLinea(otras[0]);
-  return f ? { integrando: f, a, b, variable: "x" } : null;
+  return f ? { integrando: f, integrandoDisplay: f, a, b, variable: "x" } : null;
 }
 function normalizarInvisibles(texto) {
   return texto.replace(/[\u200B\u200C\u200D\uFEFF]/gu, "").replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, " ");
@@ -55420,7 +55574,7 @@ function integralOperadorLatex(source) {
   const it = extraerIntegral(source);
   if (!it)
     return `\\int_{\\text{[...]}}^{\\text{[...]}}\\text{[...]}\\,dx`;
-  let integrando = it.integrando;
+  let integrando = it.integrandoDisplay;
   try {
     integrando = simplificarEcuaciones([integrando])[0];
   } catch (e3) {
@@ -55434,7 +55588,8 @@ function integralPrimitivaLatex(source) {
   const primitiva = integrarExpr(it.integrando);
   if (!primitiva)
     return null;
-  return `\\left[${latexSeguro(primitiva)}\\right]_{${latexSeguro(it.a)}}^{${latexSeguro(it.b)}}`;
+  const enVar = /^[a-zA-Z]$/.test(it.variable) && it.variable !== "x" ? primitiva.replace(/\bx\b/g, it.variable) : primitiva;
+  return `\\left[${latexSeguro(enVar)}\\right]_{${latexSeguro(it.a)}}^{${latexSeguro(it.b)}}`;
 }
 function integralValorLatex(source, cuerpoLatex, conector = "=") {
   return `${integralOperadorLatex(source)} ${conector} ${cuerpoLatex}`;
@@ -56168,6 +56323,20 @@ var MotorExperimental = class {
       const semiY = escena.encuadreAutomatico(camara.viewport());
       if (semiY !== null) {
         camara.fijarEncuadreBase(semiY);
+        escena.actualizar(camara.viewport());
+        pintar();
+      } else {
+        const vp = camara.viewport();
+        const semiYDefecto = (vp.domY[1] - vp.domY[0]) / 2;
+        const sondeo = {
+          ...vp,
+          domX: [vp.domX[0] * FACTOR_SONDEO, vp.domX[1] * FACTOR_SONDEO],
+          domY: [vp.domY[0] * FACTOR_SONDEO, vp.domY[1] * FACTOR_SONDEO]
+        };
+        escena.actualizar(sondeo, "interactiva");
+        const semiAcotado = escena.encuadreAcotado(sondeo, semiYDefecto);
+        if (semiAcotado !== null)
+          camara.fijarEncuadreBase(semiAcotado);
         escena.actualizar(camara.viewport());
         pintar();
       }
