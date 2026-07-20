@@ -41,17 +41,27 @@
    justo cuando ese bloque interno desbordaba su propia caja por unos píxeles.
    El scroll horizontal de la fórmula lo gestiona el contenedor del plugin
    (overflow controlado por JS + fades + rueda), así que anulamos por completo
-   el overflow propio de Obsidian/KaTeX: dejamos que el contenido fluya hasta el
-   contenedor del plugin, que será el único (y sólo si desborda de verdad) en
-   mostrar su barra fina. El prefijo `.lmath-container` sube la especificidad a
-   3 clases para ganarle a las reglas de Obsidian/MathJax (≤2 clases o clase +
-   atributos) sin recurrir a !important. */
+   el overflow propio de Obsidian/MathJax: dejamos que el contenido fluya hasta
+   el contenedor del plugin, que será el único (y sólo si desborda de verdad) en
+   mostrar su barra fina.
+
+   Especificidad: en Live Preview, Obsidian scrollea el mjx-container con
+   `.markdown-source-view.mod-cm6 .math-block > mjx-container` (app.css) →
+   especificidad (0,3,1) = 3 clases + el tipo `mjx-container`. La neutralización
+   con solo `.lmath-container .lmath-latex .MathJax` (0,3,0) EMPATABA en clases
+   pero perdía por ese tipo extra, y la barra nativa reaparecía en fórmulas
+   anchas (p.ej. la tupla paramétrica). Para ganarle SIN `!important` (dispara
+   css/no-important) y SIN usar `mjx-container` como selector de tipo (dispara
+   selector-type-no-unknown de stylelint), la línea del mjx-container lleva una
+   clase extra —`.math-block .MathJax` = (0,4,0), gana por conteo de clases 4>3—.
+   El resto del prefijo (2 clases) basta para las demás capas: Obsidian no les
+   fija overflow propio. */
 .lmath-container .lmath-latex .markdown-rendered,
 .lmath-container .lmath-latex p,
 .lmath-container .lmath-latex .math,
 .lmath-container .lmath-latex .math-block,
 .lmath-container .lmath-latex .katex-display,
-.lmath-container .lmath-latex .MathJax,
+.lmath-container .lmath-latex .math-block .MathJax,
 .lmath-container .lmath-latex .MJX-TEX {
   overflow: visible;
   max-width: none;

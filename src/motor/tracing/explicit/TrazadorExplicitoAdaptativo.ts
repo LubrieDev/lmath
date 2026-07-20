@@ -309,17 +309,30 @@ export class TrazadorExplicitoAdaptativo implements TrazadorExplicito {
         // —vecinas de un polo real como 1/x— se conectan igual que siempre), y
         // cortar es visualmente seguro: un trazo real así de vertical mediría <1px.
         const tocaVista = Math.min(ya, yb) < domY[1] && Math.max(ya, yb) > domY[0];
-        const agotadoSubpixel = prof >= PROF_MAX && finA && finB && xb - xa < pxMundo;
-        // Salto FINITO de una función escalón (floor, ceil): con el refinado agotado
-        // en un intervalo subpíxel y el salto aún sobre el umbral, si los sondeos
-        // interiores confirman DOS MESETAS (esSaltoFinito) es una discontinuidad de
-        // salto: conectar pintaría el "peldaño" vertical que la función no tiene. La
-        // pendiente continua sin resolver (∛ sobre un polo de tan en zoom-out) NO pasa
-        // el sondeo y se conecta como siempre; las colas del MISMO lado fuera de vista
-        // (fueraMismoLado) se exceptúan, preservando la paridad con el motor original.
-        if (agotadoSubpixel &&
+        // Un intervalo SUBPÍXEL ya no se puede resolver más fino: refinarlo no
+        // aportaría, así que el corte NO exige haber agotado el refinado
+        // (`prof >= PROF_MAX`). Antes sí lo exigía, y como el refinado solo se
+        // dispara con `saltoPx > SALTO_PX_MAX` (8px), al alejar el zoom hasta que UN
+        // escalón de floor/ceil baja de 8px el refinado dejaba de correr, `prof`
+        // quedaba en 0 y el corte no ocurría: los peldaños se conectaban en una sola
+        // polilínea (barras verticales espurias). El intervalo base ya es subpíxel a
+        // este zoom (MUESTRAS > anchoPx), así que basta con que lo sea.
+        const subpixel = finA && finB && xb - xa < pxMundo;
+        // Salto FINITO de una función escalón (floor, ceil): en un intervalo subpíxel,
+        // si los sondeos interiores confirman DOS MESETAS (esSaltoFinito) es una
+        // discontinuidad de salto y conectar pintaría el "peldaño" vertical que la
+        // función no tiene. El umbral es solo que el salto sea VISIBLE (>1px): los
+        // tramos planos (saltoPx≈0, las mesetas) ni llaman a esSaltoFinito, así que no
+        // hay coste extra; y el sondeo sigue siendo el discriminador real —una pendiente
+        // continua empinada (∛ sobre un polo de tan, o una curva de amplitud enorme) NO
+        // pasa el sondeo y se conecta como siempre—. (Antes el umbral era 8px, atado a
+        // SALTO_PX_MAX, y por eso el corte moría al encoger el escalón por debajo de 8px.)
+        // Las colas del MISMO lado fuera de vista (fueraMismoLado) se exceptúan,
+        // preservando la paridad con el motor original.
+        const SALTO_PX_CORTE = 1;
+        if (subpixel &&
             ((tocaVista && Math.abs(yb - ya) > Hmundo) ||
-             (saltoPx > SALTO_PX_MAX && !fueraMismoLado && esSaltoFinito(xa, ya, xb, yb))))
+             (saltoPx > SALTO_PX_CORTE && !fueraMismoLado && esSaltoFinito(xa, ya, xb, yb))))
           flush();
         emit(xb, yb);
       }

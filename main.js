@@ -50217,8 +50217,9 @@ var TrazadorExplicitoAdaptativo = class {
         }
       } else {
         const tocaVista = Math.min(ya, yb) < domY[1] && Math.max(ya, yb) > domY[0];
-        const agotadoSubpixel = prof >= PROF_MAX3 && finA && finB && xb - xa < pxMundo;
-        if (agotadoSubpixel && (tocaVista && Math.abs(yb - ya) > Hmundo || saltoPx > SALTO_PX_MAX && !fueraMismoLado && esSaltoFinito(xa, ya, xb, yb)))
+        const subpixel = finA && finB && xb - xa < pxMundo;
+        const SALTO_PX_CORTE = 1;
+        if (subpixel && (tocaVista && Math.abs(yb - ya) > Hmundo || saltoPx > SALTO_PX_CORTE && !fueraMismoLado && esSaltoFinito(xa, ya, xb, yb)))
           flush();
         emit(xb, yb);
       }
