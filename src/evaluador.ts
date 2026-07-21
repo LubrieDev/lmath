@@ -1,6 +1,6 @@
 import { parse } from "mathjs";
 
-import { FUNCIONES_INVERSAS_EXTRA, FUNCIONES_ESCALON_RAPIDAS, FUNCIONES_SIGNO } from "./constantes";
+import { FUNCIONES_INVERSAS_EXTRA, FUNCIONES_ESCALON_RAPIDAS, FUNCIONES_SIGNO, FUNCIONES_DOMINIO } from "./constantes";
 
 // ─────────────────────────────────────────────
 // Evaluador (compartido por obs-graph y obs-system)
@@ -25,7 +25,7 @@ export function compilarExpresion(
       // mathjs tipa `evaluate` como `any`; se acota a `unknown` para que el valor
       // (number | Complex | NaN…) obligue a los consumidores a estrecharlo.
       return compilada.evaluate({
-        ...scope, ...FUNCIONES_INVERSAS_EXTRA, ...FUNCIONES_ESCALON_RAPIDAS, ...FUNCIONES_SIGNO,
+        ...scope, ...FUNCIONES_INVERSAS_EXTRA, ...FUNCIONES_ESCALON_RAPIDAS, ...FUNCIONES_SIGNO, ...FUNCIONES_DOMINIO,
       }) as unknown;
     }
     catch { return NaN; }

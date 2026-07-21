@@ -35,7 +35,8 @@ const FUNCIONES = new Set([
   // (si no, se partirían en `p*m`), se evalúan en su rama principal (constantes.ts) y el
   // motor los expande en las DOS ramas (motor/parsing/dobleSigno.ts). `toTex` los pinta
   // `\pm` / `\mp` (latex.ts).
-  "pm", "mp",
+  // `pm2`/`mp2` son el SEGUNDO eje de signo (dos ± independientes → cuatro curvas).
+  "pm", "mp", "pm2", "mp2",
   // Centinela de FAMILIA PERIÓDICA (`y = atan(g) + fam(k, pi)` = arctan(g)+kπ, k∈ℤ),
   // que emite el despeje por inversión trig (despejeInverso.ts). Átomo (si no, se
   // partiría en `f*a*m`); NO se evalúa ni se expande para graficar (el despeje es
@@ -44,6 +45,11 @@ const FUNCIONES = new Set([
   // dominio NATURAL (k∈ℕ): mismo render `k\pi`, pero la coletilla es `, k∈ℕ` —lo emite
   // el despeje de `T(u)=0` cuando u>0 obliga a kπ>0 (`sin(1/(x²+y²))=0`, despejar.ts).
   "fam", "famN",
+  // Centinela de CONDICIÓN DE DOMINIO (`y = dom((x-27)², x-27)` = (x−27)² donde x−27≥0), que
+  // emite el despeje de las inversas de rango restringido (√ par, |·|). Átomo (si no, `d*o*m`);
+  // se evalúa a NaN fuera del dominio (constantes.ts) y `toTex` lo pinta como el cuerpo más la
+  // coletilla `, R≥0` (latex.ts). Lo graficado es siempre la original: el despeje es presentación.
+  "dom",
 ]);
 // Constantes/variables de varias letras que NO deben partirse.
 const CONSTANTES = new Set(["pi", "theta", "tau", "phi", "Infinity", "NaN"]);
@@ -83,10 +89,18 @@ export function insertarProductoImplicito(expr: string): string {
     for (let k = out.length - 1; k >= 0; k--) if (out[k] !== " ") return out[k];
     return "";
   };
+  // ¿Lo último emitido fue un NOMBRE DE FUNCIÓN? El `(` que sigue es su llamada, no un
+  // producto. Hace falta como HECHO aparte porque `prev()` mira el último CARÁCTER, que es
+  // un mal proxy del token: en una función acabada en dígito (`atan2(`, `pm2(`) veía el `2`,
+  // lo tomaba por número y emitía `atan2*(y, x)` —una llamada rota, con el nombre convertido
+  // en variable—. Afectaba a toda función con dígito en el nombre, no a un caso concreto.
+  let ultimaFueFuncion: boolean = false;
 
   let i = 0;
   while (i < expr.length) {
     const c = expr[i];
+    const trasFuncion: boolean = ultimaFueFuncion;
+    ultimaFueFuncion = false;
 
     // Notación científica: una `e`/`E` precedida de dígito o '.' y seguida de dígito
     // (o signo + dígito) es el exponente de un número, NO una variable. Se copia tal cual.
@@ -115,11 +129,13 @@ export function insertarProductoImplicito(expr: string): string {
       if (seguidoParen) {
         if (FUNCIONES.has(run)) {
           out += run;                          // función directa: sin(, sqrt(, …
+          ultimaFueFuncion = true;
         } else {
           const fs = sufijoFuncion(run);
           if (fs && /^[a-zA-Z]+$/.test(run.slice(0, run.length - fs.length))) {
             const pref = run.slice(0, run.length - fs.length);
             out += (pref ? expandir(pref) + "*" : "") + fs; // xsin( → x*sin(
+            ultimaFueFuncion = true;
           } else {
             // No es función conocida: trátalo como variables que multiplican el paréntesis.
             out += expandir(run) + "*";          // x( → x*( ,  xy( → x*y*(
@@ -134,10 +150,14 @@ export function insertarProductoImplicito(expr: string): string {
 
     if (c === "(") {
       const p = prev();
-      if (esDigito(p) || p === ")" || p === ".") out += "*"; // 3( , )( , x)( …
+      // `trasFuncion`: el paréntesis abre los ARGUMENTOS de la función recién emitida.
+      if (!trasFuncion && (esDigito(p) || p === ")" || p === ".")) out += "*"; // 3( , )( , x)( …
       out += c; i++; continue;
     }
 
+    // Los espacios no son un token: `sin (x)` sigue siendo una llamada, así que el hecho
+    // "lo último fue una función" los atraviesa.
+    if (c === " ") ultimaFueFuncion = trasFuncion;
     out += c; i++;
   }
   return out;

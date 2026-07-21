@@ -48,6 +48,7 @@ import { muestrearFuncion } from "../src/render/muestreoExplicito";
 import { construirObjeto } from "../src/motor/parsing/construirObjeto";
 import { insertarProductoImplicito } from "../src/motor/parsing/productoImplicito";
 import { dividirEcuaciones } from "../src/motor/parsing/dividirEcuaciones";
+import { expandirDobleSigno } from "../src/motor/parsing/dobleSigno";
 import { crearProveedor, construirObjetosEscena } from "../src/motor/app/composicion";
 import { ProveedorExplicito } from "../src/motor/providers/ProveedorExplicito";
 import { ProveedorImplicitoRasterizado } from "../src/motor/providers/ProveedorImplicitoRasterizado";
@@ -553,21 +554,42 @@ describe("Transformaciones del panel: Despejar y / Simplificar", () => {
     // Antes se quedaba PARCIAL en `1/|y| = 1 − 1/|x|`: el factor con y no era `y`, `yⁿ` ni
     // `ⁿ√y`, así que solo actuaba el despeje multiplicativo. Ahora se invierte el exponente
     // (|y| = |x|/(|x|−1)) y el absoluto abre las DOS ramas con el centinela `pm`.
-    igual(despLatex("|x|^{-1}+|y|^{-1}=1"), "y=\\pm \\frac{\\left| x\\right|}{\\left| x\\right|-1}",
-      "1/|x|+1/|y|=1 → y=±|x|/(|x|−1)");
-    igual(despLatex("2|y| = x"), "y=\\pm \\frac{x}{2}", "coeficiente: 2|y|=x → y=±x/2");
-    igual(despLatex("|y|^{2} = x"), "y=\\pm \\sqrt{x}", "|y|²=x → y=±√x (sqrt, sin índice)");
+    // La GUARDA DE DOMINIO (`, R≥0`, centinela `dom`): `abs(y)^e = R` exige R≥0 (el valor
+    // absoluto no iguala nada negativo); sin ella, `y=±R` dibujaría la rama fantasma R<0.
+    igual(despLatex("|x|^{-1}+|y|^{-1}=1"),
+      "y=\\pm \\frac{\\left| x\\right|}{\\left| x\\right|-1},\\quad 1-{\\left| x\\right|}^{-1} \\ge 0",
+      "1/|x|+1/|y|=1 → y=±|x|/(|x|−1), 1−1/|x|≥0");
+    // La condición se reduce quitando el factor constante: `x/2 ≥ 0` ⇔ `x ≥ 0` (mismo conjunto).
+    igual(despLatex("2|y| = x"), "y=\\pm \\frac{x}{2},\\quad x \\ge 0", "2|y|=x → y=±x/2, x≥0");
+    // Con constante NEGATIVA la desigualdad se invierte: `−x/2 ≥ 0` ⇔ `x ≤ 0`.
+    igual(despLatex("2|y| = -x"), "y=\\pm \\frac{- x}{2},\\quad x \\le 0", "2|y|=−x → y=±(−x/2), x≤0");
+    igual(despLatex("|y|^{2} = x"), "y=\\pm \\sqrt{x},\\quad x \\ge 0", "|y|²=x → y=±√x, x≥0");
     // El argumento del ± con una SUMA necesita paréntesis: `\pm x-1` se leería `(\pm x)-1`.
-    igual(despLatex("|y| = x - 1"), "y=\\pm\\left( x-1\\right)", "|y|=x−1 → y=±(x−1), con paréntesis");
+    igual(despLatex("|y| = x - 1"), "y=\\pm\\left( x-1\\right),\\quad x-1 \\ge 0", "|y|=x−1 → y=±(x−1), x−1≥0");
     // RAÍZ / exponente FRACCIONARIO de |y|: se invierte ELEVANDO (|y|=R^{1/e}), no se toma
     // `abs` por variable. `|y|^{1/2}` (antes se normalizaba a `abssqrt((y))`: abs colgando) y
     // `√|y|` = `sqrt(abs(y))` llevan al MISMO despeje y = ±R². El radicando en orden canónico.
-    igual(despLatex("|y|^{1/2}+x^2=2"), "y=\\pm {\\left(-x^{2}+2\\right)}^{2}",
-      "|y|^{1/2}+x²=2 → y=±(−x²+2)²");
-    igual(despLatex(String.raw`\sqrt{|y|}+\tan{x}=2`), "y=\\pm {\\left(2-\\tan x\\right)}^{2}",
-      "√|y|+tan x=2 → y=±(2−tan x)²");
-    igual(despLatex("|y|^{1/3}+x=1"), "y=\\pm {\\left(- x+1\\right)}^{3}",
-      "|y|^{1/3}+x=1 → y=±(−x+1)³ (índice 3 → cubo)");
+    igual(despLatex("|y|^{1/2}+x^2=2"), "y=\\pm {\\left(-x^{2}+2\\right)}^{2},\\quad -x^{2}+2 \\ge 0",
+      "|y|^{1/2}+x²=2 → y=±(−x²+2)², −x²+2≥0 (√|y|=R exige R≥0, |x|≤√2)");
+    igual(despLatex(String.raw`\sqrt{|y|}+\tan{x}=2`), "y=\\pm {\\left(2-\\tan x\\right)}^{2},\\quad 2-\\tan x \\ge 0",
+      "√|y|+tan x=2 → y=±(2−tan x)², 2−tan x≥0");
+    igual(despLatex("|y|^{1/3}+x=1"), "y=\\pm {\\left(- x+1\\right)}^{3},\\quad - x+1 \\ge 0",
+      "|y|^{1/3}+x=1 → y=±(−x+1)³, −x+1≥0 (índice 3 → cubo)");
+  });
+
+  test("Keystone Stage 2: la guarda de dominio (dom) hace fieles las inversas de rango restringido", () => {
+    // El BUG que arregla: `√(y⁴)=−3` NO tiene solución real (√(y⁴)=y²≥0), pero salía completo
+    // con una curva inventada. Ahora la condición constante <0 lo deja PARCIAL (sin forzar nada).
+    assert(!/^y = /.test(despejarEcuaciones(["sqrt(y^4) = -3"])[0]), "√(y⁴)=−3: sin solución → parcial");
+    assert(!/^y = /.test(despejarEcuaciones(["abs(y) + 5 = 2"])[0]), "|y|=−3: sin solución → parcial");
+    // Fidelidad NUMÉRICA: la despejada con `dom` evalúa a NaN FUERA del dominio (sin rama
+    // fantasma) y a la rama correcta DENTRO. `x−√y=27 → y=dom((x−27)², x−27)`, válida x≥27.
+    const rhs = despejarEcuaciones(["x-sqrt(y)=27"])[0].replace(/^y = /, "");
+    const f = compilarFuncion(rhs, "x");
+    assert(!Number.isFinite(f(10) as number), "x=10 (x−27<0): NaN, sin fantasma");
+    const y30 = f(30) as number;
+    aprox(y30, 9, 1e-9, "x=30 (dentro): y=(30−27)²=9");
+    aprox(30 - Math.sqrt(y30), 27, 1e-9, "y=9 cumple la original x−√y=27");
   });
 
   test("Despejar y: potencia PAR se despeja hasta y = ±√(…) (radicando 'positivos primero')", () => {
@@ -607,14 +629,14 @@ describe("Transformaciones del panel: Despejar y / Simplificar", () => {
   test("Despejar y: T(u)=0 con u compuesta → familia kπ, k∈ℕ si u>0", () => {
     // `sin(1/(x²+y²))=0` ⇒ 1/(x²+y²)=kπ ⇒ (recíproco+círculo) y=±√(1/(kπ)−x²). Como
     // 1/(x²+y²)>0 obliga a kπ>0, el parámetro es NATURAL (k∈ℕ), no ℤ: el centinela `famN`.
-    igual(despLatex("sin(1/(x^2+y^2)) = 0"), "y=\\pm \\sqrt{\\frac{1}{k\\pi}-x^{2}},\\ k\\in\\mathbb{N}",
+    igual(despLatex("sin(1/(x^2+y^2)) = 0"), "y=\\pm \\sqrt{\\frac{1}{k\\pi}-x^{2}},\\quad k\\in\\mathbb{N}",
       "sin(1/(x²+y²))=0 → y=±√(1/(kπ)−x²), k∈ℕ");
     igual(despLatex(String.raw`\sin\left(\frac{1}{x^2+y^2}\right)=0`),
-      "y=\\pm \\sqrt{\\frac{1}{k\\pi}-x^{2}},\\ k\\in\\mathbb{N}", "misma, en LaTeX del editor");
+      "y=\\pm \\sqrt{\\frac{1}{k\\pi}-x^{2}},\\quad k\\in\\mathbb{N}", "misma, en LaTeX del editor");
     // u que toma cualquier signo (x+y) → la familia es ℤ, no ℕ.
-    igual(despLatex("sin(x+y) = 0"), "y=- x+k\\pi,\\ k\\in\\mathbb{Z}", "sin(x+y)=0 → y=−x+kπ, k∈ℤ");
+    igual(despLatex("sin(x+y) = 0"), "y=- x+k\\pi,\\quad k\\in\\mathbb{Z}", "sin(x+y)=0 → y=−x+kπ, k∈ℤ");
     // cos se anula en π/2+kπ (desplazada) → ℤ.
-    igual(despLatex("tan(x*y) = 0"), "y=\\frac{k\\pi}{x},\\ k\\in\\mathbb{Z}", "tan(xy)=0 → y=kπ/x, k∈ℤ");
+    igual(despLatex("tan(x*y) = 0"), "y=\\frac{k\\pi}{x},\\quad k\\in\\mathbb{Z}", "tan(xy)=0 → y=kπ/x, k∈ℤ");
   });
 
   test("Despejar y: CUADRÁTICA en y² (bicuadrática) por la fórmula reducida", () => {
@@ -653,15 +675,18 @@ describe("Transformaciones del panel: Despejar y / Simplificar", () => {
   test("Despejar y: RAÍZ de y se invierte elevando (inverso de la raíz principal)", () => {
     // El caso reportado: la 2ª ecuación de un sistema `x−√y=27` quedaba `-√y=-x+27` en
     // vez de aislar y. Ahora se eleva al cuadrado → parábola completa.
-    igual(despLatex("x-\\sqrt{y}=27"), "y={\\left( x-27\\right)}^{2}", "x−√y=27 → y=(x−27)²");
-    igual(despLatex("\\sqrt{y}=x-3"), "y={\\left( x-3\\right)}^{2}", "√y=x−3 → y=(x−3)²");
-    igual(despLatex("x-\\sqrt[3]{y}=1"), "y={\\left( x-1\\right)}^{3}", "cúbica: x−∛y=1 → y=(x−1)³");
-    igual(despLatex("2\\sqrt{y}=x"), "y=\\left({\\frac{x}{2}}\\right)^{2}", "coef: 2√y=x → y=(x/2)²");
-    // Encadenado con Simplificar: expande la potencia (lo que también pediste).
+    // Índice PAR (√): la inversión (elevar al cuadrado) solo vale donde el radicando es ≥0 →
+    // GUARDA DE DOMINIO `, R≥0`. Índice IMPAR (∛): biyección en ℝ, exacta sin guarda.
+    igual(despLatex("x-\\sqrt{y}=27"), "y={\\left( x-27\\right)}^{2},\\quad x-27 \\ge 0", "x−√y=27 → y=(x−27)², x−27≥0");
+    igual(despLatex("\\sqrt{y}=x-3"), "y={\\left( x-3\\right)}^{2},\\quad x-3 \\ge 0", "√y=x−3 → y=(x−3)², x−3≥0");
+    igual(despLatex("x-\\sqrt[3]{y}=1"), "y={\\left( x-1\\right)}^{3}", "cúbica (impar): x−∛y=1 → y=(x−1)³, sin guarda");
+    igual(despLatex("2\\sqrt{y}=x"), "y=\\left({\\frac{x}{2}}\\right)^{2},\\quad x \\ge 0", "coef: 2√y=x → y=(x/2)², x≥0");
+    // Encadenado con Simplificar: la potencia queda FACTORIZADA dentro de la guarda (`dom` es
+    // opaca a rationalize, no se expande) → `(x−27)²`, que además lee mejor junto a `, x−27≥0`.
     const d = despejarEcuaciones(["x+y=2", "x-\\sqrt{y}=27"]);
     igual(bloqueALatex(simplificarEcuaciones(d)),
-      "\\begin{cases}\\begin{aligned}y&=- x+2\\\\[1ex]y&=x^{2}-54x+729\\end{aligned}\\end{cases}",
-      "sistema Despejar→Simplificar: y=-x+2 ; y=x²−54x+729");
+      "\\begin{cases}\\begin{aligned}y&=- x+2\\\\[1ex]y&={\\left( x-27\\right)}^{2},\\quad x-27 \\ge 0\\end{aligned}\\end{cases}",
+      "sistema Despejar→Simplificar: y=-x+2 ; y=(x−27)², x−27≥0");
   });
 
   test("Despejar y: expresión SUELTA con y libre se despeja como expr=0", () => {
@@ -915,7 +940,7 @@ describe("latex.ts: símbolo·variable y paréntesis escalables", () => {
     // por ser menos anidada y numéricamente equivalente (mismo dominio).
     // (El doble paréntesis del numerador es artefacto de `combinarFracciones`; se
     // re-parsea al pintar el LaTeX, que sale limpio: `\frac{3\sin x+2\cos x}{6x}`.)
-    igual(s("(sin(x)/2 + cos(x)/3)/x"), "((3 * sin(x) + 2 * cos(x))) / (6 * x)",
+    igual(s("(sin(x)/2 + cos(x)/3)/x"), "(3 * sin(x) + 2 * cos(x)) / (6 * x)",
       "fracción de fracciones con trig → una sola fracción");
     igual(exprALatex(s("(sin(x)/2 + cos(x)/3)/x")), "\\frac{3\\sin x+2\\cos x}{6x}",
       "LaTeX limpio de la fracción aplanada");
@@ -934,7 +959,7 @@ describe("latex.ts: símbolo·variable y paréntesis escalables", () => {
     // `(arccot(x²)(x⁴+1) − 4√x²x)/(2√x(x⁴+1))`. Ahora, al ser una fracción de fracciones, se
     // recupera la ENTRADA ORIGINAL (más plana y equivalente): la forma legible del usuario.
     const r = s("arccot(x^2)/(2*sqrt(x)) - 2*x*sqrt(x)/(x^4+1)");
-    igual(r, "(acot(x ^ 2)) / (2 * sqrt(x)) - 2 * x * sqrt(x) / (x ^ 4 + 1)",
+    igual(r, "acot(x ^ 2) / (2 * sqrt(x)) - 2 * x * sqrt(x) / (x ^ 4 + 1)",
       "suma de fracciones legible: conservada, no combinada");
     igual(exprALatex(r),
       "\\frac{\\operatorname{arccot}\\left(x^{2}\\right)}{2\\sqrt{x}}-\\frac{2x\\sqrt{x}}{x^{4}+1}",
@@ -3841,10 +3866,26 @@ describe("Periodicidad del campo (detección numérica para el teselado)", () =>
   test("la composición enruta la red de lazos al proveedor teselado", () => {
     const p = crearProveedor(construirObjeto("cos(x)+cos(y)+cos(x+y)=0.5", "p"));
     igual(p.constructor.name, "ProveedorImplicitoTeselado", "ruta del dispatcher");
-    // …y una implícita corriente (no periódica) va al raster-wrapper de la ruta genérica,
-    // que delega en la continuación mientras la curva no sea de alta frecuencia.
+    // …una implícita INVERTIBLE en y (x³+y³=9 ⇒ y=∛(9−x³), función de UN SOLO VALOR) se grafica
+    // por el muestreo EXPLÍCITO: traza la curva entera hasta el borde, sin el corte de la
+    // continuación (que la acota a ~2× la vista — la cola de e^x desaparecía).
     const q = crearProveedor(construirObjeto("x^3+y^3=9", "p"));
-    igual(q.constructor.name, "ProveedorImplicitoRasterizado", "sin período → ruta genérica (raster-wrapper)");
+    igual(q.constructor.name, "ProveedorExplicito", "invertible en y → sampler explícito");
+    // …y una MULTIVALUADA no periódica (el círculo, y=±√…) va al raster-wrapper genérico.
+    const c = crearProveedor(construirObjeto("x^2+y^2=9", "p"));
+    igual(c.constructor.name, "ProveedorImplicitoRasterizado", "multivaluada sin período → ruta genérica");
+  });
+
+  test("Grafo: la implícita invertible traza la COLA completa hasta el borde (ln(y)=x, sin corte)", () => {
+    // Bug reportado: `\ln(y)=x` (⇒ y=e^x) por continuación se cortaba en x≈−8 (la cola y→0 por la
+    // izquierda desaparecía), mientras la explícita `e^x` llegaba al borde. Ahora se rutea por el
+    // sampler explícito → la cola alcanza el borde izquierdo de la vista (−11), como `e^x`.
+    const vp = crearViewport([-11, 11], [-7, 7], 880, 390, 1);
+    const xs: number[] = [];
+    const g = crearProveedor(construirObjeto("\\ln(y) = x", "id")).geometria(vp, TOL_FINAL);
+    for (const r of g.ramas) { const a = r.puntos; for (let k = 0; k < a.length; k += 2) xs.push(a[k]); }
+    assert(xs.length > 0 && Math.min(...xs) < -10.5,
+      `la cola izquierda llega al borde (no se corta en −8): xMin=${Math.min(...xs).toFixed(1)}`);
   });
 });
 
@@ -4050,10 +4091,11 @@ describe("Despejar y: raíz impar + cuadrática general (familia del corazón)",
     despejeCorrecto("x*y^2+y+x=0", (x, y) => x * y * y + y + x);
     // Lineal en y² con coeficiente en x → y=±√((4−x²)/(x²+1)).
     despejeCorrecto("x^2*y^2+x^2+y^2=4", (x, y) => x * x * y * y + x * x + y * y - 4);
-    // Los que ya funcionaban siguen igual (potencia, raíz, absoluto).
-    igual(despejarEcuaciones(["x^2+y^4=5"])[0], "y = pm(nthRoot((5 - x ^ 2), 4))", "y⁴ ⇒ ±⁴√");
-    igual(despejarEcuaciones(["x+sqrt(y)=4"])[0], "y = ((-x + 4))^2", "√y ⇒ elevar al cuadrado");
-    igual(despejarEcuaciones(["x+abs(y)=5"])[0], "y = pm(-x + 5)", "|y| ⇒ ±");
+    // Potencia par (`y⁴`): la raíz par ya da NaN donde el radicando es <0 → fiel sin guarda.
+    // Raíz par (`√y`) y absoluto (`|y|`): la inversión añade la GUARDA DE DOMINIO (centinela `dom`).
+    igual(despejarEcuaciones(["x^2+y^4=5"])[0], "y = pm(nthRoot((5 - x ^ 2), 4))", "y⁴ ⇒ ±⁴√ (sin guarda)");
+    igual(despejarEcuaciones(["x+sqrt(y)=4"])[0], "y = dom(((-x + 4))^2, -x + 4)", "√y ⇒ elevar, con guarda R≥0");
+    igual(despejarEcuaciones(["x+abs(y)=5"])[0], "y = dom(pm(-x + 5), -x + 5)", "|y| ⇒ ±, con guarda R≥0");
   });
 
   test("lo NO despejable sigue siendo parcial (no se fuerza nada)", () => {
@@ -4063,8 +4105,162 @@ describe("Despejar y: raíz impar + cuadrática general (familia del corazón)",
     // (tan(y)·(…) ya no es el ejemplo: el trig inverso la completa; ver su test.)
     assert(/^\(y \^ y\)/.test(despejarEcuaciones(["y^y*(x^2+1)=sqrt(x+1)"])[0]),
       "trascendente: solo el despeje multiplicativo");
-    // La trig de un INTERIOR compuesto no se invierte (despejar 2y sería otro problema).
-    assert(!/^y = /.test(despejarEcuaciones(["tan(2y)+x=2"])[0]), "tan(2y): parcial");
+    // y en VARIOS términos y trascendente (sin forma cerrada): sigue parcial. `tan(2y)` ya NO
+    // es ejemplo de límite: el inversor estructural lo completa (ver el test del keystone).
+    assert(!/^y = /.test(despejarEcuaciones(["sin(y)+y=x"])[0]), "sin(y)+y: parcial (trascendente)");
+    assert(!/^y = /.test(despejarEcuaciones(["y+tan(y)=x"])[0]), "y+tan(y): parcial (trascendente)");
+  });
+
+  test("Keystone: inversión estructural cierra huecos (log/exp/hiperbólica/trig compuesta/anidada)", () => {
+    // y en UNA sola posición, anidada o en una función sin estrategia propia → se aísla pelando
+    // la composición con inversas FIELES AL DOMINIO. Antes quedaban parciales.
+    const completa = (ec: string) => /^y = /.test(despejarEcuaciones([ec])[0]);
+    for (const ec of ["log(y)=x", "e^y=x", "2^y+1=x", "sinh(y)=x", "atanh(y)=x",
+                      "sin(2y)=x", "tan(2y)+x=2", "(y+1)^3=x", "exp(y^3)=x"])
+      assert(completa(ec), `se despeja del todo: ${ec}`);
+    // Fidelidad NUMÉRICA: cada rama despejada cumple su ecuación original donde es real.
+    const chequeos: Array<[string, string, (x: number, y: number) => number]> = [
+      ["log(y)=x", "exp(x)", (x, y) => Math.log(y) - x],
+      ["e^y=x", "log(x)", (x, y) => Math.exp(y) - x],
+      ["sinh(y)=x", "asinh(x)", (x, y) => Math.sinh(y) - x],
+      ["(y+1)^3=x", "nthRoot(x,3)-1", (x, y) => (y + 1) ** 3 - x],
+      ["exp(y^3)=x", "cbrt(log(x))", (x, y) => Math.exp(y ** 3) - x],
+    ];
+    for (const [ec, rama, D] of chequeos) {
+      const f = crearFuncionReal(rama);
+      for (const x of [0.3, 0.8, 1.7, 3.2]) {
+        const y = f.eval(x) as number;
+        if (!Number.isFinite(y)) continue;
+        aprox(D(x, y), 0, 1e-9, `${ec} en x=${x}`);
+      }
+    }
+  });
+
+  test("Keystone: capas de RANGO RESTRINGIDO bajo composición (guarda dom + ±)", () => {
+    // Antes el inversor se rendía ante √, ⁿ√ par, potencia par y |·| envolviendo una expresión
+    // compuesta. Son inversas EXACTAS bajo la guarda `t ≥ 0` (y el ± de las dos ramas cuando la
+    // capa no es inyectiva), que es justo lo que emiten `conDominio`/`pm`: ahora se pelan.
+    const tex = (ec: string) => bloqueALatex(despejarEcuaciones([ec]));
+    // √ de una torre trig: la guarda x≥0 sale a MEDIA torre y viaja con la expresión.
+    igual(tex(String.raw`\sqrt{\tan(y)+1}=x`), "y=\\arctan\\left(x^{2}-1\\right)+k\\pi,\\quad x \\ge 0,\\quad k\\in\\mathbb{Z}",
+      "√(tan y+1)=x ⇒ y=arctan(x²−1)+kπ, x≥0");
+    // Potencia PAR bajo exponencial: la condición HONESTA es ln x ≥ 0 (⇔ x ≥ 1), no x > 0.
+    igual(tex("e^(y^2)=x"), "y=\\pm \\sqrt{\\ln x},\\quad \\ln x \\ge 0",
+      "e^{y²}=x ⇒ y=±√(ln x), ln x≥0");
+    // Potencia PAR de una base COMPUESTA (`(y+1)²=x` no: esa la coge antes la cuadrática).
+    igual(despejarEcuaciones(["(y^3+1)^2=x"])[0], "y = cbrt((dom(pm(sqrt((x))), x)) - (1))",
+      "(y³+1)²=x ⇒ y=∛(±√x−1), x≥0");
+    igual(tex("(log(y))^2=x"), "y=e^{\\pm \\sqrt{x}},\\quad x \\ge 0", "(ln y)²=x ⇒ y=e^{±√x}, x≥0");
+    igual(despejarEcuaciones(["abs(2*y+1)=x"])[0], "y = ((dom(pm((x)), x)) - (1)) / (2)", "|2y+1|=x ⇒ y=(±x−1)/2, x≥0");
+    igual(despejarEcuaciones(["nthRoot(y^3-2, 4)=x"])[0], "y = cbrt((dom(((x))^4, x)) + (2))", "⁴√(y³−2)=x ⇒ guarda x≥0");
+    // Guarda TRIVIALMENTE cierta (t=x²≥0) → sin coletilla; guarda constante NEGATIVA → sin
+    // solución real, no se fuerza nada y la ecuación se queda como está.
+    assert(!/\\ge 0/.test(tex("sqrt(tan(y)+1)=x^2")), "guarda obvia (x²≥0): sin coletilla");
+    assert(!/^y = /.test(despejarEcuaciones(["sqrt(2*y+1)=-3"])[0]), "√(…)=−3: sin solución real, parcial");
+    // Fidelidad NUMÉRICA de las ramas nuevas contra la ecuación original.
+    const chequeos: Array<[string, string, (x: number, y: number) => number]> = [
+      [String.raw`\sqrt{\tan(y)+1}=x`, "atan(x^2-1)", (x, y) => Math.sqrt(Math.tan(y) + 1) - x],
+      ["e^(y^2)=x", "sqrt(log(x))", (x, y) => Math.exp(y * y) - x],
+      ["(y+1)^2=x", "sqrt(x)-1", (x, y) => (y + 1) ** 2 - x],
+      ["abs(2*y+1)=x", "(x-1)/2", (x, y) => Math.abs(2 * y + 1) - x],
+    ];
+    for (const [ec, rama, D] of chequeos) {
+      const f = crearFuncionReal(rama);
+      for (const x of [0.4, 1.3, 2.6, 5.1]) {
+        const y = f.eval(x) as number;
+        if (!Number.isFinite(y)) continue;
+        aprox(D(x, y), 0, 1e-9, `${ec} en x=${x}`);
+      }
+    }
+    // DOS ± independientes SÍ caben (dos ejes de signo → cuatro curvas): `|(y+1)²−3| = x`
+    // necesita el ± del absoluto y el de la raíz, y son distintos.
+    igual(despejarEcuaciones(["abs((y+1)^2-3)=x"])[0],
+      "y = (dom(pm2(sqrt((dom(pm((x)), x)) + (3))), (dom(pm((x)), x)) + (3))) - (1)",
+      "|(y+1)²−3|=x ⇒ dos ejes de signo");
+    // LÍMITE honesto: un TERCER ± independiente necesitaría ocho ramas y el presupuesto es de
+    // dos ejes → parcial, antes que entregar un despeje al que le faltan soluciones.
+    assert(!/^y = /.test(despejarEcuaciones(["abs(abs((y+1)^2-3)-2)=x"])[0]),
+      "tres ± independientes: parcial");
+  });
+
+  test("Keystone: EJES de signo independientes (el ± deja de perder soluciones)", () => {
+    // `expandirDobleSigno` resuelve todos los ± de un MISMO eje con el mismo signo. Cuando dos
+    // ± son independientes (`±arccos((a ± √d)/2)`: dos valores de cos y, dos ángulos cada uno),
+    // un solo eje dibujaba 2 de las 4 curvas y las otras dos desaparecían EN SILENCIO. El
+    // segundo eje (`pm2`) las recupera; el presupuesto sigue acotado (≤4 ramas, nunca 2ⁿ).
+    const ramasDe = (ec: string): string[] => {
+      const rhs = despejarEcuaciones([ec])[0].replace(/^y = /, "").replace(/fam\(k, 2\*pi\)/, "0");
+      return expandirDobleSigno(rhs);
+    };
+    igual(String(expandirDobleSigno("pm(x) + 1").length), "2", "un eje → 2 ramas");
+    igual(String(expandirDobleSigno("pm(x) + mp(1)").length), "2", "± y ∓ del MISMO eje → 2 ramas");
+    igual(String(expandirDobleSigno("pm(x) + pm2(1)").length), "4", "dos ejes → 4 ramas");
+    igual(String(expandirDobleSigno("x + 1").length), "1", "sin ± → la ecuación misma");
+
+    // El caso que perdía curvas: cada solución real de la cuadrática en cos y debe estar en
+    // alguna de las ramas expandidas. Antes faltaba la familia entera `+arccos(u₋)`.
+    const F = (x: number, y: number) =>
+      4 * (Math.cos(x) + Math.cos(y)) + 2 * Math.cos(x + y) + 2 * Math.cos(x - y) -
+      2 * Math.cos(2 * x) - 2 * Math.cos(2 * y) - 7;
+    const corazon = "4\\left(\\cos x+\\cos y\\right)+2\\cos\\left(x+y\\right)+2\\cos\\left(x-y\\right)-2\\cos 2x-2\\cos 2y-7=0";
+    const fns = ramasDe(corazon).map((r) => crearFuncionReal(r));
+    let cubiertas = 0;
+    for (const x of [0.15, 0.35, 0.55, -0.4, 0.9]) {
+      for (const s1 of [1, -1]) for (const s2 of [1, -1]) {
+        const d = 1 - 3 * (Math.cos(x) - 1) ** 2;
+        if (d < 0) continue;
+        const u = (Math.cos(x) + 1 + s2 * Math.sqrt(d)) / 2;
+        if (Math.abs(u) > 1) continue;
+        const y = s1 * Math.acos(u);
+        if (Math.abs(F(x, y)) > 1e-9) continue;   // no es solución real: nada que exigir
+        const trazada = fns.some((f) => {
+          const v = f.eval(x);
+          return typeof v === "number" && Math.abs(v - y) < 1e-9;
+        });
+        assert(trazada, `rama ±=(${s1},${s2}) en x=${x} debe estar entre las expandidas`);
+        cubiertas++;
+      }
+    }
+    assert(cubiertas >= 8, `la muestra ejercitó las cuatro combinaciones (${cubiertas})`);
+  });
+
+  test("Keystone: PARÁMETROS de familia independientes (k, m, n)", () => {
+    // Hallado por la batería de verificación (tests/bateria-cas.ts): dos inversiones periódicas
+    // anidadas aportan DOS enteros independientes, y emitir `fam(k,·)` en ambos sitios colapsaba
+    // la solución a la diagonal k₁=k₂. Medido sobre `sin(cos y)=0.5`: 8 raíces reales en
+    // [−12,12], la fórmula cubría 2. Mismo defecto que tenían los ± antes de repartirlos.
+    igual(despejarEcuaciones(["sin(cos(y)) = x"])[0],
+      "y = pm2(acos(pi/2 + pm(acos((x))) + fam(k, 2*pi))) + fam(m, 2*pi)",
+      "sin(cos y)=x ⇒ parámetros k y m distintos");
+    // La coletilla declara AMBOS: con un solo `k∈ℤ` la fórmula se leería como un único entero.
+    igual(bloqueALatex(despejarEcuaciones(["sin(cos(y)) = x"])),
+      "y=\\pm \\arccos\\left(\\frac{\\pi}{2} \\pm \\arccos x+2k\\pi\\right)+2m\\pi," +
+      "\\quad k\\in\\mathbb{Z},\\quad m\\in\\mathbb{Z}", "coletilla con los dos parámetros");
+    // COMPLETITUD numérica: toda raíz real de sin(cos y)=0.5 la cubre algún (k, m, signos).
+    const raices: number[] = [];
+    for (let y = -12; y <= 12; y += 1e-4) {
+      const a = Math.sin(Math.cos(y)) - 0.5, b = Math.sin(Math.cos(y + 1e-4)) - 0.5;
+      if (a * b < 0) raices.push(y + 5e-5);
+    }
+    assert(raices.length >= 8, `la ventana tiene varias raíces (${raices.length})`);
+    for (const r of raices) {
+      const cubierta = (): boolean => {
+        for (let k = -4; k <= 4; k++) for (let m = -4; m <= 4; m++)
+          for (const s1 of [1, -1]) for (const s2 of [1, -1]) {
+            const inner = Math.PI / 2 + s1 * Math.acos(0.5) + 2 * k * Math.PI;
+            if (Math.abs(inner) > 1) continue;
+            if (Math.abs(s2 * Math.acos(inner) + 2 * m * Math.PI - r) < 1e-3) return true;
+          }
+        return false;
+      };
+      assert(cubierta(), `la raíz y=${r.toFixed(4)} debe estar en la familia`);
+    }
+    // Con UNA sola inversión el parámetro sigue siendo `k` (sin churn en lo que ya funcionaba).
+    igual(despejarEcuaciones(["tan(y) + x = 2"])[0], "y = atan((2 - x)) + fam(k, pi)",
+      "una inversión: el parámetro sigue siendo k");
+    // LÍMITE: agotado el repertorio (k, m, n), forma parcial antes que repetir un parámetro.
+    assert(!/^y = /.test(despejarEcuaciones(["sin(tan(cos(sin(y)))) = x"])[0]),
+      "cuatro inversiones periódicas: parcial");
   });
 
   test("trig PERIÓDICA de y → solución GENERAL: familia y = T⁻¹(g) + k·período (k∈ℤ)", () => {
@@ -4114,7 +4310,7 @@ describe("Despejar y: raíz impar + cuadrática general (familia del corazón)",
     // CUADRADO COMPLETADO (muestra el dominio), no como polinomio expandido.
     const corazon = "4\\left(\\cos x+\\cos y\\right)+2\\cos\\left(x+y\\right)+2\\cos\\left(x-y\\right)-2\\cos 2x-2\\cos 2y-7=0";
     igual(despejarEcuaciones([corazon])[0],
-      "y = pm(acos(((cos(x) + 1) + pm(sqrt(1 - 3 * (cos(x) - 1) ^ 2))) / (2))) + fam(k, 2*pi)",
+      "y = pm2(acos(((cos(x) + 1) + pm(sqrt(1 - 3 * (cos(x) - 1) ^ 2))) / (2))) + fam(k, 2*pi)",
       "cuadrática en cos y con cuadrado completado");
     // La familia es CORRECTA: ambos ± son independientes y cada combinación válida
     // (|u|≤1) cumple la ecuación original, para todo k.
@@ -4140,12 +4336,12 @@ describe("Despejar y: raíz impar + cuadrática general (familia del corazón)",
     assert(combinaciones > 20, `la muestra ejercitó ambas raíces y ambos arccos (${combinaciones})`);
     // Cuadrática DIRECTA en cos y y LINEAL en cos y (adición pura).
     igual(despejarEcuaciones(["cos(y)^2 - cos(y) = x"])[0],
-      "y = pm(acos(((1) + pm(sqrt(4 * x + 1))) / (2))) + fam(k, 2*pi)", "cos²y−cosy=x");
+      "y = pm2(acos(((1) + pm(sqrt(4 * x + 1))) / (2))) + fam(k, 2*pi)", "cos²y−cosy=x");
     igual(despejarEcuaciones(["cos(x+y) + cos(x-y) = 1"])[0],
       "y = pm(acos((1) / (2 * cos(x)))) + fam(k, 2*pi)", "2cosx·cosy=1 (lineal en cos y)");
     // sin²y entra por la pitagórica (SY²→1−CY²); la fracción común se reduce del todo.
     igual(despejarEcuaciones(["sin(y)^2 = x"])[0],
-      "y = pm(acos(pm(sqrt(1 - x)))) + fam(k, 2*pi)", "sin²y=x");
+      "y = pm2(acos(pm(sqrt(1 - x)))) + fam(k, 2*pi)", "sin²y=x");
     // sin y IMPAR no es polinomio en cos y: se queda PARCIAL, no se inventa nada.
     assert(!/^y = /.test(despejarEcuaciones(["sin(y) + cos(y) = x"])[0]), "siny+cosy=x: parcial");
   });
@@ -4478,6 +4674,138 @@ describe("Rasterizado por signo (marching squares) para campos de alta frecuenci
     for (const [n, s] of [["círculo", "x^2+y^2=9"], ["folium", "x^3+y^3=3*x*y"], ["hipérbola", "x^2-y^2=4"]] as const) {
       const g = crearProveedor(construirObjeto(s, "z")).geometria(vp, TOLF);
       assert(g.ramas.length < 10, `${n}: sigue por continuación (${g.ramas.length} ramas, no rasterizado)`);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────
+// Batería graduada: de lo trivial a lo imposible
+// ─────────────────────────────────────────────
+//
+// Recorre el despejador de menor a mayor dificultad y, sobre todo, MARCA LA FRONTERA: dónde
+// acaba lo que la teoría permite automatizar y empieza lo que no tiene forma cerrada. El valor
+// de la última sección es tanto como el de la primera —fija que el motor NO inventa—, y si
+// alguna vez una de esas pasa a despejarse, el test avisa de que la frontera se movió.
+//
+// Cada caso resoluble se verifica NUMÉRICAMENTE contra la ecuación original: no basta con que
+// salga un `y = …`, cada rama tiene que caer sobre la curva de verdad.
+describe("Batería graduada del despejador: de trivial a imposible", () => {
+  const completo = (ec: string): boolean => /^y = /.test(despejarEcuaciones([ec])[0]);
+
+  /** ¿Toda rama de la despejada cae sobre la curva original? (soundness, muestreada). */
+  const fiel = (ec: string, D: (x: number, y: number) => number): { ok: boolean; detalle: string } => {
+    const rhs = despejarEcuaciones([ec])[0].replace(/^y = /, "");
+    let comprobados = 0;
+    for (const K of [-1, 0, 1, 2]) {
+      const conK = rhs.replace(/fam[N]?\(k,([^)]*)\)/g, `(${K}*($1))`);
+      for (const rama of expandirDobleSigno(conK)) {
+        let f: ReturnType<typeof crearFuncionReal>;
+        try { f = crearFuncionReal(rama); } catch { continue; }
+        for (const x of [-3.3, -1.7, -0.6, 0.4, 1.2, 2.5, 4.1]) {
+          const y = f.eval(x);
+          if (typeof y !== "number" || !Number.isFinite(y)) continue;
+          const d = D(x, y);
+          if (!Number.isFinite(d)) continue;
+          comprobados++;
+          if (Math.abs(d) > 1e-6 * (1 + x * x + y * y))
+            return { ok: false, detalle: `x=${x}, y=${y} ⇒ D=${d} (debería ser 0)` };
+        }
+      }
+    }
+    return { ok: comprobados > 0, detalle: `${comprobados} puntos comprobados` };
+  };
+
+  const resoluble = (ec: string, D: (x: number, y: number) => number, nota: string): void => {
+    assert(completo(ec), `${nota}: debería despejarse del todo — ${despejarEcuaciones([ec])[0]}`);
+    const r = fiel(ec, D);
+    assert(r.ok, `${nota}: rama fuera de la curva original — ${r.detalle}`);
+  };
+
+  test("nivel 1 — lineal y polinómico directo", () => {
+    resoluble("2*y + 3*x = 6", (x, y) => 2 * y + 3 * x - 6, "2y+3x=6");
+    resoluble("y/3 - x = 1", (x, y) => y / 3 - x - 1, "y/3−x=1");
+    resoluble("x^2 + y^2 = 9", (x, y) => x * x + y * y - 9, "circunferencia");
+    resoluble("x^3 + y^3 = 9", (x, y) => x ** 3 + y ** 3 - 9, "cúbica simétrica");
+    resoluble("x*y = 4", (x, y) => x * y - 4, "hipérbola xy=4");
+  });
+
+  test("nivel 2 — una capa invertible alrededor de y", () => {
+    resoluble("log(y) = x", (x, y) => Math.log(y) - x, "ln y = x");
+    resoluble("e^y = x", (x, y) => Math.exp(y) - x, "e^y = x");
+    resoluble("2^y = x", (x, y) => 2 ** y - x, "2^y = x (base ≠ e)");
+    resoluble("sinh(y) = x", (x, y) => Math.sinh(y) - x, "sinh y = x");
+    resoluble("x - sqrt(y) = 2", (x, y) => x - Math.sqrt(y) - 2, "√y con guarda");
+    resoluble("abs(y) = x^2", (x, y) => Math.abs(y) - x * x, "|y| = x² (guarda trivial)");
+  });
+
+  test("nivel 3 — torres de composición (el inversor recursivo)", () => {
+    resoluble("(y+1)^3 = x", (x, y) => (y + 1) ** 3 - x, "base compuesta impar");
+    resoluble("exp(y^3) = x", (x, y) => Math.exp(y ** 3) - x, "e^{y³}");
+    resoluble("e^(y^2) = x", (x, y) => Math.exp(y * y) - x, "e^{y²} (par ⇒ ± y guarda)");
+    resoluble("log(y^3 + 1) = x", (x, y) => Math.log(y ** 3 + 1) - x, "ln(y³+1)");
+    resoluble("sqrt(tan(y) + 1) = x", (x, y) => Math.sqrt(Math.tan(y) + 1) - x, "√(tan y+1)");
+    resoluble("(log(y))^2 = x", (x, y) => Math.log(y) ** 2 - x, "(ln y)²");
+    resoluble("nthRoot(y^3 - 2, 4) = x", (x, y) => (y ** 3 - 2) ** 0.25 - x, "⁴√(y³−2)");
+  });
+
+  test("nivel 4 — familias infinitas y dominio restringido a la vez", () => {
+    resoluble("tan(y) + x = 2", (x, y) => Math.tan(y) + x - 2, "familia kπ");
+    resoluble("sin(2*y) = x", (x, y) => Math.sin(2 * y) - x, "argumento compuesto");
+    resoluble("1/(x^2 + y^2) = 3", (x, y) => 1 / (x * x + y * y) - 3, "recíproco → círculo");
+    resoluble("sin(1/(x^2+y^2)) = 0", (x, y) => Math.sin(1 / (x * x + y * y)), "T(u)=0, k∈ℕ");
+    resoluble("abs((y+1)^2 - 3) = x", (x, y) => Math.abs((y + 1) ** 2 - 3) - x, "dos ejes de signo");
+  });
+
+  test("nivel 5 — lo que exige un método, no una inversa", () => {
+    resoluble("3*y^2 + 2*x*y + x^2 - 4 = 0", (x, y) => 3 * y * y + 2 * x * y + x * x - 4, "cuadrática general");
+    resoluble("x^2*y^2 + x^2 + y^2 = 4", (x, y) => x * x * y * y + x * x + y * y - 4, "lineal en y²");
+    resoluble("(x^2+y^2)^2 - 2*(x^2-y^2) = 0", (x, y) => (x * x + y * y) ** 2 - 2 * (x * x - y * y), "lemniscata (bicuadrática)");
+    resoluble("cos(y)^2 - cos(y) = x", (x, y) => Math.cos(y) ** 2 - Math.cos(y) - x, "cuadrática en cos y");
+    resoluble("(x^2 + y^2 - 1)^3 = x^2*y^3", (x, y) => (x * x + y * y - 1) ** 3 - x * x * y ** 3, "corazón (raíz impar)");
+  });
+
+  test("Simplificar es IDEMPOTENTE: el formato no depende de cómo se construyó el árbol", () => {
+    // Hallado por la batería de verificación: `1/(y/3)` daba `(3) / (y)` y al simplificar OTRA
+    // vez `3 / y`. Los paréntesis sobre un átomo son residuo de la CONSTRUCCIÓN del nodo
+    // (`combinarFracciones` los pone), no información, y el formateador los conservaba: dos
+    // árboles iguales se serializaban distinto. Como el motor compara STRINGS para saber si una
+    // transformación cambió algo, "Simplificar" parecía hacer algo la segunda vez.
+    igual(simplificarEcuaciones(["1/(y/3) = x^2 - 1"])[0], "3 / y = x ^ 2 - 1", "1/(y/3) ⇒ 3/y");
+    const casos = [
+      "1/(y/3) = x^2 - 1", "1/(y/2) = cos(x) + 1", "(x^2-1)/(x+1) = y",
+      "sin(x)/2 + cos(x)/3 = y/x", "y = (2*x + 4)/2", "y = 1/(1 + 1/(1 + x))",
+      "y^2 = (x^4 - 1)/(x^2 - 1)", "y = sqrt(x)/(sqrt(x)*2)", "abs(y)/4 = x/8",
+    ];
+    for (const ec of casos) {
+      const una = simplificarEcuaciones([ec])[0];
+      igual(simplificarEcuaciones([una])[0], una, `idempotente: ${ec}`);
+    }
+  });
+
+  test("nivel 6 — IMPOSIBLES: sin forma cerrada, el motor no inventa", () => {
+    // Cada una es un LÍMITE MATEMÁTICO, no una carencia de implementación. Si alguna empieza
+    // a despejarse, o se ha añadido la función especial correspondiente (y hay que actualizar
+    // este test) o el motor está inventando una respuesta: en ambos casos hay que mirarlo.
+    const imposibles: Array<[string, string]> = [
+      ["y^y = x", "no hay forma cerrada elemental"],
+      ["y + e^y = x", "requiere la W de Lambert (no soportada)"],
+      ["sin(y) + y = x", "trascendente mixta (ecuación de Kepler)"],
+      ["y^5 + y = x", "grado ≥5 general: Abel–Ruffini"],
+      ["y^5 + x*y + 1 = 0", "quíntica con coeficiente en x"],
+      ["sin(y) + cos(y) = x", "no es polinomio en cos y por sí solo"],
+      ["log(y) + y = x", "trascendente mixta (Lambert de nuevo)"],
+      ["x^3 + y^3 = 3*x*y", "folium: cúbica en y (Cardano, fuera de alcance)"],
+      ["abs(abs((y+1)^2 - 3) - 2) = x", "tres ± independientes: >4 ramas"],
+      ["tan(y) + y = x", "trascendente mixta"],
+    ];
+    for (const [ec, porque] of imposibles)
+      assert(!completo(ec), `NO debe despejarse (${porque}): ${ec} → ${despejarEcuaciones([ec])[0]}`);
+    // …y aun así, ninguna revienta ni se queda a medias de forma ilegible: todas siguen siendo
+    // ecuaciones re-parseables (el panel las pinta tal cual).
+    for (const [ec] of imposibles) {
+      const salida = despejarEcuaciones([ec])[0];
+      assert(salida.includes("="), `sigue siendo una ecuación: ${ec} → ${salida}`);
+      assert(bloqueALatex([salida]).length > 0, `se puede pintar: ${ec}`);
     }
   });
 });

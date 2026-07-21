@@ -30,6 +30,7 @@ import { ProveedorConCache } from "../providers/ProveedorConCache";
 import { ProveedorSinPuntosEje } from "../providers/ProveedorSinPuntosEje";
 import { ProveedorUnion } from "../providers/ProveedorUnion";
 import { despejarRamas, tienePolos, campoTranspuesto, separarTrigY, ramasMonomioY } from "../analysis/separarImplicita";
+import { despejeExplicito } from "../../despejar";
 import { detectarPeriodos } from "../analysis/periodicidadCampo";
 import { RendererCanvas2D } from "../rendering/RendererCanvas2D";
 import { Overlay } from "../rendering/overlay/Overlay";
@@ -93,6 +94,17 @@ export function crearProveedor(objeto: ObjetoMatematico): ProveedorGeometria {
     const monX = ramasMonomioY(Ft);
     if (monX) {
       return new ProveedorImplicitoSeparable(objeto.id, monX, new TrazadorExplicitoAdaptativo(), Ft, true);
+    }
+    // Invertible en y a una función y=f(x) de UN SOLO VALOR (ln(y)=x ⇒ y=e^x; e^y=x ⇒ y=ln x;
+    // (y+1)³=x ⇒ y=∛x−1; x−√y=c ⇒ y=(x−c)²…) → se grafica con el muestreo EXPLÍCITO, que traza
+    // la curva entera hasta el borde de la vista. La continuación genérica de abajo la cortaría
+    // en ~2× la vista (la cola de e^x desaparecía por la izquierda). Usa el despeje del keystone;
+    // la guarda `dom` se respeta a NaN (media parábola, sin rama fantasma). Va tras las vías con
+    // polos/periódicas (que tienen su propio motivo para el sampler 1D) y antes del genérico.
+    const fx = despejeExplicito(objeto.fuente);
+    if (fx !== null) {
+      const objExp = construirObjeto(`y=${fx}`, objeto.id);
+      if (objExp.tipo === "explicita") return new ProveedorExplicito(objExp, new TrazadorExplicitoAdaptativo());
     }
     const generico = new ProveedorImplicito(
       objeto, new DescubrimientoMuestreado(), new TrazadorContinuacion(),

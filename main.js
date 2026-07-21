@@ -45492,6 +45492,61 @@ var help = createHelp({
 });
 Chain.createProxy(math);
 
+// src/motor/parsing/dobleSigno.ts
+var EJES = [
+  [["pm", 1], ["mp", -1]],
+  [["pm2", 1], ["mp2", -1]]
+];
+var CENTINELAS_SIGNO = EJES.flat();
+function ejePresente(exprNorm, eje) {
+  return EJES[eje].some(([nombre]) => marcaDe(nombre).test(exprNorm));
+}
+function marcaDe(nombre) {
+  return new RegExp(`(?<![a-zA-Z0-9_])${nombre}\\s*\\(`);
+}
+function tieneDobleSigno(exprNorm) {
+  return /(?<![a-zA-Z0-9_])(pm|mp)2?\s*\(/.test(exprNorm);
+}
+function ramaDoble(cuerpo, contexto) {
+  const libre = EJES.findIndex((_, i2) => !ejePresente(contexto, i2));
+  return libre === -1 ? null : `${EJES[libre][0][0]}(${cuerpo})`;
+}
+function cierreParentesis(texto, inicio) {
+  let prof = 0;
+  for (let i2 = inicio; i2 < texto.length; i2++) {
+    if (texto[i2] === "(")
+      prof++;
+    else if (texto[i2] === ")" && --prof === 0)
+      return i2;
+  }
+  return -1;
+}
+function resolverCentinelas(exprNorm, eje, rama) {
+  let expr = exprNorm;
+  for (const [nombre, signoBase] of EJES[eje]) {
+    const marca = marcaDe(nombre);
+    for (let m = marca.exec(expr); m; m = marca.exec(expr)) {
+      const abre = m.index + m[0].length - 1;
+      const cierra = cierreParentesis(expr, abre);
+      if (cierra === -1)
+        break;
+      const cuerpo = expr.slice(abre + 1, cierra);
+      const signo2 = signoBase * rama;
+      expr = expr.slice(0, m.index) + `(${signo2}*(${cuerpo}))` + expr.slice(cierra + 1);
+    }
+  }
+  return expr;
+}
+function expandirDobleSigno(exprNorm) {
+  let ramas = [exprNorm];
+  for (let eje = 0; eje < EJES.length; eje++) {
+    if (!ejePresente(exprNorm, eje))
+      continue;
+    ramas = ramas.flatMap((e3) => [resolverCentinelas(e3, eje, 1), resolverCentinelas(e3, eje, -1)]);
+  }
+  return ramas;
+}
+
 // src/constantes.ts
 var FUNCIONES_TRIG = ["sin", "cos", "tan", "sec", "csc", "cot"];
 var FUNCIONES_INVERSAS_EXTRA = {
@@ -45499,9 +45554,9 @@ var FUNCIONES_INVERSAS_EXTRA = {
   asec: (x) => Math.acos(1 / x),
   acot: (x) => Math.PI / 2 - Math.atan(x)
 };
-var FUNCIONES_SIGNO = {
-  pm: (u) => u,
-  mp: (u) => -u
+var FUNCIONES_SIGNO = Object.fromEntries(CENTINELAS_SIGNO.map(([nombre, signo2]) => [nombre, (u) => signo2 * u]));
+var FUNCIONES_DOMINIO = {
+  dom: (cuerpo, cond) => cond >= 0 ? cuerpo : NaN
 };
 var enteroCercano = (x) => {
   const r = Math.round(x);
@@ -46234,7 +46289,8 @@ function compilarExpresion(expr) {
         ...scope,
         ...FUNCIONES_INVERSAS_EXTRA,
         ...FUNCIONES_ESCALON_RAPIDAS,
-        ...FUNCIONES_SIGNO
+        ...FUNCIONES_SIGNO,
+        ...FUNCIONES_DOMINIO
       });
     } catch (e3) {
       return NaN;
@@ -46339,6 +46395,148 @@ function valorConstanteFactor(nodo) {
     return v === null ? null : -v;
   }
   return null;
+}
+var SIG_NEG = 1;
+var SIG_CERO = 2;
+var SIG_POS = 4;
+var SIG_TODO = SIG_NEG | SIG_CERO | SIG_POS;
+var signoDeNumero = (v) => !Number.isFinite(v) ? SIG_TODO : v > 0 ? SIG_POS : v < 0 ? SIG_NEG : SIG_CERO;
+function sumaSignos(a, b) {
+  let r = 0;
+  for (const [ma, va] of [[SIG_NEG, -1], [SIG_CERO, 0], [SIG_POS, 1]]) {
+    if (!(a & ma))
+      continue;
+    for (const [mb, vb] of [[SIG_NEG, -1], [SIG_CERO, 0], [SIG_POS, 1]]) {
+      if (!(b & mb))
+        continue;
+      r |= va + vb > 0 ? SIG_POS : va + vb < 0 ? SIG_NEG : va === 0 ? SIG_CERO : SIG_TODO;
+    }
+  }
+  return r;
+}
+function productoSignos(a, b) {
+  let r = 0;
+  for (const [ma, va] of [[SIG_NEG, -1], [SIG_CERO, 0], [SIG_POS, 1]]) {
+    if (!(a & ma))
+      continue;
+    for (const [mb, vb] of [[SIG_NEG, -1], [SIG_CERO, 0], [SIG_POS, 1]]) {
+      if (!(b & mb))
+        continue;
+      r |= signoDeNumero(va * vb);
+    }
+  }
+  return r;
+}
+var negarSignos = (s) => s & SIG_CERO | (s & SIG_NEG ? SIG_POS : 0) | (s & SIG_POS ? SIG_NEG : 0);
+var NOMBRES_CONSTANTES = /* @__PURE__ */ new Set(["pi", "e", "tau", "phi"]);
+var SIGNO_FUNCION = {
+  abs: SIG_CERO | SIG_POS,
+  sqrt: SIG_CERO | SIG_POS,
+  exp: SIG_POS,
+  cosh: SIG_POS
+};
+var FUNCION_IMPAR = /* @__PURE__ */ new Set(["cbrt", "sinh", "asinh", "atanh", "tanh", "atan", "asin"]);
+function signoDe(n) {
+  var _a, _b;
+  const nodo = n.type === "ParenthesisNode" ? n.content : n;
+  if (nodo.filter((m) => m.type === "SymbolNode" && !NOMBRES_CONSTANTES.has(m.name)).length === 0) {
+    try {
+      const v = nodo.evaluate();
+      if (typeof v === "number")
+        return signoDeNumero(v);
+    } catch (e3) {
+    }
+  }
+  if (nodo.type === "ConstantNode")
+    return typeof nodo.value === "number" ? signoDeNumero(nodo.value) : SIG_TODO;
+  if (nodo.type === "ParenthesisNode")
+    return signoDe(nodo.content);
+  if (nodo.type === "OperatorNode") {
+    if (nodo.args.length === 1 && nodo.op === "-")
+      return negarSignos(signoDe(nodo.args[0]));
+    if (nodo.args.length === 2) {
+      const [a, b] = nodo.args;
+      switch (nodo.op) {
+        case "+":
+          return sumaSignos(signoDe(a), signoDe(b));
+        case "-":
+          return sumaSignos(signoDe(a), negarSignos(signoDe(b)));
+        case "*": {
+          if (a.toString() === b.toString())
+            return SIG_CERO | SIG_POS;
+          return productoSignos(signoDe(a), signoDe(b));
+        }
+        case "/": {
+          const sb = signoDe(b);
+          return sb & SIG_CERO ? SIG_TODO : productoSignos(signoDe(a), sb);
+        }
+        case "^": {
+          const k = valorConstanteFactor(b);
+          if (k === null || !Number.isInteger(k))
+            return SIG_TODO;
+          const sa = signoDe(a);
+          if (k % 2 === 0)
+            return sa & SIG_CERO ? SIG_CERO | SIG_POS : SIG_POS;
+          return k < 0 && sa & SIG_CERO ? SIG_TODO : sa;
+        }
+        default:
+          return SIG_TODO;
+      }
+    }
+    return SIG_TODO;
+  }
+  if (nodo.type === "FunctionNode") {
+    const fn = (_b = (_a = nodo.fn) == null ? void 0 : _a.name) != null ? _b : "";
+    if (SIGNO_FUNCION[fn] !== void 0 && nodo.args.length === 1)
+      return SIGNO_FUNCION[fn];
+    if (FUNCION_IMPAR.has(fn) && nodo.args.length === 1)
+      return signoDe(nodo.args[0]);
+    if (fn === "nthRoot" && nodo.args.length === 2) {
+      const k = valorConstanteFactor(nodo.args[1]);
+      if (k === null || !Number.isInteger(k))
+        return SIG_TODO;
+      return k % 2 === 0 ? SIG_CERO | SIG_POS : signoDe(nodo.args[0]);
+    }
+    if ((fn === "pm" || fn === "mp") && nodo.args.length === 1) {
+      const s = signoDe(nodo.args[0]);
+      return s | negarSignos(s);
+    }
+    return SIG_TODO;
+  }
+  return SIG_TODO;
+}
+var esNoNegativo = (n) => (signoDe(n) & SIG_NEG) === 0;
+var esSiempreNegativo = (n) => signoDe(n) === SIG_NEG;
+function sinFactoresConstantes(n) {
+  let nodo = n;
+  for (let i2 = 0; i2 < 16; i2++) {
+    if (nodo.type === "ParenthesisNode") {
+      nodo = nodo.content;
+      continue;
+    }
+    if (nodo.type === "OperatorNode" && (nodo.op === "*" || nodo.op === "/") && nodo.args.length === 2) {
+      const der = valorConstanteFactor(nodo.args[1]);
+      if (der !== null && der !== 0) {
+        nodo = der < 0 ? opNodo("-", "unaryMinus", [nodo.args[0]]) : nodo.args[0];
+        continue;
+      }
+      const izq = nodo.op === "*" ? valorConstanteFactor(nodo.args[0]) : null;
+      if (izq !== null && izq !== 0) {
+        nodo = izq < 0 ? opNodo("-", "unaryMinus", [nodo.args[1]]) : nodo.args[1];
+        continue;
+      }
+    }
+    break;
+  }
+  return nodo;
+}
+function sinParentesisRedundantes(n) {
+  return n.transform((m) => {
+    let x = m;
+    while (x.type === "ParenthesisNode")
+      x = x.content;
+    return x;
+  });
 }
 var flip = (ts) => ts.map((t2) => ({ signo: -t2.signo, nodo: t2.nodo }));
 function serializar(orden) {
@@ -46815,12 +47013,30 @@ var TRIGS = /* @__PURE__ */ new Set(
   ["tan", "cot", "sin", "cos", "sec", "csc"]
 );
 var INVERSAS = {
-  tan: (g) => `atan(${g}) + fam(k, pi)`,
-  cot: (g) => `acot(${g}) + fam(k, pi)`,
-  cos: (g) => `pm(acos(${g})) + fam(k, 2*pi)`,
-  sec: (g) => `pm(asec(${g})) + fam(k, 2*pi)`,
-  sin: (g) => `pi/2 + pm(acos(${g})) + fam(k, 2*pi)`,
-  csc: (g) => `pi/2 + pm(asec(${g})) + fam(k, 2*pi)`
+  tan: (g, e3) => {
+    const f = e3.fam("pi");
+    return f && `atan(${g}) + ${f}`;
+  },
+  cot: (g, e3) => {
+    const f = e3.fam("pi");
+    return f && `acot(${g}) + ${f}`;
+  },
+  cos: (g, e3) => {
+    const p = e3.pm(`acos(${g})`), f = e3.fam("2*pi");
+    return p && f && `${p} + ${f}`;
+  },
+  sec: (g, e3) => {
+    const p = e3.pm(`asec(${g})`), f = e3.fam("2*pi");
+    return p && f && `${p} + ${f}`;
+  },
+  sin: (g, e3) => {
+    const p = e3.pm(`acos(${g})`), f = e3.fam("2*pi");
+    return p && f && `pi/2 + ${p} + ${f}`;
+  },
+  csc: (g, e3) => {
+    const p = e3.pm(`asec(${g})`), f = e3.fam("2*pi");
+    return p && f && `pi/2 + ${p} + ${f}`;
+  }
 };
 function desParen(n) {
   return n.type === "ParenthesisNode" ? desParen(n.content) : n;
@@ -46837,13 +47053,31 @@ function trigDeY(n) {
   return arg2.type === "SymbolNode" && arg2.name === "y" ? nombre : null;
 }
 function inversionTrig(tipo, g) {
-  return INVERSAS[tipo](g);
+  return INVERSAS[tipo](g, {
+    pm: (u) => ramaDoble(u, g),
+    fam: (periodo) => familiaPeriodica(periodo, g)
+  });
 }
-function tieneFamilia(expr) {
-  return /(?<![a-zA-Z0-9_])fam\s*\(/.test(expr);
+var PARAMETROS_FAMILIA = ["k", "m", "n"];
+function parametrosUsados(expr) {
+  const usados = /* @__PURE__ */ new Set();
+  for (const m of expr.matchAll(/(?<![a-zA-Z0-9_])famN?\s*\(\s*([a-zA-Z][a-zA-Z0-9_]*)/g))
+    usados.add(m[1]);
+  return usados;
 }
-function tieneFamiliaN(expr) {
-  return /(?<![a-zA-Z0-9_])famN\s*\(/.test(expr);
+function familiaPeriodica(periodo, contexto, natural = false) {
+  const usados = parametrosUsados(contexto);
+  const libre = PARAMETROS_FAMILIA.find((p) => !usados.has(p));
+  return libre === void 0 ? null : `${natural ? "famN" : "fam"}(${libre}, ${periodo})`;
+}
+function parametrosDeFamilia(expr) {
+  const out = [];
+  for (const m of expr.matchAll(/(?<![a-zA-Z0-9_])(famN?)\s*\(\s*([a-zA-Z][a-zA-Z0-9_]*)/g)) {
+    if (out.some((p) => p.nombre === m[2]))
+      continue;
+    out.push({ nombre: m[2], natural: m[1] === "famN" });
+  }
+  return out;
 }
 var MAX_ANGULO = 8;
 function multiploDeSimbolo(t2) {
@@ -47277,7 +47511,11 @@ function despejeTrigCuadratico(D, DVal) {
   } catch (e3) {
     return null;
   }
-  const emitir = (inner2) => ({ ecuacion: `y = pm(acos(${restaurarAtomos(inner2, inverso)})) + fam(k, 2*pi)`, completo: true });
+  const emitir = (inner2) => {
+    const cuerpo = ramaDoble(`acos(${restaurarAtomos(inner2, inverso)})`, inner2);
+    const familia = familiaPeriodica("2*pi", inner2);
+    return cuerpo === null || familia === null ? null : { ecuacion: `y = ${cuerpo} + ${familia}`, completo: true };
+  };
   if (A.size === 0) {
     const unicoB = B.size === 1 ? [...B.values()][0] : null;
     let u;
@@ -47392,8 +47630,11 @@ var FUNCIONES = /* @__PURE__ */ new Set([
   // (si no, se partirían en `p*m`), se evalúan en su rama principal (constantes.ts) y el
   // motor los expande en las DOS ramas (motor/parsing/dobleSigno.ts). `toTex` los pinta
   // `\pm` / `\mp` (latex.ts).
+  // `pm2`/`mp2` son el SEGUNDO eje de signo (dos ± independientes → cuatro curvas).
   "pm",
   "mp",
+  "pm2",
+  "mp2",
   // Centinela de FAMILIA PERIÓDICA (`y = atan(g) + fam(k, pi)` = arctan(g)+kπ, k∈ℤ),
   // que emite el despeje por inversión trig (despejeInverso.ts). Átomo (si no, se
   // partiría en `f*a*m`); NO se evalúa ni se expande para graficar (el despeje es
@@ -47402,7 +47643,12 @@ var FUNCIONES = /* @__PURE__ */ new Set([
   // dominio NATURAL (k∈ℕ): mismo render `k\pi`, pero la coletilla es `, k∈ℕ` —lo emite
   // el despeje de `T(u)=0` cuando u>0 obliga a kπ>0 (`sin(1/(x²+y²))=0`, despejar.ts).
   "fam",
-  "famN"
+  "famN",
+  // Centinela de CONDICIÓN DE DOMINIO (`y = dom((x-27)², x-27)` = (x−27)² donde x−27≥0), que
+  // emite el despeje de las inversas de rango restringido (√ par, |·|). Átomo (si no, `d*o*m`);
+  // se evalúa a NaN fuera del dominio (constantes.ts) y `toTex` lo pinta como el cuerpo más la
+  // coletilla `, R≥0` (latex.ts). Lo graficado es siempre la original: el despeje es presentación.
+  "dom"
 ]);
 var CONSTANTES = /* @__PURE__ */ new Set(["pi", "theta", "tau", "phi", "Infinity", "NaN"]);
 var ATOMOS = [...FUNCIONES, ...CONSTANTES].sort((a, b) => b.length - a.length);
@@ -47446,9 +47692,12 @@ function insertarProductoImplicito(expr) {
         return out[k];
     return "";
   };
+  let ultimaFueFuncion = false;
   let i2 = 0;
   while (i2 < expr.length) {
     const c = expr[i2];
+    const trasFuncion = ultimaFueFuncion;
+    ultimaFueFuncion = false;
     if (c === "e" || c === "E") {
       const p = prev();
       const sig = (_a = expr[i2 + 1]) != null ? _a : "";
@@ -47475,11 +47724,13 @@ function insertarProductoImplicito(expr) {
       if (seguidoParen) {
         if (FUNCIONES.has(run)) {
           out += run;
+          ultimaFueFuncion = true;
         } else {
           const fs = sufijoFuncion(run);
           if (fs && /^[a-zA-Z]+$/.test(run.slice(0, run.length - fs.length))) {
             const pref = run.slice(0, run.length - fs.length);
             out += (pref ? expandir(pref) + "*" : "") + fs;
+            ultimaFueFuncion = true;
           } else {
             out += expandir(run) + "*";
           }
@@ -47492,12 +47743,14 @@ function insertarProductoImplicito(expr) {
     }
     if (c === "(") {
       const p = prev();
-      if (esDigito(p) || p === ")" || p === ".")
+      if (!trasFuncion && (esDigito(p) || p === ")" || p === "."))
         out += "*";
       out += c;
       i2++;
       continue;
     }
+    if (c === " ")
+      ultimaFueFuncion = trasFuncion;
     out += c;
     i2++;
   }
@@ -47581,19 +47834,28 @@ var NOMBRE_FUNCION_TEX = {
   atan: "\\arctan",
   acsc: "\\operatorname{arccsc}",
   asec: "\\operatorname{arcsec}",
-  acot: "\\operatorname{arccot}"
+  acot: "\\operatorname{arccot}",
+  // Inversas HIPERBÓLICAS: mismo criterio `arc…` que las circulares (mathjs las pintaría
+  // `\sinh^{-1}`, que además se lee como un recíproco). Las emite el despeje por inversión
+  // estructural al invertir `sinh(y)=x` / `tanh(y)=x`.
+  asinh: "\\operatorname{arcsinh}",
+  acosh: "\\operatorname{arccosh}",
+  atanh: "\\operatorname{arctanh}"
 };
 var PAREN_DESNUDA = "parenDesnuda";
 function manejadorFuncionesTex(node, options) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
   if (node.type === "FunctionNode" && ((_a = node.fn) == null ? void 0 : _a.name) === PAREN_DESNUDA && node.args.length === 1)
     return `\\left(${node.args[0].toTex(options)}\\right)`;
   const argFuncion = (arg2, nombreTex) => {
-    const argTex = arg2.toTex(options);
-    const atomico = arg2.type === "SymbolNode" || arg2.type === "ConstantNode";
+    let raiz = arg2;
+    while (raiz.type === "ParenthesisNode")
+      raiz = raiz.content;
+    const atomico = raiz.type === "SymbolNode" || raiz.type === "ConstantNode";
+    const argTex = (atomico ? raiz : arg2).toTex(options);
     return atomico ? `${nombreTex} ${argTex.trim()}` : `${nombreTex}\\left(${argTex}\\right)`;
   };
-  const SIGNO_TEX = { pm: "\\pm", mp: "\\mp" };
+  const SIGNO_TEX = Object.fromEntries(CENTINELAS_SIGNO.map(([n, s]) => [n, s === 1 ? "\\pm" : "\\mp"]));
   if (node.type === "FunctionNode" && SIGNO_TEX[(_b = node.fn) == null ? void 0 : _b.name] && node.args.length === 1) {
     const arg2 = node.args[0];
     const raiz = arg2.type === "ParenthesisNode" ? arg2.content : arg2;
@@ -47617,8 +47879,10 @@ function manejadorFuncionesTex(node, options) {
     }
     return `${kTex}\\left(${p.toTex(options)}\\right)`;
   }
+  if (node.type === "FunctionNode" && ((_i = node.fn) == null ? void 0 : _i.name) === "dom" && node.args.length === 2)
+    return node.args[0].toTex(options);
   if (node.type === "FunctionNode" && node.args.length === 1) {
-    const nombreTex = NOMBRE_FUNCION_TEX[(_i = node.fn) == null ? void 0 : _i.name];
+    const nombreTex = NOMBRE_FUNCION_TEX[(_j = node.fn) == null ? void 0 : _j.name];
     if (nombreTex)
       return argFuncion(node.args[0], nombreTex);
   }
@@ -47627,7 +47891,7 @@ function manejadorFuncionesTex(node, options) {
     let b = base;
     while (b.type === "ParenthesisNode")
       b = b.content;
-    const nombreTex = b.type === "FunctionNode" && b.args.length === 1 ? NOMBRE_FUNCION_TEX[(_j = b.fn) == null ? void 0 : _j.name] : void 0;
+    const nombreTex = b.type === "FunctionNode" && b.args.length === 1 ? NOMBRE_FUNCION_TEX[(_k = b.fn) == null ? void 0 : _k.name] : void 0;
     const expNegativo = exp3.type === "ConstantNode" && exp3.value < 0;
     if (nombreTex && !expNegativo)
       return argFuncion(b.args[0], `${nombreTex}^{${exp3.toTex(options)}}`);
@@ -47792,13 +48056,48 @@ function ladoALatex(lado) {
 function exprALatex(expr) {
   return ladoALatex(expr);
 }
+var SEPARADOR_COLETILLA = ",\\quad ";
+function condicionLatex(cond) {
+  let n = cond;
+  while (n.type === "ParenthesisNode")
+    n = n.content;
+  if (esNoNegativo(n))
+    return "";
+  const negada = n.type === "OperatorNode" && n.op === "-" && n.args.length === 1;
+  const cuerpo = negada ? n.args[0] : n;
+  return `${ladoALatex(cuerpo.toString())} ${negada ? "\\le" : "\\ge"} 0`;
+}
+function coletillaDominio(rhs) {
+  if (!/(?<![a-zA-Z0-9_])dom\s*\(/.test(rhs))
+    return "";
+  let nodo;
+  try {
+    nodo = parse2(insertarProductoImplicito(normalizarEntrada(rhs.trim())));
+  } catch (e3) {
+    return "";
+  }
+  const doms = nodo.filter((n) => {
+    var _a;
+    return n.type === "FunctionNode" && ((_a = n.fn) == null ? void 0 : _a.name) === "dom" && n.args.length === 2;
+  });
+  const vistas = /* @__PURE__ */ new Set();
+  let out = "";
+  for (const d of doms) {
+    const cond = condicionLatex(d.args[1]);
+    if (cond === "" || vistas.has(cond))
+      continue;
+    vistas.add(cond);
+    out += `${SEPARADOR_COLETILLA}${cond}`;
+  }
+  return out;
+}
 function ecuacionALatex(ecuacion, alineada = false) {
   const partes = ecuacion.split("=");
   if (partes.length !== 2)
     return ecuacion;
   const signo2 = alineada ? "&=" : "=";
-  const coletilla = tieneFamiliaN(ecuacion) ? ",\\ k\\in\\mathbb{N}" : tieneFamilia(ecuacion) ? ",\\ k\\in\\mathbb{Z}" : "";
-  return ladoALatex(partes[0]) + signo2 + ladoALatex(partes[1]) + coletilla;
+  const coletilla = parametrosDeFamilia(ecuacion).map((p) => `${SEPARADOR_COLETILLA}${p.nombre}\\in\\mathbb{${p.natural ? "N" : "Z"}}`).join("");
+  return ladoALatex(partes[0]) + signo2 + ladoALatex(partes[1]) + coletillaDominio(partes[1]) + coletilla;
 }
 function bloqueALatex(ecuaciones, sistema = false) {
   if (ecuaciones.length === 0) {
@@ -51291,7 +51590,7 @@ function construirObjeto(source, id) {
 function intentarParametrica(s) {
   if (s.length < 2 || s[0] !== "(")
     return null;
-  if (cierreParentesis(s, 0) !== s.length - 1)
+  if (cierreParentesis2(s, 0) !== s.length - 1)
     return null;
   const interior = s.slice(1, -1);
   const coma = comaNivel0(interior);
@@ -51305,7 +51604,7 @@ function intentarParametrica(s) {
     return null;
   return [norm2(xs), norm2(ys)];
 }
-function cierreParentesis(texto, inicio) {
+function cierreParentesis2(texto, inicio) {
   let prof = 0;
   for (let i2 = inicio; i2 < texto.length; i2++) {
     if (texto[i2] === "(")
@@ -51379,43 +51678,6 @@ function dividirEcuaciones(source) {
   }
   const lineas = s.split(/\r?\n|\\\\(?:\[[^\]]*\])?/).map((l) => l.replace(/&/g, "").trim()).filter((l) => l.length > 0).map(desenvolverDefinicionFuncion).map(desenvolverDefinicionPolar);
   return fusionarComponentes(lineas);
-}
-
-// src/motor/parsing/dobleSigno.ts
-var CENTINELAS = [["pm", 1], ["mp", -1]];
-function tieneDobleSigno(exprNorm) {
-  return /(?<![a-zA-Z0-9_])(pm|mp)\s*\(/.test(exprNorm);
-}
-function cierreParentesis2(texto, inicio) {
-  let prof = 0;
-  for (let i2 = inicio; i2 < texto.length; i2++) {
-    if (texto[i2] === "(")
-      prof++;
-    else if (texto[i2] === ")" && --prof === 0)
-      return i2;
-  }
-  return -1;
-}
-function resolverCentinelas(exprNorm, rama) {
-  let expr = exprNorm;
-  for (const [nombre, signoBase] of CENTINELAS) {
-    const marca = new RegExp(`(?<![a-zA-Z0-9_])${nombre}\\s*\\(`);
-    for (let m = marca.exec(expr); m; m = marca.exec(expr)) {
-      const abre = m.index + m[0].length - 1;
-      const cierra = cierreParentesis2(expr, abre);
-      if (cierra === -1)
-        break;
-      const cuerpo = expr.slice(abre + 1, cierra);
-      const signo2 = signoBase * rama;
-      expr = expr.slice(0, m.index) + `(${signo2}*(${cuerpo}))` + expr.slice(cierra + 1);
-    }
-  }
-  return expr;
-}
-function expandirDobleSigno(exprNorm) {
-  if (!tieneDobleSigno(exprNorm))
-    return [exprNorm];
-  return [resolverCentinelas(exprNorm, 1), resolverCentinelas(exprNorm, -1)];
 }
 
 // src/motor/analysis/puntosNotablesDeRama.ts
@@ -52777,6 +53039,969 @@ var ProveedorUnion = class {
   }
 };
 
+// src/simplificar.ts
+var REGLAS_SIMPLIFY = simplify.rules.concat(["log(e^n1) -> n1", "log(e) -> 1"]);
+function simplificarExpr(exprNorm) {
+  let base;
+  try {
+    base = parse2(exprNorm);
+  } catch (e3) {
+    return null;
+  }
+  const r = rationalizeSeguro(base);
+  if (r)
+    return r;
+  try {
+    return simplify(base, REGLAS_SIMPLIFY);
+  } catch (e3) {
+    return base;
+  }
+}
+var CONSTANTES_EVAL = /* @__PURE__ */ new Set(["pi", "e", "tau", "phi", "Infinity", "NaN"]);
+var MUESTRA = [-7.3, -2.6, -1.2, -0.7, -0.3, 0.4, 1.1, 2.7, 5.8, 11.4];
+function variablesLibres(expr) {
+  try {
+    const nombres = /* @__PURE__ */ new Set();
+    const esNombreDeFuncion = (padre, camino) => padre !== null && padre.type === "FunctionNode" && camino === "fn";
+    parse2(expr).filter(
+      (nn, camino, padre) => nn.type === "SymbolNode" && !esNombreDeFuncion(padre, camino)
+    ).forEach((nn) => {
+      if (!CONSTANTES_EVAL.has(nn.name))
+        nombres.add(nn.name);
+    });
+    return [...nombres];
+  } catch (e3) {
+    return [];
+  }
+}
+function formasEquivalentes(a, b) {
+  try {
+    const vars = [.../* @__PURE__ */ new Set([...variablesLibres(a), ...variablesLibres(b)])];
+    const fa = compilarExpresion(a), fb = compilarExpresion(b);
+    return MUESTRA.every((_, i2) => {
+      const scope = {};
+      vars.forEach((v, k) => {
+        scope[v] = MUESTRA[(i2 + 3 * k) % MUESTRA.length];
+      });
+      const va = fa(scope), vb = fb(scope);
+      const finA = typeof va === "number" && Number.isFinite(va);
+      const finB = typeof vb === "number" && Number.isFinite(vb);
+      if (!finA || !finB)
+        return finA === finB;
+      return Math.abs(va - vb) <= 1e-8 * (1 + Math.abs(va));
+    });
+  } catch (e3) {
+    return false;
+  }
+}
+function formatear(n) {
+  return formatearCanonico(sinParentesisRedundantes(
+    resimbolizarConstantes(racionalizarFracciones(combinarYordenar(n)))
+  ));
+}
+var costo = (n) => [profundidadFraccion(n), n.toString().length];
+var menor = (a, b) => a[0] !== b[0] ? a[0] < b[0] : a[1] < b[1];
+function simplificarLado(lado) {
+  const norm3 = insertarProductoImplicito(normalizarEntrada(lado.trim()));
+  const n = simplificarExpr(norm3);
+  if (!n)
+    return norm3;
+  const actual = formatear(n);
+  if (!formasEquivalentes(actual, norm3))
+    return norm3;
+  let curNodo;
+  try {
+    curNodo = parse2(actual);
+  } catch (e3) {
+    return actual;
+  }
+  if (profundidadFraccion(curNodo) < 2)
+    return actual;
+  const candidatas = [];
+  try {
+    candidatas.push(formatear(parse2(norm3)));
+  } catch (e3) {
+  }
+  try {
+    candidatas.push(formatear(combinarFracciones(n)));
+  } catch (e3) {
+  }
+  let mejorStr = actual, mejorCosto = costo(curNodo);
+  for (const s of candidatas) {
+    try {
+      const cost = costo(parse2(s));
+      if (menor(cost, mejorCosto) && formasEquivalentes(s, norm3)) {
+        mejorStr = s;
+        mejorCosto = cost;
+      }
+    } catch (e3) {
+    }
+  }
+  return mejorStr;
+}
+function simplificarEcuaciones(ecuaciones) {
+  return ecuaciones.map((ec) => {
+    const comp = componenteParametrica(ec);
+    if (comp)
+      return `${comp.eje}(t) = ${simplificarLado(comp.expr)}`;
+    const partes = ec.split("=");
+    if (partes.length === 2)
+      return `${simplificarLado(partes[0])} = ${simplificarLado(partes[1])}`;
+    return simplificarLado(ec);
+  });
+}
+
+// src/despejar.ts
+var contieneY2 = (n) => contieneVariable(n, "y");
+function factorEsY(n) {
+  if (n.type === "ParenthesisNode")
+    return factorEsY(n.content);
+  if (n.type === "SymbolNode" && n.name === "y")
+    return 1;
+  if (n.type === "OperatorNode" && n.op === "-" && n.args.length === 1) {
+    const s = factorEsY(n.args[0]);
+    return s === null ? null : -s;
+  }
+  return null;
+}
+function linealEnY(t2) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== 1)
+    return null;
+  const s = factorEsY(conYf[0].nodo);
+  if (s === null)
+    return null;
+  return { signo: t2.signo * s, libres: fs.filter((f) => !contieneY2(f.nodo)) };
+}
+function limpiarRHS(rhs) {
+  const n = simplificarExpr(rhs);
+  return n ? formatearCanonico(racionalizarFracciones(n)) : rhs;
+}
+function renderProducto(fs) {
+  const env = (f) => `(${f.nodo.toString()})`;
+  const num = fs.filter((f) => f.exp === 1).map(env);
+  const den = fs.filter((f) => f.exp === -1).map(env);
+  const n = num.length ? num.join("*") : "1";
+  return den.length ? `(${n})/(${den.join("*")})` : n;
+}
+function ladoDerecho(t2, derecha, libres, render = renderTerminos) {
+  const numTs = t2.signo === 1 ? derecha : flip(derecha);
+  const numStr = render(numTs);
+  let rhs = numTs.length > 1 ? `(${numStr})` : numStr;
+  const suben = libres.filter((f) => f.exp === -1).map((f) => `(${f.nodo.toString()})`);
+  const bajan = libres.filter((f) => f.exp === 1).map((f) => `(${f.nodo.toString()})`);
+  if (suben.length)
+    rhs = [rhs, ...suben].join("*");
+  if (bajan.length)
+    rhs = `(${rhs})/(${bajan.join("*")})`;
+  return rhs;
+}
+function desParen2(n) {
+  return n.type === "ParenthesisNode" ? desParen2(n.content) : n;
+}
+function exponenteY(n) {
+  const nodo = desParen2(n);
+  if (nodo.type === "OperatorNode" && nodo.op === "^" && nodo.args.length === 2) {
+    const base = desParen2(nodo.args[0]);
+    const exp3 = desParen2(nodo.args[1]);
+    if (base.type === "SymbolNode" && base.name === "y" && exp3.type === "ConstantNode" && Number.isInteger(exp3.value) && exp3.value >= 2)
+      return exp3.value;
+  }
+  return null;
+}
+function despejePotencia(t2, derecha) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  const libres = fs.filter((f) => !contieneY2(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== 1)
+    return null;
+  const n = exponenteY(conYf[0].nodo);
+  if (n === null)
+    return null;
+  const rad = ladoDerecho(t2, derecha, libres);
+  if (n % 2 === 1)
+    return { ecuacion: `y = nthRoot(${rad}, ${n})`, completo: true };
+  const raiz = n === 2 ? `sqrt(${rad})` : `nthRoot(${rad}, ${n})`;
+  const doble = ramaDoble(raiz, rad);
+  return doble === null ? null : { ecuacion: `y = ${doble}`, completo: true };
+}
+function raizY(n) {
+  var _a;
+  const nodo = desParen2(n);
+  if (nodo.type !== "FunctionNode")
+    return null;
+  const nombre = (_a = nodo.fn) == null ? void 0 : _a.name;
+  const arg0 = nodo.args[0] && desParen2(nodo.args[0]);
+  if (!arg0 || arg0.type !== "SymbolNode" || arg0.name !== "y")
+    return null;
+  if (nombre === "sqrt" && nodo.args.length === 1)
+    return 2;
+  if (nombre === "cbrt" && nodo.args.length === 1)
+    return 3;
+  if (nombre === "nthRoot" && nodo.args.length === 2) {
+    const k = desParen2(nodo.args[1]);
+    if (k.type === "ConstantNode" && Number.isInteger(k.value) && k.value >= 2)
+      return k.value;
+  }
+  return null;
+}
+function conDominio(cuerpo, cond) {
+  let c;
+  try {
+    c = parse2(cond);
+  } catch (e3) {
+    return `dom(${cuerpo}, ${cond})`;
+  }
+  if (esNoNegativo(c))
+    return cuerpo;
+  if (esSiempreNegativo(c))
+    return null;
+  return `dom(${cuerpo}, ${sinFactoresConstantes(c).toString()})`;
+}
+function despejeRaiz(t2, derecha) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  const libres = fs.filter((f) => !contieneY2(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== 1)
+    return null;
+  const n = raizY(conYf[0].nodo);
+  if (n === null)
+    return null;
+  const R = ladoDerecho(t2, derecha, libres, renderCanonico);
+  if (n % 2 === 1)
+    return { ecuacion: `y = (${R})^${n}`, completo: true };
+  const cuerpo = conDominio(`(${R})^${n}`, R);
+  return cuerpo === null ? null : { ecuacion: `y = ${cuerpo}`, completo: true };
+}
+function raizDePotenciaY(n0) {
+  var _a;
+  const nodo = desParen2(n0);
+  if (nodo.type !== "FunctionNode")
+    return null;
+  const nombre = (_a = nodo.fn) == null ? void 0 : _a.name;
+  let n = null;
+  let rad;
+  if (nombre === "sqrt" && nodo.args.length === 1) {
+    n = 2;
+    rad = nodo.args[0];
+  } else if (nombre === "cbrt" && nodo.args.length === 1) {
+    n = 3;
+    rad = nodo.args[0];
+  } else if (nombre === "nthRoot" && nodo.args.length === 2) {
+    const k = desParen2(nodo.args[1]);
+    if (k.type === "ConstantNode" && Number.isInteger(k.value) && k.value >= 2) {
+      n = k.value;
+      rad = nodo.args[0];
+    }
+  }
+  if (n === null || rad === void 0)
+    return null;
+  const m = exponenteY(rad);
+  return m === null ? null : { n, m };
+}
+function despejeRaizDePotencia(t2, derecha) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  const libres = fs.filter((f) => !contieneY2(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== 1)
+    return null;
+  const info = raizDePotenciaY(conYf[0].nodo);
+  if (info === null)
+    return null;
+  const { n, m } = info;
+  const R = ladoDerecho(t2, derecha, libres);
+  const base = `(${R})^${n}`;
+  const cuerpo = m % 2 === 1 ? `nthRoot(${base}, ${m})` : ramaDoble(m === 2 ? `sqrt(${base})` : `nthRoot(${base}, ${m})`, R);
+  if (cuerpo === null)
+    return null;
+  if (n % 2 === 1)
+    return { ecuacion: `y = ${cuerpo}`, completo: true };
+  const guardado = conDominio(cuerpo, R);
+  return guardado === null ? null : { ecuacion: `y = ${guardado}`, completo: true };
+}
+function exponenteEntero(n) {
+  const v = valorConstanteFactor(n);
+  return v !== null && Number.isInteger(v) ? v : null;
+}
+function esAbsDeY(n) {
+  var _a;
+  const nodo = desParen2(n);
+  if (nodo.type !== "FunctionNode" || ((_a = nodo.fn) == null ? void 0 : _a.name) !== "abs" || nodo.args.length !== 1)
+    return false;
+  const arg2 = desParen2(nodo.args[0]);
+  return arg2.type === "SymbolNode" && arg2.name === "y";
+}
+function normalizarFraccion(num, den) {
+  if (den === 0)
+    return null;
+  if (den < 0) {
+    num = -num;
+    den = -den;
+  }
+  const g = mcdEnteros(Math.abs(num), den) || 1;
+  return { num: num / g, den: den / g };
+}
+function racionalConstante(n) {
+  const nodo = desParen2(n);
+  if (nodo.type === "OperatorNode" && nodo.op === "/" && nodo.args.length === 2) {
+    const a = racionalConstante(nodo.args[0]);
+    const b = racionalConstante(nodo.args[1]);
+    if (a === null || b === null || b.num === 0)
+      return null;
+    return normalizarFraccion(a.num * b.den, a.den * b.num);
+  }
+  if (nodo.type === "OperatorNode" && nodo.op === "-" && nodo.args.length === 1) {
+    const a = racionalConstante(nodo.args[0]);
+    return a === null ? null : { num: -a.num, den: a.den };
+  }
+  const v = valorConstanteFactor(nodo);
+  return v !== null && Number.isInteger(v) ? { num: v, den: 1 } : null;
+}
+function indiceRaiz(n) {
+  var _a;
+  const nodo = desParen2(n);
+  if (nodo.type !== "FunctionNode")
+    return null;
+  const nombre = (_a = nodo.fn) == null ? void 0 : _a.name;
+  if (nombre === "sqrt" && nodo.args.length === 1)
+    return { n: 2, rad: nodo.args[0] };
+  if (nombre === "cbrt" && nodo.args.length === 1)
+    return { n: 3, rad: nodo.args[0] };
+  if (nombre === "nthRoot" && nodo.args.length === 2) {
+    const k = exponenteEntero(nodo.args[1]);
+    if (k !== null && k >= 2)
+      return { n: k, rad: nodo.args[0] };
+  }
+  return null;
+}
+function absYExponente(t2) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  const libres = fs.filter((f) => !contieneY2(f.nodo));
+  if (conYf.length !== 1)
+    return null;
+  let num = conYf[0].exp, den = 1;
+  let nucleo = desParen2(conYf[0].nodo);
+  if (nucleo.type === "OperatorNode" && nucleo.op === "^" && nucleo.args.length === 2) {
+    const k = racionalConstante(nucleo.args[1]);
+    if (k === null || k.num === 0)
+      return null;
+    num *= k.num;
+    den *= k.den;
+    nucleo = desParen2(nucleo.args[0]);
+  } else {
+    const r = indiceRaiz(nucleo);
+    if (r !== null) {
+      den *= r.n;
+      nucleo = desParen2(r.rad);
+    }
+  }
+  if (!esAbsDeY(nucleo))
+    return null;
+  const frac = normalizarFraccion(num, den);
+  return frac === null ? null : { ...frac, libres };
+}
+function limpiarAbsoluto(s) {
+  try {
+    return formatearCanonico(racionalizarFracciones(combinarFracciones(parse2(s))));
+  } catch (e3) {
+    return s;
+  }
+}
+function despejeAbsoluto(t2, derecha) {
+  const info = absYExponente(t2);
+  if (!info)
+    return null;
+  const { num, den, libres } = info;
+  const R = ladoDerecho(t2, derecha, libres, renderCanonico);
+  const a = den, b = Math.abs(num), neg = num < 0;
+  const raizDe = (r, n) => n === 2 ? `sqrt(${r})` : `nthRoot((${r}), ${n})`;
+  let mag;
+  let esPotencia2 = false;
+  if (b === 1) {
+    if (a === 1)
+      mag = R;
+    else {
+      mag = `(${R})^${a}`;
+      esPotencia2 = true;
+    }
+  } else if (a === 1) {
+    mag = raizDe(R, b);
+  } else {
+    mag = `nthRoot((${R})^${a}, ${b})`;
+    esPotencia2 = true;
+  }
+  const aby = neg ? `1/(${mag})` : mag;
+  const cuerpo = esPotencia2 ? aby : limpiarAbsoluto(aby);
+  const doble = ramaDoble(cuerpo, R);
+  if (doble === null)
+    return null;
+  const guardado = conDominio(doble, R);
+  return guardado === null ? null : { ecuacion: `y = ${guardado}`, completo: true };
+}
+function despejeTrigInverso(t2, derecha) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  const libres = fs.filter((f) => !contieneY2(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== 1)
+    return null;
+  const tipo = trigDeY(conYf[0].nodo);
+  if (tipo === null)
+    return null;
+  const rhs = inversionTrig(tipo, ladoDerecho(t2, derecha, libres));
+  return rhs === null ? null : { ecuacion: `y = ${rhs}`, completo: true };
+}
+function despejeMultiplicativo(t2, derecha) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  const libres = fs.filter((f) => !contieneY2(f.nodo));
+  if (libres.length === 0 || conYf.length === 0)
+    return null;
+  return `${renderProducto(conYf)} = ${ladoDerecho(t2, derecha, libres)}`;
+}
+function despejeReciproco(t2, derecha) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  const libres = fs.filter((f) => !contieneY2(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== -1)
+    return null;
+  if (derecha.length === 0)
+    return null;
+  const E = conYf[0].nodo.toString();
+  const numFree = libres.filter((f) => f.exp === 1).map((f) => `(${f.nodo.toString()})`);
+  const denFree = libres.filter((f) => f.exp === -1).map((f) => `(${f.nodo.toString()})`);
+  const arriba = (t2.signo === -1 ? "-" : "") + (numFree.length ? numFree.join("*") : "1");
+  const abajo = [...denFree, `(${renderTerminos(derecha)})`].join("*");
+  const rec = despejar(`${E} = (${arriba})/(${abajo})`);
+  return rec && rec.completo ? rec : null;
+}
+var TRIG_CERO = {
+  sin: { periodo: "pi", base: null },
+  tan: { periodo: "pi", base: null },
+  cos: { periodo: "pi", base: "pi/2" },
+  cot: { periodo: "pi", base: "pi/2" },
+  sec: null,
+  csc: null
+};
+function uSiemprePositivo(uStr) {
+  let f;
+  try {
+    const c = parse2(insertarProductoImplicito(normalizarEntrada(uStr))).compile();
+    f = (s) => c.evaluate(s);
+  } catch (e3) {
+    return false;
+  }
+  const malla = [-8, -3.5, -1.5, -0.5, 0.3, 0.9, 2.2, 5.1];
+  let vistos = 0;
+  for (const x of malla)
+    for (const y of malla) {
+      let v;
+      try {
+        v = f({ x, y });
+      } catch (e3) {
+        continue;
+      }
+      if (typeof v !== "number" || !Number.isFinite(v))
+        continue;
+      if (v <= 1e-9)
+        return false;
+      vistos++;
+    }
+  return vistos >= 8;
+}
+function despejeTrigCero(t2, derecha) {
+  var _a, _b, _c;
+  const noNulos = derecha.filter((d) => {
+    const n = desParen2(d.nodo);
+    return !(n.type === "ConstantNode" && n.value === 0);
+  });
+  if (noNulos.length !== 0)
+    return null;
+  const nodo = desParen2(t2.nodo);
+  if (nodo.type !== "FunctionNode" || ((_a = nodo.args) == null ? void 0 : _a.length) !== 1)
+    return null;
+  const info = TRIG_CERO[(_c = (_b = nodo.fn) == null ? void 0 : _b.name) != null ? _c : ""];
+  if (!info)
+    return null;
+  const u = desParen2(nodo.args[0]);
+  if (!contieneY2(u) || u.type === "SymbolNode" && u.name === "y")
+    return null;
+  const uStr = u.toString();
+  const cero = familiaPeriodica(info.periodo, uStr, info.base === null && uSiemprePositivo(uStr));
+  if (cero === null)
+    return null;
+  const rhs = info.base ? `${info.base} + ${cero}` : cero;
+  const rec = despejar(`${uStr} = ${rhs}`);
+  return rec && rec.completo ? rec : null;
+}
+var contieneX = (n) => contieneVariable(n, "x");
+var mcdEnteros = (a, b) => b === 0 ? Math.abs(a) : mcdEnteros(b, Math.abs(a % b));
+function simpDesp(s) {
+  try {
+    const n = simplificarExpr(s);
+    return n ? formatearCanonico(racionalizarFracciones(n)) : s;
+  } catch (e3) {
+    return s;
+  }
+}
+function simpSiConstante(s) {
+  try {
+    return contieneX(parse2(s)) ? s : simpDesp(s);
+  } catch (e3) {
+    return s;
+  }
+}
+var sumarStrings = (a) => a.length ? a.map((s) => `(${s})`).join(" + ") : "0";
+function potenciaYCoef(t2) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  const libres = fs.filter((f) => !contieneY2(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== 1)
+    return null;
+  const yn = desParen2(conYf[0].nodo);
+  let power;
+  if (yn.type === "SymbolNode" && yn.name === "y")
+    power = 1;
+  else {
+    const k = exponenteY(yn);
+    if (k === null)
+      return null;
+    power = k;
+  }
+  const coef = renderProducto(libres);
+  return { power, coef: t2.signo === 1 ? coef : `-(${coef})` };
+}
+function ramaReal(uStr, g, evalD) {
+  let fu;
+  try {
+    const c = parse2(uStr).compile();
+    fu = (x) => c.evaluate({ x });
+  } catch (e3) {
+    return false;
+  }
+  const muestras = [-2.3, -1.1, -0.4, -0.15, 0.15, 0.35, 0.7, 1.6, 3.2];
+  let viables = 0;
+  for (const x of muestras) {
+    let u;
+    try {
+      u = fu(x);
+    } catch (e3) {
+      continue;
+    }
+    if (typeof u !== "number" || !Number.isFinite(u))
+      continue;
+    const escala = 1 + x * x * x * x;
+    if (g % 2 === 0) {
+      if (u < -1e-9)
+        continue;
+      const y = Math.pow(Math.max(u, 0), 1 / g);
+      for (const yy of [y, -y]) {
+        const d = evalD(x, yy);
+        if (!Number.isFinite(d) || Math.abs(d) > 1e-6 * (escala + y * y * y * y))
+          return false;
+      }
+    } else {
+      const y = Math.sign(u) * Math.pow(Math.abs(u), 1 / g);
+      const d = evalD(x, y);
+      if (!Number.isFinite(d) || Math.abs(d) > 1e-6 * (escala + y * y * y * y))
+        return false;
+    }
+    viables++;
+  }
+  return viables >= 2;
+}
+function baseYExponente(f) {
+  const nodo = desParen2(f.nodo);
+  if (nodo.type === "OperatorNode" && nodo.op === "^" && nodo.args.length === 2) {
+    const k = exponenteEntero(nodo.args[1]);
+    if (k !== null)
+      return { base: desParen2(nodo.args[0]), k: k * f.exp };
+  }
+  return { base: nodo, k: f.exp };
+}
+function raizImpar(R, n) {
+  const fuera = [];
+  const dentro = [];
+  for (const f of factores(R)) {
+    const { base, k } = baseYExponente(f);
+    const pot = (e3) => e3 === 1 ? `(${base.toString()})` : `(${base.toString()})^(${e3})`;
+    if (k % n === 0)
+      fuera.push(pot(k / n));
+    else {
+      if (contieneY2(base))
+        return null;
+      dentro.push(pot(k));
+    }
+  }
+  if (dentro.length === 0)
+    return fuera.length ? fuera.join("*") : "1";
+  const radicando = dentro.join("*");
+  const raiz = `nthRoot(${radicando}, ${n})`;
+  return fuera.length ? `${fuera.join("*")}*${raiz}` : raiz;
+}
+function reducirRaizImpar(L, R) {
+  var _a;
+  const intento = (potencia, otro) => {
+    const p = desParen2(potencia);
+    if (!(p.type === "OperatorNode" && p.op === "^" && p.args.length === 2))
+      return null;
+    const n = exponenteEntero(p.args[1]);
+    if (n === null || n < 3 || n % 2 === 0)
+      return null;
+    const base = desParen2(p.args[0]);
+    if (!contieneY2(base))
+      return null;
+    const raiz = raizImpar(otro, n);
+    if (raiz === null)
+      return null;
+    try {
+      const D = simplify(parse2(`(${base.toString()}) - (${raiz})`));
+      return D && contieneY2(D) ? D : null;
+    } catch (e3) {
+      return null;
+    }
+  };
+  return (_a = intento(L, R)) != null ? _a : intento(R, L);
+}
+function reducirRaizImparPorTerminos(D) {
+  const ts = terminos(D);
+  if (ts.length < 2)
+    return null;
+  for (let i2 = 0; i2 < ts.length; i2++) {
+    const p = desParen2(ts[i2].nodo);
+    if (!(p.type === "OperatorNode" && p.op === "^" && p.args.length === 2))
+      continue;
+    const n = exponenteEntero(p.args[1]);
+    if (n === null || n < 3 || n % 2 === 0)
+      continue;
+    const base = desParen2(p.args[0]);
+    if (!contieneY2(base))
+      continue;
+    if (base.type === "SymbolNode")
+      continue;
+    const resto = ts.filter((_, j) => j !== i2);
+    const otroLado = ts[i2].signo === 1 ? flip(resto) : resto;
+    let R;
+    try {
+      R = parse2(renderTerminos(otroLado));
+    } catch (e3) {
+      continue;
+    }
+    const reducido = reducirRaizImpar(p, R);
+    if (reducido)
+      return reducido;
+  }
+  return null;
+}
+function plegarRaicesImpares(n) {
+  try {
+    return n.transform((nn) => {
+      var _a;
+      if (nn.type !== "OperatorNode" || nn.op !== "^" || nn.args.length !== 2)
+        return nn;
+      const base = desParen2(nn.args[0]);
+      const k = exponenteEntero(nn.args[1]);
+      if (k === null || base.type !== "FunctionNode" || ((_a = base.fn) == null ? void 0 : _a.name) !== "nthRoot")
+        return nn;
+      if (base.args.length !== 2)
+        return nn;
+      const idx = exponenteEntero(base.args[1]);
+      if (idx === null || idx < 3 || idx % 2 === 0)
+        return nn;
+      return parse2(`nthRoot((${base.args[0].toString()})^(${k}), ${idx})`);
+    });
+  } catch (e3) {
+    return n;
+  }
+}
+function despejeCuadratico(D0, DVal = D0) {
+  let D = D0;
+  try {
+    const e3 = simplificarExpr(D0.toString());
+    if (e3)
+      D = e3;
+  } catch (e3) {
+  }
+  const ts = terminos(D);
+  const conY = ts.filter((t2) => contieneY2(t2.nodo));
+  const sinY = ts.filter((t2) => !contieneY2(t2.nodo));
+  if (conY.length === 0)
+    return null;
+  const pcs = conY.map(potenciaYCoef);
+  if (pcs.some((p2) => p2 === null))
+    return null;
+  const P4 = pcs;
+  const g = P4.map((p2) => p2.power).reduce(mcdEnteros);
+  if (g !== 1 && g % 2 !== 0)
+    return null;
+  const degs = P4.map((p2) => p2.power / g);
+  if (degs.some((d) => d > 2))
+    return null;
+  const A = sumarStrings(P4.filter((_, i2) => degs[i2] === 2).map((p2) => p2.coef));
+  const B = sumarStrings(P4.filter((_, i2) => degs[i2] === 1).map((p2) => p2.coef));
+  const C = sumarStrings(sinY.map((t2) => t2.signo === 1 ? t2.nodo.toString() : `-(${t2.nodo.toString()})`));
+  let evalD;
+  try {
+    const c = DVal.compile();
+    evalD = (x, y) => {
+      try {
+        return c.evaluate({ x, y });
+      } catch (e3) {
+        return NaN;
+      }
+    };
+  } catch (e3) {
+    return null;
+  }
+  if (!degs.includes(2)) {
+    if (!degs.includes(1))
+      return null;
+    const u = simpDesp(`-(${C})/(${B})`);
+    if (!ramaReal(u, g, evalD))
+      return null;
+    const raizDeU = g === 1 ? u : g === 2 ? `sqrt(${u})` : `nthRoot(${u}, ${g})`;
+    const cuerpo = simpSiConstante(raizDeU);
+    return { ecuacion: `y = ${g % 2 === 0 ? `pm(${cuerpo})` : cuerpo}`, completo: true };
+  }
+  if (g === 1) {
+    const b2 = plegarRaicesImpares(parse2(simpDesp(`(${B})^2`))).toString();
+    const m4ac = simpDesp(`-4*(${A})*(${C})`);
+    const disc2 = simpDesp(`(${b2}) + (${m4ac})`);
+    const num = simpDesp(`-(${B})`);
+    const den = simpDesp(`2*(${A})`);
+    const raiz = simpSiConstante(`sqrt(${disc2})`);
+    const yMas = `((${num}) + (${raiz}))/(${den})`;
+    const yMenos = `((${num}) - (${raiz}))/(${den})`;
+    const reales = [yMas, yMenos].filter((u) => ramaReal(u, 1, evalD));
+    if (reales.length === 0)
+      return null;
+    if (reales.length === 1)
+      return { ecuacion: `y = ${simpDesp(reales[0])}`, completo: true };
+    const conPm = (cuerpo, mas) => mas === "0" ? `pm(${cuerpo})` : `${mas} + pm(${cuerpo})`;
+    const unica = den === "1" ? conPm(raiz, num) : `(${conPm(raiz, num)})/(${den})`;
+    const separada = conPm(simpDesp(`(${raiz})/(${den})`), simpDesp(`(${num})/(${den})`));
+    const barata = [unica, separada].map((s) => ({ s, prof: profundidadFraccion(parse2(s)), len: s.length })).sort((a, b) => a.prof !== b.prof ? a.prof - b.prof : a.len - b.len)[0].s;
+    return { ecuacion: `y = ${barata}`, completo: true };
+  }
+  const p = simpDesp(`(${B})/(2*(${A}))`);
+  const disc = simpDesp(`((${B})/(2*(${A})))^2 - (${C})/(${A})`);
+  const uMas = `(-(${p})) + (sqrt(${disc}))`;
+  const uMenos = `(-(${p})) - (sqrt(${disc}))`;
+  const validas = [uMas, uMenos].filter((u) => ramaReal(u, g, evalD));
+  if (validas.length === 0)
+    return null;
+  if (validas.length === 1) {
+    const inner = simpSiConstante(`sqrt(${validas[0]})`);
+    return { ecuacion: `y = pm(${inner})`, completo: true };
+  }
+  const raizDisc = simpSiConstante(`sqrt(${disc})`);
+  return { ecuacion: `y = pm(sqrt(pm(${raizDisc}) + (${simpDesp(`-(${p})`)})))`, completo: true };
+}
+function contarY(n) {
+  return n.filter((nn) => nn.type === "SymbolNode" && nn.name === "y").length;
+}
+var INVERSA_INYECTIVA = {
+  exp: (t2) => `log(${t2})`,
+  // e^u = t ⇒ u = ln t
+  log: (t2) => `e^(${t2})`,
+  // ln u = t ⇒ u = e^t (se emite `e^…` → LaTeX `e^{…}`, no `\exp`)
+  sinh: (t2) => `asinh(${t2})`,
+  // biyección en ℝ
+  tanh: (t2) => `atanh(${t2})`,
+  // atanh NaN fuera de (−1,1) → sin fantasma
+  asinh: (t2) => `sinh(${t2})`,
+  atanh: (t2) => `tanh(${t2})`,
+  cbrt: (t2) => `(${t2})^3`
+  // ∛u = t ⇒ u = t³ (raíz impar, biyección en ℝ)
+};
+var TRIG_PERIODICA = /* @__PURE__ */ new Set(["sin", "cos", "tan", "cot", "sec", "csc"]);
+var objetivoConGuarda = (cuerpo, target) => conDominio(cuerpo, target);
+function aislarInversion(nodo, target) {
+  var _a, _b;
+  const n = desParen2(nodo);
+  if (n.type === "SymbolNode" && n.name === "y")
+    return target;
+  if (n.type === "OperatorNode") {
+    if (n.args.length === 1 && n.op === "-")
+      return aislarInversion(n.args[0], `-(${target})`);
+    if (n.args.length === 2) {
+      const [a, b] = n.args;
+      const enA = contieneY2(a), enB = contieneY2(b);
+      if (enA === enB)
+        return null;
+      const sa = a.toString(), sb = b.toString();
+      switch (n.op) {
+        case "+":
+          return enA ? aislarInversion(a, `(${target}) - (${sb})`) : aislarInversion(b, `(${target}) - (${sa})`);
+        case "-":
+          return enA ? aislarInversion(a, `(${target}) + (${sb})`) : aislarInversion(b, `(${sa}) - (${target})`);
+        case "*":
+          return enA ? aislarInversion(a, `(${target}) / (${sb})`) : aislarInversion(b, `(${target}) / (${sa})`);
+        case "/":
+          return enA ? aislarInversion(a, `(${target}) * (${sb})`) : aislarInversion(b, `(${sa}) / (${target})`);
+        case "^": {
+          if (enA) {
+            const k = exponenteEntero(b);
+            if (k === null || k < 1)
+              return null;
+            if (k % 2 === 0) {
+              const pm = ramaDoble(k === 2 ? `sqrt(${target})` : `nthRoot(${target}, ${k})`, target);
+              const conG = pm === null ? null : objetivoConGuarda(pm, target);
+              return conG === null ? null : aislarInversion(a, conG);
+            }
+            const raiz = k === 1 ? target : k === 3 ? `cbrt(${target})` : `nthRoot(${target}, ${k})`;
+            return aislarInversion(a, raiz);
+          }
+          const div2 = sa === "e" ? `log(${target})` : `log(${target}) / log(${sa})`;
+          return aislarInversion(b, div2);
+        }
+        default:
+          return null;
+      }
+    }
+    return null;
+  }
+  if (n.type === "FunctionNode") {
+    const fn = (_b = (_a = n.fn) == null ? void 0 : _a.name) != null ? _b : "";
+    if (n.args.length === 1) {
+      if (INVERSA_INYECTIVA[fn])
+        return aislarInversion(n.args[0], INVERSA_INYECTIVA[fn](target));
+      if (TRIG_PERIODICA.has(fn)) {
+        const inv2 = inversionTrig(fn, target);
+        return inv2 === null ? null : aislarInversion(n.args[0], inv2);
+      }
+      if (fn === "sqrt") {
+        const conG = objetivoConGuarda(`(${target})^2`, target);
+        return conG === null ? null : aislarInversion(n.args[0], conG);
+      }
+      if (fn === "abs") {
+        const pm = ramaDoble(target, target);
+        const conG = pm === null ? null : objetivoConGuarda(pm, target);
+        return conG === null ? null : aislarInversion(n.args[0], conG);
+      }
+      return null;
+    }
+    if (fn === "nthRoot" && n.args.length === 2) {
+      const k = exponenteEntero(n.args[1]);
+      if (k === null || k < 2)
+        return null;
+      if (k % 2 === 0) {
+        const conG = objetivoConGuarda(`(${target})^${k}`, target);
+        return conG === null ? null : aislarInversion(n.args[0], conG);
+      }
+      return aislarInversion(n.args[0], `(${target})^${k}`);
+    }
+  }
+  return null;
+}
+function despejePorInversion(L, R) {
+  if (contarY(L) + contarY(R) !== 1)
+    return null;
+  const conY = contarY(L) === 1 ? L : R;
+  const otro = conY === L ? R : L;
+  const rhs = aislarInversion(conY, `(${otro.toString()})`);
+  return rhs === null ? null : { ecuacion: `y = ${rhs}`, completo: true };
+}
+function despejar(ecuacion) {
+  var _a, _b;
+  if (componenteParametrica(ecuacion))
+    return null;
+  let partes = ecuacion.split("=");
+  const norm3 = (s) => insertarProductoImplicito(normalizarEntrada(s.trim()));
+  if (partes.length === 1 && contieneYLibre(norm3(partes[0])))
+    partes = [partes[0], "0"];
+  if (partes.length !== 2)
+    return null;
+  let D;
+  let L, R;
+  try {
+    L = parse2(norm3(partes[0]));
+    R = parse2(norm3(partes[1]));
+    D = parse2(`(${norm3(partes[0])})-(${norm3(partes[1])})`);
+  } catch (e3) {
+    return null;
+  }
+  if (!contieneY2(D))
+    return null;
+  const DVal = D;
+  D = (_b = (_a = reducirRaizImpar(L, R)) != null ? _a : reducirRaizImparPorTerminos(D)) != null ? _b : D;
+  const ts = terminos(D);
+  const conY = ts.filter((t2) => contieneY2(t2.nodo));
+  const sinY = ts.filter((t2) => !contieneY2(t2.nodo));
+  if (conY.length === 0)
+    return null;
+  const derecha = flip(sinY);
+  if (conY.length === 1) {
+    const lin = linealEnY(conY[0]);
+    if (lin) {
+      const numerador = lin.signo === 1 ? derecha : flip(derecha);
+      if (lin.libres.length === 0)
+        return { ecuacion: `y = ${renderCanonico(numerador)}`, completo: true };
+      const rhs = `(${renderCanonico(numerador)}) / (${renderProducto(lin.libres)})`;
+      return { ecuacion: `y = ${limpiarRHS(rhs)}`, completo: true };
+    }
+    const pot = despejePotencia(conY[0], derecha);
+    if (pot)
+      return pot;
+    const raiz = despejeRaiz(conY[0], derecha);
+    if (raiz)
+      return raiz;
+    const raizPot = despejeRaizDePotencia(conY[0], derecha);
+    if (raizPot)
+      return raizPot;
+    const abs3 = despejeAbsoluto(conY[0], derecha);
+    if (abs3)
+      return abs3;
+    const trig = despejeTrigInverso(conY[0], derecha);
+    if (trig)
+      return trig;
+    const trigCero = despejeTrigCero(conY[0], derecha);
+    if (trigCero)
+      return trigCero;
+    const recip = despejeReciproco(conY[0], derecha);
+    if (recip)
+      return recip;
+    const mult = despejeMultiplicativo(conY[0], derecha);
+    if (mult) {
+      const limpio = despejar(mult);
+      if (limpio && limpio.completo)
+        return limpio;
+      return { ecuacion: mult, completo: false };
+    }
+  }
+  const cuad = despejeCuadratico(D, DVal);
+  if (cuad)
+    return cuad;
+  const trigCuad = despejeTrigCuadratico(D, DVal);
+  if (trigCuad)
+    return trigCuad;
+  const inv2 = despejePorInversion(L, R);
+  if (inv2)
+    return inv2;
+  return { ecuacion: `${renderTerminos(conY)} = ${renderCanonico(derecha)}`, completo: false };
+}
+function despejarEcuaciones(ecuaciones) {
+  return ecuaciones.map((ec) => {
+    var _a, _b;
+    return (_b = (_a = despejar(ec)) == null ? void 0 : _a.ecuacion) != null ? _b : ec;
+  });
+}
+function despejeExplicito(ecuacion) {
+  const r = despejar(ecuacion);
+  if (!r || !r.completo)
+    return null;
+  const m = r.ecuacion.match(/^y\s*=\s*([\s\S]+)$/);
+  if (!m)
+    return null;
+  const rhs = m[1];
+  if (/(?<![a-zA-Z0-9_])(pm|mp|fam|famN)\s*\(/.test(rhs))
+    return null;
+  if (/(?<![a-zA-Z0-9_])y(?![a-zA-Z0-9_])/.test(rhs))
+    return null;
+  return rhs;
+}
+
 // src/motor/analysis/periodicidadCampo.ts
 var PI3 = Math.PI;
 var CANDIDATOS = [1, PI3 / 2, 2, PI3, 4, 2 * PI3, 4 * PI3, 6 * PI3];
@@ -54026,6 +55251,12 @@ function crearProveedor(objeto) {
     if (monX) {
       return new ProveedorImplicitoSeparable(objeto.id, monX, new TrazadorExplicitoAdaptativo(), Ft, true);
     }
+    const fx = despejeExplicito(objeto.fuente);
+    if (fx !== null) {
+      const objExp = construirObjeto(`y=${fx}`, objeto.id);
+      if (objExp.tipo === "explicita")
+        return new ProveedorExplicito(objExp, new TrazadorExplicitoAdaptativo());
+    }
     const generico = new ProveedorImplicito(
       objeto,
       new DescubrimientoMuestreado(),
@@ -54079,816 +55310,6 @@ function crearMotor(ctx2d, source) {
 }
 function crearMotorSistema(ctx2d, source) {
   return montarEscena(ctx2d, construirObjetosEscena(source));
-}
-
-// src/simplificar.ts
-var REGLAS_SIMPLIFY = simplify.rules.concat(["log(e^n1) -> n1", "log(e) -> 1"]);
-function simplificarExpr(exprNorm) {
-  let base;
-  try {
-    base = parse2(exprNorm);
-  } catch (e3) {
-    return null;
-  }
-  const r = rationalizeSeguro(base);
-  if (r)
-    return r;
-  try {
-    return simplify(base, REGLAS_SIMPLIFY);
-  } catch (e3) {
-    return base;
-  }
-}
-var CONSTANTES_EVAL = /* @__PURE__ */ new Set(["pi", "e", "tau", "phi", "Infinity", "NaN"]);
-var MUESTRA = [-7.3, -2.6, -1.2, -0.7, -0.3, 0.4, 1.1, 2.7, 5.8, 11.4];
-function variablesLibres(expr) {
-  try {
-    const nombres = /* @__PURE__ */ new Set();
-    const esNombreDeFuncion = (padre, camino) => padre !== null && padre.type === "FunctionNode" && camino === "fn";
-    parse2(expr).filter(
-      (nn, camino, padre) => nn.type === "SymbolNode" && !esNombreDeFuncion(padre, camino)
-    ).forEach((nn) => {
-      if (!CONSTANTES_EVAL.has(nn.name))
-        nombres.add(nn.name);
-    });
-    return [...nombres];
-  } catch (e3) {
-    return [];
-  }
-}
-function formasEquivalentes(a, b) {
-  try {
-    const vars = [.../* @__PURE__ */ new Set([...variablesLibres(a), ...variablesLibres(b)])];
-    const fa = compilarExpresion(a), fb = compilarExpresion(b);
-    return MUESTRA.every((_, i2) => {
-      const scope = {};
-      vars.forEach((v, k) => {
-        scope[v] = MUESTRA[(i2 + 3 * k) % MUESTRA.length];
-      });
-      const va = fa(scope), vb = fb(scope);
-      const finA = typeof va === "number" && Number.isFinite(va);
-      const finB = typeof vb === "number" && Number.isFinite(vb);
-      if (!finA || !finB)
-        return finA === finB;
-      return Math.abs(va - vb) <= 1e-8 * (1 + Math.abs(va));
-    });
-  } catch (e3) {
-    return false;
-  }
-}
-function formatear(n) {
-  return formatearCanonico(resimbolizarConstantes(racionalizarFracciones(combinarYordenar(n))));
-}
-var costo = (n) => [profundidadFraccion(n), n.toString().length];
-var menor = (a, b) => a[0] !== b[0] ? a[0] < b[0] : a[1] < b[1];
-function simplificarLado(lado) {
-  const norm3 = insertarProductoImplicito(normalizarEntrada(lado.trim()));
-  const n = simplificarExpr(norm3);
-  if (!n)
-    return norm3;
-  const actual = formatear(n);
-  if (!formasEquivalentes(actual, norm3))
-    return norm3;
-  let curNodo;
-  try {
-    curNodo = parse2(actual);
-  } catch (e3) {
-    return actual;
-  }
-  if (profundidadFraccion(curNodo) < 2)
-    return actual;
-  const candidatas = [];
-  try {
-    candidatas.push(formatear(parse2(norm3)));
-  } catch (e3) {
-  }
-  try {
-    candidatas.push(formatear(combinarFracciones(n)));
-  } catch (e3) {
-  }
-  let mejorStr = actual, mejorCosto = costo(curNodo);
-  for (const s of candidatas) {
-    try {
-      const cost = costo(parse2(s));
-      if (menor(cost, mejorCosto) && formasEquivalentes(s, norm3)) {
-        mejorStr = s;
-        mejorCosto = cost;
-      }
-    } catch (e3) {
-    }
-  }
-  return mejorStr;
-}
-function simplificarEcuaciones(ecuaciones) {
-  return ecuaciones.map((ec) => {
-    const comp = componenteParametrica(ec);
-    if (comp)
-      return `${comp.eje}(t) = ${simplificarLado(comp.expr)}`;
-    const partes = ec.split("=");
-    if (partes.length === 2)
-      return `${simplificarLado(partes[0])} = ${simplificarLado(partes[1])}`;
-    return simplificarLado(ec);
-  });
-}
-
-// src/despejar.ts
-var contieneY2 = (n) => contieneVariable(n, "y");
-function factorEsY(n) {
-  if (n.type === "ParenthesisNode")
-    return factorEsY(n.content);
-  if (n.type === "SymbolNode" && n.name === "y")
-    return 1;
-  if (n.type === "OperatorNode" && n.op === "-" && n.args.length === 1) {
-    const s = factorEsY(n.args[0]);
-    return s === null ? null : -s;
-  }
-  return null;
-}
-function linealEnY(t2) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  if (conYf.length !== 1 || conYf[0].exp !== 1)
-    return null;
-  const s = factorEsY(conYf[0].nodo);
-  if (s === null)
-    return null;
-  return { signo: t2.signo * s, libres: fs.filter((f) => !contieneY2(f.nodo)) };
-}
-function limpiarRHS(rhs) {
-  const n = simplificarExpr(rhs);
-  return n ? formatearCanonico(racionalizarFracciones(n)) : rhs;
-}
-function renderProducto(fs) {
-  const env = (f) => `(${f.nodo.toString()})`;
-  const num = fs.filter((f) => f.exp === 1).map(env);
-  const den = fs.filter((f) => f.exp === -1).map(env);
-  const n = num.length ? num.join("*") : "1";
-  return den.length ? `(${n})/(${den.join("*")})` : n;
-}
-function ladoDerecho(t2, derecha, libres, render = renderTerminos) {
-  const numTs = t2.signo === 1 ? derecha : flip(derecha);
-  const numStr = render(numTs);
-  let rhs = numTs.length > 1 ? `(${numStr})` : numStr;
-  const suben = libres.filter((f) => f.exp === -1).map((f) => `(${f.nodo.toString()})`);
-  const bajan = libres.filter((f) => f.exp === 1).map((f) => `(${f.nodo.toString()})`);
-  if (suben.length)
-    rhs = [rhs, ...suben].join("*");
-  if (bajan.length)
-    rhs = `(${rhs})/(${bajan.join("*")})`;
-  return rhs;
-}
-function desParen2(n) {
-  return n.type === "ParenthesisNode" ? desParen2(n.content) : n;
-}
-function exponenteY(n) {
-  const nodo = desParen2(n);
-  if (nodo.type === "OperatorNode" && nodo.op === "^" && nodo.args.length === 2) {
-    const base = desParen2(nodo.args[0]);
-    const exp3 = desParen2(nodo.args[1]);
-    if (base.type === "SymbolNode" && base.name === "y" && exp3.type === "ConstantNode" && Number.isInteger(exp3.value) && exp3.value >= 2)
-      return exp3.value;
-  }
-  return null;
-}
-function despejePotencia(t2, derecha) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  const libres = fs.filter((f) => !contieneY2(f.nodo));
-  if (conYf.length !== 1 || conYf[0].exp !== 1)
-    return null;
-  const n = exponenteY(conYf[0].nodo);
-  if (n === null)
-    return null;
-  const rad = ladoDerecho(t2, derecha, libres);
-  if (n % 2 === 1)
-    return { ecuacion: `y = nthRoot(${rad}, ${n})`, completo: true };
-  const raiz = n === 2 ? `sqrt(${rad})` : `nthRoot(${rad}, ${n})`;
-  return { ecuacion: `y = pm(${raiz})`, completo: true };
-}
-function raizY(n) {
-  var _a;
-  const nodo = desParen2(n);
-  if (nodo.type !== "FunctionNode")
-    return null;
-  const nombre = (_a = nodo.fn) == null ? void 0 : _a.name;
-  const arg0 = nodo.args[0] && desParen2(nodo.args[0]);
-  if (!arg0 || arg0.type !== "SymbolNode" || arg0.name !== "y")
-    return null;
-  if (nombre === "sqrt" && nodo.args.length === 1)
-    return 2;
-  if (nombre === "cbrt" && nodo.args.length === 1)
-    return 3;
-  if (nombre === "nthRoot" && nodo.args.length === 2) {
-    const k = desParen2(nodo.args[1]);
-    if (k.type === "ConstantNode" && Number.isInteger(k.value) && k.value >= 2)
-      return k.value;
-  }
-  return null;
-}
-function despejeRaiz(t2, derecha) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  const libres = fs.filter((f) => !contieneY2(f.nodo));
-  if (conYf.length !== 1 || conYf[0].exp !== 1)
-    return null;
-  const n = raizY(conYf[0].nodo);
-  if (n === null)
-    return null;
-  return { ecuacion: `y = (${ladoDerecho(t2, derecha, libres, renderCanonico)})^${n}`, completo: true };
-}
-function raizDePotenciaY(n0) {
-  var _a;
-  const nodo = desParen2(n0);
-  if (nodo.type !== "FunctionNode")
-    return null;
-  const nombre = (_a = nodo.fn) == null ? void 0 : _a.name;
-  let n = null;
-  let rad;
-  if (nombre === "sqrt" && nodo.args.length === 1) {
-    n = 2;
-    rad = nodo.args[0];
-  } else if (nombre === "cbrt" && nodo.args.length === 1) {
-    n = 3;
-    rad = nodo.args[0];
-  } else if (nombre === "nthRoot" && nodo.args.length === 2) {
-    const k = desParen2(nodo.args[1]);
-    if (k.type === "ConstantNode" && Number.isInteger(k.value) && k.value >= 2) {
-      n = k.value;
-      rad = nodo.args[0];
-    }
-  }
-  if (n === null || rad === void 0)
-    return null;
-  const m = exponenteY(rad);
-  return m === null ? null : { n, m };
-}
-function despejeRaizDePotencia(t2, derecha) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  const libres = fs.filter((f) => !contieneY2(f.nodo));
-  if (conYf.length !== 1 || conYf[0].exp !== 1)
-    return null;
-  const info = raizDePotenciaY(conYf[0].nodo);
-  if (info === null)
-    return null;
-  const { n, m } = info;
-  const base = `(${ladoDerecho(t2, derecha, libres)})^${n}`;
-  if (m % 2 === 1)
-    return { ecuacion: `y = nthRoot(${base}, ${m})`, completo: true };
-  const raizM = m === 2 ? `sqrt(${base})` : `nthRoot(${base}, ${m})`;
-  return { ecuacion: `y = pm(${raizM})`, completo: true };
-}
-function exponenteEntero(n) {
-  const v = valorConstanteFactor(n);
-  return v !== null && Number.isInteger(v) ? v : null;
-}
-function esAbsDeY(n) {
-  var _a;
-  const nodo = desParen2(n);
-  if (nodo.type !== "FunctionNode" || ((_a = nodo.fn) == null ? void 0 : _a.name) !== "abs" || nodo.args.length !== 1)
-    return false;
-  const arg2 = desParen2(nodo.args[0]);
-  return arg2.type === "SymbolNode" && arg2.name === "y";
-}
-function normalizarFraccion(num, den) {
-  if (den === 0)
-    return null;
-  if (den < 0) {
-    num = -num;
-    den = -den;
-  }
-  const g = mcdEnteros(Math.abs(num), den) || 1;
-  return { num: num / g, den: den / g };
-}
-function racionalConstante(n) {
-  const nodo = desParen2(n);
-  if (nodo.type === "OperatorNode" && nodo.op === "/" && nodo.args.length === 2) {
-    const a = racionalConstante(nodo.args[0]);
-    const b = racionalConstante(nodo.args[1]);
-    if (a === null || b === null || b.num === 0)
-      return null;
-    return normalizarFraccion(a.num * b.den, a.den * b.num);
-  }
-  if (nodo.type === "OperatorNode" && nodo.op === "-" && nodo.args.length === 1) {
-    const a = racionalConstante(nodo.args[0]);
-    return a === null ? null : { num: -a.num, den: a.den };
-  }
-  const v = valorConstanteFactor(nodo);
-  return v !== null && Number.isInteger(v) ? { num: v, den: 1 } : null;
-}
-function indiceRaiz(n) {
-  var _a;
-  const nodo = desParen2(n);
-  if (nodo.type !== "FunctionNode")
-    return null;
-  const nombre = (_a = nodo.fn) == null ? void 0 : _a.name;
-  if (nombre === "sqrt" && nodo.args.length === 1)
-    return { n: 2, rad: nodo.args[0] };
-  if (nombre === "cbrt" && nodo.args.length === 1)
-    return { n: 3, rad: nodo.args[0] };
-  if (nombre === "nthRoot" && nodo.args.length === 2) {
-    const k = exponenteEntero(nodo.args[1]);
-    if (k !== null && k >= 2)
-      return { n: k, rad: nodo.args[0] };
-  }
-  return null;
-}
-function absYExponente(t2) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  const libres = fs.filter((f) => !contieneY2(f.nodo));
-  if (conYf.length !== 1)
-    return null;
-  let num = conYf[0].exp, den = 1;
-  let nucleo = desParen2(conYf[0].nodo);
-  if (nucleo.type === "OperatorNode" && nucleo.op === "^" && nucleo.args.length === 2) {
-    const k = racionalConstante(nucleo.args[1]);
-    if (k === null || k.num === 0)
-      return null;
-    num *= k.num;
-    den *= k.den;
-    nucleo = desParen2(nucleo.args[0]);
-  } else {
-    const r = indiceRaiz(nucleo);
-    if (r !== null) {
-      den *= r.n;
-      nucleo = desParen2(r.rad);
-    }
-  }
-  if (!esAbsDeY(nucleo))
-    return null;
-  const frac = normalizarFraccion(num, den);
-  return frac === null ? null : { ...frac, libres };
-}
-function limpiarAbsoluto(s) {
-  try {
-    return formatearCanonico(racionalizarFracciones(combinarFracciones(parse2(s))));
-  } catch (e3) {
-    return s;
-  }
-}
-function despejeAbsoluto(t2, derecha) {
-  const info = absYExponente(t2);
-  if (!info)
-    return null;
-  const { num, den, libres } = info;
-  const R = ladoDerecho(t2, derecha, libres, renderCanonico);
-  const a = den, b = Math.abs(num), neg = num < 0;
-  const raizDe = (r, n) => n === 2 ? `sqrt(${r})` : `nthRoot((${r}), ${n})`;
-  let mag;
-  let esPotencia2 = false;
-  if (b === 1) {
-    if (a === 1)
-      mag = R;
-    else {
-      mag = `(${R})^${a}`;
-      esPotencia2 = true;
-    }
-  } else if (a === 1) {
-    mag = raizDe(R, b);
-  } else {
-    mag = `nthRoot((${R})^${a}, ${b})`;
-    esPotencia2 = true;
-  }
-  const aby = neg ? `1/(${mag})` : mag;
-  const cuerpo = esPotencia2 ? aby : limpiarAbsoluto(aby);
-  return { ecuacion: `y = pm(${cuerpo})`, completo: true };
-}
-function despejeTrigInverso(t2, derecha) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  const libres = fs.filter((f) => !contieneY2(f.nodo));
-  if (conYf.length !== 1 || conYf[0].exp !== 1)
-    return null;
-  const tipo = trigDeY(conYf[0].nodo);
-  if (tipo === null)
-    return null;
-  return { ecuacion: `y = ${inversionTrig(tipo, ladoDerecho(t2, derecha, libres))}`, completo: true };
-}
-function despejeMultiplicativo(t2, derecha) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  const libres = fs.filter((f) => !contieneY2(f.nodo));
-  if (libres.length === 0 || conYf.length === 0)
-    return null;
-  return `${renderProducto(conYf)} = ${ladoDerecho(t2, derecha, libres)}`;
-}
-function despejeReciproco(t2, derecha) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  const libres = fs.filter((f) => !contieneY2(f.nodo));
-  if (conYf.length !== 1 || conYf[0].exp !== -1)
-    return null;
-  if (derecha.length === 0)
-    return null;
-  const E = conYf[0].nodo.toString();
-  const numFree = libres.filter((f) => f.exp === 1).map((f) => `(${f.nodo.toString()})`);
-  const denFree = libres.filter((f) => f.exp === -1).map((f) => `(${f.nodo.toString()})`);
-  const arriba = (t2.signo === -1 ? "-" : "") + (numFree.length ? numFree.join("*") : "1");
-  const abajo = [...denFree, `(${renderTerminos(derecha)})`].join("*");
-  const rec = despejar(`${E} = (${arriba})/(${abajo})`);
-  return rec && rec.completo ? rec : null;
-}
-var TRIG_CERO = {
-  sin: { periodo: "pi", base: null },
-  tan: { periodo: "pi", base: null },
-  cos: { periodo: "pi", base: "pi/2" },
-  cot: { periodo: "pi", base: "pi/2" },
-  sec: null,
-  csc: null
-};
-function uSiemprePositivo(uStr) {
-  let f;
-  try {
-    const c = parse2(insertarProductoImplicito(normalizarEntrada(uStr))).compile();
-    f = (s) => c.evaluate(s);
-  } catch (e3) {
-    return false;
-  }
-  const malla = [-8, -3.5, -1.5, -0.5, 0.3, 0.9, 2.2, 5.1];
-  let vistos = 0;
-  for (const x of malla)
-    for (const y of malla) {
-      let v;
-      try {
-        v = f({ x, y });
-      } catch (e3) {
-        continue;
-      }
-      if (typeof v !== "number" || !Number.isFinite(v))
-        continue;
-      if (v <= 1e-9)
-        return false;
-      vistos++;
-    }
-  return vistos >= 8;
-}
-function despejeTrigCero(t2, derecha) {
-  var _a, _b, _c;
-  const noNulos = derecha.filter((d) => {
-    const n = desParen2(d.nodo);
-    return !(n.type === "ConstantNode" && n.value === 0);
-  });
-  if (noNulos.length !== 0)
-    return null;
-  const nodo = desParen2(t2.nodo);
-  if (nodo.type !== "FunctionNode" || ((_a = nodo.args) == null ? void 0 : _a.length) !== 1)
-    return null;
-  const info = TRIG_CERO[(_c = (_b = nodo.fn) == null ? void 0 : _b.name) != null ? _c : ""];
-  if (!info)
-    return null;
-  const u = desParen2(nodo.args[0]);
-  if (!contieneY2(u) || u.type === "SymbolNode" && u.name === "y")
-    return null;
-  const uStr = u.toString();
-  const cero = info.base === null && uSiemprePositivo(uStr) ? `famN(k, ${info.periodo})` : `fam(k, ${info.periodo})`;
-  const rhs = info.base ? `${info.base} + ${cero}` : cero;
-  const rec = despejar(`${uStr} = ${rhs}`);
-  return rec && rec.completo ? rec : null;
-}
-var contieneX = (n) => contieneVariable(n, "x");
-var mcdEnteros = (a, b) => b === 0 ? Math.abs(a) : mcdEnteros(b, Math.abs(a % b));
-function simpDesp(s) {
-  try {
-    const n = simplificarExpr(s);
-    return n ? formatearCanonico(racionalizarFracciones(n)) : s;
-  } catch (e3) {
-    return s;
-  }
-}
-function simpSiConstante(s) {
-  try {
-    return contieneX(parse2(s)) ? s : simpDesp(s);
-  } catch (e3) {
-    return s;
-  }
-}
-var sumarStrings = (a) => a.length ? a.map((s) => `(${s})`).join(" + ") : "0";
-function potenciaYCoef(t2) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  const libres = fs.filter((f) => !contieneY2(f.nodo));
-  if (conYf.length !== 1 || conYf[0].exp !== 1)
-    return null;
-  const yn = desParen2(conYf[0].nodo);
-  let power;
-  if (yn.type === "SymbolNode" && yn.name === "y")
-    power = 1;
-  else {
-    const k = exponenteY(yn);
-    if (k === null)
-      return null;
-    power = k;
-  }
-  const coef = renderProducto(libres);
-  return { power, coef: t2.signo === 1 ? coef : `-(${coef})` };
-}
-function ramaReal(uStr, g, evalD) {
-  let fu;
-  try {
-    const c = parse2(uStr).compile();
-    fu = (x) => c.evaluate({ x });
-  } catch (e3) {
-    return false;
-  }
-  const muestras = [-2.3, -1.1, -0.4, -0.15, 0.15, 0.35, 0.7, 1.6, 3.2];
-  let viables = 0;
-  for (const x of muestras) {
-    let u;
-    try {
-      u = fu(x);
-    } catch (e3) {
-      continue;
-    }
-    if (typeof u !== "number" || !Number.isFinite(u))
-      continue;
-    const escala = 1 + x * x * x * x;
-    if (g % 2 === 0) {
-      if (u < -1e-9)
-        continue;
-      const y = Math.pow(Math.max(u, 0), 1 / g);
-      for (const yy of [y, -y]) {
-        const d = evalD(x, yy);
-        if (!Number.isFinite(d) || Math.abs(d) > 1e-6 * (escala + y * y * y * y))
-          return false;
-      }
-    } else {
-      const y = Math.sign(u) * Math.pow(Math.abs(u), 1 / g);
-      const d = evalD(x, y);
-      if (!Number.isFinite(d) || Math.abs(d) > 1e-6 * (escala + y * y * y * y))
-        return false;
-    }
-    viables++;
-  }
-  return viables >= 2;
-}
-function baseYExponente(f) {
-  const nodo = desParen2(f.nodo);
-  if (nodo.type === "OperatorNode" && nodo.op === "^" && nodo.args.length === 2) {
-    const k = exponenteEntero(nodo.args[1]);
-    if (k !== null)
-      return { base: desParen2(nodo.args[0]), k: k * f.exp };
-  }
-  return { base: nodo, k: f.exp };
-}
-function raizImpar(R, n) {
-  const fuera = [];
-  const dentro = [];
-  for (const f of factores(R)) {
-    const { base, k } = baseYExponente(f);
-    const pot = (e3) => e3 === 1 ? `(${base.toString()})` : `(${base.toString()})^(${e3})`;
-    if (k % n === 0)
-      fuera.push(pot(k / n));
-    else {
-      if (contieneY2(base))
-        return null;
-      dentro.push(pot(k));
-    }
-  }
-  if (dentro.length === 0)
-    return fuera.length ? fuera.join("*") : "1";
-  const radicando = dentro.join("*");
-  const raiz = `nthRoot(${radicando}, ${n})`;
-  return fuera.length ? `${fuera.join("*")}*${raiz}` : raiz;
-}
-function reducirRaizImpar(L, R) {
-  var _a;
-  const intento = (potencia, otro) => {
-    const p = desParen2(potencia);
-    if (!(p.type === "OperatorNode" && p.op === "^" && p.args.length === 2))
-      return null;
-    const n = exponenteEntero(p.args[1]);
-    if (n === null || n < 3 || n % 2 === 0)
-      return null;
-    const base = desParen2(p.args[0]);
-    if (!contieneY2(base))
-      return null;
-    const raiz = raizImpar(otro, n);
-    if (raiz === null)
-      return null;
-    try {
-      const D = simplify(parse2(`(${base.toString()}) - (${raiz})`));
-      return D && contieneY2(D) ? D : null;
-    } catch (e3) {
-      return null;
-    }
-  };
-  return (_a = intento(L, R)) != null ? _a : intento(R, L);
-}
-function reducirRaizImparPorTerminos(D) {
-  const ts = terminos(D);
-  if (ts.length < 2)
-    return null;
-  for (let i2 = 0; i2 < ts.length; i2++) {
-    const p = desParen2(ts[i2].nodo);
-    if (!(p.type === "OperatorNode" && p.op === "^" && p.args.length === 2))
-      continue;
-    const n = exponenteEntero(p.args[1]);
-    if (n === null || n < 3 || n % 2 === 0)
-      continue;
-    const base = desParen2(p.args[0]);
-    if (!contieneY2(base))
-      continue;
-    if (base.type === "SymbolNode")
-      continue;
-    const resto = ts.filter((_, j) => j !== i2);
-    const otroLado = ts[i2].signo === 1 ? flip(resto) : resto;
-    let R;
-    try {
-      R = parse2(renderTerminos(otroLado));
-    } catch (e3) {
-      continue;
-    }
-    const reducido = reducirRaizImpar(p, R);
-    if (reducido)
-      return reducido;
-  }
-  return null;
-}
-function plegarRaicesImpares(n) {
-  try {
-    return n.transform((nn) => {
-      var _a;
-      if (nn.type !== "OperatorNode" || nn.op !== "^" || nn.args.length !== 2)
-        return nn;
-      const base = desParen2(nn.args[0]);
-      const k = exponenteEntero(nn.args[1]);
-      if (k === null || base.type !== "FunctionNode" || ((_a = base.fn) == null ? void 0 : _a.name) !== "nthRoot")
-        return nn;
-      if (base.args.length !== 2)
-        return nn;
-      const idx = exponenteEntero(base.args[1]);
-      if (idx === null || idx < 3 || idx % 2 === 0)
-        return nn;
-      return parse2(`nthRoot((${base.args[0].toString()})^(${k}), ${idx})`);
-    });
-  } catch (e3) {
-    return n;
-  }
-}
-function despejeCuadratico(D0, DVal = D0) {
-  let D = D0;
-  try {
-    const e3 = simplificarExpr(D0.toString());
-    if (e3)
-      D = e3;
-  } catch (e3) {
-  }
-  const ts = terminos(D);
-  const conY = ts.filter((t2) => contieneY2(t2.nodo));
-  const sinY = ts.filter((t2) => !contieneY2(t2.nodo));
-  if (conY.length === 0)
-    return null;
-  const pcs = conY.map(potenciaYCoef);
-  if (pcs.some((p2) => p2 === null))
-    return null;
-  const P4 = pcs;
-  const g = P4.map((p2) => p2.power).reduce(mcdEnteros);
-  if (g !== 1 && g % 2 !== 0)
-    return null;
-  const degs = P4.map((p2) => p2.power / g);
-  if (degs.some((d) => d > 2))
-    return null;
-  const A = sumarStrings(P4.filter((_, i2) => degs[i2] === 2).map((p2) => p2.coef));
-  const B = sumarStrings(P4.filter((_, i2) => degs[i2] === 1).map((p2) => p2.coef));
-  const C = sumarStrings(sinY.map((t2) => t2.signo === 1 ? t2.nodo.toString() : `-(${t2.nodo.toString()})`));
-  let evalD;
-  try {
-    const c = DVal.compile();
-    evalD = (x, y) => {
-      try {
-        return c.evaluate({ x, y });
-      } catch (e3) {
-        return NaN;
-      }
-    };
-  } catch (e3) {
-    return null;
-  }
-  if (!degs.includes(2)) {
-    if (!degs.includes(1))
-      return null;
-    const u = simpDesp(`-(${C})/(${B})`);
-    if (!ramaReal(u, g, evalD))
-      return null;
-    const raizDeU = g === 1 ? u : g === 2 ? `sqrt(${u})` : `nthRoot(${u}, ${g})`;
-    const cuerpo = simpSiConstante(raizDeU);
-    return { ecuacion: `y = ${g % 2 === 0 ? `pm(${cuerpo})` : cuerpo}`, completo: true };
-  }
-  if (g === 1) {
-    const b2 = plegarRaicesImpares(parse2(simpDesp(`(${B})^2`))).toString();
-    const m4ac = simpDesp(`-4*(${A})*(${C})`);
-    const disc2 = simpDesp(`(${b2}) + (${m4ac})`);
-    const num = simpDesp(`-(${B})`);
-    const den = simpDesp(`2*(${A})`);
-    const raiz = simpSiConstante(`sqrt(${disc2})`);
-    const yMas = `((${num}) + (${raiz}))/(${den})`;
-    const yMenos = `((${num}) - (${raiz}))/(${den})`;
-    const reales = [yMas, yMenos].filter((u) => ramaReal(u, 1, evalD));
-    if (reales.length === 0)
-      return null;
-    if (reales.length === 1)
-      return { ecuacion: `y = ${simpDesp(reales[0])}`, completo: true };
-    const conPm = (cuerpo, mas) => mas === "0" ? `pm(${cuerpo})` : `${mas} + pm(${cuerpo})`;
-    const unica = den === "1" ? conPm(raiz, num) : `(${conPm(raiz, num)})/(${den})`;
-    const separada = conPm(simpDesp(`(${raiz})/(${den})`), simpDesp(`(${num})/(${den})`));
-    const barata = [unica, separada].map((s) => ({ s, prof: profundidadFraccion(parse2(s)), len: s.length })).sort((a, b) => a.prof !== b.prof ? a.prof - b.prof : a.len - b.len)[0].s;
-    return { ecuacion: `y = ${barata}`, completo: true };
-  }
-  const p = simpDesp(`(${B})/(2*(${A}))`);
-  const disc = simpDesp(`((${B})/(2*(${A})))^2 - (${C})/(${A})`);
-  const uMas = `(-(${p})) + (sqrt(${disc}))`;
-  const uMenos = `(-(${p})) - (sqrt(${disc}))`;
-  const validas = [uMas, uMenos].filter((u) => ramaReal(u, g, evalD));
-  if (validas.length === 0)
-    return null;
-  if (validas.length === 1) {
-    const inner = simpSiConstante(`sqrt(${validas[0]})`);
-    return { ecuacion: `y = pm(${inner})`, completo: true };
-  }
-  const raizDisc = simpSiConstante(`sqrt(${disc})`);
-  return { ecuacion: `y = pm(sqrt(pm(${raizDisc}) + (${simpDesp(`-(${p})`)})))`, completo: true };
-}
-function despejar(ecuacion) {
-  var _a, _b;
-  if (componenteParametrica(ecuacion))
-    return null;
-  let partes = ecuacion.split("=");
-  const norm3 = (s) => insertarProductoImplicito(normalizarEntrada(s.trim()));
-  if (partes.length === 1 && contieneYLibre(norm3(partes[0])))
-    partes = [partes[0], "0"];
-  if (partes.length !== 2)
-    return null;
-  let D;
-  let L, R;
-  try {
-    L = parse2(norm3(partes[0]));
-    R = parse2(norm3(partes[1]));
-    D = parse2(`(${norm3(partes[0])})-(${norm3(partes[1])})`);
-  } catch (e3) {
-    return null;
-  }
-  if (!contieneY2(D))
-    return null;
-  const DVal = D;
-  D = (_b = (_a = reducirRaizImpar(L, R)) != null ? _a : reducirRaizImparPorTerminos(D)) != null ? _b : D;
-  const ts = terminos(D);
-  const conY = ts.filter((t2) => contieneY2(t2.nodo));
-  const sinY = ts.filter((t2) => !contieneY2(t2.nodo));
-  if (conY.length === 0)
-    return null;
-  const derecha = flip(sinY);
-  if (conY.length === 1) {
-    const lin = linealEnY(conY[0]);
-    if (lin) {
-      const numerador = lin.signo === 1 ? derecha : flip(derecha);
-      if (lin.libres.length === 0)
-        return { ecuacion: `y = ${renderCanonico(numerador)}`, completo: true };
-      const rhs = `(${renderCanonico(numerador)}) / (${renderProducto(lin.libres)})`;
-      return { ecuacion: `y = ${limpiarRHS(rhs)}`, completo: true };
-    }
-    const pot = despejePotencia(conY[0], derecha);
-    if (pot)
-      return pot;
-    const raiz = despejeRaiz(conY[0], derecha);
-    if (raiz)
-      return raiz;
-    const raizPot = despejeRaizDePotencia(conY[0], derecha);
-    if (raizPot)
-      return raizPot;
-    const abs3 = despejeAbsoluto(conY[0], derecha);
-    if (abs3)
-      return abs3;
-    const trig = despejeTrigInverso(conY[0], derecha);
-    if (trig)
-      return trig;
-    const trigCero = despejeTrigCero(conY[0], derecha);
-    if (trigCero)
-      return trigCero;
-    const recip = despejeReciproco(conY[0], derecha);
-    if (recip)
-      return recip;
-    const mult = despejeMultiplicativo(conY[0], derecha);
-    if (mult) {
-      const limpio = despejar(mult);
-      if (limpio && limpio.completo)
-        return limpio;
-      return { ecuacion: mult, completo: false };
-    }
-  }
-  const cuad = despejeCuadratico(D, DVal);
-  if (cuad)
-    return cuad;
-  const trigCuad = despejeTrigCuadratico(D, DVal);
-  if (trigCuad)
-    return trigCuad;
-  return { ecuacion: `${renderTerminos(conY)} = ${renderCanonico(derecha)}`, completo: false };
-}
-function despejarEcuaciones(ecuaciones) {
-  return ecuaciones.map((ec) => {
-    var _a, _b;
-    return (_b = (_a = despejar(ec)) == null ? void 0 : _a.ecuacion) != null ? _b : ec;
-  });
 }
 
 // src/derivar.ts

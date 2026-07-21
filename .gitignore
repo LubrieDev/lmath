@@ -149,3 +149,5 @@ data.json
 herramientas/.trazar.cjs
 tests/.bundle.cjs
 tests/.bundle.zoom.cjs
+tests/.bundle.fuzz.cjs
+tests/.bundle.bateria.cjs

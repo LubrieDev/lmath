@@ -6,7 +6,7 @@ import { componenteParametrica } from "./motor/parsing/componentesParametricas";
 import { bloqueALatex } from "./latex";
 import {
   formatearCanonico, racionalizarFracciones, combinarYordenar, combinarFracciones,
-  profundidadFraccion, rationalizeSeguro, resimbolizarConstantes, type Nodo,
+  profundidadFraccion, rationalizeSeguro, resimbolizarConstantes, sinParentesisRedundantes, type Nodo,
 } from "./formatoExpr";
 import { compilarExpresion } from "./evaluador";
 
@@ -104,7 +104,10 @@ function formasEquivalentes(a: string, b: string): boolean {
  *  `\pi`, `\ln k`; mismo paso que cierra `derivar`/`integrar`) y ordena canónico (variables
  *  antes que constantes). Idempotente en formato. */
 function formatear(n: Nodo): string {
-  return formatearCanonico(resimbolizarConstantes(racionalizarFracciones(combinarYordenar(n))));
+  // `sinParentesisRedundantes` cierra el formato: sin él, un mismo árbol se serializaba distinto
+  // según cómo se hubiera construido (`(3) / (y)` vs `3 / y`) y Simplificar no era idempotente.
+  return formatearCanonico(sinParentesisRedundantes(
+    resimbolizarConstantes(racionalizarFracciones(combinarYordenar(n)))));
 }
 
 const costo = (n: Nodo): [number, number] => [profundidadFraccion(n), n.toString().length];

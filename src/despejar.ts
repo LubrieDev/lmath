@@ -1,15 +1,16 @@
 import { parse, simplify } from "mathjs";
 
-import { trigDeY, inversionTrig, despejeTrigCuadratico } from "./despejeInverso";
+import { trigDeY, inversionTrig, familiaPeriodica, despejeTrigCuadratico, type TrigInvertible } from "./despejeInverso";
 import { normalizarEntrada, contieneYLibre } from "./parser";
 import { insertarProductoImplicito } from "./motor/parsing/productoImplicito";
+import { ramaDoble } from "./motor/parsing/dobleSigno";
 import { componenteParametrica } from "./motor/parsing/componentesParametricas";
 import { bloqueALatex } from "./latex";
 import { simplificarExpr } from "./simplificar";
 import {
   contieneVariable, terminos, factores, flip, renderTerminos, renderCanonico,
   racionalizarFracciones, formatearCanonico, combinarFracciones, valorConstanteFactor,
-  profundidadFraccion,
+  profundidadFraccion, esNoNegativo, esSiempreNegativo, sinFactoresConstantes,
   type Termino, type Factor, type Nodo,
 } from "./formatoExpr";
 
@@ -148,7 +149,8 @@ function despejePotencia(t: Termino, derecha: Termino[]): { ecuacion: string; co
   // siendo re-parseable y encadenable, igual que `nthRoot`. n=2 usa `sqrt` (→ `\sqrt`, sin
   // índice); n≥4 usa `nthRoot(…, n)` (→ `\sqrt[n]`).
   const raiz = n === 2 ? `sqrt(${rad})` : `nthRoot(${rad}, ${n})`;
-  return { ecuacion: `y = pm(${raiz})`, completo: true };
+  const doble = ramaDoble(raiz, rad);   // presupuesto de ramas: ver dobleSigno.ramaDoble
+  return doble === null ? null : { ecuacion: `y = ${doble}`, completo: true };
 }
 
 /** Índice n de la raíz si el nodo es una RAÍZ de base exacta `y`: `sqrt(y)`→2,
@@ -169,6 +171,24 @@ function raizY(n: Nodo): number | null {
   return null;
 }
 
+/** Envuelve el cuerpo de un despeje con la GUARDA DE DOMINIO `cond ≥ 0` (centinela `dom`): la
+ *  inversión de una raíz PAR o de un valor absoluto solo vale donde el otro lado es no negativo.
+ *  ÚNICO punto del motor que decide qué pasa con una condición de dominio; toda la matemática
+ *  de la decisión vive en el análisis de signo (`signoDe`, formatoExpr), no aquí:
+ *   • condición demostrablemente ≥0 (`x²+1`, `|x|+3`, `2|x|`, `√x+|x|`, `pi`) → el cuerpo TAL
+ *     CUAL: la guarda sería siempre cierta y la coletilla, ruido;
+ *   • condición demostrablemente <0 (`-x²-1`, `pi-4`) → null: la ecuación NO tiene solución
+ *     real y no se fuerza un despeje inventado; queda la forma parcial;
+ *   • en otro caso `dom(cuerpo, cond)`, con la condición ya REDUCIDA de factores constantes
+ *     (`x/2` → `x`): así el motor evalúa y el panel pinta exactamente la misma condición. */
+function conDominio(cuerpo: string, cond: string): string | null {
+  let c: Nodo;
+  try { c = parse(cond) as unknown as Nodo; } catch { return `dom(${cuerpo}, ${cond})`; }
+  if (esNoNegativo(c)) return cuerpo;
+  if (esSiempreNegativo(c)) return null;
+  return `dom(${cuerpo}, ${sinFactoresConstantes(c).toString()})`;
+}
+
 /** Único término-y de la forma (libres)·ⁿ√y: divide los libres y ELEVA a la n para
  *  invertir la raíz. `x−√y=27` → `y = (x−27)²` (completo). El elevar es el inverso de
  *  la raíz principal; formalmente añade la rama del radicando negativo (misma licencia
@@ -182,7 +202,12 @@ function despejeRaiz(t: Termino, derecha: Termino[]): { ecuacion: string; comple
   if (conYf.length !== 1 || conYf[0].exp !== 1) return null;
   const n = raizY(conYf[0].nodo);
   if (n === null) return null;
-  return { ecuacion: `y = (${ladoDerecho(t, derecha, libres, renderCanonico)})^${n}`, completo: true };
+  const R = ladoDerecho(t, derecha, libres, renderCanonico);
+  // Índice IMPAR (∛y…): x↦xⁿ es biyección en ℝ, elevar es EXACTO → sin guarda. Índice PAR
+  // (√y…): `√y=R` exige R≥0; elevar a R² dibujaría la rama fantasma R<0 → guarda de dominio.
+  if (n % 2 === 1) return { ecuacion: `y = (${R})^${n}`, completo: true };
+  const cuerpo = conDominio(`(${R})^${n}`, R);
+  return cuerpo === null ? null : { ecuacion: `y = ${cuerpo}`, completo: true };
 }
 
 /** Índice de raíz `n` y potencia `m` si el nodo es `ⁿ√(y^m)` —una raíz (sqrt/cbrt/nthRoot)
@@ -220,10 +245,19 @@ function despejeRaizDePotencia(t: Termino, derecha: Termino[]): { ecuacion: stri
   if (info === null) return null;
   const { n, m } = info;
   // ⁿ√(y^m) = R (libres al otro lado, radicando con positivos primero) ⇒ y^m = Rⁿ.
-  const base = `(${ladoDerecho(t, derecha, libres)})^${n}`;
-  if (m % 2 === 1) return { ecuacion: `y = nthRoot(${base}, ${m})`, completo: true };
-  const raizM = m === 2 ? `sqrt(${base})` : `nthRoot(${base}, ${m})`;
-  return { ecuacion: `y = pm(${raizM})`, completo: true };
+  const R = ladoDerecho(t, derecha, libres);
+  const base = `(${R})^${n}`;
+  const cuerpo = m % 2 === 1
+    ? `nthRoot(${base}, ${m})`
+    : ramaDoble(m === 2 ? `sqrt(${base})` : `nthRoot(${base}, ${m})`, R);
+  if (cuerpo === null) return null;   // presupuesto de ramas agotado → parcial honesto
+  // Índice externo IMPAR: Rⁿ preserva el signo, así que donde R<0 el radicando sale negativo
+  // y la raíz par da NaN (sin fantasma) → fiel sin guarda. Índice externo PAR: Rⁿ≥0 SIEMPRE
+  // (borra el signo de R) y `ⁿ√(yᵐ)=R` exige R≥0 → guarda de dominio (era el bug: `√(y⁴)=−3`
+  // salía con curva inventada).
+  if (n % 2 === 1) return { ecuacion: `y = ${cuerpo}`, completo: true };
+  const guardado = conDominio(cuerpo, R);
+  return guardado === null ? null : { ecuacion: `y = ${guardado}`, completo: true };
 }
 
 /** Valor ENTERO de un exponente. Usa `valorConstanteFactor` (compartido) porque la entrada
@@ -362,7 +396,14 @@ function despejeAbsoluto(t: Termino, derecha: Termino[]): { ecuacion: string; co
   // Las formas con potencia se dejan literales (como `despejeRaiz`): `limpiarAbsoluto` EXPANDIRÍA
   // `(-x²+2)²`. El resto (recíprocos, raíces, e=1) sí se aplanan a una fracción legible.
   const cuerpo = esPotencia ? aby : limpiarAbsoluto(aby);
-  return { ecuacion: `y = pm(${cuerpo})`, completo: true };
+  const doble = ramaDoble(cuerpo, R);   // presupuesto de ramas: ver dobleSigno.ramaDoble
+  if (doble === null) return null;
+  // GUARDA DE DOMINIO: como `abs(y)^e ≥ 0` (e racional), la ecuación `abs(y)^e = R` exige R≥0
+  // —donde R<0 no hay y—. La condición es R (el lado derecho), NO la magnitud `R^{1/e}` (que
+  // al invertir el exponente PAR ya es ≥0 y no captaría la restricción: `√|y|=1−x` ⇒ |y|=(1−x)²
+  // parece libre, pero solo vale x≤1). Constante <0 → sin solución → parcial.
+  const guardado = conDominio(doble, R);
+  return guardado === null ? null : { ecuacion: `y = ${guardado}`, completo: true };
 }
 
 /** Único término-y de la forma (libres)·T(y) con T trig PERIÓDICA de la y desnuda:
@@ -377,7 +418,8 @@ function despejeTrigInverso(t: Termino, derecha: Termino[]): { ecuacion: string;
   if (conYf.length !== 1 || conYf[0].exp !== 1) return null;
   const tipo = trigDeY(conYf[0].nodo);
   if (tipo === null) return null;
-  return { ecuacion: `y = ${inversionTrig(tipo, ladoDerecho(t, derecha, libres))}`, completo: true };
+  const rhs = inversionTrig(tipo, ladoDerecho(t, derecha, libres));
+  return rhs === null ? null : { ecuacion: `y = ${rhs}`, completo: true };
 }
 
 /** Un único término-y que es un PRODUCTO: divide los factores libres de y al otro
@@ -466,9 +508,10 @@ function despejeTrigCero(t: Termino, derecha: Termino[]): { ecuacion: string; co
   const u = desParen(nodo.args[0]);
   if (!contieneY(u) || (u.type === "SymbolNode" && u.name === "y")) return null; // desnuda → otra vía
   const uStr = u.toString();
-  const cero = info.base === null && uSiemprePositivo(uStr)
-    ? `famN(k, ${info.periodo})`   // sin/tan y u>0 ⇒ kπ con k∈ℕ
-    : `fam(k, ${info.periodo})`;   // resto ⇒ k∈ℤ
+  // El parámetro se ASIGNA (no se fija en `k`): la recursión de abajo puede invertir otra
+  // periódica y necesitar el suyo propio. `natural` = sin/tan con u>0 ⇒ kπ debe ser positivo.
+  const cero = familiaPeriodica(info.periodo, uStr, info.base === null && uSiemprePositivo(uStr));
+  if (cero === null) return null;
   const rhs = info.base ? `${info.base} + ${cero}` : cero;
   const rec = despejar(`${uStr} = ${rhs}`);
   return rec && rec.completo ? rec : null;
@@ -790,6 +833,146 @@ function despejeCuadratico(D0: Nodo, DVal: Nodo = D0): { ecuacion: string; compl
   return { ecuacion: `y = pm(sqrt(pm(${raizDisc}) + (${simpDesp(`-(${p})`)})))`, completo: true };
 }
 
+// ─────────────────────────────────────────────
+// Inversión estructural: y en UNA sola posición, anidada (keystone)
+// ─────────────────────────────────────────────
+//
+// Las estrategias de arriba cubren cada una UNA capa concreta alrededor de la y (yⁿ, ⁿ√y,
+// T(y) desnuda, 1/y…). Cuando la y aparece UNA sola vez pero envuelta en una COMPOSICIÓN
+// —o en una función sin estrategia propia— ninguna encaja: `log(y)=x`, `e^{y}=x`, `sin(2y)=x`,
+// `(y+1)³=x`, `e^{y³}=x`. Aquí se aísla pelando la composición de FUERA hacia dentro: en cada
+// nodo, la inversa EXACTA de la operación externa pasa al otro lado y se recurre sobre el hijo
+// que contiene la y. Completo para cualquier torre de operaciones invertibles (una sola y).
+//
+// FIDELIDAD AL DOMINIO: solo se aplican inversas EXACTAS. Las INYECTIVAS (log/exp, aˣ,
+// hiperbólicas, raíz IMPAR) pasan sin más; donde la ecuación no tiene solución, la inversa da
+// NaN/complejo (log de ≤0, atanh fuera de (−1,1)…) → sin rama fantasma, igual que la curva
+// original. Las trig llevan su familia periódica (`fam`). Y las de RANGO RESTRINGIDO (√ e ⁿ√
+// de índice PAR, potencia PAR, |·|) son exactas SOLO bajo la guarda `R≥0` que ya usan las
+// estrategias específicas (`conDominio` → centinela `dom`), más el `±` de las dos ramas cuando
+// la capa no es inyectiva: con esas dos piezas se pelan también aquí en vez de rendirse.
+// Lo que NO tiene inversa exacta (arcos, y en dos posiciones, exponente no entero) sigue
+// devolviendo null: la ecuación se queda como está antes que inventar una rama.
+
+/** Nº de apariciones (hojas) del símbolo y en un árbol. */
+function contarY(n: Nodo): number {
+  return n.filter((nn: Nodo) => nn.type === "SymbolNode" && nn.name === "y").length;
+}
+
+/** Inversa EXACTA (inyectiva) de una función unaria: dado el objetivo `t` al que iguala la
+ *  función, el string al que iguala su argumento. Solo funciones cuya inversa es fiel al
+ *  dominio y sobrevive el pipeline (registradas en productoImplicito.FUNCIONES). */
+const INVERSA_INYECTIVA: Record<string, (t: string) => string> = {
+  exp: (t) => `log(${t})`,               // e^u = t ⇒ u = ln t
+  log: (t) => `e^(${t})`,                // ln u = t ⇒ u = e^t (se emite `e^…` → LaTeX `e^{…}`, no `\exp`)
+  sinh: (t) => `asinh(${t})`,            // biyección en ℝ
+  tanh: (t) => `atanh(${t})`,            // atanh NaN fuera de (−1,1) → sin fantasma
+  asinh: (t) => `sinh(${t})`,
+  atanh: (t) => `tanh(${t})`,
+  cbrt: (t) => `(${t})^3`,               // ∛u = t ⇒ u = t³ (raíz impar, biyección en ℝ)
+};
+
+/** Trig periódicas: su inversa es la familia general (fam), fiel al dominio. */
+const TRIG_PERIODICA = new Set<string>(["sin", "cos", "tan", "cot", "sec", "csc"]);
+
+/** Nuevo objetivo tras pelar una capa de RANGO RESTRINGIDO: `cuerpo` es la inversa aplicada al
+ *  objetivo actual y la guarda es el objetivo mismo (`√u = t ⇒ u = t², válido donde t ≥ 0`).
+ *  Delega en `conDominio`, que además absorbe los dos casos degenerados: guarda trivialmente
+ *  cierta (`t = x²`) → sin coletilla, y guarda constante negativa (`√u = −3`) → null, sin
+ *  solución real, la ecuación se queda como está. */
+const objetivoConGuarda = (cuerpo: string, target: string): string | null =>
+  conDominio(cuerpo, target);
+
+/** Aísla la y de `nodo` (que la contiene EXACTAMENTE una vez) igualándola a `target` (string
+ *  mathjs), pelando la composición externa con inversas fieles al dominio. Devuelve el RHS de
+ *  `y = …` o null si topa con una capa sin inversa exacta. */
+function aislarInversion(nodo: Nodo, target: string): string | null {
+  const n = desParen(nodo);
+  if (n.type === "SymbolNode" && n.name === "y") return target;
+
+  if (n.type === "OperatorNode") {
+    if (n.args.length === 1 && n.op === "-") return aislarInversion(n.args[0], `-(${target})`);
+    if (n.args.length === 2) {
+      const [a, b] = n.args;
+      const enA = contieneY(a), enB = contieneY(b);
+      if (enA === enB) return null; // 0 o 2 apariciones en este nivel: no aplicable
+      const sa = a.toString(), sb = b.toString();
+      switch (n.op) {
+        case "+": return enA ? aislarInversion(a, `(${target}) - (${sb})`) : aislarInversion(b, `(${target}) - (${sa})`);
+        case "-": return enA ? aislarInversion(a, `(${target}) + (${sb})`) : aislarInversion(b, `(${sa}) - (${target})`);
+        case "*": return enA ? aislarInversion(a, `(${target}) / (${sb})`) : aislarInversion(b, `(${target}) / (${sa})`);
+        case "/": return enA ? aislarInversion(a, `(${target}) * (${sb})`) : aislarInversion(b, `(${sa}) / (${target})`);
+        case "^": {
+          if (enA) {
+            const k = exponenteEntero(b);
+            if (k === null || k < 1) return null; // exponente no entero (o ≤0) → sin inversa exacta aquí
+            if (k % 2 === 0) {
+              // uᵏ = t con k PAR ⇒ u = ±ᵏ√t donde t ≥ 0 (`e^{y²}=x` ⇒ y = ±√(ln x), ln x ≥ 0).
+              const pm = ramaDoble(k === 2 ? `sqrt(${target})` : `nthRoot(${target}, ${k})`, target);
+              const conG = pm === null ? null : objetivoConGuarda(pm, target);
+              return conG === null ? null : aislarInversion(a, conG);
+            }
+            const raiz = k === 1 ? target : k === 3 ? `cbrt(${target})` : `nthRoot(${target}, ${k})`;
+            return aislarInversion(a, raiz);
+          }
+          // y en el EXPONENTE (base libre de y): a^y = t ⇒ y = ln t / ln a (e^y ⇒ y = ln t).
+          const div = sa === "e" ? `log(${target})` : `log(${target}) / log(${sa})`;
+          return aislarInversion(b, div);
+        }
+        default: return null;
+      }
+    }
+    return null;
+  }
+
+  if (n.type === "FunctionNode") {
+    const fn = n.fn?.name ?? "";
+    if (n.args.length === 1) {
+      if (INVERSA_INYECTIVA[fn]) return aislarInversion(n.args[0], INVERSA_INYECTIVA[fn](target));
+      if (TRIG_PERIODICA.has(fn)) {
+        // cos/sec/sin/csc emiten su propio `pm` (las dos raíces del período); tan/cot no.
+        // `inversionTrig` ya aplica el presupuesto de ramas y devuelve null si no cabe.
+        const inv = inversionTrig(fn as TrigInvertible, target);
+        return inv === null ? null : aislarInversion(n.args[0], inv);
+      }
+      // √u = t ⇒ u = t² donde t ≥ 0 (`√(tan y+1)=x` ⇒ y = arctan(x²−1)+kπ, x ≥ 0).
+      if (fn === "sqrt") {
+        const conG = objetivoConGuarda(`(${target})^2`, target);
+        return conG === null ? null : aislarInversion(n.args[0], conG);
+      }
+      // |u| = t ⇒ u = ±t donde t ≥ 0.
+      if (fn === "abs") {
+        const pm = ramaDoble(target, target);
+        const conG = pm === null ? null : objetivoConGuarda(pm, target);
+        return conG === null ? null : aislarInversion(n.args[0], conG);
+      }
+      return null; // acos/asin/… (rango restringido de dos lados, no expresable con `dom`)
+    }
+    if (fn === "nthRoot" && n.args.length === 2) {
+      const k = exponenteEntero(n.args[1]);
+      if (k === null || k < 2) return null;
+      // Índice PAR: ⁿ√u = t ⇒ u = tⁿ donde t ≥ 0 (la raíz par nunca es negativa). Impar: directo.
+      if (k % 2 === 0) {
+        const conG = objetivoConGuarda(`(${target})^${k}`, target);
+        return conG === null ? null : aislarInversion(n.args[0], conG);
+      }
+      return aislarInversion(n.args[0], `(${target})^${k}`);
+    }
+  }
+  return null;
+}
+
+/** Despeje por inversión estructural cuando la y aparece UNA sola vez en la ecuación
+ *  (contando ambos lados). null si aparece 0 o ≥2 veces, o si la torre topa con una capa de
+ *  rango restringido. Completo siempre (la inversión aísla y del todo). */
+function despejePorInversion(L: Nodo, R: Nodo): { ecuacion: string; completo: boolean } | null {
+  if (contarY(L) + contarY(R) !== 1) return null;
+  const conY = contarY(L) === 1 ? L : R;
+  const otro = conY === L ? R : L;
+  const rhs = aislarInversion(conY, `(${otro.toString()})`);
+  return rhs === null ? null : { ecuacion: `y = ${rhs}`, completo: true };
+}
+
 /** Núcleo: despeja y como ECUACIÓN en sintaxis mathjs, o null si no hay `=`, no aparece
  *  y, o no se puede parsear. `completo`=true si quedó `y = …`. */
 function despejar(ecuacion: string): { ecuacion: string; completo: boolean } | null {
@@ -892,6 +1075,12 @@ function despejar(ecuacion: string): { ecuacion: string; completo: boolean } | n
   const trigCuad = despejeTrigCuadratico(D, DVal);
   if (trigCuad) return trigCuad;
 
+  // INVERSIÓN estructural (keystone): la y aparece UNA sola vez pero anidada o en una función
+  // sin estrategia propia (log, e^y, sin(2y), (y+1)³…). Se pela la composición con inversas
+  // fieles al dominio. Va al final: solo cuando ninguna estrategia específica la aisló.
+  const inv = despejePorInversion(L, R);
+  if (inv) return inv;
+
   // No lineal irreducible o varios términos-y: forma aislada (RHS en orden canónico).
   return { ecuacion: `${renderTerminos(conY)} = ${renderCanonico(derecha)}`, completo: false };
 }
@@ -911,4 +1100,23 @@ export function despejarBloqueLatex(ecuaciones: readonly string[]): string {
 export function despejarY(ecuacion: string): { latex: string; completo: boolean } | null {
   const r = despejar(ecuacion);
   return r ? { latex: bloqueALatex([r.ecuacion]), completo: r.completo } : null;
+}
+
+/** Si la ecuación implícita se despeja a una función y = f(x) de UN SOLO VALOR, devuelve `f(x)`
+ *  como string mathjs re-parseable; si no, null. Sirve para GRAFICAR la curva por el muestreo
+ *  explícito (traza la cola completa hasta el borde) en vez de la continuación implícita (que la
+ *  corta en ~2× la vista). Se RECHAZAN las multivaluadas: el ± del doble signo (`pm`/`mp`) y la
+ *  familia periódica (`fam`/`famN`) dan varios y por x —no son una función—. La guarda de
+ *  dominio `dom` SÍ se admite: es de un solo valor y `crearFuncionReal` la evalúa a NaN fuera del
+ *  dominio (media parábola de `x−√y=c`, no la rama fantasma). El RHS debe ser función de x pura
+ *  (sin y residual). */
+export function despejeExplicito(ecuacion: string): string | null {
+  const r = despejar(ecuacion);
+  if (!r || !r.completo) return null;
+  const m = r.ecuacion.match(/^y\s*=\s*([\s\S]+)$/);
+  if (!m) return null;
+  const rhs = m[1];
+  if (/(?<![a-zA-Z0-9_])(pm|mp|fam|famN)\s*\(/.test(rhs)) return null;   // multivaluada → no es y=f(x)
+  if (/(?<![a-zA-Z0-9_])y(?![a-zA-Z0-9_])/.test(rhs)) return null;        // y sin aislar del todo
+  return rhs;
 }

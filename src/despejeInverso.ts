@@ -32,6 +32,8 @@
 
 import { parse } from "mathjs";
 
+import { ramaDoble } from "./motor/parsing/dobleSigno";
+
 import {
   contieneVariable, terminos, factores, valorConstanteFactor, rationalizeSeguro,
   type Termino, type Nodo,
@@ -49,13 +51,14 @@ const TRIGS: ReadonlySet<string> = new Set<TrigInvertible>(
 /** Solución general de T(y) = g como string mathjs (el RHS de `y = …`). El argumento
  *  de una función no necesita paréntesis extra; el `+` de la familia queda a nivel
  *  superior, que es donde latex.ts pinta `… + k\pi`. */
-const INVERSAS: Record<TrigInvertible, (g: string) => string> = {
-  tan: (g) => `atan(${g}) + fam(k, pi)`,
-  cot: (g) => `acot(${g}) + fam(k, pi)`,
-  cos: (g) => `pm(acos(${g})) + fam(k, 2*pi)`,
-  sec: (g) => `pm(asec(${g})) + fam(k, 2*pi)`,
-  sin: (g) => `pi/2 + pm(acos(${g})) + fam(k, 2*pi)`,
-  csc: (g) => `pi/2 + pm(asec(${g})) + fam(k, 2*pi)`,
+type Emisores = { pm: (u: string) => string | null; fam: (periodo: string) => string | null };
+const INVERSAS: Record<TrigInvertible, (g: string, e: Emisores) => string | null> = {
+  tan: (g, e) => { const f = e.fam("pi"); return f && `atan(${g}) + ${f}`; },
+  cot: (g, e) => { const f = e.fam("pi"); return f && `acot(${g}) + ${f}`; },
+  cos: (g, e) => { const p = e.pm(`acos(${g})`), f = e.fam("2*pi"); return p && f && `${p} + ${f}`; },
+  sec: (g, e) => { const p = e.pm(`asec(${g})`), f = e.fam("2*pi"); return p && f && `${p} + ${f}`; },
+  sin: (g, e) => { const p = e.pm(`acos(${g})`), f = e.fam("2*pi"); return p && f && `pi/2 + ${p} + ${f}`; },
+  csc: (g, e) => { const p = e.pm(`asec(${g})`), f = e.fam("2*pi"); return p && f && `pi/2 + ${p} + ${f}`; },
 };
 
 /** Quita los ParenthesisNode envolventes (misma normalización que despejar.ts; copia
@@ -77,9 +80,59 @@ export function trigDeY(n: Nodo): TrigInvertible | null {
   return arg.type === "SymbolNode" && arg.name === "y" ? (nombre as TrigInvertible) : null;
 }
 
-/** RHS de la solución general de T(y) = g (string mathjs re-parseable). */
-export function inversionTrig(tipo: TrigInvertible, g: string): string {
-  return INVERSAS[tipo](g);
+/** RHS de la solución general de T(y) = g (string mathjs re-parseable), o null si no queda
+ *  recurso libre en `g`: EJE de signo (cos/sec/sin/csc necesitan un ± para las dos ramas del
+ *  período, ver `ramaDoble`) o PARÁMETRO de familia (ver `familiaPeriodica`). Antes que una
+ *  fórmula que reutiliza un parámetro ajeno —y por tanto afirma de menos—, forma parcial. */
+export function inversionTrig(tipo: TrigInvertible, g: string): string | null {
+  return INVERSAS[tipo](g, {
+    pm: (u) => ramaDoble(u, g),
+    fam: (periodo) => familiaPeriodica(periodo, g),
+  });
+}
+
+// ── Asignación del PARÁMETRO de familia ──────────────────────────────────────
+//
+// Cada inversión periódica aporta su propio entero: `sin(cos(y)) = x` se resuelve invirtiendo
+// DOS veces, y las dos familias son independientes (k₁ para la interna, k₂ para la externa).
+// Emitir `fam(k, …)` con el nombre fijo `k` en los dos sitios colapsa la solución a la DIAGONAL
+// k₁=k₂, que es un subconjunto propio: medido sobre `sin(cos y) = 0.5`, la fórmula cubría 2 de
+// las 8 raíces reales de la ventana. Es el mismo defecto que tenían los ± antes de repartirlos
+// por ejes (`ramaDoble`), y se arregla igual: el parámetro se ASIGNA mirando el contexto.
+//
+// `fam` es presentación pura (nunca se expande para trazar: lo graficado es siempre la ecuación
+// original), así que no hay coste de ramas y el límite del repertorio es de LEGIBILIDAD. Con
+// tres parámetros se cubren las torres que el despejador sabe construir; más allá, `null` →
+// forma parcial, antes que una fórmula con parámetros repetidos que afirma de menos.
+const PARAMETROS_FAMILIA = ["k", "m", "n"] as const;
+
+/** Nombres de parámetro ya usados por algún `fam`/`famN` de la expresión. */
+function parametrosUsados(expr: string): Set<string> {
+  const usados = new Set<string>();
+  for (const m of expr.matchAll(/(?<![a-zA-Z0-9_])famN?\s*\(\s*([a-zA-Z][a-zA-Z0-9_]*)/g))
+    usados.add(m[1]);
+  return usados;
+}
+
+/** Centinela de familia con un parámetro LIBRE en `contexto`, o null si no queda ninguno.
+ *  Única vía de emisión de `fam`/`famN` en el motor (análoga a `ramaDoble` para el ±).
+ *  @param natural  true → `famN` (k∈ℕ: el período debe ser positivo para que haya curva). */
+export function familiaPeriodica(periodo: string, contexto: string, natural = false): string | null {
+  const usados = parametrosUsados(contexto);
+  const libre = PARAMETROS_FAMILIA.find((p) => !usados.has(p));
+  return libre === undefined ? null : `${natural ? "famN" : "fam"}(${libre}, ${periodo})`;
+}
+
+/** Parámetros de familia de una ecuación, con su conjunto (ℕ para `famN`, ℤ para `fam`), en
+ *  orden de aparición y sin repetir. Lo usa el LaTeX para la coletilla: con dos inversiones
+ *  hay que declarar los DOS enteros (`k∈ℤ, m∈ℤ`) o la fórmula se lee como si fueran el mismo. */
+export function parametrosDeFamilia(expr: string): Array<{ nombre: string; natural: boolean }> {
+  const out: Array<{ nombre: string; natural: boolean }> = [];
+  for (const m of expr.matchAll(/(?<![a-zA-Z0-9_])(famN?)\s*\(\s*([a-zA-Z][a-zA-Z0-9_]*)/g)) {
+    if (out.some((p) => p.nombre === m[2])) continue;
+    out.push({ nombre: m[2], natural: m[1] === "famN" });
+  }
+  return out;
 }
 
 /** ¿El string (mathjs) contiene el centinela de familia `fam(…)`? Mismo criterio de
@@ -577,8 +630,16 @@ export function despejeTrigCuadratico(D: Nodo, DVal: Nodo): { ecuacion: string; 
     evalF = (x, y) => { try { return c.evaluate({ x, y }); } catch { return NaN; } };
   } catch { return null; }
 
-  const emitir = (inner: string): { ecuacion: string; completo: boolean } =>
-    ({ ecuacion: `y = pm(acos(${restaurarAtomos(inner, inverso)})) + fam(k, 2*pi)`, completo: true });
+  // El ± del arccos (las dos ramas del período) pasa por `ramaDoble`: si `inner` ya trae otro ±
+  // —las dos raíces u± de la cuadrática— serían DOS dobles signos independientes, cuatro curvas
+  // reales de las que la expansión solo dibujaría dos. Antes se emitían igualmente (el comentario
+  // los daba por "solo presentación", pero se perdían soluciones); ahora se devuelve parcial.
+  const emitir = (inner: string): { ecuacion: string; completo: boolean } | null => {
+    const cuerpo = ramaDoble(`acos(${restaurarAtomos(inner, inverso)})`, inner);
+    const familia = familiaPeriodica("2*pi", inner);
+    return cuerpo === null || familia === null
+      ? null : { ecuacion: `y = ${cuerpo} + ${familia}`, completo: true };
+  };
 
   // LINEAL en cos y (B·u + C = 0): u = −C/B. Si B es constante, la división es exacta.
   if (A.size === 0) {

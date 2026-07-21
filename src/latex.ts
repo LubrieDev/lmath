@@ -1,10 +1,11 @@
 import { parse } from "mathjs";
 
-import { opNodo, simboloNodo, funcNodo, type Nodo } from "./formatoExpr";
+import { opNodo, simboloNodo, funcNodo, esNoNegativo, type Nodo } from "./formatoExpr";
 import { normalizarEntrada, contieneYLibre } from "./parser";
-import { tieneFamilia, tieneFamiliaN } from "./despejeInverso";
+import { parametrosDeFamilia } from "./despejeInverso";
 import { insertarProductoImplicito } from "./motor/parsing/productoImplicito";
 import { funcionDelParametro } from "./motor/parsing/componentesParametricas";
+import { CENTINELAS_SIGNO } from "./motor/parsing/dobleSigno";
 
 // ─────────────────────────────────────────────
 // LaTeX → presentación
@@ -38,6 +39,10 @@ const NOMBRE_FUNCION_TEX: Record<string, string> = {
   exp: "\\exp",
   asin: "\\arcsin", acos: "\\arccos", atan: "\\arctan",
   acsc: "\\operatorname{arccsc}", asec: "\\operatorname{arcsec}", acot: "\\operatorname{arccot}",
+  // Inversas HIPERBÓLICAS: mismo criterio `arc…` que las circulares (mathjs las pintaría
+  // `\sinh^{-1}`, que además se lee como un recíproco). Las emite el despeje por inversión
+  // estructural al invertir `sinh(y)=x` / `tanh(y)=x`.
+  asinh: "\\operatorname{arcsinh}", acosh: "\\operatorname{arccosh}", atanh: "\\operatorname{arctanh}",
 };
 
 /**
@@ -72,8 +77,14 @@ function manejadorFuncionesTex(node: Nodo, options: object): string | undefined 
 
   // Argumento de una función trig: `\sin x` (átomo) o `\sin\left(x+1\right)` (compuesto).
   const argFuncion = (arg: Nodo, nombreTex: string): string => {
-    const argTex = arg.toTex(options);
-    const atomico = arg.type === "SymbolNode" || arg.type === "ConstantNode";
+    // Un paréntesis EXPLÍCITO alrededor de un átomo es redundante: lo pone el despeje al
+    // componer sus strings (`e^y=x` ⇒ `log((x))`), no el usuario. Se pela para que la
+    // atomicidad se juzgue sobre el contenido y salga `\ln x`, como en el resto del panel,
+    // y no `\ln\left(x\right)`. Mismo criterio que los centinelas pm/fam de más abajo.
+    let raiz = arg;
+    while (raiz.type === "ParenthesisNode") raiz = raiz.content;
+    const atomico = raiz.type === "SymbolNode" || raiz.type === "ConstantNode";
+    const argTex = (atomico ? raiz : arg).toTex(options);
     return atomico ? `${nombreTex} ${argTex.trim()}` : `${nombreTex}\\left(${argTex}\\right)`;
   };
 
@@ -82,7 +93,10 @@ function manejadorFuncionesTex(node: Nodo, options: object): string | undefined 
   // que envolvería en `\left(\right)`). Pero un argumento con SUMA/RESTA de nivel superior
   // SÍ los necesita: el despeje de |y| puede dar `pm(x-1)`, y `\pm x-1` se leería como
   // `(\pm x)-1` —el ± solo afectaría al primer término—, que es otra ecuación.
-  const SIGNO_TEX: Record<string, string> = { pm: "\\pm", mp: "\\mp" };
+  // Todos los ejes de signo se pintan igual (`\pm`/`\mp`): dos ± independientes en una fórmula
+  // se leen como tales en notación matemática (`±arccos((a ± √d)/2)`), el eje es interno.
+  const SIGNO_TEX: Record<string, string> =
+    Object.fromEntries(CENTINELAS_SIGNO.map(([n, s]) => [n, s === 1 ? "\\pm" : "\\mp"]));
   if (node.type === "FunctionNode" && SIGNO_TEX[node.fn?.name] && node.args.length === 1) {
     const arg = node.args[0];
     const raiz = arg.type === "ParenthesisNode" ? arg.content : arg;
@@ -121,6 +135,12 @@ function manejadorFuncionesTex(node: Nodo, options: object): string | undefined 
     }
     return `${kTex}\\left(${p.toTex(options)}\\right)`;
   }
+
+  // Centinela de CONDICIÓN DE DOMINIO (despejar.ts): `dom(cuerpo, R)` se pinta como el CUERPO
+  // a secas; la condición `R≥0` la añade `ecuacionALatex` como coletilla a nivel de ecuación
+  // (igual que `fam` añade `, k∈ℤ`). Así el RHS se lee limpio y el dominio va aparte.
+  if (node.type === "FunctionNode" && node.fn?.name === "dom" && node.args.length === 2)
+    return node.args[0].toTex(options);
 
   if (node.type === "FunctionNode" && node.args.length === 1) {
     const nombreTex = NOMBRE_FUNCION_TEX[node.fn?.name];
@@ -453,6 +473,50 @@ export function exprALatex(expr: string): string {
   return ladoALatex(expr);
 }
 
+/** Separación entre la solución y su coletilla (condición de dominio, `k∈ℤ`): son DOS
+ *  afirmaciones distintas, no un par de la misma expresión, y con el `\ ` de una coma normal
+ *  quedaban tan pegadas que se leían como una sola. `\quad` es el hueco convencional en
+ *  matemáticas para "…, sujeto a…". */
+const SEPARADOR_COLETILLA = ",\\quad ";
+
+/** Presentación de UNA condición `R ≥ 0`. La simplificación de CONJUNTO (quitar factores
+ *  constantes, `x/2 ≥ 0 ⇔ x ≥ 0`) ya la hizo el despeje al emitir el centinela, de modo que el
+ *  motor evalúa y el panel pinta exactamente lo mismo; aquí solo queda la parte TIPOGRÁFICA:
+ *  una condición negada se lee mejor con el sentido invertido (`−x ≥ 0` → `x ≤ 0`) que con el
+ *  menos delante. Cadena vacía si la condición resultó ser siempre cierta. */
+function condicionLatex(cond: Nodo): string {
+  let n = cond;
+  while (n.type === "ParenthesisNode") n = n.content;
+  if (esNoNegativo(n)) return "";   // `x²+1 ≥ 0`, `|x|+3 ≥ 0`: cierta siempre, es ruido
+  const negada = n.type === "OperatorNode" && n.op === "-" && n.args.length === 1;
+  const cuerpo = negada ? n.args[0] : n;
+  return `${ladoALatex(cuerpo.toString())} ${negada ? "\\le" : "\\ge"} 0`;
+}
+
+/** Coletilla de CONDICIÓN DE DOMINIO: si el RHS lleva el centinela `dom(cuerpo, R)` (despeje
+ *  de una inversa de rango restringido: √ par, |·|), la condición `R ≥ 0` —el despeje solo
+ *  vale donde el radicando/argumento es no negativo—. Cadena vacía si no hay `dom`. Análoga a
+ *  la coletilla `, k∈ℤ` de la familia periódica: la información de dominio va a nivel de
+ *  ecuación, no incrustada en el RHS (que se lee limpio). Con VARIAS guardas (una torre de
+ *  capas de rango restringido) se listan todas, cada una tras su `\quad`: son condiciones
+ *  independientes y omitir cualquiera haría la fórmula más laxa que la curva. */
+function coletillaDominio(rhs: string): string {
+  if (!/(?<![a-zA-Z0-9_])dom\s*\(/.test(rhs)) return "";
+  let nodo: Nodo;
+  try { nodo = parse(insertarProductoImplicito(normalizarEntrada(rhs.trim()))) as unknown as Nodo; }
+  catch { return ""; }
+  const doms = nodo.filter((n: Nodo) => n.type === "FunctionNode" && n.fn?.name === "dom" && n.args.length === 2);
+  const vistas = new Set<string>();
+  let out = "";
+  for (const d of doms) {
+    const cond = condicionLatex(d.args[1]);
+    if (cond === "" || vistas.has(cond)) continue;   // trivial, o repetida por la recursión
+    vistas.add(cond);
+    out += `${SEPARADOR_COLETILLA}${cond}`;
+  }
+  return out;
+}
+
 /** Convierte una ecuación de texto a LaTeX (opcionalmente con `&=` para alineación). */
 export function ecuacionALatex(ecuacion: string, alineada = false): string {
   const partes = ecuacion.split("=");
@@ -468,9 +532,13 @@ export function ecuacionALatex(ecuacion: string, alineada = false): string {
   // discreta de soluciones (despeje trig inverso: `y = arctan(g)+kπ`), y el rango de `k` es
   // parte de la MATEMÁTICA, no un adorno —sin él, `+kπ` se leería como una constante—. `famN`
   // restringe a k∈ℕ (`sin(1/(x²+y²))=0` → `y=±√(1/(kπ)−x²), k∈ℕ`); `fam`, a k∈ℤ.
-  const coletilla = tieneFamiliaN(ecuacion) ? ",\\ k\\in\\mathbb{N}"
-    : tieneFamilia(ecuacion) ? ",\\ k\\in\\mathbb{Z}" : "";
-  return ladoALatex(partes[0]) + signo + ladoALatex(partes[1]) + coletilla;
+  // UNA coletilla por PARÁMETRO: una torre de dos inversiones periódicas (`sin(cos y)=x`) tiene
+  // dos enteros independientes, y declarar solo `k∈ℤ` haría leer la fórmula como si fueran el
+  // mismo —afirmando la diagonal, un subconjunto propio de las soluciones—.
+  const coletilla = parametrosDeFamilia(ecuacion)
+    .map((p) => `${SEPARADOR_COLETILLA}${p.nombre}\\in\\mathbb{${p.natural ? "N" : "Z"}}`)
+    .join("");
+  return ladoALatex(partes[0]) + signo + ladoALatex(partes[1]) + coletillaDominio(partes[1]) + coletilla;
 }
 
 /**

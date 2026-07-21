@@ -1,6 +1,6 @@
 {
   "name": "lmath",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Graph functions, systems, derivatives and integrals in interactive blocks.",
   "main": "main.js",
   "scripts": {
@@ -8,7 +8,9 @@
     "test": "esbuild tests/motor.test.ts --bundle --platform=node --format=cjs --outfile=tests/.bundle.cjs && node tests/.bundle.cjs",
     "test:zoom": "esbuild tests/zoom.test.ts --bundle --platform=node --format=cjs --outfile=tests/.bundle.zoom.cjs && node tests/.bundle.zoom.cjs",
     "test:todo": "npm run test && npm run test:zoom",
-    "trazar": "esbuild herramientas/trazar.ts --bundle --platform=node --format=cjs --outfile=herramientas/.trazar.cjs"
+    "trazar": "esbuild herramientas/trazar.ts --bundle --platform=node --format=cjs --outfile=herramientas/.trazar.cjs",
+    "bateria": "esbuild tests/bateria-cas.ts --bundle --platform=node --format=cjs --outfile=tests/.bundle.bateria.cjs && node tests/.bundle.bateria.cjs",
+    "fuzz": "esbuild tests/fuzz-despeje.ts --bundle --platform=node --format=cjs --outfile=tests/.bundle.fuzz.cjs && node tests/.bundle.fuzz.cjs"
   },
   "keywords": [
     "obsidian",
