@@ -46280,6 +46280,251 @@ function contieneYLibre(exprNorm) {
   return /(?<![a-zA-Z0-9_])y(?![a-zA-Z0-9_])/.test(exprNorm);
 }
 
+// src/compiladorNativo.ts
+var FUNCIONES_MATH = {
+  sin: "Math.sin",
+  cos: "Math.cos",
+  tan: "Math.tan",
+  asin: "Math.asin",
+  acos: "Math.acos",
+  atan: "Math.atan",
+  atan2: "Math.atan2",
+  sinh: "Math.sinh",
+  cosh: "Math.cosh",
+  tanh: "Math.tanh",
+  asinh: "Math.asinh",
+  acosh: "Math.acosh",
+  atanh: "Math.atanh",
+  exp: "Math.exp",
+  abs: "Math.abs",
+  sign: "Math.sign",
+  sqrt: "Math.sqrt",
+  cbrt: "Math.cbrt",
+  log10: "Math.log10",
+  log2: "Math.log2",
+  min: "Math.min",
+  max: "Math.max"
+};
+var OPERADORES = {
+  add: "+",
+  subtract: "-",
+  multiply: "*",
+  divide: "/"
+};
+var CONSTANTES = {
+  pi: "Math.PI",
+  e: "Math.E",
+  tau: "(2*Math.PI)",
+  Infinity: "Infinity",
+  NaN: "NaN"
+};
+var SIGNO_CENTINELA = new Map(CENTINELAS_SIGNO.map(([n, s]) => [n, s]));
+var PUNTOS_SONDA = [
+  0,
+  1,
+  -1,
+  2,
+  -2,
+  0.5,
+  -0.5,
+  1.5,
+  -1.5,
+  2.5,
+  -2.5,
+  3,
+  -3,
+  0.1,
+  -0.1,
+  1e-3,
+  -1e-3,
+  10,
+  -10,
+  100,
+  -100,
+  1e6,
+  -1e6,
+  1e-6,
+  -1e-6,
+  Math.PI,
+  -Math.PI,
+  Math.PI / 2,
+  -Math.PI / 2,
+  Math.E,
+  -Math.E,
+  0.1 * 30,
+  1 / 3,
+  -1 / 3,
+  0.7071067811865476,
+  -1.4142135623730951,
+  7.389056098930649,
+  0.36787944117144233,
+  123.456,
+  -987.654
+];
+function generar(nodo, variables) {
+  var _a, _b, _c, _d;
+  const n = nodo;
+  switch (n.type) {
+    case "ConstantNode": {
+      const v = typeof n.value === "number" ? n.value : NaN;
+      if (typeof n.value !== "number" || !Number.isFinite(v))
+        return null;
+      return `(${v})`;
+    }
+    case "SymbolNode": {
+      const nombre = (_a = n.name) != null ? _a : "";
+      if (variables.has(nombre))
+        return nombre;
+      const cte = CONSTANTES[nombre];
+      return cte != null ? cte : null;
+    }
+    case "ParenthesisNode":
+      return generar(n.content, variables);
+    case "OperatorNode": {
+      const args = ((_b = n.args) != null ? _b : []).map((a) => generar(a, variables));
+      if (args.length === 0 || args.some((a) => a === null))
+        return null;
+      const fn = typeof n.fn === "string" ? n.fn : "";
+      if (fn === "unaryMinus")
+        return args.length === 1 ? `(-${args[0]})` : null;
+      if (fn === "unaryPlus")
+        return args.length === 1 ? `(+${args[0]})` : null;
+      if (fn === "pow")
+        return args.length === 2 ? `Math.pow(${args[0]},${args[1]})` : null;
+      if (fn === "mod")
+        return args.length === 2 ? `__mod(${args[0]},${args[1]})` : null;
+      const op = OPERADORES[fn];
+      if (!op || args.length < 2)
+        return null;
+      return `(${args.join(op)})`;
+    }
+    case "FunctionNode": {
+      const ref = n.fn;
+      const nombre = typeof ref === "string" ? ref : (_c = ref == null ? void 0 : ref.name) != null ? _c : "";
+      const args = ((_d = n.args) != null ? _d : []).map((a) => generar(a, variables));
+      if (args.some((a) => a === null))
+        return null;
+      const signo2 = SIGNO_CENTINELA.get(nombre);
+      if (signo2 !== void 0) {
+        return args.length === 1 ? signo2 > 0 ? `(${args[0]})` : `(-${args[0]})` : null;
+      }
+      if (nombre === "dom") {
+        return args.length === 2 ? `((${args[1]})>=0?(${args[0]}):NaN)` : null;
+      }
+      if (nombre === "sec")
+        return args.length === 1 ? `(1/Math.cos(${args[0]}))` : null;
+      if (nombre === "csc")
+        return args.length === 1 ? `(1/Math.sin(${args[0]}))` : null;
+      if (nombre === "cot")
+        return args.length === 1 ? `(1/Math.tan(${args[0]}))` : null;
+      if (nombre === "acot")
+        return args.length === 1 ? `(Math.PI/2-Math.atan(${args[0]}))` : null;
+      if (nombre === "acsc")
+        return args.length === 1 ? `Math.asin(1/(${args[0]}))` : null;
+      if (nombre === "asec")
+        return args.length === 1 ? `Math.acos(1/(${args[0]}))` : null;
+      if (nombre === "floor")
+        return args.length === 1 ? `__floor(${args[0]})` : null;
+      if (nombre === "ceil")
+        return args.length === 1 ? `__ceil(${args[0]})` : null;
+      if (nombre === "log") {
+        if (args.length === 1)
+          return `Math.log(${args[0]})`;
+        if (args.length === 2)
+          return `(Math.log(${args[0]})/Math.log(${args[1]}))`;
+        return null;
+      }
+      if (nombre === "nthRoot") {
+        if (args.length === 1)
+          return `Math.cbrt(${args[0]})`;
+        if (args.length === 2)
+          return `__nthRoot(${args[0]},${args[1]})`;
+        return null;
+      }
+      const f = FUNCIONES_MATH[nombre];
+      if (!f || args.length === 0)
+        return null;
+      return `${f}(${args.join(",")})`;
+    }
+    default:
+      return null;
+  }
+}
+function modNativo(a, b) {
+  return a - b * Math.floor(a / b);
+}
+function nthRootNativo(x, n) {
+  if (x < 0)
+    return Math.abs(n % 2) === 1 ? -Math.pow(-x, 1 / n) : NaN;
+  return Math.pow(x, 1 / n);
+}
+function equivalentes(a, b) {
+  const va = typeof a === "number" ? a : NaN;
+  const naA = Number.isNaN(va), naB = Number.isNaN(b);
+  if (naA || naB)
+    return naA && naB;
+  if (!Number.isFinite(va) || !Number.isFinite(b))
+    return va === b;
+  return Math.abs(va - b) <= 1e-12 * Math.max(1, Math.abs(va), Math.abs(b));
+}
+function compilarNativo(expr, variables, referencia) {
+  let candidata;
+  try {
+    const cuerpo = generar(parse2(expr), new Set(variables));
+    if (cuerpo === null)
+      return null;
+    const fabrica = new Function(
+      "__mod",
+      "__nthRoot",
+      "__floor",
+      "__ceil",
+      `"use strict";return function(${variables.join(",")}){return ${cuerpo};};`
+    );
+    candidata = fabrica(
+      modNativo,
+      nthRootNativo,
+      FUNCIONES_ESCALON_RAPIDAS.floor,
+      FUNCIONES_ESCALON_RAPIDAS.ceil
+    );
+  } catch (e3) {
+    return null;
+  }
+  const combinaciones = puntosDeSonda(variables.length);
+  for (const punto of combinaciones) {
+    let esperado;
+    try {
+      esperado = referencia(punto);
+    } catch (e3) {
+      esperado = NaN;
+    }
+    let obtenido;
+    try {
+      obtenido = candidata(...punto);
+    } catch (e3) {
+      return null;
+    }
+    if (!equivalentes(esperado, obtenido))
+      return null;
+  }
+  return candidata;
+}
+function puntosDeSonda(n) {
+  if (n <= 0)
+    return [[]];
+  if (n === 1)
+    return PUNTOS_SONDA.map((v) => [v]);
+  const puntos = [];
+  for (const v of PUNTOS_SONDA)
+    puntos.push(new Array(n).fill(v));
+  for (let d = 1; d < PUNTOS_SONDA.length; d++) {
+    const fila = [];
+    for (let k = 0; k < n; k++)
+      fila.push(PUNTOS_SONDA[d * (k + 1) % PUNTOS_SONDA.length]);
+    puntos.push(fila);
+  }
+  return puntos;
+}
+
 // src/evaluador.ts
 function compilarExpresion(expr) {
   const compilada = parse2(expr).compile();
@@ -46299,7 +46544,17 @@ function compilarExpresion(expr) {
 }
 function compilarFuncion(expr, varName) {
   const evaluar = compilarExpresion(expr);
+  const nativa = compilarNativo(expr, [varName], ([v]) => evaluar({ [varName]: v }));
+  if (nativa)
+    return (v) => nativa(v);
   return (v) => evaluar({ [varName]: v });
+}
+function compilarCampo(expr, varX = "x", varY = "y") {
+  const evaluar = compilarExpresion(expr);
+  const nativa = compilarNativo(expr, [varX, varY], ([x, y]) => evaluar({ [varX]: x, [varY]: y }));
+  if (nativa)
+    return (x, y) => nativa(x, y);
+  return (x, y) => evaluar({ [varX]: x, [varY]: y });
 }
 
 // src/formatoExpr.ts
@@ -47935,8 +48190,8 @@ var FUNCIONES = /* @__PURE__ */ new Set([
   // coletilla `, R≥0` (latex.ts). Lo graficado es siempre la original: el despeje es presentación.
   "dom"
 ]);
-var CONSTANTES = /* @__PURE__ */ new Set(["pi", "theta", "tau", "phi", "Infinity", "NaN"]);
-var ATOMOS = [...FUNCIONES, ...CONSTANTES].sort((a, b) => b.length - a.length);
+var CONSTANTES2 = /* @__PURE__ */ new Set(["pi", "theta", "tau", "phi", "Infinity", "NaN"]);
+var ATOMOS = [...FUNCIONES, ...CONSTANTES2].sort((a, b) => b.length - a.length);
 var esDigito = (c) => c >= "0" && c <= "9";
 var esLetra = (c) => /[a-zA-Z_]/.test(c);
 var esLetraODigito = (c) => /[a-zA-Z0-9_]/.test(c);
@@ -50656,9 +50911,223 @@ var Navegacion = class {
   }
 };
 
+// src/motor/tracing/explicit/envolventeAltaFrecuencia.ts
+var MUESTRAS_DETECCION = 8;
+var PASO_COLUMNAS = 3;
+var MUESTRAS_ENVOLVENTE = 64;
+var RETORNOS_MIN = 4;
+var REMUESTREO_POLO = 4;
+var RAZON_POLO = 20;
+var RAZON_ILIMITADA = 20;
+var ALTURA_MIN_PX = 2;
+var HUECO_MIN_COLUMNAS = 8;
+var ISLA_MIN_COLUMNAS = 3;
+function analizarFrecuencia(f, vp) {
+  const cols = Math.max(1, Math.floor(vp.anchoPx));
+  const x0 = vp.domX[0];
+  const anchoMundo = vp.domX[1] - x0;
+  const dx = anchoMundo / cols;
+  const altoMundo = vp.domY[1] - vp.domY[0];
+  const pxAlto = altoMundo / Math.max(1, vp.altoPx);
+  const alturaMinMundo = ALTURA_MIN_PX * pxAlto;
+  const denso = new Uint8Array(cols);
+  let alguno = false;
+  const absGlobal = [];
+  for (let c = 0; c < cols; c += PASO_COLUMNAS) {
+    const xa = x0 + c * dx;
+    const vs = [];
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let k = 0; k <= MUESTRAS_DETECCION; k++) {
+      const v = f.eval(xa + k / MUESTRAS_DETECCION * dx);
+      vs.push(v);
+      if (Number.isFinite(v)) {
+        if (v < lo)
+          lo = v;
+        if (v > hi)
+          hi = v;
+        absGlobal.push(Math.abs(v));
+      }
+    }
+    if (lo > hi || hi - lo < alturaMinMundo)
+      continue;
+    let retornos = 0;
+    let vPrev = NaN;
+    let dirPrev = 0;
+    for (const v of vs) {
+      if (!Number.isFinite(v)) {
+        vPrev = NaN;
+        dirPrev = 0;
+        continue;
+      }
+      if (Number.isFinite(vPrev)) {
+        const dir = v > vPrev ? 1 : v < vPrev ? -1 : 0;
+        if (dir !== 0 && dirPrev !== 0 && dir !== dirPrev)
+          retornos++;
+        if (dir !== 0)
+          dirPrev = dir;
+      }
+      vPrev = v;
+    }
+    if (retornos < RETORNOS_MIN)
+      continue;
+    if (divergeEnColumna(f, xa, dx))
+      continue;
+    denso[c] = 1;
+    alguno = true;
+  }
+  const sinRegimen = { hayRegimen: false, resolubles: [{ a: vp.domX[0], b: vp.domX[1] }], densos: [] };
+  if (!alguno)
+    return sinRegimen;
+  absGlobal.sort((a, b) => a - b);
+  const medianaGlobal = absGlobal[absGlobal.length >> 1];
+  const maxGlobal = absGlobal[absGlobal.length - 1];
+  if (maxGlobal > RAZON_ILIMITADA * Math.max(medianaGlobal, 1e-300))
+    return sinRegimen;
+  if (PASO_COLUMNAS > 1) {
+    for (let c = 0; c < cols; c += PASO_COLUMNAS)
+      if (denso[c] === 1)
+        for (let k = c + 1; k < Math.min(cols, c + PASO_COLUMNAS); k++)
+          denso[k] = 1;
+  }
+  limpiarRachas(denso, 1, ISLA_MIN_COLUMNAS);
+  limpiarRachas(denso, 0, HUECO_MIN_COLUMNAS);
+  if (!denso.some((v) => v === 1))
+    return sinRegimen;
+  return {
+    hayRegimen: true,
+    densos: tramosDe(denso, 1, x0, dx),
+    resolubles: tramosDe(denso, 0, x0, dx)
+  };
+}
+function divergeEnColumna(f, xa, dx) {
+  const N = MUESTRAS_DETECCION * REMUESTREO_POLO;
+  const abs3 = [];
+  for (let k = 0; k <= N; k++) {
+    const v = f.eval(xa + k / N * dx);
+    if (!Number.isFinite(v))
+      return true;
+    abs3.push(Math.abs(v));
+  }
+  if (abs3.length === 0)
+    return false;
+  abs3.sort((a, b) => a - b);
+  const mediana = abs3[abs3.length >> 1];
+  const maximo = abs3[abs3.length - 1];
+  return maximo > RAZON_POLO * Math.max(mediana, 1e-300);
+}
+function limpiarRachas(mascara, valor, minimo) {
+  let ini = -1;
+  for (let c = 0; c <= mascara.length; c++) {
+    const dentro = c < mascara.length && mascara[c] === valor;
+    if (dentro && ini < 0)
+      ini = c;
+    else if (!dentro && ini >= 0) {
+      const bordeIzq = ini === 0;
+      const bordeDer = c === mascara.length;
+      if (!bordeIzq && !bordeDer && c - ini < minimo)
+        for (let k = ini; k < c; k++)
+          mascara[k] = valor === 1 ? 0 : 1;
+      ini = -1;
+    }
+  }
+}
+function tramosDe(mascara, valor, x0, dx) {
+  const out = [];
+  let ini = -1;
+  for (let c = 0; c <= mascara.length; c++) {
+    const dentro = c < mascara.length && mascara[c] === valor;
+    if (dentro && ini < 0)
+      ini = c;
+    else if (!dentro && ini >= 0) {
+      out.push({ a: x0 + ini * dx, b: x0 + c * dx });
+      ini = -1;
+    }
+  }
+  return out;
+}
+function envolvente(f, vp, tramo, objetoId, yBot, yTop) {
+  const anchoMundo = vp.domX[1] - vp.domX[0];
+  const dxCol = anchoMundo / Math.max(1, Math.floor(vp.anchoPx));
+  const cols = Math.max(1, Math.round((tramo.b - tramo.a) / dxCol));
+  const puntos = [];
+  let arriba = false;
+  for (let c = 0; c < cols; c++) {
+    const xa = tramo.a + c * dxCol;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let k = 0; k <= MUESTRAS_ENVOLVENTE; k++) {
+      const v = f.eval(xa + k / MUESTRAS_ENVOLVENTE * dxCol);
+      if (!Number.isFinite(v))
+        continue;
+      if (v < lo)
+        lo = v;
+      if (v > hi)
+        hi = v;
+    }
+    if (lo > hi)
+      continue;
+    const loC = Math.max(yBot, Math.min(yTop, lo));
+    const hiC = Math.max(yBot, Math.min(yTop, hi));
+    const xm = xa + dxCol / 2;
+    if (arriba)
+      puntos.push(xm, hiC, xm, loC);
+    else
+      puntos.push(xm, loC, xm, hiC);
+    arriba = !arriba;
+  }
+  if (puntos.length < 4)
+    return null;
+  return {
+    puntos: Float64Array.from(puntos),
+    cerrada: false,
+    calidad: "incierta",
+    objetoId
+  };
+}
+
 // src/motor/tracing/explicit/TrazadorExplicitoAdaptativo.ts
 var TrazadorExplicitoAdaptativo = class {
+  /**
+   * Trazado de y=f(x). Antes de muestrear, se comprueba si hay tramos donde la curva
+   * oscila más rápido que un píxel (`analizarFrecuencia`): ahí ningún muestreo la resuelve
+   * y lo que se dibujaba era un subconjunto ARBITRARIO de una banda densa, distinto en cada
+   * pasada → el parpadeo. Esos tramos se representan como ENVOLVENTE estable y el resto se
+   * traza con el sampler adaptativo de siempre, tramo a tramo.
+   *
+   * CAMINO NORMAL INTACTO: si no hay ningún tramo denso —todas las curvas del repertorio
+   * salvo las patológicas— se llama a `trazarIntervalo` con el viewport tal cual y el
+   * resultado es idéntico, byte a byte, al de antes de existir este análisis.
+   */
   trazar(f, objetoId, viewport, tolerancia) {
+    const analisis = analizarFrecuencia(f, viewport);
+    if (!analisis.hayRegimen)
+      return this.trazarIntervalo(f, objetoId, viewport, tolerancia);
+    const Hmundo = viewport.domY[1] - viewport.domY[0];
+    const yTop = viewport.domY[1] + Hmundo;
+    const yBot = viewport.domY[0] - Hmundo;
+    const ramas = [];
+    const asintotas = [];
+    const anchoTotal = viewport.domX[1] - viewport.domX[0];
+    for (const tr of analisis.resolubles) {
+      if (!(tr.b > tr.a))
+        continue;
+      const anchoPx = Math.max(1, viewport.anchoPx * (tr.b - tr.a) / anchoTotal);
+      const sub2 = crearViewport([tr.a, tr.b], viewport.domY, anchoPx, viewport.altoPx, viewport.dpr);
+      const r = this.trazarIntervalo(f, objetoId, sub2, tolerancia);
+      for (const rama of r.ramas)
+        ramas.push(rama);
+      for (const a of r.asintotas)
+        asintotas.push(a);
+    }
+    for (const tr of analisis.densos) {
+      const banda = envolvente(f, viewport, tr, objetoId, yBot, yTop);
+      if (banda)
+        ramas.push(banda);
+    }
+    return { ramas, asintotas };
+  }
+  trazarIntervalo(f, objetoId, viewport, tolerancia) {
     const evalX = (x) => f.eval(x);
     const domX = viewport.domX;
     const domY = viewport.domY;
@@ -50891,6 +51360,9 @@ var MAX_EVALS_FINAL = 6e5;
 var MAX_EVALS_INTERACTIVO = 18e4;
 var COS_GIRO_MAX = 0.7;
 var COS_GIRO_RECTO = 0.5;
+var GIRO_SUAVE_GRADOS_FINAL = 3;
+var GIRO_SUAVE_GRADOS_INTERACTIVO = 4;
+var PASO_MIN_SUAVE_PX = 1.5;
 var FWD_MIN = 0.2;
 var FLECHA_MAX = 0.25;
 var CUERDA_PX_VISUAL = 0.75;
@@ -50917,12 +51389,21 @@ var TrazadorContinuacion = class {
     /** Suelo visual del test de cuerda EN MUNDO (≈ CUERDA_PX_VISUAL px del viewport en curso).
      *  Estado por-trazado, fijado al entrar en `trazar` (las llamadas son secuenciales). */
     this.dVisual = 0;
+    /** Coseno del giro admitido por suavidad, y suelo de paso (mundo) bajo el cual el criterio
+     *  se apaga. Estado por-trazado, como `dVisual` (las llamadas son secuenciales). */
+    this.cosGiroSuave = -1;
+    this.pasoMinSuave = 0;
   }
   trazar(F, objetoId, semillas, _singularidades, viewport, tolerancia) {
     const anchoMundo = viewport.domX[1] - viewport.domX[0];
     this.dVisual = anchoMundo / Math.max(1, viewport.anchoPx) * CUERDA_PX_VISUAL;
     const h = anchoMundo * 1e-5 || 1e-9;
     const pasoPx = tolerancia.pasada === "interactiva" ? PASO_PX_INTERACTIVO : PASO_PX_FINAL;
+    const porPx = anchoMundo / Math.max(1, viewport.anchoPx);
+    this.cosGiroSuave = Math.cos(
+      (tolerancia.pasada === "interactiva" ? GIRO_SUAVE_GRADOS_INTERACTIVO : GIRO_SUAVE_GRADOS_FINAL) * Math.PI / 180
+    );
+    this.pasoMinSuave = porPx * PASO_MIN_SUAVE_PX;
     const escala = escalaCurva(semillas);
     const porPantalla = Math.max(1e-12, anchoMundo / viewport.anchoPx * pasoPx);
     const hMax = Number.isFinite(escala) ? Math.min(porPantalla, Math.max(porPantalla / DIVISOR_SUELO_PASO, escala / PASOS_MINIMOS_CURVA)) : porPantalla;
@@ -51182,6 +51663,7 @@ var TrazadorContinuacion = class {
     }
     const T = { x: tx, y: ty };
     let hh = h;
+    let respaldo = null;
     for (let intento = 0; intento < 9; intento++) {
       const pc = this.corregir(F, grad, { x: p.x + T.x * hh, y: p.y + T.y * hh }, hh);
       if (pc) {
@@ -51192,7 +51674,11 @@ var TrazadorContinuacion = class {
           const giro = ux * dirAnt.x + uy * dirAnt.y;
           const fwd = ux * T.x + uy * T.y;
           if (fwd > FWD_MIN && giro > COS_GIRO_MAX && this.cuerdaSobreCurva(F, p, pc, gp)) {
-            return { punto: pc, dir: { x: ux, y: uy }, h: hh };
+            const av = { punto: pc, dir: { x: ux, y: uy }, h: hh };
+            if (giro >= this.cosGiroSuave || L <= this.pasoMinSuave)
+              return av;
+            if (!respaldo)
+              respaldo = av;
           }
         }
       }
@@ -51200,7 +51686,7 @@ var TrazadorContinuacion = class {
       if (hh < hMin)
         break;
     }
-    return null;
+    return respaldo;
   }
   // Cruce de una singularidad en LÍNEA RECTA: extrapola por dirAnt y reproyecta. De
   // hMax hacia abajo: la primera distancia que cae en una continuación casi recta hacia
@@ -51366,6 +51852,9 @@ var SALTO_PX_FINAL = 10;
 var SALTO_PX_INTERACTIVO = 16;
 var MAX_EVALS_FINAL2 = 3e5;
 var MAX_EVALS_INTERACTIVO2 = 1e5;
+var GIRO_MAX_GRADOS_FINAL = 3;
+var GIRO_MAX_GRADOS_INTERACTIVO = 4;
+var CUERDA_MIN_GIRO_PX = 1.5;
 var TrazadorParametricoAdaptativo = class {
   trazar(p, objetoId, viewport, tolerancia) {
     const [t0, t1] = p.dominio;
@@ -51377,6 +51866,7 @@ var TrazadorParametricoAdaptativo = class {
     const SALTO_PX = interactivo ? SALTO_PX_INTERACTIVO : SALTO_PX_FINAL;
     const desvBase = Number.isFinite(tolerancia.desviacionMaxPx) && tolerancia.desviacionMaxPx > 0 ? tolerancia.desviacionMaxPx : 0.5;
     const DESV = Math.max(0.05, desvBase) * (interactivo ? 2 : 1);
+    const GIRO_MAX = (interactivo ? GIRO_MAX_GRADOS_INTERACTIVO : GIRO_MAX_GRADOS_FINAL) * Math.PI / 180;
     const SALTO_DISC = Math.max(viewport.anchoPx, viewport.altoPx) * 0.5;
     const ax = viewport.anchoPx / (viewport.domX[1] - viewport.domX[0]);
     const ay = viewport.altoPx / (viewport.domY[1] - viewport.domY[0]);
@@ -51420,7 +51910,15 @@ var TrazadorParametricoAdaptativo = class {
           const M = ev(tm);
           if (M.util) {
             const dev = cuerda < 1e-9 ? Math.hypot(M.sx - A2.sx, M.sy - A2.sy) : Math.abs(dxs * (A2.sy - M.sy) - (A2.sx - M.sx) * dys) / cuerda;
-            if (dev > DESV || cuerda > SALTO_PX) {
+            let giro = 0;
+            if (cuerda > CUERDA_MIN_GIRO_PX) {
+              const ux = M.sx - A2.sx, uy = M.sy - A2.sy;
+              const vx = B.sx - M.sx, vy = B.sy - M.sy;
+              const lu = Math.hypot(ux, uy), lv = Math.hypot(vx, vy);
+              if (lu > 1e-9 && lv > 1e-9)
+                giro = Math.abs(Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy));
+            }
+            if (dev > DESV || cuerda > SALTO_PX || giro * 2 > GIRO_MAX) {
               tramo(ta, A2, tm, M, prof + 1);
               tramo(tm, M, tb, B, prof + 1);
               return;
@@ -51451,7 +51949,10 @@ var TrazadorParametricoAdaptativo = class {
           } else
             hi = (lo + hi) / 2;
         }
-        push(ultimo);
+        if (lo > ta && prof < PROF_MAX3)
+          tramo(ta, A2, lo, ultimo, prof + 1);
+        else
+          push(ultimo);
         flush();
         corte = true;
         return;
@@ -51470,7 +51971,10 @@ var TrazadorParametricoAdaptativo = class {
         }
         corte = true;
         push(ultimo);
-        push(B);
+        if (lo < tb && prof < PROF_MAX3)
+          tramo(lo, ultimo, tb, B, prof + 1);
+        else
+          push(B);
         return;
       }
       if (seg.length > 0) {
@@ -51714,10 +52218,10 @@ function crearFuncionReal(exprNormalizada) {
 // src/motor/fields/campoEscalarMathjs.ts
 function crearCampoEscalar(exprDiferencia) {
   try {
-    const g = compilarExpresion(exprDiferencia);
+    const g = compilarCampo(exprDiferencia);
     return {
       eval: (x, y) => {
-        const v = g({ x, y });
+        const v = g(x, y);
         return typeof v === "number" ? v : NaN;
       }
     };
@@ -52459,7 +52963,7 @@ var ProveedorImplicitoSeparable = class {
           ramas.push(sub2);
       for (const a of r.asintotas)
         asintotas.push(a);
-      for (const rama of ramasJuntoAPolos(f, this.objetoId, polos, viewport))
+      for (const rama of ramasJuntoAPolos(f, this.objetoId, polos, viewport, r.ramas))
         ramas.push(rama);
     }
     const esFinal = tolerancia.pasada === "final";
@@ -52472,13 +52976,14 @@ var ProveedorImplicitoSeparable = class {
     };
   }
 };
-function ramasJuntoAPolos(f, objetoId, polos, vp) {
+function ramasJuntoAPolos(f, objetoId, polos, vp, yaTrazadas) {
   if (polos.length === 0)
     return [];
   const H = vp.domY[1] - vp.domY[0];
   const yTop = vp.domY[1] + H, yBot = vp.domY[0] - H;
   const bandaAbs = Math.max(Math.abs(yTop), Math.abs(yBot));
   const out = [];
+  const xCubiertas = xVisiblesOrdenadas(yaTrazadas, bandaAbs);
   for (let i2 = 0; i2 < polos.length; i2++) {
     const px = polos[i2];
     const alcance = Math.min(
@@ -52492,6 +52997,8 @@ function ramasJuntoAPolos(f, objetoId, polos, vp) {
     for (const s of [1, -1]) {
       const v0 = f.eval(px + s * dMin);
       if (!Number.isFinite(v0) || Math.abs(v0) <= bandaAbs)
+        continue;
+      if (hayCobertura(xCubiertas, s === 1 ? px : px - alcance, s === 1 ? px + alcance : px))
         continue;
       const pts = [];
       let prevX = px + s * dMin, prevY = v0;
@@ -52540,6 +53047,32 @@ function ramasJuntoAPolos(f, objetoId, polos, vp) {
     }
   }
   return out;
+}
+function xVisiblesOrdenadas(ramas, bandaAbs) {
+  let n = 0;
+  for (const r of ramas)
+    for (let k = 1; k < r.puntos.length; k += 2)
+      if (Math.abs(r.puntos[k]) <= bandaAbs)
+        n++;
+  const xs = new Float64Array(n);
+  let i2 = 0;
+  for (const r of ramas)
+    for (let k = 0; k < r.puntos.length; k += 2)
+      if (Math.abs(r.puntos[k + 1]) <= bandaAbs)
+        xs[i2++] = r.puntos[k];
+  xs.sort();
+  return xs;
+}
+function hayCobertura(xs, lo, hi) {
+  let a = 0, b = xs.length;
+  while (a < b) {
+    const m = a + b >> 1;
+    if (xs[m] > lo)
+      b = m;
+    else
+      a = m + 1;
+  }
+  return a < xs.length && xs[a] < hi;
 }
 function partirEnPolos(rama, polos, yTop, yBot) {
   const t2 = rama.parametro;

@@ -832,6 +832,36 @@ describe("Polos y monomios: astillas junto a los polos (regresión zoom-out)", (
     assert(extendidos >= esperados - 2, "los candidatos extendidos están verificados");
   });
 
+  test("la escalera de astillas NO duplica lo que el muestreo ya resolvió (tan(y)=x)", () => {
+    // `ramasJuntoAPolos` rescata astillas ESCONDIDAS junto a un polo (dominio más
+    // estrecho que el paso de muestreo). Su sondeo —f finita y fuera de banda a 1e-9 del
+    // polo— lo cumple TAMBIÉN tan(x), que no esconde nada: el muestreo regular ya la
+    // resuelve. Sin la guarda de cobertura, la escalera re-emitía esa misma curva con 6-7
+    // puntos espaciados geométricamente y sus cuerdas RECTAS se veían cruzando las curvas
+    // junto a cada asíntota (8 ramas espurias sobre 5 reales en la vista por defecto).
+    const prov = crearProveedor(construirObjeto("tan(y)=x", "eq"));
+    const vp = crearViewport([-11.5, 11.5], [-6.5, 6.5], 900, 508, 1);
+    const g = prov.geometria(vp, TOL_FINAL);
+    // tan tiene 4 polos en [−6.5, 6.5] (±π/2, ±3π/2) ⇒ exactamente 5 arcos.
+    igual(g.ramas.length, 5, "5 arcos, sin duplicados groseros");
+    // Y ninguna rama de "pocos puntos": las espurias tenían 6-7 frente a los cientos
+    // de un arco real. Es la firma del duplicado, independiente del recuento.
+    const cortas = g.ramas.filter((r) => r.puntos.length / 2 < 20).length;
+    igual(cortas, 0, "ninguna rama de resolución grosera");
+  });
+
+  test("…pero la astilla REAL escondida se sigue rescatando (x²+x+|y|+tan x=C)", () => {
+    // Contrapartida de la prueba anterior: la guarda no debe apagar el rescate cuando la
+    // astilla sí está escondida (el muestreo regular ve NaN a ambos lados y no emite nada).
+    const prov = crearProveedor(construirObjeto("x^2+x+abs(y)+tan(x)=2*pi+3", "eq"));
+    for (const s of [20, 60]) {
+      const vp = crearViewport([-s * 1.19, s * 1.19], [-s, s], 900, 508, 1);
+      const g = prov.geometria(vp, TOL_FINAL);
+      const astillas = g.ramas.filter((r) => r.puntos.length / 2 < 20).length;
+      assert(astillas > 0, `a zoom ${s} siguen apareciendo astillas (${astillas})`);
+    }
+  });
+
   test("polos NO periódicos: la extensión no inventa nada (tan(x²))", () => {
     const F: CampoEscalar = { eval: (x, y) => Math.tan(x * x) + y };
     const polos = localizarPolos(F, 1, 10);
@@ -901,6 +931,58 @@ describe("Rasterizado por signo (marching squares) para campos de alta frecuenci
     const g = crearProveedor(construirObjeto(src, "z"))
       .geometria(crearViewport([-3, 3], [-2, 2], 560, 330, 1), TOLF);
     assert(g.ramas.length < 20, `pocas ramas (continuación): ${g.ramas.length}`);
+  });
+
+  test("curvatura acotada: ninguna implícita se dibuja poligonal (giro ≤ 5° por vértice)", () => {
+    // El trazador por continuación avanzaba con paso de arco FIJO (4,5 px interactiva / 2,5 px
+    // final). Su `COS_GIRO_MAX` es un criterio de VALIDEZ (~45°: rechaza pasos absurdos), no de
+    // suavidad, así que no acotaba nada de lo que se ve: medido, 17,7° por vértice en el folium
+    // y 6,5–7,8° en circunferencia y elipse durante el gesto. Es el mismo defecto que tenía el
+    // trazador paramétrico, y por eso se comprueba igual: por ÁNGULO, no por desviación (la
+    // desviación es una sagita y no detecta facetas — daba ≤0,74 px con la curva poligonal).
+    // Solo cuentan quiebres entre segmentos > 4 px: entre segmentos cortos un giro grande es
+    // una cúspide REAL (la astroide, el nodo de la lemniscata).
+    const giroMax = (ramas: readonly Rama[], vp: ReturnType<typeof crearViewport>): number => {
+      const ax = vp.anchoPx / (vp.domX[1] - vp.domX[0]);
+      const ay = vp.altoPx / (vp.domY[1] - vp.domY[0]);
+      const SX = (x: number) => (x - vp.domX[0]) * ax;
+      const SY = (y: number) => vp.altoPx - (y - vp.domY[0]) * ay;
+      let peor = 0;
+      for (const r of ramas) {
+        const P: number[][] = [];
+        for (let k = 0; k + 1 < r.puntos.length; k += 2) {
+          const X = SX(r.puntos[k]), Y = SY(r.puntos[k + 1]);
+          if (Number.isFinite(X) && Number.isFinite(Y))
+            P.push([X, Y, X >= -5 && X <= vp.anchoPx + 5 && Y >= -5 && Y <= vp.altoPx + 5 ? 1 : 0]);
+        }
+        for (let i = 1; i + 1 < P.length; i++) {
+          if (!P[i - 1][2] || !P[i][2] || !P[i + 1][2]) continue;
+          const ux = P[i][0] - P[i - 1][0], uy = P[i][1] - P[i - 1][1];
+          const vx = P[i + 1][0] - P[i][0], vy = P[i + 1][1] - P[i][1];
+          const l1 = Math.hypot(ux, uy), l2 = Math.hypot(vx, vy);
+          if (l1 <= 4 || l2 <= 4) continue;
+          let c = (ux * vx + uy * vy) / (l1 * l2);
+          c = c < -1 ? -1 : c > 1 ? 1 : c;
+          const a = (Math.acos(c) * 180) / Math.PI;
+          if (a > peor) peor = a;
+        }
+      }
+      return peor;
+    };
+    const TOL_I: Tolerancia = { desviacionMaxPx: 0.5, pasoMaxPx: 2, pasada: "interactiva" };
+    for (const src of [
+      "x^2+y^2=4", "x^2/4+y^2=1", "x^3+y^3=3*x*y",
+      "(x^2+y^2)^2=4*(x^2-y^2)", "sin(x)+sin(y)=1",
+    ]) {
+      const prov = crearProveedor(construirObjeto(src, "z"));
+      for (const semiY of [7, 3, 1]) {
+        const vp = crearViewport([-semiY * 768 / 261, semiY * 768 / 261], [-semiY, semiY], 768, 261, 1);
+        for (const tol of [TOL_I, TOLF]) {
+          const g = giroMax(prov.geometria(vp, tol).ramas, vp);
+          assert(!(g > 5), `${src} semiY=${semiY} ${tol.pasada}: giro ${g.toFixed(2)}° (debe ser ≤5)`);
+        }
+      }
+    }
   });
 
   test("las curvas SUAVES no se rasterizan: delegan a la continuación (lazos, no miles de hebras)", () => {

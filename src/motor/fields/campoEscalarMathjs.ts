@@ -9,15 +9,19 @@
 // oráculo explícito. No provee gradiente analítico: el descubridor y el trazador
 // usan diferencias finitas (el contrato lo permite).
 
-import { compilarExpresion } from "../../evaluador";
+import { compilarCampo } from "../../evaluador";
 import type { CampoEscalar } from "../contracts";
 
 export function crearCampoEscalar(exprDiferencia: string): CampoEscalar {
   try {
-    const g = compilarExpresion(exprDiferencia);
+    // `compilarCampo` intenta primero el compilador NATIVO (ver compiladorNativo.ts) y cae
+    // a mathjs si no puede garantizar la equivalencia. Aquí importa especialmente: el
+    // descubrimiento por rejilla, la continuación (4 evaluaciones por gradiente), la sonda
+    // de alta frecuencia y el marching squares se apoyan TODOS en este oráculo.
+    const g = compilarCampo(exprDiferencia);
     return {
       eval: (x: number, y: number): number => {
-        const v = g({ x, y });
+        const v = g(x, y);
         return typeof v === "number" ? v : NaN;
       },
     };

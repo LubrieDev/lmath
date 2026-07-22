@@ -48,6 +48,15 @@ const SALTO_PX_FINAL = 10;       // cuerda en pantalla que fuerza subdivisión (
 const SALTO_PX_INTERACTIVO = 16;
 const MAX_EVALS_FINAL = 300_000;       // cota determinista (polares/paramétricas densas)
 const MAX_EVALS_INTERACTIVO = 100_000;
+// Giro máximo admitido en un vértice, en grados. Ver `GIRO_MAX` abajo: la desviación
+// (sagita) NO acota la curvatura, y es la curvatura lo que el ojo lee como "faceta".
+const GIRO_MAX_GRADOS_FINAL = 3;
+const GIRO_MAX_GRADOS_INTERACTIVO = 4;
+// Por debajo de esta cuerda en píxeles el criterio de giro se apaga: un quiebre más
+// corto que esto queda dentro del propio grosor del trazo, no se ve, y seguir
+// subdividiendo por ángulo no terminaría nunca en una cúspide REAL (cardioide en el
+// origen, r=0 de una rosa), donde el giro es genuino y no un artefacto del muestreo.
+const CUERDA_MIN_GIRO_PX = 1.5;
 
 export class TrazadorParametricoAdaptativo implements TrazadorParametrico {
   trazar(
@@ -70,6 +79,17 @@ export class TrazadorParametricoAdaptativo implements TrazadorParametrico {
         ? tolerancia.desviacionMaxPx
         : 0.5;
     const DESV = Math.max(0.05, desvBase) * (interactivo ? 2 : 1);
+    // Criterio de GIRO (curvatura), independiente de la desviación. Hace falta porque la
+    // desviación es una SAGITA y escala con el cuadrado de la cuerda: en un arco de radio R
+    // en pantalla, un giro θ deja una sagita de solo R(1−cos(θ/2)), así que con la curva
+    // pequeña en pantalla un vértice puede girar 36° y aun así pasar el umbral de 1 px.
+    // Medido en `r=sin(θ/10)`: los giros salían cuantizados en 36/18/9/4,5° —potencias de dos,
+    // es decir, la polilínea del muestreo uniforme SIN refinar ni una vez— con un giro medio
+    // por vértice de 19,7° (interactiva) y 9,9° (final). Eso es un polígono, y se hace visible
+    // al acercarse porque los segmentos crecen hasta el tope de `SALTO_PX` (16 px) mientras el
+    // giro se mantiene: aristas largas y anguladas. Acotar el giro es lo que faltaba.
+    const GIRO_MAX =
+      ((interactivo ? GIRO_MAX_GRADOS_INTERACTIVO : GIRO_MAX_GRADOS_FINAL) * Math.PI) / 180;
     // Salto que se considera DISCONTINUIDAD si no se reduce al subdividir.
     const SALTO_DISC = Math.max(viewport.anchoPx, viewport.altoPx) * 0.5;
 
@@ -121,7 +141,21 @@ export class TrazadorParametricoAdaptativo implements TrazadorParametrico {
             const dev = cuerda < 1e-9
               ? Math.hypot(M.sx - A.sx, M.sy - A.sy)
               : Math.abs(dxs * (A.sy - M.sy) - (A.sx - M.sx) * dys) / cuerda;
-            if (dev > DESV || cuerda > SALTO_PX) {
+            // Giro en M entre las dos semicuerdas A→M y M→B: es exactamente el ángulo que
+            // quedaría dibujado en ese vértice si este tramo se emitiera sin refinar más.
+            let giro = 0;
+            if (cuerda > CUERDA_MIN_GIRO_PX) {
+              const ux = M.sx - A.sx, uy = M.sy - A.sy;
+              const vx = B.sx - M.sx, vy = B.sy - M.sy;
+              const lu = Math.hypot(ux, uy), lv = Math.hypot(vx, vy);
+              if (lu > 1e-9 && lv > 1e-9)
+                giro = Math.abs(Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy));
+            }
+            // ×2: si el tramo se acepta, M se DESCARTA y se emite la cuerda A→B entera, así
+            // que el giro que acaba dibujado en la unión con el tramo vecino es ~el doble del
+            // medido aquí (cada lado aporta su mitad). Comparar `giro` a secas dejaba pasar
+            // 11,6° con un umbral nominal de 6°.
+            if (dev > DESV || cuerda > SALTO_PX || giro * 2 > GIRO_MAX) {
               tramo(ta, A, tm, M, prof + 1);
               tramo(tm, M, tb, B, prof + 1);
               return;
@@ -140,16 +174,30 @@ export class TrazadorParametricoAdaptativo implements TrazadorParametrico {
       }
 
       // A útil, B fuera (hueco de dominio o fuera de la vista) → bisecar el borde y cerrar.
+      //
+      // El arco VISIBLE que va de A al borde hay que trazarlo, no saltárselo. Antes se
+      // emitía únicamente el punto del borde, así que todo lo que hubiera entre A y él se
+      // dibujaba como UNA RECTA: en cuanto el zoom deja el trozo visible dentro de un solo
+      // paso del muestreo inicial en t, la curva entera se convertía en un puñado de
+      // aristas. Medido en `r=sin(θ/10)` a semiY=0.005: 7 puntos y 37,6 px de desviación en
+      // la pasada interactiva (frente a 519 puntos y 0,07 px en la final) — que es
+      // exactamente el síntoma "al hacer zoom se ve poligonal y al soltar se suaviza",
+      // porque la final, con el doble de muestras iniciales, aún alcanzaba a resolverlo.
+      // Refinando [ta, borde] con la lógica normal, el arco cumple la tolerancia en píxeles
+      // en AMBAS pasadas.
       if (A.util && !B.util) {
         let lo = ta, hi = tb, ultimo = A;
         for (let k = 0; k < 24; k++) {
           const M = ev((lo + hi) / 2);
           if (M.util) { lo = (lo + hi) / 2; ultimo = M; } else hi = (lo + hi) / 2;
         }
-        push(ultimo); flush(); corte = true;
+        if (lo > ta && prof < PROF_MAX) tramo(ta, A, lo, ultimo, prof + 1);
+        else push(ultimo);
+        flush(); corte = true;
         return;
       }
-      // A fuera, B útil → bisecar el borde e iniciar nueva rama.
+      // A fuera, B útil → bisecar el borde e iniciar nueva rama. Simétrico del anterior: el
+      // arco entre el borde y B también se refina en vez de emitirse como una sola recta.
       if (!A.util && B.util) {
         if (seg.length > 0) flush();
         let lo = tb, hi = ta, ultimo = B;
@@ -158,7 +206,9 @@ export class TrazadorParametricoAdaptativo implements TrazadorParametrico {
           if (M.util) { lo = (lo + hi) / 2; ultimo = M; } else hi = (lo + hi) / 2;
         }
         corte = true;
-        push(ultimo); push(B);
+        push(ultimo);
+        if (lo < tb && prof < PROF_MAX) tramo(lo, ultimo, tb, B, prof + 1);
+        else push(B);
         return;
       }
       // Ambos fuera → hueco; cierra lo que hubiera.

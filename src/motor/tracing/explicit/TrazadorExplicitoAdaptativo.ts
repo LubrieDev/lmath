@@ -28,9 +28,57 @@ import type {
   Tolerancia,
   Rama,
 } from "../../contracts";
+import { analizarFrecuencia, envolvente } from "./envolventeAltaFrecuencia";
+import { crearViewport } from "../../scene/viewport-utils";
 
 export class TrazadorExplicitoAdaptativo implements TrazadorExplicito {
+  /**
+   * Trazado de y=f(x). Antes de muestrear, se comprueba si hay tramos donde la curva
+   * oscila más rápido que un píxel (`analizarFrecuencia`): ahí ningún muestreo la resuelve
+   * y lo que se dibujaba era un subconjunto ARBITRARIO de una banda densa, distinto en cada
+   * pasada → el parpadeo. Esos tramos se representan como ENVOLVENTE estable y el resto se
+   * traza con el sampler adaptativo de siempre, tramo a tramo.
+   *
+   * CAMINO NORMAL INTACTO: si no hay ningún tramo denso —todas las curvas del repertorio
+   * salvo las patológicas— se llama a `trazarIntervalo` con el viewport tal cual y el
+   * resultado es idéntico, byte a byte, al de antes de existir este análisis.
+   */
   trazar(
+    f: FuncionReal,
+    objetoId: string,
+    viewport: Viewport,
+    tolerancia: Tolerancia
+  ): ResultadoTrazadoExplicito {
+    const analisis = analizarFrecuencia(f, viewport);
+    if (!analisis.hayRegimen) return this.trazarIntervalo(f, objetoId, viewport, tolerancia);
+
+    const Hmundo = viewport.domY[1] - viewport.domY[0];
+    const yTop = viewport.domY[1] + Hmundo;
+    const yBot = viewport.domY[0] - Hmundo;
+    const ramas: Rama[] = [];
+    const asintotas: import("../../contracts").Asintota[] = [];
+
+    // Tramos resolubles: el sampler de siempre, sobre un sub-viewport. El ancho en píxeles
+    // se escala con el tramo para que la densidad de muestreo y el umbral de "subpíxel"
+    // sigan significando lo mismo (ambos se derivan de domX/anchoPx).
+    const anchoTotal = viewport.domX[1] - viewport.domX[0];
+    for (const tr of analisis.resolubles) {
+      if (!(tr.b > tr.a)) continue;
+      const anchoPx = Math.max(1, (viewport.anchoPx * (tr.b - tr.a)) / anchoTotal);
+      const sub = crearViewport([tr.a, tr.b], viewport.domY, anchoPx, viewport.altoPx, viewport.dpr);
+      const r = this.trazarIntervalo(f, objetoId, sub, tolerancia);
+      for (const rama of r.ramas) ramas.push(rama);
+      for (const a of r.asintotas) asintotas.push(a);
+    }
+    // Tramos densos: envolvente (mín/máx por columna de píxel), estable entre pasadas.
+    for (const tr of analisis.densos) {
+      const banda = envolvente(f, viewport, tr, objetoId, yBot, yTop);
+      if (banda) ramas.push(banda);
+    }
+    return { ramas, asintotas };
+  }
+
+  private trazarIntervalo(
     f: FuncionReal,
     objetoId: string,
     viewport: Viewport,

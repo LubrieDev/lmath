@@ -76,7 +76,9 @@ export class ProveedorImplicitoSeparable implements ProveedorGeometria {
       // nunca y la rama entera desaparecía (x²+x+|y|+tan x=C perdía TODAS las
       // astillas lejos del centro al alejar el zoom). Se siembran a mano con una
       // escalera logarítmica anclada en cada polo, que el muestreo no puede dar.
-      for (const rama of ramasJuntoAPolos(f, this.objetoId, polos, viewport)) ramas.push(rama);
+      // Se le pasa lo YA trazado por el muestreo para que no re-dibuje lo que ese
+      // muestreo sí resolvió (ver `ramasJuntoAPolos`).
+      for (const rama of ramasJuntoAPolos(f, this.objetoId, polos, viewport, r.ramas)) ramas.push(rama);
     }
     // Dos pasadas (igual que ProveedorExplicito): los extras solo en la final.
     const esFinal = tolerancia.pasada === "final";
@@ -105,19 +107,38 @@ export class ProveedorImplicitoSeparable implements ProveedorGeometria {
  * se construye su polilínea con una ESCALERA logarítmica (δ, 2δ, 4δ…): y baja del
  * borde de banda hacia el interior en ~un punto por bisección de y, hasta el borde del
  * dominio (bisecado para clavar el extremo) o hasta media distancia al polo vecino
- * (de ahí en adelante el muestreo regular sí la ve; el solape ocasional solo re-dibuja
- * los mismos píxeles). LIMITACIÓN: una astilla asintótica hacia el BORDE del dominio
- * en vez de hacia el polo (1/y²+tan x=c) no se detecta con este sondeo; ninguna curva
- * del repertorio la produce.
+ * (de ahí en adelante el muestreo regular sí la ve). LIMITACIÓN: una astilla asintótica
+ * hacia el BORDE del dominio en vez de hacia el polo (1/y²+tan x=c) no se detecta con
+ * este sondeo; ninguna curva del repertorio la produce.
+ *
+ * GUARDA DE NO-DUPLICACIÓN (`yaTrazadas`). El sondeo de arriba —f finita y fuera de la
+ * banda a 1e-9 del polo— lo cumple CUALQUIER función con un polo simple, tenga astilla
+ * escondida o no: `tan x` lo cumple, y su curva junto al polo ya la resuelve el muestreo
+ * regular perfectamente. Sin esta guarda, la escalera volvía a emitir ESA MISMA curva con
+ * 6-7 puntos espaciados geométricamente, y sus cuerdas RECTAS se ven encima del trazo fino
+ * (en `tan(y)=x` eran 8 ramas espurias sobre 5 reales: los trazos que cruzaban las curvas
+ * junto a cada asíntota). El supuesto de que "el solape solo re-dibuja los mismos píxeles"
+ * es falso justo cuando la escalera es más grosera que el muestreo.
+ *
+ * El criterio correcto es el que define la palabra ESCONDIDA: solo hay astilla que
+ * rescatar si el muestreo regular NO produjo geometría visible en ese lado del polo. En la
+ * astilla real eso se cumple por construcción (su dominio es más estrecho que el paso de
+ * muestreo, así que el sampler ve NaN y no emite nada); en `tan x` no se cumple (el
+ * sampler llenó la zona) y la escalera se descarta. Es general: no mira qué función es.
  */
 function ramasJuntoAPolos(
-  f: FuncionReal, objetoId: string, polos: readonly number[], vp: Viewport
+  f: FuncionReal, objetoId: string, polos: readonly number[], vp: Viewport,
+  yaTrazadas: readonly Rama[]
 ): Rama[] {
   if (polos.length === 0) return [];
   const H = vp.domY[1] - vp.domY[0];
   const yTop = vp.domY[1] + H, yBot = vp.domY[0] - H;
   const bandaAbs = Math.max(Math.abs(yTop), Math.abs(yBot));
   const out: Rama[] = [];
+  // x (ordenadas) de lo YA trazado que cae DENTRO de la banda visible: es contra esto que
+  // se decide si una zona está cubierta. Se construye una sola vez —no por polo— porque
+  // con zoom-out hay muchos polos y el barrido lineal por cada uno se notaría.
+  const xCubiertas = xVisiblesOrdenadas(yaTrazadas, bandaAbs);
 
   for (let i = 0; i < polos.length; i++) {
     const px = polos[i];
@@ -134,6 +155,9 @@ function ramasJuntoAPolos(
     for (const s of [1, -1] as const) {
       const v0 = f.eval(px + s * dMin);
       if (!Number.isFinite(v0) || Math.abs(v0) <= bandaAbs) continue; // sin astilla asintótica
+      // ¿El muestreo regular ya dibujó este lado del polo? Entonces no está ESCONDIDO y
+      // la escalera solo añadiría un duplicado grosero encima (ver la cabecera).
+      if (hayCobertura(xCubiertas, s === 1 ? px : px - alcance, s === 1 ? px + alcance : px)) continue;
       const pts: number[] = [];
       let prevX = px + s * dMin, prevY = v0;
       let dentro = false;
@@ -177,6 +201,33 @@ function ramasJuntoAPolos(
     }
   }
   return out;
+}
+
+/**
+ * x (ORDENADAS) de los vértices ya trazados cuya y cae dentro de la banda visible. Solo
+ * cuenta la geometría VISIBLE: los vértices con |y| enorme son la subida hacia el polo,
+ * que no es lo que una astilla escondida duplicaría.
+ */
+function xVisiblesOrdenadas(ramas: readonly Rama[], bandaAbs: number): Float64Array {
+  let n = 0;
+  for (const r of ramas) for (let k = 1; k < r.puntos.length; k += 2) if (Math.abs(r.puntos[k]) <= bandaAbs) n++;
+  const xs = new Float64Array(n);
+  let i = 0;
+  for (const r of ramas)
+    for (let k = 0; k < r.puntos.length; k += 2)
+      if (Math.abs(r.puntos[k + 1]) <= bandaAbs) xs[i++] = r.puntos[k];
+  xs.sort();
+  return xs;
+}
+
+/** ¿Hay algún x cubierto dentro del intervalo ABIERTO (lo, hi)? Búsqueda binaria. */
+function hayCobertura(xs: Float64Array, lo: number, hi: number): boolean {
+  let a = 0, b = xs.length;
+  while (a < b) {                      // primer índice con xs[idx] > lo
+    const m = (a + b) >> 1;
+    if (xs[m] > lo) b = m; else a = m + 1;
+  }
+  return a < xs.length && xs[a] < hi;
 }
 
 /**

@@ -25,7 +25,66 @@ import { crearProveedor } from "../../src/motor/app/composicion";
 import type { CampoEscalar, Rama, Geometria, ObjetoExplicito } from "../../src/motor/contracts";
 
 // ════════════════════════════════════════════════
-describe("Sampler explícito: paridad con muestreoExplicito (solo difiere el recorte)", () => {
+// ════════════════════════════════════════════════
+// PARIDAD con el sampler LEGADO (`src/render/muestreoExplicito.ts`).
+//
+// Qué se compara, y por qué se cambió (2026-07-22). Antes esta prueba exigía igualdad
+// VÉRTICE A VÉRTICE: mismo número de puntos y misma `x` exacta que la copia legada. Eso
+// convertía al legado —que ya no dibuja nada y que la auditoría documentó como DIVERGENTE
+// del vivo— en la definición de "correcto", y CONGELABA el trazador: cualquier mejora del
+// muestreo o del refinado la rompía por construcción, aunque no cambiara un solo píxel.
+// Medido: poner un tope sub-píxel al refinado (que ahorra hasta un 59% del tiempo) fallaba
+// con "esperado 4146 puntos, obtuve 4090" — 1,4% menos vértices, todos SUB-PÍXEL.
+//
+// Ahora se compara lo OBSERVABLE, que es lo que la prueba debe proteger:
+//   • mismo número de ramas y mismas asíntotas verticales (estructura),
+//   • y las dos curvas a menos de `TOL_PARIDAD_PX` de distancia EN PANTALLA.
+// Una diferencia que no se ve, no es una regresión. Una que se ve, sigue fallando: la
+// tolerancia es una fracción de píxel, muy por debajo del grosor del trazo.
+// ════════════════════════════════════════════════
+
+/** Tolerancia de la paridad, en píxeles de pantalla. Un cuarto de píxel es indistinguible
+ *  (el trazo mide ~2 px) y aun así deja fuera cualquier cambio de forma real. */
+const TOL_PARIDAD_PX = 0.25;
+
+describe("Sampler explícito: paridad con muestreoExplicito (misma curva en pantalla)", () => {
+  /** Polilínea (mundo) → coordenadas de pantalla, recortando la y a la banda del legado. */
+  const aPantalla = (p: ArrayLike<number>, vp: typeof VP, recortar: boolean): number[] => {
+    const out: number[] = [];
+    const ax = vp.anchoPx / (vp.domX[1] - vp.domX[0]);
+    const ay = vp.altoPx / (vp.domY[1] - vp.domY[0]);
+    for (let k = 0; k + 1 < p.length; k += 2) {
+      const y = recortar ? clampBanda(p[k + 1], vp) : p[k + 1];
+      out.push((p[k] - vp.domX[0]) * ax, vp.altoPx - (y - vp.domY[0]) * ay);
+    }
+    return out;
+  };
+  /** Distancia máxima de los vértices de `A` a la polilínea `B` (Hausdorff dirigida, px).
+   *  Contra los SEGMENTOS de B, no contra sus vértices: dos muestreos de la MISMA curva
+   *  colocan los vértices en sitios distintos, y comparar vértice a vértice es justamente
+   *  el anclaje que se quiere quitar. */
+  const distanciaMaxPx = (A: readonly number[], B: readonly number[]): number => {
+    if (B.length < 4) return A.length ? Infinity : 0;
+    let peor = 0;
+    for (let i = 0; i + 1 < A.length; i += 2) {
+      const px = A[i], py = A[i + 1];
+      if (!Number.isFinite(px) || !Number.isFinite(py)) continue;
+      let mejor = Infinity;
+      for (let k = 0; k + 3 < B.length; k += 2) {
+        const vx = B[k + 2] - B[k], vy = B[k + 3] - B[k + 1];
+        const L2 = vx * vx + vy * vy;
+        let t = L2 > 0 ? ((px - B[k]) * vx + (py - B[k + 1]) * vy) / L2 : 0;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const dx = px - (B[k] + t * vx), dy = py - (B[k + 1] + t * vy);
+        const d = Math.hypot(dx, dy);
+        if (d < mejor) mejor = d;
+        if (mejor <= TOL_PARIDAD_PX * 0.5) break;
+      }
+      if (mejor > peor) peor = mejor;
+    }
+    return peor;
+  };
+
   const casos: Array<[string, (x: number) => number]> = [
     ["sin(x)", Math.sin],
     ["x^2 (fuera de banda en bordes)", (x) => x * x],
@@ -44,14 +103,19 @@ describe("Sampler explícito: paridad con muestreoExplicito (solo difiere el rec
         });
         igual(nuevo.ramas.length, viejo.polilineas.length, "nº de ramas");
         for (let r = 0; r < nuevo.ramas.length; r++) {
-          const pn = nuevo.ramas[r].puntos;
-          const pv = viejo.polilineas[r];
-          igual(pn.length, pv.length, `nº de puntos rama ${r}`);
-          for (let k = 0; k < pv.length; k += 2) {
-            igual(pn[k], pv[k], `x[${k}] rama ${r}`);
-            // El nuevo emite y REAL; recortarla a la banda debe dar la y del viejo.
-            aprox(clampBanda(pn[k + 1], VP), pv[k + 1], 1e-9, `y[${k}] rama ${r}`);
-          }
+          // El nuevo emite la y REAL (el crosshair la necesita); el legado la trae ya
+          // recortada a la banda. Se recorta la del nuevo para comparar lo mismo.
+          const pn = aPantalla(nuevo.ramas[r].puntos, VP, true);
+          const pv = aPantalla(viejo.polilineas[r], VP, false);
+          // En AMBOS sentidos: así ni el nuevo se sale de la curva del legado, ni deja sin
+          // cubrir un tramo que el legado sí dibujaba (una sola dirección no vería eso).
+          const dn = distanciaMaxPx(pn, pv);
+          const dv = distanciaMaxPx(pv, pn);
+          assert(
+            dn <= TOL_PARIDAD_PX && dv <= TOL_PARIDAD_PX,
+            `rama ${r}: separación máxima ${Math.max(dn, dv).toFixed(3)} px ` +
+              `(nuevo→viejo ${dn.toFixed(3)}, viejo→nuevo ${dv.toFixed(3)}; tope ${TOL_PARIDAD_PX})`
+          );
         }
         // Asíntotas verticales: mismas posiciones.
         const av = viejo.asintotas.slice().sort((a, b) => a - b);
@@ -60,7 +124,19 @@ describe("Sampler explícito: paridad con muestreoExplicito (solo difiere el rec
           .map((a) => a.valor as number)
           .sort((a, b) => a - b);
         igual(an.length, av.length, "nº de asíntotas");
-        for (let i = 0; i < av.length; i++) aprox(an[i], av[i], 1e-9, `asíntota ${i}`);
+        // En PÍXELES, por lo mismo que la comparación de las ramas: `1e-9` en unidades de
+        // mundo ataba la posición a la profundidad exacta de bisección del legado. Una
+        // asíntota situada 1,3e−5 más allá —que es lo que cambia al topar el refinado— son
+        // 0,0006 px: no existe forma de verla. Lo que sí debe fallar es que se mueva de
+        // píxel, y eso lo sigue cazando.
+        const porPx = VP.anchoPx / (VP.domX[1] - VP.domX[0]);
+        for (let i = 0; i < av.length; i++) {
+          const dpx = Math.abs(an[i] - av[i]) * porPx;
+          assert(
+            dpx <= TOL_PARIDAD_PX,
+            `asíntota ${i}: ${dpx.toFixed(4)} px de diferencia (tope ${TOL_PARIDAD_PX})`
+          );
+        }
       });
     }
   }
@@ -102,6 +178,86 @@ describe("Sampler explícito: oscilación de amplitud EXPONENCIAL (curva suave, 
   test("los polos REALES sí se detectan (tan x mantiene sus asíntotas)", () => {
     const res = new TrazadorExplicitoAdaptativo().trazar(fr(Math.tan), "id", VP_ANCHO, TOL_FINAL);
     assert(res.asintotas.length > 20, `tan(x) registra sus muchos polos: ${res.asintotas.length}`);
+  });
+});
+
+// ════════════════════════════════════════════════
+describe("Régimen de ALTA FRECUENCIA en explícitas (envolvente estable)", () => {
+  const T = new TrazadorExplicitoAdaptativo();
+  const vpZ = (semi: number) =>
+    crearViewport([-semi * 1.33, semi * 1.33], [-semi, semi], 400, 300, 1);
+  const huella = (rs: readonly Rama[]) => {
+    let n = 0, s = 0;
+    for (const r of rs) { n += r.puntos.length; for (const v of r.puntos) s += Number.isFinite(v) ? v : 1e9; }
+    return `${rs.length}:${n}:${s.toFixed(6)}`;
+  };
+
+  test("las curvas NORMALES no entran en el régimen (nada cambia para ellas)", () => {
+    // La garantía que protege todo el repertorio: si no hay columnas irresolubles, el
+    // trazador toma exactamente el camino de siempre. Ninguna de estas debe producir
+    // una rama "incierta" (que es la firma de la envolvente).
+    const normales: Array<[string, (x: number) => number]> = [
+      ["x²", (x) => x * x],
+      ["sin x", Math.sin],
+      ["tan x", Math.tan],
+      ["1/x", (x) => 1 / x],
+      ["e^x", Math.exp],
+      ["⌊x⌋", Math.floor],
+      ["ln|x|", (x) => Math.log(Math.abs(x))],
+      ["√(9−x²)", (x) => Math.sqrt(9 - x * x)],
+    ];
+    for (const [nombre, f] of normales) {
+      for (const semi of [7, 1, 0.01]) {
+        const r = T.trazar(fr(f), "o", vpZ(semi), TOL_FINAL);
+        assert(!r.ramas.some((b) => b.calidad === "incierta"),
+          `${nombre} a semiY=${semi}: sin banda de envolvente`);
+      }
+    }
+  });
+
+  test("un POLO no es una oscilación: tan x nunca se convierte en banda", () => {
+    // Dentro de la columna que contiene el polo, tan sube a +∞, salta a −∞ y vuelve a
+    // subir: leído como secuencia son 2 retornos, la misma firma que un ciclo. Si se
+    // confundiera, las asíntotas se volverían bandas (rompía 8 pruebas de la suite).
+    for (const semi of [7, 100, 1000]) {
+      const r = T.trazar(fr(Math.tan), "o", vpZ(semi), TOL_FINAL);
+      assert(!r.ramas.some((b) => b.calidad === "incierta"), `tan x a semiY=${semi}: sin banda`);
+    }
+  });
+
+  test("sin(1/x) con zoom profundo: las DOS pasadas dan geometría IDÉNTICA (fin del parpadeo)", () => {
+    // El parpadeo era exactamente esto: la pasada interactiva y la final muestreaban con
+    // densidades distintas y elegían hebras distintas de una banda irresoluble (medido:
+    // 122 ramas contra 38, 31% de píxeles distintos). La envolvente se calcula sobre una
+    // rejilla de columnas clavada a los PÍXELES y con un número FIJO de muestras, así que
+    // ambas pasadas obtienen el mismo resultado bit a bit.
+    const f = fr((x) => Math.sin(1 / x));
+    for (const semi of [0.01, 0.001]) {
+      const vp = vpZ(semi);
+      const gi = T.trazar(f, "o", vp, TOL_INT);
+      const gf = T.trazar(f, "o", vp, TOL_FINAL);
+      const bandasI = gi.ramas.filter((b) => b.calidad === "incierta");
+      const bandasF = gf.ramas.filter((b) => b.calidad === "incierta");
+      assert(bandasI.length > 0, `semiY=${semi}: hay banda (la zona es irresoluble)`);
+      igual(huella(bandasF), huella(bandasI), `semiY=${semi}: banda idéntica en ambas pasadas`);
+    }
+  });
+
+  test("la banda se marca `incierta` y NO es recorrible (sin `parametro`)", () => {
+    // `CalidadRama:"incierta"` existía en el contrato desde el principio sin emitirse nunca.
+    // Y una banda no es función de x: omitir `parametro` es cómo se declara que el
+    // crosshair/carril no tienen una y única que leer ahí.
+    const r = T.trazar(fr((x) => Math.sin(1 / x)), "o", vpZ(0.001), TOL_FINAL);
+    const banda = r.ramas.find((b) => b.calidad === "incierta");
+    assert(banda !== undefined, "hay banda");
+    igual(banda!.parametro, undefined, "la banda no lleva parámetro x");
+  });
+
+  test("la amplitud SUBPÍXEL no genera banda (x·sin(1/x) oscila igual pero no se ve)", () => {
+    // Mismo número de oscilaciones por píxel que sin(1/x), pero su amplitud junto al
+    // origen es menor que un píxel: dibujar una banda ahí sería inventar grosor.
+    const r = T.trazar(fr((x) => x * Math.sin(1 / x)), "o", vpZ(7), TOL_FINAL);
+    assert(!r.ramas.some((b) => b.calidad === "incierta"), "sin banda con amplitud subpíxel");
   });
 });
 

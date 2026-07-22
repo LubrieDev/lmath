@@ -66,6 +66,20 @@ const MAX_EVALS_FINAL = 600_000;       // curvas normales usan 5k–20k evals
 const MAX_EVALS_INTERACTIVO = 180_000; // cota por frame durante un gesto
 const COS_GIRO_MAX = 0.7;      // giro máx por paso normal (~45°); si se supera, reduce
 const COS_GIRO_RECTO = 0.5;    // el cruce recto debe seguir a < 60° del avance previo
+// Giro de SUAVIDAD (grados): distinto en propósito de COS_GIRO_MAX, que es un criterio de
+// VALIDEZ —rechaza pasos absurdos— y a 45° no acota nada de lo que se ve. Este acota la
+// CURVATURA de lo dibujado. Sin él el paso es fijo (4,5 px interactiva / 2,5 px final) y la
+// polilínea factea donde la curva se cierra: medido, 17,7° por vértice en el folium
+// x³+y³=3xy y 6,5–7,8° en circunferencia y elipse durante el gesto. Aquí NO hace falta el
+// factor ×2 del trazador paramétrico: cada punto aceptado se emite, así que el giro medido
+// entre avances consecutivos es exactamente el que queda dibujado en el vértice.
+const GIRO_SUAVE_GRADOS_FINAL = 3;
+const GIRO_SUAVE_GRADOS_INTERACTIVO = 4;
+// Suelo del criterio de suavidad, en píxeles. Por debajo de esta longitud de paso un quiebre
+// cabe en el grosor del trazo y no se ve; y sobre todo, seguir acortando en una CÚSPIDE real
+// (la astroide, el nodo de la lemniscata) es perseguir curvatura infinita: ahí el giro es
+// geometría legítima, no un artefacto del muestreo.
+const PASO_MIN_SUAVE_PX = 1.5;
 const FWD_MIN = 0.2;           // progreso mínimo hacia delante (evita pasos "de vuelta")
 // Flecha máxima de una CUERDA como fracción de su longitud (ver `cuerdaSobreCurva`). Con el
 // giro por paso ya acotado a 45°, la flecha real de un arco legítimo es ≤ ~0.10·L; en un salto
@@ -126,6 +140,10 @@ export class TrazadorContinuacion implements ITrazadorContinuacion {
   /** Suelo visual del test de cuerda EN MUNDO (≈ CUERDA_PX_VISUAL px del viewport en curso).
    *  Estado por-trazado, fijado al entrar en `trazar` (las llamadas son secuenciales). */
   private dVisual = 0;
+  /** Coseno del giro admitido por suavidad, y suelo de paso (mundo) bajo el cual el criterio
+   *  se apaga. Estado por-trazado, como `dVisual` (las llamadas son secuenciales). */
+  private cosGiroSuave = -1;
+  private pasoMinSuave = 0;
 
   trazar(
     F: CampoEscalar,
@@ -139,6 +157,12 @@ export class TrazadorContinuacion implements ITrazadorContinuacion {
     this.dVisual = (anchoMundo / Math.max(1, viewport.anchoPx)) * CUERDA_PX_VISUAL;
     const h = anchoMundo * 1e-5 || 1e-9;                 // paso de diferencias finitas
     const pasoPx = tolerancia.pasada === "interactiva" ? PASO_PX_INTERACTIVO : PASO_PX_FINAL;
+    const porPx = anchoMundo / Math.max(1, viewport.anchoPx);   // mundo por píxel
+    this.cosGiroSuave = Math.cos(
+      ((tolerancia.pasada === "interactiva" ? GIRO_SUAVE_GRADOS_INTERACTIVO : GIRO_SUAVE_GRADOS_FINAL) *
+        Math.PI) / 180
+    );
+    this.pasoMinSuave = porPx * PASO_MIN_SUAVE_PX;
     // PASO (calidad/coste): píxeles, con un mínimo de pasos a lo ancho de la curva para que una
     // figura diminuta no salga como un triángulo. Suelo para que nunca colapse a 0.
     const escala = escalaCurva(semillas);
@@ -440,6 +464,12 @@ export class TrazadorContinuacion implements ITrazadorContinuacion {
     if (tx * dirAnt.x + ty * dirAnt.y < 0) { tx = -tx; ty = -ty; }
     const T = { x: tx, y: ty };
     let hh = h;
+    // Mejor paso VÁLIDO encontrado (el más largo, que es el primero que aparece). Es
+    // exactamente lo que devolvía esta función antes de existir el criterio de suavidad, y se
+    // devuelve si ninguna escala consigue además ser suave. Así el criterio SOLO puede mejorar
+    // el trazo: nunca convierte en `null` un paso que antes se aceptaba, que provocaría un
+    // `cruceRecto` espurio o el fin prematuro de la rama.
+    let respaldo: Avance | null = null;
     for (let intento = 0; intento < 9; intento++) {
       const pc = this.corregir(F, grad, { x: p.x + T.x * hh, y: p.y + T.y * hh }, hh);
       if (pc) {
@@ -451,14 +481,18 @@ export class TrazadorContinuacion implements ITrazadorContinuacion {
           const fwd = ux * T.x + uy * T.y;              // progreso a lo largo de la tangente
           if (fwd > FWD_MIN && giro > COS_GIRO_MAX &&
               this.cuerdaSobreCurva(F, p, pc, gp)) {
-            return { punto: pc, dir: { x: ux, y: uy }, h: hh };
+            const av: Avance = { punto: pc, dir: { x: ux, y: uy }, h: hh };
+            // Suave, o ya tan corto que el quiebre no se ve (o es una cúspide real) → se toma.
+            if (giro >= this.cosGiroSuave || L <= this.pasoMinSuave) return av;
+            // Válido pero anguloso: se guarda por si acaso y se prueba con la mitad de paso.
+            if (!respaldo) respaldo = av;
           }
         }
       }
       hh *= 0.5;
       if (hh < hMin) break;
     }
-    return null;
+    return respaldo;
   }
 
   // Cruce de una singularidad en LÍNEA RECTA: extrapola por dirAnt y reproyecta. De

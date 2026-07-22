@@ -21,7 +21,7 @@ import { construirObjeto } from "../../src/motor/parsing/construirObjeto";
 import { dividirEcuaciones } from "../../src/motor/parsing/dividirEcuaciones";
 import { crearProveedor } from "../../src/motor/app/composicion";
 import { ProveedorExplicito } from "../../src/motor/providers/ProveedorExplicito";
-import type { Rama, ObjetoParametrico, ObjetoPolar } from "../../src/motor/contracts";
+import type { Rama, ObjetoParametrico, ObjetoPolar, Parametrizacion } from "../../src/motor/contracts";
 
 // ════════════════════════════════════════════════
 // NUEVA CAPACIDAD (Etapa 6): curvas paramétricas y polares.
@@ -168,6 +168,152 @@ describe("Paramétricas y polares (Etapa 6)", () => {
 // f(x) (`exprExplicita`) y `compilarFuncion` lanzaba, abortando el render del plano.
 // El gate se apoya en `construirObjeto(...).tipo`; se protege esa clasificación + que
 // la geometría de esas curvas sí se produce.
+describe("Zoom-in: el arco visible se refina, no se dibuja como una recta", () => {
+  const T = new TrazadorParametricoAdaptativo();
+  const vpZ = (semi: number) => crearViewport([-semi * 1.4, semi * 1.4], [-semi, semi], 900, 360, 1);
+
+  /** Parametrización de una fuente que se sabe paramétrica o polar (falla si no lo es). */
+  const parametrizacionDe = (src: string): Parametrizacion => {
+    const obj = construirObjeto(src, "o");
+    assert(obj.tipo === "parametrica" || obj.tipo === "polar", `${src}: paramétrica o polar`);
+    return (obj as { p: Parametrizacion }).p;
+  };
+
+  /** Peor distancia (en píxeles) de la curva REAL a la polilínea dibujada: la "faceta". */
+  const desviacionMaxPx = (
+    ramas: readonly { puntos: Float64Array }[],
+    p: Parametrizacion,
+    vp: ReturnType<typeof crearViewport>
+  ): number => {
+    const ax = vp.anchoPx / (vp.domX[1] - vp.domX[0]);
+    const ay = vp.altoPx / (vp.domY[1] - vp.domY[0]);
+    const SX = (x: number) => (x - vp.domX[0]) * ax;
+    const SY = (y: number) => vp.altoPx - (y - vp.domY[0]) * ay;
+    const segs: number[][] = [];
+    for (const r of ramas)
+      for (let k = 0; k < r.puntos.length - 2; k += 2) {
+        const s = [SX(r.puntos[k]), SY(r.puntos[k + 1]), SX(r.puntos[k + 2]), SY(r.puntos[k + 3])];
+        if (s.every(Number.isFinite)) segs.push(s);
+      }
+    if (segs.length === 0) return NaN;
+    let peor = 0;
+    const [d0, d1] = p.dominio;
+    for (let i = 0; i <= 4000; i++) {
+      const q = p.eval(d0 + ((d1 - d0) * i) / 4000);
+      if (!Number.isFinite(q.x) || !Number.isFinite(q.y)) continue;
+      const px = SX(q.x), py = SY(q.y);
+      if (px < -20 || px > vp.anchoPx + 20 || py < -20 || py > vp.altoPx + 20) continue;
+      let mejor = Infinity;
+      for (const s of segs) {
+        const vx = s[2] - s[0], vy = s[3] - s[1];
+        const L2 = vx * vx + vy * vy;
+        let t = L2 > 0 ? ((px - s[0]) * vx + (py - s[1]) * vy) / L2 : 0;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const d = Math.hypot(px - (s[0] + t * vx), py - (s[1] + t * vy));
+        if (d < mejor) mejor = d;
+        if (mejor < 0.2) break;
+      }
+      if (mejor > peor) peor = mejor;
+    }
+    return peor;
+  };
+
+  /**
+   * Peor GIRO (grados) entre dos segmentos consecutivos LARGOS de la polilínea. Es la
+   * métrica que de verdad detecta las facetas: la desviación es una sagita y escala con
+   * el CUADRADO de la cuerda, así que con la curva pequeña en pantalla un vértice puede
+   * girar 36° y quedarse muy por debajo del umbral de 1 px (que es justo lo que pasaba:
+   * los giros salían cuantizados en 36/18/9/4,5° — la polilínea uniforme SIN refinar).
+   * Solo cuentan los quiebres entre segmentos > 4 px: un giro grande entre segmentos de
+   * 1 px es una cúspide REAL (el r=0 de una rosa), no un artefacto del muestreo.
+   */
+  const giroMaxGrados = (
+    ramas: readonly { puntos: Float64Array }[],
+    vp: ReturnType<typeof crearViewport>
+  ): number => {
+    const ax = vp.anchoPx / (vp.domX[1] - vp.domX[0]);
+    const ay = vp.altoPx / (vp.domY[1] - vp.domY[0]);
+    const SX = (x: number) => (x - vp.domX[0]) * ax;
+    const SY = (y: number) => vp.altoPx - (y - vp.domY[0]) * ay;
+    const dentro = (X: number, Y: number) =>
+      X >= -5 && X <= vp.anchoPx + 5 && Y >= -5 && Y <= vp.altoPx + 5;
+    let peor = 0;
+    for (const r of ramas) {
+      const P: number[][] = [];
+      for (let k = 0; k + 1 < r.puntos.length; k += 2) {
+        const X = SX(r.puntos[k]), Y = SY(r.puntos[k + 1]);
+        if (Number.isFinite(X) && Number.isFinite(Y)) P.push([X, Y, dentro(X, Y) ? 1 : 0]);
+      }
+      for (let i = 1; i + 1 < P.length; i++) {
+        if (!P[i - 1][2] || !P[i][2] || !P[i + 1][2]) continue;
+        const ux = P[i][0] - P[i - 1][0], uy = P[i][1] - P[i - 1][1];
+        const vx = P[i + 1][0] - P[i][0], vy = P[i + 1][1] - P[i][1];
+        const l1 = Math.hypot(ux, uy), l2 = Math.hypot(vx, vy);
+        if (l1 <= 4 || l2 <= 4) continue;
+        let c = (ux * vx + uy * vy) / (l1 * l2);
+        c = c < -1 ? -1 : c > 1 ? 1 : c;
+        const a = (Math.acos(c) * 180) / Math.PI;
+        if (a > peor) peor = a;
+      }
+    }
+    return peor;
+  };
+
+  test("curvatura acotada: ninguna paramétrica se dibuja poligonal (giro ≤ 6° por vértice)", () => {
+    // La regresión de la queja "al hacer zoom se ve hecha de aristas, al soltar se suaviza":
+    // el giro medio por vértice de r=sin(θ/10) era de 19,7° en la pasada interactiva y 9,9°
+    // en la final. Con el criterio de giro quedan por debajo de 4°. Se comprueba en varias
+    // curvas y zooms porque el defecto NO era de esta polar: era del criterio de refinado.
+    for (const src of [
+      String.raw`r = \sin(\theta/10)`,
+      String.raw`r = 1 + \cos(\theta)`,
+      "(cos(t), sin(t))",
+      "(cos(3t), sin(5t))",
+      "(t, t^2)",
+    ]) {
+      const p = parametrizacionDe(src);
+      for (const semi of [7, 2, 1, 0.5, 0.2, 0.05]) {
+        const vp = vpZ(semi);
+        for (const tol of [TOL_INT, TOL_FINAL]) {
+          const g = giroMaxGrados(T.trazar(p, "o", vp, tol), vp);
+          assert(!(g > 6), `${src} semiY=${semi} ${tol.pasada}: giro ${g.toFixed(2)}° (debe ser ≤6)`);
+        }
+      }
+    }
+  });
+
+  test("polar r=sin(θ/10): sin aristas a ningún zoom, en AMBAS pasadas", () => {
+    // Cuando el zoom deja el trozo visible dentro de UN paso del muestreo inicial en t, el
+    // trazador bisecaba hasta el borde de visibilidad y emitía SOLO ese punto: el arco
+    // intermedio salía como una recta. Medido a semiY=0.005: 7 puntos y 37,6 px de
+    // desviación en la pasada interactiva, contra 519 puntos y 0,07 px en la final — el
+    // síntoma de "poligonal al hacer zoom, suave al soltar".
+    const p = parametrizacionDe(String.raw`r = \sin(\theta/10)`);
+    for (const semi of [1, 0.05, 0.01, 0.005, 0.002, 0.001]) {
+      const vp = vpZ(semi);
+      for (const tol of [TOL_INT, TOL_FINAL]) {
+        const ramas = T.trazar(p, "o", vp, tol);
+        const d = desviacionMaxPx(ramas, p, vp);
+        assert(!(d > 2), `semiY=${semi} ${tol.pasada}: desviación ${d.toFixed(2)}px (debe ser ≤2)`);
+      }
+    }
+  });
+
+  test("el refinado del borde no rompe otras paramétricas (Lissajous y círculo)", () => {
+    for (const src of ["(cos(3t), sin(2t))", "(cos(t), sin(t))"]) {
+      const p = parametrizacionDe(src);
+      for (const semi of [2, 0.5, 0.05]) {
+        const vp = vpZ(semi);
+        for (const tol of [TOL_INT, TOL_FINAL]) {
+          const ramas = T.trazar(p, "o", vp, tol);
+          const d = desviacionMaxPx(ramas, p, vp);
+          assert(!(d > 2), `${src} semiY=${semi} ${tol.pasada}: ${d.toFixed(2)}px`);
+        }
+      }
+    }
+  });
+});
+
 describe("Paramétricas (X,Y): clasificación y geometría (regresión render)", () => {
   const VP = crearViewport([-3, 3], [-3, 3], 400, 400, 1);
   for (const src of ["(sin(2t), sin(3t))", "(t*cos(t), t*sin(t))"]) {
