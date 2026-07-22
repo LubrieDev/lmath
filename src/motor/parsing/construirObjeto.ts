@@ -29,7 +29,7 @@ import {
 } from "../fields/parametrizacionMathjs";
 import { dominioPolar } from "./periodoPolar";
 import { funcionDelParametro, renombrarParametroAX } from "./componentesParametricas";
-import type { ObjetoMatematico } from "../contracts";
+import type { ObjetoExplicito, ObjetoMatematico } from "../contracts";
 
 const DOMINIO_DEFECTO: readonly [number, number] = [0, 2 * Math.PI];
 
@@ -120,7 +120,7 @@ function comaNivel0(texto: string): number {
 }
 
 // ── Constructores por tipo ───────────────────────────────────────────────────
-function explicita(id: string, source: string, expr: string): ObjetoMatematico {
+function explicita(id: string, source: string, expr: string): ObjetoExplicito {
   return { id, tipo: "explicita", fuente: source, variables: ["x"], f: crearFuncionReal(expr) };
 }
 
