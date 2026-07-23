@@ -16,6 +16,7 @@ LMath is an [Obsidian](https://obsidian.md) plugin for graphing functions, syste
 - [Settings](#settings)
 - [Known limitations](#known-limitations)
 - [Contributing](#contributing)
+- [Third-party resources](#third-party-resources)
 - [License](#license)
 
 ---
@@ -314,6 +315,34 @@ Bug reports, feature requests and pull requests are welcome — see
 build, test and send changes, and the
 [Technical Reference](https://github.com/LubrieDev/lmath/blob/main/docs/TECHNICAL-REFERENCE.md)
 for the engine internals.
+
+---
+
+## Third-party resources
+
+LMath includes a small number of third-party assets distributed under their
+respective licenses.
+
+| Asset | Author | License | Purpose |
+|-------|--------|---------|---------|
+| Material Symbols | Google LLC | Apache License 2.0 | User interface icons |
+| Lora | The Lora Project Authors | SIL Open Font License 1.1 | User interface font |
+
+### Material Symbols
+
+Material Symbols is © Google LLC and is licensed under the
+Apache License, Version 2.0.
+
+- https://fonts.google.com/icons
+- https://www.apache.org/licenses/LICENSE-2.0
+
+### Lora
+
+Lora is © The Lora Project Authors and is licensed under the
+SIL Open Font License, Version 1.1.
+
+- https://fonts.google.com/specimen/Lora
+- https://openfontlicense.org
 
 ---
 

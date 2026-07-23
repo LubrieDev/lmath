@@ -15,6 +15,7 @@ import {
   MarkdownRenderChild,
   MarkdownRenderer,
   Plugin,
+  setTooltip,
   type MarkdownPostProcessorContext,
 } from "obsidian";
 
@@ -49,6 +50,18 @@ import { analizarFuncion, tieneTrigonometria, estadoGrupo, raicesALatex } from "
 // "enmarcado" (caja redondeada, la ÚNICA que usa el panel: regla "una expresión = una
 // tarjeta") y "plano" (sin recuadro, llena el hueco), reservado para futuros paneles.
 type EstiloTarjeta = "plano" | "enmarcado";
+
+// Iconos del plano (Material Symbols de Google, viewBox 0 -960 960 960). Se pintan como
+// <svg> inline con `fill:currentColor`: heredan el color del botón y siguen su resaltado
+// activo/inactivo, igual que los glifos de texto a los que sustituyen.
+const ICONO = {
+  inicio: "M220-180h150v-250h220v250h150v-390L480-765 220-570v390Zm-60 60v-480l320-240 320 240v480H530v-250H430v250H160Zm320-353Z",
+  acercar: "M450-450H200v-60h250v-250h60v250h250v60H510v250h-60v-250Z",
+  alejar: "M200-450v-60h560v60H200Z",
+  carril: "M450-42v-75q-137-14-228-105T117-450H42v-60h75q14-137 105-228t228-105v-75h60v75q137 14 228 105t105 228h75v60h-75q-14 137-105 228T510-117v75h-60Zm244.5-223.5Q784-355 784-480t-89.5-214.5Q605-784 480-784t-214.5 89.5Q176-605 176-480t89.5 214.5Q355-176 480-176t214.5-89.5Zm-321-108Q330-417 330-480t43.5-106.5Q417-630 480-630t106.5 43.5Q630-543 630-480t-43.5 106.5Q543-330 480-330t-106.5-43.5ZM544-416q26-26 26-64t-26-64q-26-26-64-26t-64 26q-26 26-26 64t26 64q26 26 64 26t64-26Zm-64-64Z",
+  info: "M453-280h60v-240h-60v240Zm50.5-323.2q9.5-9.2 9.5-22.8 0-14.45-9.48-24.22-9.48-9.78-23.5-9.78t-23.52 9.78Q447-640.45 447-626q0 13.6 9.48 22.8 9.48 9.2 23.5 9.2t23.52-9.2ZM480.27-80q-82.74 0-155.5-31.5Q252-143 197.5-197.5t-86-127.34Q80-397.68 80-480.5t31.5-155.66Q143-709 197.5-763t127.34-85.5Q397.68-880 480.5-880t155.66 31.5Q709-817 763-763t85.5 127Q880-563 880-480.27q0 82.74-31.5 155.5Q817-252 763-197.68q-54 54.31-127 86Q563-80 480.27-80Zm.23-60Q622-140 721-239.5t99-241Q820-622 721.19-721T480-820q-141 0-240.5 98.81T140-480q0 141 99.5 240.5t241 99.5Zm-.5-340Z",
+  menu: "M120-240v-60h720v60H120Zm0-210v-60h720v60H120Zm0-210v-60h720v60H120Z",
+} as const;
 
 export class MotorExperimental {
   // `sistema=false` → bloque obs-graph (una función). `sistema=true` → bloque
@@ -129,25 +142,10 @@ export class MotorExperimental {
     const wrap = contenedor.createDiv({ cls: "lmath-grafica" });
     wrap.style.cssText = `position:relative; width:100%; height:${H}px;`;
 
-    // Marca del motor experimental: badge discreto (el texto completo, en tooltip)
-    // para no alterar el layout de dos mitades del contenedor original.
-    const badge = wrap.createDiv({ text: "⚙" });
-    badge.setAttribute(
-      "title",
-      this.sistema
-        ? t().badge.sistema
-        : this.integral
-          ? t().badge.integral
-          : t().badge.general
-    );
-    badge.style.cssText =
-      "position:absolute; top:6px; right:8px; font-size:12px; z-index:5; " +
-      "color:rgba(120,180,255,0.55); cursor:default; user-select:none;";
-
     const canvas = wrap.createEl("canvas");
     // cursor:none oculta el cursor del sistema SOLO sobre el área del plano (los
     // botones, con su propio cursor:pointer, no se ven afectados). En su lugar el
-    // motor dibuja su propia cruz (Crosshair.dibujarCursorCruz), igual que obs-system.
+    // motor dibuja su propio icono de cursor (Crosshair.dibujarCursorCruz).
     canvas.setCssStyles({
       position: "absolute", top: "0", left: "0", width: "100%", height: "100%", cursor: "none",
     });
@@ -368,28 +366,48 @@ export class MotorExperimental {
     // sitio; 🏠︎ deshace zoom Y pan y devuelve la vista base del bloque (la del autoencuadre, si
     // lo hubo). Los tres animan la vista (rAF, perfil exponencial: rápido y frenando hasta clavar
     // el destino) y emiten onViewport por frame, así que el redibujo lo pide la cámara misma.
-    // Apilados bajo el badge ⚙ (esquina superior derecha), que ocupa `top:6px`.
+    // Apilados en la esquina superior derecha, empezando en `top:6px`.
     const estiloZoom = (arriba: number) =>
       "position:absolute; right:8px; top:" + arriba + "px; width:22px; height:22px; " +
       "display:flex; align-items:center; justify-content:center; font-size:15px; " +
       "line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; " +
       "color:rgba(220,220,220,0.85); background:rgba(30,30,30,0.85); " +
       "border:1px solid rgba(255,255,255,0.18);";
-    const btnInicio = wrap.createDiv({ text: "🏠︎" });
-    btnInicio.setAttribute("title", t().botones.vistaInicial);
-    // El glifo de casa es EMOJI (🏠︎): la fuente lo pinta con su propia caja, más grande y con más
-    // tinta que un signo tipográfico como + o −, así que a la misma medida se ve desproporcionado
-    // dentro del botón. Se le baja el cuerpo para que pese lo mismo que sus vecinos.
-    btnInicio.style.cssText = estiloZoom(26) + "font-size:12px;";
-    const btnMas = wrap.createDiv({ text: "+" });
-    btnMas.setAttribute("title", t().botones.acercar);
-    btnMas.style.cssText = estiloZoom(52);
-    const btnMenos = wrap.createDiv({ text: "−" });
-    btnMenos.setAttribute("title", t().botones.alejar);
-    btnMenos.style.cssText = estiloZoom(78);
+    const btnInicio = wrap.createDiv();
+    this.ponerTooltip(btnInicio, t().botones.vistaInicial);
+    btnInicio.style.cssText = estiloZoom(6);
+    this.montarIcono(btnInicio, "inicio", 15);
+    const btnMas = wrap.createDiv();
+    this.ponerTooltip(btnMas, t().botones.acercar);
+    btnMas.style.cssText = estiloZoom(32);
+    this.montarIcono(btnMas, "acercar", 15);
+    const btnMenos = wrap.createDiv();
+    this.ponerTooltip(btnMenos, t().botones.alejar);
+    btnMenos.style.cssText = estiloZoom(58);
+    this.montarIcono(btnMenos, "alejar", 15);
     btnInicio.addEventListener("click", () => camara.volverAVistaBase());
-    btnMas.addEventListener("click", () => camara.zoomCentrado(true));
-    btnMenos.addEventListener("click", () => camara.zoomCentrado(false));
+    // Zoom por PULSACIÓN o por MANTENER: un toque hace UNA muesca; mantener pulsado la repite a
+    // cadencia fija (zoomCentrado ya las acumula y suaviza → zoom continuo) hasta soltar. El
+    // pointer capture garantiza recibir el `pointerup` aunque el cursor salga del botón; el
+    // `pointerdown` ya hace la primera muesca, así que NO se añade un listener de `click` (sería
+    // una muesca doble). `limpieza` corta el timer si el bloque se desmonta con el botón pulsado.
+    const CADENCIA_ZOOM_MS = 100;
+    const zoomMantenido = (btn: HTMLElement, acercar: boolean) => {
+      let timer: number | null = null;
+      const parar = () => { if (timer !== null) { window.clearInterval(timer); timer = null; } };
+      btn.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return; // solo el botón primario / toque
+        btn.setPointerCapture(e.pointerId);
+        camara.zoomCentrado(acercar);
+        parar();
+        timer = window.setInterval(() => camara.zoomCentrado(acercar), CADENCIA_ZOOM_MS);
+      });
+      btn.addEventListener("pointerup", parar);
+      btn.addEventListener("pointercancel", parar);
+      limpieza.register(parar);
+    };
+    zoomMantenido(btnMas, true);
+    zoomMantenido(btnMenos, false);
 
     // ── Botón ⌖ (carril) + botones de SELECCIÓN de línea ────────────────────────
     // El crosshair y el carril siguen UNA curva (la seleccionada en la Escena). Con
@@ -399,7 +417,7 @@ export class MotorExperimental {
     // al no haber y). `redimensionar()` ya corrió una pasada, así que la recorribilidad
     // (propiedad del TIPO de curva, no del zoom) es estable aquí.
     const btnCarril = wrap.createDiv();
-    btnCarril.setAttribute("title", t().botones.carril);
+    this.ponerTooltip(btnCarril, t().botones.carril);
     // Mismo formato EXACTO que el botón ⌖ (btnFijar) de obs-graph/GraphEngine.
     const estiloBtn = (activo: boolean) => {
       btnCarril.style.cssText =
@@ -413,9 +431,9 @@ export class MotorExperimental {
             "border:1px solid rgba(255,160,40,0.5);");
     };
     estiloBtn(false);
-    // Glifo ⌖ subido SOLO en vertical (métrica de la fuente). El span persiste aunque
-    // estiloBtn reescriba el cssText del div en cada toggle.
-    btnCarril.createSpan({ text: "⌖" }).setCssStyles({ lineHeight: "1", transform: "translateY(-1px)" });
+    // El icono persiste como hijo <svg> aunque estiloBtn reescriba el cssText del div en
+    // cada toggle; hereda el color vía currentColor, así sigue el resaltado activo/inactivo.
+    this.montarIcono(btnCarril, "carril", 15);
     btnCarril.addEventListener("click", () => {
       navegacion.alternarCarril();
       estiloBtn(navegacion.railOn);
@@ -429,7 +447,7 @@ export class MotorExperimental {
     if (colores.length >= 2) {
       colores.forEach((c, i) => {
         const b = wrap.createDiv();
-        b.setAttribute("title", t().botones.seleccionarEcuacion(i + 1));
+        this.ponerTooltip(b, t().botones.seleccionarEcuacion(i + 1));
         const rgb = `rgb(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)})`;
         const estilo = (sel: boolean) => {
           b.style.cssText =
@@ -465,14 +483,15 @@ export class MotorExperimental {
     // intersecciones que la Escena calculó sobre las Ramas trazadas (las de la
     // vista actual, en la última pasada final). Mismos estilos que el original.
     if (this.sistema) {
-      const btnSolucion = wrap.createDiv({ text: "ⓘ" });
-      btnSolucion.setAttribute("title", t().botones.solucionesSistema);
+      const btnSolucion = wrap.createDiv();
+      this.ponerTooltip(btnSolucion, t().botones.solucionesSistema);
       btnSolucion.style.cssText =
         "position:absolute; bottom:8px; right:8px; width:22px; height:22px; " +
         "display:flex; align-items:center; justify-content:center; font-size:14px; " +
         "line-height:1; color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); " +
         "border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; " +
         "user-select:none; z-index:5;";
+      this.montarIcono(btnSolucion, "info", 15);
 
       const popSolucion = wrap.createDiv();
       popSolucion.style.cssText =
@@ -584,14 +603,14 @@ export class MotorExperimental {
         tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado.trim()))));
 
       const btnInfo = wrap.createDiv();
-      btnInfo.setAttribute("title", t().botones.resumenNotables);
+      this.ponerTooltip(btnInfo, t().botones.resumenNotables);
       btnInfo.style.cssText =
         "position:absolute; bottom:8px; right:8px; width:22px; height:22px; " +
         "display:flex; align-items:center; justify-content:center; font-size:14px; " +
         "line-height:1; color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); " +
         "border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; " +
         "user-select:none; z-index:5;";
-      btnInfo.createSpan({ text: "ⓘ" }).setCssStyles({ lineHeight: "1", transform: "translateY(-1px)" });
+      this.montarIcono(btnInfo, "info", 15);
 
       const pop = wrap.createDiv();
       pop.style.cssText =
@@ -921,9 +940,9 @@ export class MotorExperimental {
       this.chromeBotonPanel(activo);
   }
 
-  /** Estilo del botón-icono "hamburguesa" (3 líneas) que abre el menú de opciones:
-   *  CUADRADO de esquinas suaves, mismo resaltado activo/inactivo que los de texto. Las
-   *  líneas usan `currentColor`, así que siguen el color del botón (se avivan al activarse). */
+  /** Estilo del botón-icono de menú que abre las opciones: CUADRADO de esquinas suaves,
+   *  mismo resaltado activo/inactivo que los de texto. El icono usa `fill:currentColor`, así
+   *  que sigue el color del botón (se aviva al activarse). */
   private estiloBotonOpciones(b: HTMLElement, activo: boolean): void {
     b.style.cssText =
       "pointer-events:auto; box-sizing:border-box; width:26px; height:22px; " +
@@ -933,20 +952,30 @@ export class MotorExperimental {
       this.chromeBotonPanel(activo);
   }
 
-  /** Crea el botón-icono de opciones (hamburguesa de 3 líneas) dentro de la barra dada y lo
-   *  devuelve. Reemplaza al antiguo "Opciones ▾"; común a los tres bloques. El resaltado se
-   *  aplica luego con `estiloBotonOpciones` (en cada `sincronizar`). */
+  /** Tooltip ÚNICO y consistente para los controles del motor: el de Obsidian (oscuro),
+   *  anclado ARRIBA para que el cursor no lo tape. Usa `setTooltip` (API de Obsidian), que NO
+   *  pone `title` → sin el tooltip NATIVO del navegador que antes lo duplicaba. */
+  private ponerTooltip(el: HTMLElement, texto: string): void {
+    setTooltip(el, texto, { placement: "top" });
+  }
+
+  /** Crea el botón-icono de opciones (icono de menú) dentro de la barra dada y lo devuelve.
+   *  Reemplaza al antiguo "Opciones ▾"; común a los tres bloques. El resaltado se aplica
+   *  luego con `estiloBotonOpciones` (en cada `sincronizar`). */
   private crearBotonOpciones(barra: HTMLElement, titulo: string): HTMLElement {
     const b = barra.createDiv();
-    b.setAttribute("title", titulo);
-    b.setAttribute("aria-label", titulo);
-    for (let i = 0; i < 3; i++) {
-      const linea = b.createDiv();
-      linea.style.cssText =
-        "width:14px; height:2px; border-radius:2px; background:currentColor; " +
-        "transition:background 0.12s ease;";
-    }
+    this.ponerTooltip(b, titulo);
+    this.montarIcono(b, "menu", 18);
     return b;
+  }
+
+  /** Pinta un icono de `ICONO` (lado `px`) como <svg> hijo de `el`, heredando el color vía
+   *  `fill:currentColor`. Sin `innerHTML`: usa la API DOM de Obsidian (createSvg). */
+  private montarIcono(el: HTMLElement, nombre: keyof typeof ICONO, px: number): void {
+    const svg = el.createSvg("svg", {
+      attr: { viewBox: "0 -960 960 960", width: px, height: px, fill: "currentColor" },
+    });
+    svg.createSvg("path", { attr: { d: ICONO[nombre] } });
   }
 
   /** Renderiza LaTeX INLINE como ETIQUETA de un botón/opción del toggle (glifo matemático
@@ -1040,7 +1069,7 @@ export class MotorExperimental {
       // "Original" ahora es un GLIFO matemático: `f(x)` en obs-graph; el sistema
       // `\scriptscriptstyle\begin{cases}~\\[1.1ex]~\end{cases}` (filas vacías) en obs-system. Título accesible aparte.
       const btnOriginal = barra.createDiv();
-      btnOriginal.setAttribute("title", t().botones.original);
+      this.ponerTooltip(btnOriginal, t().botones.original);
       this.montarEtiquetaMath(
         btnOriginal,
         this.sistema ? "\\scriptscriptstyle\\begin{cases}~\\\\[1.1ex]~\\end{cases}" : "f(x)",
@@ -1075,7 +1104,7 @@ export class MotorExperimental {
       // accesible. El estilo (habilitado/no) lo pone itemEstilo en cada sincronización.
       const items = transformaciones.map((t) => {
         const el = caja.createDiv();
-        el.setAttribute("title", t.etiqueta);
+        this.ponerTooltip(el, t.etiqueta);
         this.montarEtiquetaMath(el, t.tex, ctx);
         return el;
       });
@@ -1169,7 +1198,7 @@ export class MotorExperimental {
       "position:absolute; top:8px; left:0; right:0; z-index:6; display:flex; gap:6px; " +
       "justify-content:center; pointer-events:none;";
     const btnOriginal = barra.createDiv();
-    btnOriginal.setAttribute("title", t().botones.operador);
+    this.ponerTooltip(btnOriginal, t().botones.operador);
     this.montarEtiquetaMath(btnOriginal, "\\frac{d}{dx}\\left(f(x)\\right)", ctx);
     const btnOpciones = this.crearBotonOpciones(barra, t().botones.derivadaEvaluada);
 
@@ -1208,7 +1237,7 @@ export class MotorExperimental {
     ];
     const items = opciones.map((o) => {
       const el = caja.createDiv();
-      el.setAttribute("title", o.etiqueta);
+      this.ponerTooltip(el, o.etiqueta);
       this.montarEtiquetaMath(el, o.tex, ctx);
       return el;
     });
@@ -1310,7 +1339,7 @@ export class MotorExperimental {
       "position:absolute; top:8px; left:0; right:0; z-index:6; display:flex; gap:6px; " +
       "justify-content:center; pointer-events:none;";
     const btnOriginal = barra.createDiv();
-    btnOriginal.setAttribute("title", t().botones.operador);
+    this.ponerTooltip(btnOriginal, t().botones.operador);
     // Glifo del botón principal: el operador integral (`∫ₐᵇ f dx`), análogo al `d/dx(f(x))`
     // del botón "Operador" de obs-derivate.
     this.montarEtiquetaMath(btnOriginal, "\\int_a^b f(x)\\,dx", ctx);
@@ -1348,7 +1377,7 @@ export class MotorExperimental {
     ];
     const items = opciones.map((o) => {
       const el = caja.createDiv();
-      el.setAttribute("title", o.etiqueta);
+      this.ponerTooltip(el, o.etiqueta);
       this.montarEtiquetaMath(el, o.tex, ctx);
       return el;
     });
@@ -1608,15 +1637,14 @@ export class MotorExperimental {
     }
 
     const btnInfo = wrap.createDiv();
-    btnInfo.setAttribute("title", t().botones.resumenNotables);
+    this.ponerTooltip(btnInfo, t().botones.resumenNotables);
     btnInfo.style.cssText =
       "position:absolute; bottom:8px; right:8px; width:22px; height:22px; " +
       "display:flex; align-items:center; justify-content:center; font-size:14px; " +
       "line-height:1; color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); " +
       "border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; " +
       "user-select:none; z-index:5;";
-    // Glifo ⓘ subido SOLO en vertical (métrica de la fuente), como en el GraphEngine.
-    btnInfo.createSpan({ text: "ⓘ" }).setCssStyles({ lineHeight: "1", transform: "translateY(-1px)" });
+    this.montarIcono(btnInfo, "info", 15);
 
     const pop = wrap.createDiv();
     pop.style.cssText =

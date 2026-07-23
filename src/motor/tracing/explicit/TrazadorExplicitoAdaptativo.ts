@@ -305,21 +305,34 @@ export class TrazadorExplicitoAdaptativo implements TrazadorExplicito {
       const poloMismoLado = poloEnTramo && finA && finB && !cruza && ya * yb > 0;
       if (cruza || algunNoFinito || poloMismoLado) {
         let esPolo = cruza || poloMismoLado;
+        // Punto del BORDE del dominio localizado por bisección. Se EMITE abajo (si no es
+        // polo) para cerrar la curva CONTRA el borde. Hace falta porque donde la curva llega
+        // al borde con TANGENTE VERTICAL el refinado normal se queda lejísimos en y: en
+        // ⁴√(1−x⁴) vale y ≈ (4ε)^(1/4), así que tras las PROF_MAX bisecciones del refinado
+        // y todavía vale ~7·10⁻³ —decenas de píxeles con zoom—. Se veía un HUECO en (±1, 0),
+        // con el trazo cortado como si fuera una asíntota punteada, y solo desaparecía por
+        // casualidad cuando el borde caía justo en la rejilla de muestreo. Estas 40
+        // bisecciones llevan ε al epsilon de la máquina (hueco < 1 px a cualquier zoom).
+        let xBorde = NaN, yBorde = NaN;
         if (!esPolo && finA !== finB) {
           const xf = finA ? xa : xb;
           const yf = finA ? ya : yb;
           const xn = finA ? xb : xa;
           let lo = xf,
             hi = xn,
-            magCerca = Math.abs(yf);
+            magCerca = Math.abs(yf),
+            yCerca = yf;
           for (let k = 0; k < 40; k++) {
             const mid = (lo + hi) / 2;
             const ym = evalX(mid);
             if (Number.isFinite(ym)) {
               lo = mid;
               magCerca = Math.abs(ym);
+              yCerca = ym;
             } else hi = mid;
           }
+          xBorde = lo;
+          yBorde = yCerca;
           esPolo = !Number.isFinite(magCerca) || magCerca > Math.abs(yf) + 1;
         }
         if (esPolo && !cruza && finA !== finB) {
@@ -342,9 +355,19 @@ export class TrazadorExplicitoAdaptativo implements TrazadorExplicito {
             emit(xb, yb);
           }
         } else {
-          if (finA) emit(xa, ya);
+          // El punto del borde se emite PEGADO al extremo finito y dentro del MISMO
+          // segmento, para que la polilínea llegue hasta el borde del dominio en vez de
+          // cortarse antes (ver `xBorde`). Sin él, √x, ⁴√(1−x⁴) y compañía dejaban un hueco
+          // en el arranque/cierre de la rama, tanto mayor cuanto más vertical la tangente.
+          if (finA) {
+            emit(xa, ya);
+            if (Number.isFinite(yBorde)) emit(xBorde, yBorde);
+          }
           flush();
-          if (finB) emit(xb, yb);
+          if (finB) {
+            if (Number.isFinite(yBorde)) emit(xBorde, yBorde);
+            emit(xb, yb);
+          }
         }
       } else {
         // Corte DEFENSIVO de discontinuidad no resuelta: con el refinado AGOTADO

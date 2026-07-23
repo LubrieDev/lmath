@@ -37,7 +37,6 @@ export interface Textos {
       opcionEs: string;
     };
   };
-  badge: { sistema: string; integral: string; general: string };
   canvasNoDisponible: string;
   botones: {
     vistaInicial: string;
@@ -139,11 +138,6 @@ const EN: Textos = {
       opcionEn: "English",
       opcionEs: "Español",
     },
-  },
-  badge: {
-    sistema: "Experimental engine — system of equations",
-    integral: "Experimental engine — definite integral (area under the curve)",
-    general: "Experimental engine — explicit · implicit · parametric · polar",
   },
   canvasNoDisponible: "Error: Canvas 2D not available",
   botones: {
@@ -271,11 +265,6 @@ const ES: Textos = {
       opcionEn: "English",
       opcionEs: "Español",
     },
-  },
-  badge: {
-    sistema: "Motor experimental — sistema de ecuaciones",
-    integral: "Motor experimental — integral definida (área bajo la curva)",
-    general: "Motor experimental — explícitas · implícitas · paramétricas · polares",
   },
   canvasNoDisponible: "Error: Canvas 2D no disponible",
   botones: {

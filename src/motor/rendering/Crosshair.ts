@@ -15,26 +15,36 @@ import { aPantallaY, aMundoX } from "../scene/viewport-utils";
 import { yEnRamas } from "../analysis/lecturaRama";
 import { formatearNumero } from "./overlay/Overlay";
 
+// Icono del cursor: Material Symbols "point_scan" (24dp, viewBox 0 -960 960 960). Solo la
+// cadena del path; el Path2D se construye PEREZOSAMENTE en el primer dibujo (Path2D no
+// existe en Node y el bundle de tests importa el motor, pero nunca pinta el cursor).
+const CURSOR_ICONO =
+  "M430.5-430.59q-20.5-20.59-20.5-49.5t20.59-49.41q20.59-20.5 49.5-20.5t49.41 20.59q20.5 20.59 20.5 49.5t-20.59 49.41q-20.59 20.5-49.5 20.5t-49.41-20.59ZM450-640v-200h60v200h-60Zm0 520v-200h60v200h-60Zm190-330v-60h200v60H640Zm-520 0v-60h200v60H120Z";
+
 export class Crosshair {
+  private cursorPath?: Path2D;
+
   constructor(private readonly ctx: CanvasRenderingContext2D) {}
 
   /**
-   * Cruz (+) propia del cursor, centrada exactamente en (px, py) del ratón.
-   * Sustituye al cursor del sistema (oculto con cursor:none en el canvas). Mismo
-   * estilo que obs-system: 14px, blanca, 1.25px. Es independiente del crosshair
-   * matemático: se muestra siempre que el puntero esté sobre el plano.
+   * Icono del cursor (Material Symbols "point_scan"), centrado exactamente en (px, py)
+   * del ratón. Sustituye al cursor del sistema (oculto con cursor:none en el canvas).
+   * Blanco (~20px), independiente del crosshair matemático: se muestra siempre que el
+   * puntero esté sobre el plano.
    */
   dibujarCursorCruz(px: number, py: number): void {
-    const R = 7; // semibrazo → cruz de 14px
     const ctx = this.ctx;
+    // Path2D perezoso: solo se crea la primera vez que un canvas real pinta el cursor
+    // (nunca en los tests de Node, que no llegan a dibujar). Ver `CURSOR_ICONO`.
+    if (!this.cursorPath) this.cursorPath = new Path2D(CURSOR_ICONO);
+    const S = 20;             // lado del icono en px
+    const escala = S / 960;   // el viewBox es 960×960
     ctx.save();
-    ctx.setLineDash([]);
-    ctx.strokeStyle = "rgba(235, 238, 245, 0.95)";
-    ctx.lineWidth = 1.25;
-    ctx.beginPath();
-    ctx.moveTo(px - R, py); ctx.lineTo(px + R, py);
-    ctx.moveTo(px, py - R); ctx.lineTo(px, py + R);
-    ctx.stroke();
+    ctx.translate(px, py);
+    ctx.scale(escala, escala);
+    ctx.translate(-480, 480); // lleva el centro del viewBox (480,-480) a (px, py)
+    ctx.fillStyle = "rgba(235, 238, 245, 0.95)";
+    ctx.fill(this.cursorPath);
     ctx.restore();
   }
 

@@ -51295,20 +51295,24 @@ var TrazadorExplicitoAdaptativo = class {
       const poloMismoLado = poloEnTramo && finA && finB && !cruza && ya * yb > 0;
       if (cruza || algunNoFinito || poloMismoLado) {
         let esPolo = cruza || poloMismoLado;
+        let xBorde = NaN, yBorde = NaN;
         if (!esPolo && finA !== finB) {
           const xf = finA ? xa : xb;
           const yf = finA ? ya : yb;
           const xn = finA ? xb : xa;
-          let lo = xf, hi = xn, magCerca = Math.abs(yf);
+          let lo = xf, hi = xn, magCerca = Math.abs(yf), yCerca = yf;
           for (let k = 0; k < 40; k++) {
             const mid = (lo + hi) / 2;
             const ym = evalX(mid);
             if (Number.isFinite(ym)) {
               lo = mid;
               magCerca = Math.abs(ym);
+              yCerca = ym;
             } else
               hi = mid;
           }
+          xBorde = lo;
+          yBorde = yCerca;
           esPolo = !Number.isFinite(magCerca) || magCerca > Math.abs(yf) + 1;
         }
         if (esPolo && !cruza && finA !== finB) {
@@ -51333,11 +51337,17 @@ var TrazadorExplicitoAdaptativo = class {
             emit(xb, yb);
           }
         } else {
-          if (finA)
+          if (finA) {
             emit(xa, ya);
+            if (Number.isFinite(yBorde))
+              emit(xBorde, yBorde);
+          }
           flush();
-          if (finB)
+          if (finB) {
+            if (Number.isFinite(yBorde))
+              emit(xBorde, yBorde);
             emit(xb, yb);
+          }
         }
       } else {
         const tocaVista = Math.min(ya, yb) < domY[1] && Math.max(ya, yb) > domY[0];
@@ -55508,29 +55518,29 @@ var Overlay = class {
 };
 
 // src/motor/rendering/Crosshair.ts
+var CURSOR_ICONO = "M430.5-430.59q-20.5-20.59-20.5-49.5t20.59-49.41q20.59-20.5 49.5-20.5t49.41 20.59q20.5 20.59 20.5 49.5t-20.59 49.41q-20.59 20.5-49.5 20.5t-49.41-20.59ZM450-640v-200h60v200h-60Zm0 520v-200h60v200h-60Zm190-330v-60h200v60H640Zm-520 0v-60h200v60H120Z";
 var Crosshair = class {
   constructor(ctx) {
     this.ctx = ctx;
   }
   /**
-   * Cruz (+) propia del cursor, centrada exactamente en (px, py) del ratón.
-   * Sustituye al cursor del sistema (oculto con cursor:none en el canvas). Mismo
-   * estilo que obs-system: 14px, blanca, 1.25px. Es independiente del crosshair
-   * matemático: se muestra siempre que el puntero esté sobre el plano.
+   * Icono del cursor (Material Symbols "point_scan"), centrado exactamente en (px, py)
+   * del ratón. Sustituye al cursor del sistema (oculto con cursor:none en el canvas).
+   * Blanco (~20px), independiente del crosshair matemático: se muestra siempre que el
+   * puntero esté sobre el plano.
    */
   dibujarCursorCruz(px, py) {
-    const R = 7;
     const ctx = this.ctx;
+    if (!this.cursorPath)
+      this.cursorPath = new Path2D(CURSOR_ICONO);
+    const S = 20;
+    const escala = S / 960;
     ctx.save();
-    ctx.setLineDash([]);
-    ctx.strokeStyle = "rgba(235, 238, 245, 0.95)";
-    ctx.lineWidth = 1.25;
-    ctx.beginPath();
-    ctx.moveTo(px - R, py);
-    ctx.lineTo(px + R, py);
-    ctx.moveTo(px, py - R);
-    ctx.lineTo(px, py + R);
-    ctx.stroke();
+    ctx.translate(px, py);
+    ctx.scale(escala, escala);
+    ctx.translate(-480, 480);
+    ctx.fillStyle = "rgba(235, 238, 245, 0.95)";
+    ctx.fill(this.cursorPath);
     ctx.restore();
   }
   /**
@@ -56302,7 +56312,9 @@ var Escena = class {
     const it = this.items[this.seleccion];
     if (!it)
       return false;
-    const conGeometria = it.geometria.ramas.filter((r) => r.puntos.length >= 4);
+    const conGeometria = it.geometria.ramas.filter(
+      (r) => r.puntos.length >= 4 && r.calidad !== "incierta"
+    );
     if (conGeometria.length === 0)
       return false;
     if (conGeometria.some((r) => r.parametro === void 0 || r.parametro.length < 2))
@@ -57387,11 +57399,6 @@ var EN = {
       opcionEs: "Espa\xF1ol"
     }
   },
-  badge: {
-    sistema: "Experimental engine \u2014 system of equations",
-    integral: "Experimental engine \u2014 definite integral (area under the curve)",
-    general: "Experimental engine \u2014 explicit \xB7 implicit \xB7 parametric \xB7 polar"
-  },
   canvasNoDisponible: "Error: Canvas 2D not available",
   botones: {
     vistaInicial: "Initial view (undo zoom and pan)",
@@ -57494,11 +57501,6 @@ var ES = {
       opcionEn: "English",
       opcionEs: "Espa\xF1ol"
     }
-  },
-  badge: {
-    sistema: "Motor experimental \u2014 sistema de ecuaciones",
-    integral: "Motor experimental \u2014 integral definida (\xE1rea bajo la curva)",
-    general: "Motor experimental \u2014 expl\xEDcitas \xB7 impl\xEDcitas \xB7 param\xE9tricas \xB7 polares"
   },
   canvasNoDisponible: "Error: Canvas 2D no disponible",
   botones: {
@@ -57777,6 +57779,14 @@ var PestanaAjustesLMath = class extends import_obsidian2.PluginSettingTab {
 };
 
 // src/host-obsidian/MotorExperimental.ts
+var ICONO = {
+  inicio: "M220-180h150v-250h220v250h150v-390L480-765 220-570v390Zm-60 60v-480l320-240 320 240v480H530v-250H430v250H160Zm320-353Z",
+  acercar: "M450-450H200v-60h250v-250h60v250h250v60H510v250h-60v-250Z",
+  alejar: "M200-450v-60h560v60H200Z",
+  carril: "M450-42v-75q-137-14-228-105T117-450H42v-60h75q14-137 105-228t228-105v-75h60v75q137 14 228 105t105 228h75v60h-75q-14 137-105 228T510-117v75h-60Zm244.5-223.5Q784-355 784-480t-89.5-214.5Q605-784 480-784t-214.5 89.5Q176-605 176-480t89.5 214.5Q355-176 480-176t214.5-89.5Zm-321-108Q330-417 330-480t43.5-106.5Q417-630 480-630t106.5 43.5Q630-543 630-480t-43.5 106.5Q543-330 480-330t-106.5-43.5ZM544-416q26-26 26-64t-26-64q-26-26-64-26t-64 26q-26 26-26 64t26 64q26 26 64 26t64-26Zm-64-64Z",
+  info: "M453-280h60v-240h-60v240Zm50.5-323.2q9.5-9.2 9.5-22.8 0-14.45-9.48-24.22-9.48-9.78-23.5-9.78t-23.52 9.78Q447-640.45 447-626q0 13.6 9.48 22.8 9.48 9.2 23.5 9.2t23.52-9.2ZM480.27-80q-82.74 0-155.5-31.5Q252-143 197.5-197.5t-86-127.34Q80-397.68 80-480.5t31.5-155.66Q143-709 197.5-763t127.34-85.5Q397.68-880 480.5-880t155.66 31.5Q709-817 763-763t85.5 127Q880-563 880-480.27q0 82.74-31.5 155.5Q817-252 763-197.68q-54 54.31-127 86Q563-80 480.27-80Zm.23-60Q622-140 721-239.5t99-241Q820-622 721.19-721T480-820q-141 0-240.5 98.81T140-480q0 141 99.5 240.5t241 99.5Zm-.5-340Z",
+  menu: "M120-240v-60h720v60H120Zm0-210v-60h720v60H120Zm0-210v-60h720v60H120Z"
+};
 var MotorExperimental = class {
   // `sistema=false` → bloque obs-graph (una función). `sistema=true` → bloque
   // obs-system (varias ecuaciones, cada una con su color). `derivada=true` → bloque
@@ -57817,12 +57827,6 @@ var MotorExperimental = class {
     const H = 261;
     const wrap = contenedor.createDiv({ cls: "lmath-grafica" });
     wrap.style.cssText = `position:relative; width:100%; height:${H}px;`;
-    const badge = wrap.createDiv({ text: "\u2699" });
-    badge.setAttribute(
-      "title",
-      this.sistema ? t().badge.sistema : this.integral ? t().badge.integral : t().badge.general
-    );
-    badge.style.cssText = "position:absolute; top:6px; right:8px; font-size:12px; z-index:5; color:rgba(120,180,255,0.55); cursor:default; user-select:none;";
     const canvas = wrap.createEl("canvas");
     canvas.setCssStyles({
       position: "absolute",
@@ -57976,25 +57980,49 @@ var MotorExperimental = class {
     limpieza.register(() => window.removeEventListener("resize", redimensionar));
     limpieza.register(() => camara.destruir());
     const estiloZoom = (arriba) => "position:absolute; right:8px; top:" + arriba + "px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:15px; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; color:rgba(220,220,220,0.85); background:rgba(30,30,30,0.85); border:1px solid rgba(255,255,255,0.18);";
-    const btnInicio = wrap.createDiv({ text: "\u{1F3E0}\uFE0E" });
-    btnInicio.setAttribute("title", t().botones.vistaInicial);
-    btnInicio.style.cssText = estiloZoom(26) + "font-size:12px;";
-    const btnMas = wrap.createDiv({ text: "+" });
-    btnMas.setAttribute("title", t().botones.acercar);
-    btnMas.style.cssText = estiloZoom(52);
-    const btnMenos = wrap.createDiv({ text: "\u2212" });
-    btnMenos.setAttribute("title", t().botones.alejar);
-    btnMenos.style.cssText = estiloZoom(78);
+    const btnInicio = wrap.createDiv();
+    this.ponerTooltip(btnInicio, t().botones.vistaInicial);
+    btnInicio.style.cssText = estiloZoom(6);
+    this.montarIcono(btnInicio, "inicio", 15);
+    const btnMas = wrap.createDiv();
+    this.ponerTooltip(btnMas, t().botones.acercar);
+    btnMas.style.cssText = estiloZoom(32);
+    this.montarIcono(btnMas, "acercar", 15);
+    const btnMenos = wrap.createDiv();
+    this.ponerTooltip(btnMenos, t().botones.alejar);
+    btnMenos.style.cssText = estiloZoom(58);
+    this.montarIcono(btnMenos, "alejar", 15);
     btnInicio.addEventListener("click", () => camara.volverAVistaBase());
-    btnMas.addEventListener("click", () => camara.zoomCentrado(true));
-    btnMenos.addEventListener("click", () => camara.zoomCentrado(false));
+    const CADENCIA_ZOOM_MS = 100;
+    const zoomMantenido = (btn, acercar) => {
+      let timer = null;
+      const parar = () => {
+        if (timer !== null) {
+          window.clearInterval(timer);
+          timer = null;
+        }
+      };
+      btn.addEventListener("pointerdown", (e3) => {
+        if (e3.button !== 0)
+          return;
+        btn.setPointerCapture(e3.pointerId);
+        camara.zoomCentrado(acercar);
+        parar();
+        timer = window.setInterval(() => camara.zoomCentrado(acercar), CADENCIA_ZOOM_MS);
+      });
+      btn.addEventListener("pointerup", parar);
+      btn.addEventListener("pointercancel", parar);
+      limpieza.register(parar);
+    };
+    zoomMantenido(btnMas, true);
+    zoomMantenido(btnMenos, false);
     const btnCarril = wrap.createDiv();
-    btnCarril.setAttribute("title", t().botones.carril);
+    this.ponerTooltip(btnCarril, t().botones.carril);
     const estiloBtn = (activo) => {
       btnCarril.style.cssText = "position:absolute; bottom:8px; left:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; " + (activo ? "color:rgba(20,20,20,0.95); background:rgba(255,170,60,0.95); border:1px solid rgba(255,170,60,0.95);" : "color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); border:1px solid rgba(255,160,40,0.5);");
     };
     estiloBtn(false);
-    btnCarril.createSpan({ text: "\u2316" }).setCssStyles({ lineHeight: "1", transform: "translateY(-1px)" });
+    this.montarIcono(btnCarril, "carril", 15);
     btnCarril.addEventListener("click", () => {
       navegacion.alternarCarril();
       estiloBtn(navegacion.railOn);
@@ -58004,7 +58032,7 @@ var MotorExperimental = class {
     if (colores.length >= 2) {
       colores.forEach((c, i2) => {
         const b = wrap.createDiv();
-        b.setAttribute("title", t().botones.seleccionarEcuacion(i2 + 1));
+        this.ponerTooltip(b, t().botones.seleccionarEcuacion(i2 + 1));
         const rgb = `rgb(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)})`;
         const estilo = (sel) => {
           b.style.cssText = `position:absolute; bottom:10px; left:${38 + i2 * 24}px; width:18px; height:18px; border-radius:50%; cursor:pointer; user-select:none; z-index:5; box-sizing:border-box; background:${rgb}; ` + (sel ? "border:2px solid rgba(255,255,255,0.95);" : "border:2px solid rgba(0,0,0,0.35);");
@@ -58030,9 +58058,10 @@ var MotorExperimental = class {
     };
     sincronizarControles();
     if (this.sistema) {
-      const btnSolucion = wrap.createDiv({ text: "\u24D8" });
-      btnSolucion.setAttribute("title", t().botones.solucionesSistema);
+      const btnSolucion = wrap.createDiv();
+      this.ponerTooltip(btnSolucion, t().botones.solucionesSistema);
       btnSolucion.style.cssText = "position:absolute; bottom:8px; right:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; user-select:none; z-index:5;";
+      this.montarIcono(btnSolucion, "info", 15);
       const popSolucion = wrap.createDiv();
       popSolucion.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:rgba(20,20,20,0.95); border:1px solid rgba(255,255,255,0.12); border-radius:6px; font-size:11px; line-height:1.5; color:rgba(230,230,235,0.92); z-index:5; box-shadow:0 4px 12px rgba(0,0,0,0.4);";
       const sistemaPeriodico = visibles.some((ec) => ec.split("=").some((lado) => tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado.trim())))));
@@ -58107,9 +58136,9 @@ var MotorExperimental = class {
       const acotadaPorPeriodo = tipo === "parametrica" || tipo === "polar";
       const esTrig = !acotadaPorPeriodo && graficadas[0].split("=").some((lado) => tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado.trim()))));
       const btnInfo = wrap.createDiv();
-      btnInfo.setAttribute("title", t().botones.resumenNotables);
+      this.ponerTooltip(btnInfo, t().botones.resumenNotables);
       btnInfo.style.cssText = "position:absolute; bottom:8px; right:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; user-select:none; z-index:5;";
-      btnInfo.createSpan({ text: "\u24D8" }).setCssStyles({ lineHeight: "1", transform: "translateY(-1px)" });
+      this.montarIcono(btnInfo, "info", 15);
       const pop = wrap.createDiv();
       pop.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:rgba(20,20,20,0.95); border:1px solid rgba(255,255,255,0.12); border-radius:6px; font-size:11px; line-height:1.5; color:rgba(230,230,235,0.92); z-index:5; box-shadow:0 4px 12px rgba(0,0,0,0.4);";
       const refrescarInfo = () => {
@@ -58307,24 +58336,34 @@ var MotorExperimental = class {
   estiloBotonPanel(b, activo) {
     b.style.cssText = 'pointer-events:auto; padding:3px 10px; font-size:11px; line-height:1.15; cursor:pointer; user-select:none; border-radius:8px; white-space:nowrap; font-family:"Lora", var(--font-interface); transition:background 0.12s ease, color 0.12s ease; ' + this.chromeBotonPanel(activo);
   }
-  /** Estilo del botón-icono "hamburguesa" (3 líneas) que abre el menú de opciones:
-   *  CUADRADO de esquinas suaves, mismo resaltado activo/inactivo que los de texto. Las
-   *  líneas usan `currentColor`, así que siguen el color del botón (se avivan al activarse). */
+  /** Estilo del botón-icono de menú que abre las opciones: CUADRADO de esquinas suaves,
+   *  mismo resaltado activo/inactivo que los de texto. El icono usa `fill:currentColor`, así
+   *  que sigue el color del botón (se aviva al activarse). */
   estiloBotonOpciones(b, activo) {
     b.style.cssText = "pointer-events:auto; box-sizing:border-box; width:26px; height:22px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; cursor:pointer; user-select:none; border-radius:7px; transition:background 0.12s ease, color 0.12s ease; " + this.chromeBotonPanel(activo);
   }
-  /** Crea el botón-icono de opciones (hamburguesa de 3 líneas) dentro de la barra dada y lo
-   *  devuelve. Reemplaza al antiguo "Opciones ▾"; común a los tres bloques. El resaltado se
-   *  aplica luego con `estiloBotonOpciones` (en cada `sincronizar`). */
+  /** Tooltip ÚNICO y consistente para los controles del motor: el de Obsidian (oscuro),
+   *  anclado ARRIBA para que el cursor no lo tape. Usa `setTooltip` (API de Obsidian), que NO
+   *  pone `title` → sin el tooltip NATIVO del navegador que antes lo duplicaba. */
+  ponerTooltip(el, texto) {
+    (0, import_obsidian3.setTooltip)(el, texto, { placement: "top" });
+  }
+  /** Crea el botón-icono de opciones (icono de menú) dentro de la barra dada y lo devuelve.
+   *  Reemplaza al antiguo "Opciones ▾"; común a los tres bloques. El resaltado se aplica
+   *  luego con `estiloBotonOpciones` (en cada `sincronizar`). */
   crearBotonOpciones(barra, titulo) {
     const b = barra.createDiv();
-    b.setAttribute("title", titulo);
-    b.setAttribute("aria-label", titulo);
-    for (let i2 = 0; i2 < 3; i2++) {
-      const linea = b.createDiv();
-      linea.style.cssText = "width:14px; height:2px; border-radius:2px; background:currentColor; transition:background 0.12s ease;";
-    }
+    this.ponerTooltip(b, titulo);
+    this.montarIcono(b, "menu", 18);
     return b;
+  }
+  /** Pinta un icono de `ICONO` (lado `px`) como <svg> hijo de `el`, heredando el color vía
+   *  `fill:currentColor`. Sin `innerHTML`: usa la API DOM de Obsidian (createSvg). */
+  montarIcono(el, nombre, px) {
+    const svg = el.createSvg("svg", {
+      attr: { viewBox: "0 -960 960 960", width: px, height: px, fill: "currentColor" }
+    });
+    svg.createSvg("path", { attr: { d: ICONO[nombre] } });
   }
   /** Renderiza LaTeX INLINE como ETIQUETA de un botón/opción del toggle (glifo matemático
    *  en vez de texto): limpia `el`, pinta `$tex$` con KaTeX (mismo pipeline que el panel) y
@@ -58384,7 +58423,7 @@ var MotorExperimental = class {
       barra.style.cssText = "position:absolute; top:8px; left:0; right:0; z-index:6; display:flex; gap:6px; justify-content:center; pointer-events:none;";
       const estiloBoton = (b, activo) => this.estiloBotonPanel(b, activo);
       const btnOriginal = barra.createDiv();
-      btnOriginal.setAttribute("title", t().botones.original);
+      this.ponerTooltip(btnOriginal, t().botones.original);
       this.montarEtiquetaMath(
         btnOriginal,
         this.sistema ? "\\scriptscriptstyle\\begin{cases}~\\\\[1.1ex]~\\end{cases}" : "f(x)",
@@ -58400,7 +58439,7 @@ var MotorExperimental = class {
       };
       const items = transformaciones.map((t2) => {
         const el = caja.createDiv();
-        el.setAttribute("title", t2.etiqueta);
+        this.ponerTooltip(el, t2.etiqueta);
         this.montarEtiquetaMath(el, t2.tex, ctx);
         return el;
       });
@@ -58469,7 +58508,7 @@ var MotorExperimental = class {
     const barra = panelLatex.createDiv();
     barra.style.cssText = "position:absolute; top:8px; left:0; right:0; z-index:6; display:flex; gap:6px; justify-content:center; pointer-events:none;";
     const btnOriginal = barra.createDiv();
-    btnOriginal.setAttribute("title", t().botones.operador);
+    this.ponerTooltip(btnOriginal, t().botones.operador);
     this.montarEtiquetaMath(btnOriginal, "\\frac{d}{dx}\\left(f(x)\\right)", ctx);
     const btnOpciones = this.crearBotonOpciones(barra, t().botones.derivadaEvaluada);
     const menu = panelLatex.createDiv();
@@ -58491,7 +58530,7 @@ var MotorExperimental = class {
     ];
     const items = opciones.map((o) => {
       const el = caja.createDiv();
-      el.setAttribute("title", o.etiqueta);
+      this.ponerTooltip(el, o.etiqueta);
       this.montarEtiquetaMath(el, o.tex, ctx);
       return el;
     });
@@ -58566,7 +58605,7 @@ var MotorExperimental = class {
     const barra = panelLatex.createDiv();
     barra.style.cssText = "position:absolute; top:8px; left:0; right:0; z-index:6; display:flex; gap:6px; justify-content:center; pointer-events:none;";
     const btnOriginal = barra.createDiv();
-    btnOriginal.setAttribute("title", t().botones.operador);
+    this.ponerTooltip(btnOriginal, t().botones.operador);
     this.montarEtiquetaMath(btnOriginal, "\\int_a^b f(x)\\,dx", ctx);
     const btnOpciones = this.crearBotonOpciones(barra, t().botones.primitivaEvaluada);
     const menu = panelLatex.createDiv();
@@ -58586,7 +58625,7 @@ var MotorExperimental = class {
     ];
     const items = opciones.map((o) => {
       const el = caja.createDiv();
-      el.setAttribute("title", o.etiqueta);
+      this.ponerTooltip(el, o.etiqueta);
       this.montarEtiquetaMath(el, o.tex, ctx);
       return el;
     });
@@ -58818,9 +58857,9 @@ var MotorExperimental = class {
         lineas.push({ texto: T.noVertices });
     }
     const btnInfo = wrap.createDiv();
-    btnInfo.setAttribute("title", t().botones.resumenNotables);
+    this.ponerTooltip(btnInfo, t().botones.resumenNotables);
     btnInfo.style.cssText = "position:absolute; bottom:8px; right:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; user-select:none; z-index:5;";
-    btnInfo.createSpan({ text: "\u24D8" }).setCssStyles({ lineHeight: "1", transform: "translateY(-1px)" });
+    this.montarIcono(btnInfo, "info", 15);
     const pop = wrap.createDiv();
     pop.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:rgba(20,20,20,0.95); border:1px solid rgba(255,255,255,0.12); border-radius:6px; font-size:11px; line-height:1.5; color:rgba(230,230,235,0.92); z-index:5; box-shadow:0 4px 12px rgba(0,0,0,0.4);";
     for (const l of lineas) {

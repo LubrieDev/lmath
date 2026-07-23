@@ -308,7 +308,16 @@ export class Escena {
     const it = this.items[this.seleccion];
     if (!it) return false;
     // Ramas con geometría REAL (≥2 puntos); una rama degenerada (un punto) no cuenta.
-    const conGeometria = it.geometria.ramas.filter((r) => r.puntos.length >= 4);
+    // Las bandas de alta frecuencia (calidad "incierta": la envolvente min/max sub-píxel de
+    // sin(1/x), que no lleva `parametro` porque no es curva que se pueda "caminar") NO son
+    // recorribles pero TAMPOCO invalidan el resto —`yEnRamas` ya las salta—: se excluyen del
+    // juicio. Sin esto, su mera presencia hacía FALSO todo `curvaRecorrible` (la banda no tiene
+    // `parametro`) y apagaba el crosshair de TODA la curva; ahora el crosshair funciona en el
+    // resto y solo se omite SOBRE la banda (donde no hay una y única). Regresión de 1.2.6, que
+    // introdujo estas bandas: antes sin(1/x) se trazaba con ramas normales y era recorrible.
+    const conGeometria = it.geometria.ramas.filter(
+      (r) => r.puntos.length >= 4 && r.calidad !== "incierta"
+    );
     if (conGeometria.length === 0) return false;
     // TODA rama debe ser función de x: x-monótona, es decir con `parametro` (lo adjunta
     // parametrizarMonotonasEnX en las implícitas, y el sampler en las explícitas). Una sola
