@@ -16,4 +16,12 @@ export interface Estilo {
   readonly guiones?: readonly number[];
   /** Relleno para regiones/inecuaciones (color con alfa bajo). */
   readonly relleno?: readonly [number, number, number, number];
+  /**
+   * PAPEL del objeto en la paleta: su índice de ecuación (0 = primera del bloque). Cuando
+   * está, el renderizador toma el color de la paleta ACTIVA en vez de `color`, de modo que
+   * cambiar de tema claro a oscuro se resuelve repintando —sin reconstruir la escena ni
+   * perder el zoom—. `color` sigue ahí como valor concreto para todo lo que no participe de
+   * la paleta (y como respaldo si algún día se pinta fuera del plano).
+   */
+  readonly rol?: number;
 }

@@ -48410,6 +48410,38 @@ var NOMBRE_FUNCION_TEX = {
   atanh: "\\operatorname{arctanh}"
 };
 var PAREN_DESNUDA = "parenDesnuda";
+var CONSTANTES_TEX = /* @__PURE__ */ new Set(["pi", "e", "tau", "phi", "Infinity", "NaN"]);
+function pelar(n) {
+  let r = n;
+  while (r.type === "ParenthesisNode")
+    r = r.content;
+  return r;
+}
+function radicalDeExponente(base, exp3, options) {
+  var _a, _b;
+  const e3 = pelar(exp3);
+  if (e3.type !== "OperatorNode" || e3.op !== "/" || ((_a = e3.args) == null ? void 0 : _a.length) !== 2)
+    return void 0;
+  const num = pelar(e3.args[0]);
+  const den = pelar(e3.args[1]);
+  if (den.type !== "ConstantNode")
+    return void 0;
+  const indice = den.value;
+  if (typeof indice !== "number" || !Number.isInteger(indice) || indice < 2)
+    return void 0;
+  if (num.type === "ConstantNode" && typeof num.value === "number" && num.value < 0)
+    return void 0;
+  if (num.type === "OperatorNode" && num.op === "-" && ((_b = num.args) == null ? void 0 : _b.length) === 1)
+    return void 0;
+  const libres = num.filter(
+    (nn, camino, padre) => nn.type === "SymbolNode" && !CONSTANTES_TEX.has(nn.name) && !(padre !== null && padre.type === "FunctionNode" && camino === "fn")
+  );
+  if (libres.length > 0)
+    return void 0;
+  const unitario = num.type === "ConstantNode" && num.value === 1;
+  const cuerpo = unitario ? pelar(base).toTex(options) : opNodo("^", "pow", [base, num]).toTex(options);
+  return indice === 2 ? `\\sqrt{${cuerpo}}` : `\\sqrt[${indice}]{${cuerpo}}`;
+}
 function manejadorFuncionesTex(node, options) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
   if (node.type === "FunctionNode" && ((_a = node.fn) == null ? void 0 : _a.name) === PAREN_DESNUDA && node.args.length === 1)
@@ -48462,6 +48494,9 @@ function manejadorFuncionesTex(node, options) {
     const expNegativo = exp3.type === "ConstantNode" && exp3.value < 0;
     if (nombreTex && !expNegativo)
       return argFuncion(b.args[0], `${nombreTex}^{${exp3.toTex(options)}}`);
+    const radical = radicalDeExponente(base, exp3, options);
+    if (radical)
+      return radical;
   }
   return void 0;
 }
@@ -51114,6 +51149,7 @@ function envolvente(f, vp, tramo, objetoId, yBot, yTop) {
 }
 
 // src/motor/tracing/explicit/TrazadorExplicitoAdaptativo.ts
+var VERTICES_POR_COLUMNA_MAX = 2048;
 var TrazadorExplicitoAdaptativo = class {
   /**
    * Trazado de y=f(x). Antes de muestrear, se comprueba si hay tramos donde la curva
@@ -51169,6 +51205,8 @@ var TrazadorExplicitoAdaptativo = class {
     const yBot = domY[0] - Hmundo;
     const pxMundo = (domX[1] - domX[0]) / Math.max(1, viewport.anchoPx);
     const syPx = (y) => H - (y - domY[0]) / (domY[1] - domY[0]) * H;
+    const MAX_VERTICES = Math.max(1, Math.round(viewport.anchoPx)) * VERTICES_POR_COLUMNA_MAX;
+    let vertices = 0;
     const polilineas = [];
     const asintotas = [];
     let segmento = [];
@@ -51178,9 +51216,11 @@ var TrazadorExplicitoAdaptativo = class {
       segmento = [];
     };
     const emit = (x, y) => {
+      vertices++;
       segmento.push(x, Number.isFinite(y) ? y : y > 0 ? yTop : yBot);
     };
     const emitPolo = (x, y) => {
+      vertices++;
       segmento.push(x, y >= 0 ? yTop : yBot);
     };
     const registrarAsintota = (x) => {
@@ -51278,7 +51318,8 @@ var TrazadorExplicitoAdaptativo = class {
         (q) => q > Math.min(xa, xb) && q < Math.max(xa, xb)
       );
       const cambioSigno = finA && finB && ya * yb < 0;
-      const refinar = prof < PROF_MAX3 && (poloEnTramo || cambioSigno || saltoPx > SALTO_PX_MAX && !fueraMismoLado);
+      const agotado = prof >= PROF_MAX3 || vertices >= MAX_VERTICES;
+      const refinar = !agotado && (poloEnTramo || cambioSigno || saltoPx > SALTO_PX_MAX && !fueraMismoLado);
       if (refinar) {
         const xm = (xa + xb) / 2;
         const ym = evalX(xm);
@@ -51287,7 +51328,7 @@ var TrazadorExplicitoAdaptativo = class {
         return;
       }
       const cruza = ya > domY[1] && yb < domY[0] || ya < domY[0] && yb > domY[1];
-      if (cruza && prof >= PROF_MAX3 && finA && finB && esCruceContinuo(xa, ya, xb, yb)) {
+      if (cruza && agotado && finA && finB && esCruceContinuo(xa, ya, xb, yb)) {
         emit(xb, yb);
         return;
       }
@@ -52589,6 +52630,9 @@ function recolectar(ramas, objetoId, viewport) {
   if (viewport) {
     const epsY = (viewport.domY[1] - viewport.domY[0]) / viewport.altoPx * 0.5;
     const margenX = (viewport.domX[1] - viewport.domX[0]) / viewport.anchoPx * 2;
+    const indiceRaices = new IndiceX(margenX);
+    for (const r of raices2)
+      indiceRaices.anadir(r.punto.x);
     for (const rama of ramas) {
       const p = rama.puntos;
       const n = p.length / 2;
@@ -52607,9 +52651,11 @@ function recolectar(ramas, objetoId, viewport) {
           continue;
         if (x < viewport.domX[0] + margenX || x > viewport.domX[1] - margenX)
           continue;
-        if (raices2.some((r) => Math.abs(r.punto.x - x) <= margenX))
+        if (indiceRaices.hayCerca(x))
           continue;
-        raices2.push({ punto: { x, y: 0 }, tipo: "raiz", objetoId });
+        const raiz = { punto: { x, y: 0 }, tipo: "raiz", objetoId };
+        raices2.push(raiz);
+        indiceRaices.anadir(x);
       }
     }
   }
@@ -52621,11 +52667,56 @@ function recolectar(ramas, objetoId, viewport) {
     interseccionesY: dedupe(interseccionesY, tolX, tolY)
   };
 }
+var IndiceX = class {
+  constructor(tol) {
+    this.tol = tol;
+    this.celdas = /* @__PURE__ */ new Map();
+  }
+  anadir(x) {
+    const c = Math.floor(x / this.tol);
+    const lista = this.celdas.get(c);
+    if (lista)
+      lista.push(x);
+    else
+      this.celdas.set(c, [x]);
+  }
+  hayCerca(x) {
+    const c = Math.floor(x / this.tol);
+    for (let d = -1; d <= 1; d++) {
+      const lista = this.celdas.get(c + d);
+      if (lista !== void 0 && lista.some((q) => Math.abs(q - x) <= this.tol))
+        return true;
+    }
+    return false;
+  }
+};
 function dedupe(pts, tolX, tolY) {
   const out = [];
-  for (const p of pts)
-    if (!out.some((q) => Math.abs(q.punto.x - p.punto.x) <= tolX && Math.abs(q.punto.y - p.punto.y) <= tolY))
-      out.push(p);
+  const cx = tolX > 0 ? tolX : 1e-300;
+  const cy = tolY > 0 ? tolY : 1e-300;
+  const celdas = /* @__PURE__ */ new Map();
+  for (const p of pts) {
+    const ix = Math.floor(p.punto.x / cx);
+    const iy = Math.floor(p.punto.y / cy);
+    let repetido = false;
+    for (let dx = -1; dx <= 1 && !repetido; dx++)
+      for (let dy = -1; dy <= 1 && !repetido; dy++) {
+        const vecinos = celdas.get(`${ix + dx},${iy + dy}`);
+        if (vecinos !== void 0)
+          repetido = vecinos.some(
+            (q) => Math.abs(q.punto.x - p.punto.x) <= tolX && Math.abs(q.punto.y - p.punto.y) <= tolY
+          );
+      }
+    if (repetido)
+      continue;
+    out.push(p);
+    const clave = `${ix},${iy}`;
+    const lista = celdas.get(clave);
+    if (lista)
+      lista.push(p);
+    else
+      celdas.set(clave, [p]);
+  }
   return out;
 }
 function analizarPuntosNotables(ramas, objetoId, viewport) {
@@ -55199,16 +55290,96 @@ function detectarPeriodos(F) {
   return { px: detectar("x"), py: detectar("y") };
 }
 
+// src/motor/rendering/paleta.ts
+var PLANO_OSCURO = {
+  rejilla: "rgba(130,130,150,0.12)",
+  eje: "rgba(160,160,170,0.7)",
+  marca: "rgba(160,160,170,0.5)",
+  etiqueta: "rgba(160,160,170,0.85)",
+  asintota: "rgba(100, 150, 255, 0.3)",
+  halo: "rgba(255, 255, 255, 0.3)",
+  puntoNotable: "rgba(255, 160, 40, 1.0)",
+  interseccion: "rgba(168, 85, 247, 1.0)",
+  cursor: "rgba(235, 238, 245, 0.95)",
+  guiaCrosshair: "rgba(140, 170, 255, 0.3)",
+  textoCrosshair: "rgba(200, 210, 255, 0.9)",
+  anilloCarril: "rgba(255, 160, 40, 0.9)",
+  rellenoPositivo: "rgba(90, 165, 255, 0.20)",
+  rellenoNegativo: "rgba(240, 110, 90, 0.20)",
+  tramaPositiva: "rgba(140, 195, 255, 0.30)",
+  tramaNegativa: "rgba(255, 150, 125, 0.30)",
+  bordeRegion: "rgba(110, 175, 255, 0.95)",
+  curvas: [
+    [0.31, 0.62, 1, 1],
+    // azul
+    [1, 0.63, 0.2, 1],
+    // naranja
+    [0.4, 0.85, 0.45, 1],
+    // verde
+    [0.85, 0.45, 0.9, 1],
+    // morado
+    [0.95, 0.4, 0.45, 1],
+    // rojo
+    [0.35, 0.8, 0.85, 1]
+    // cian
+  ]
+};
+var PLANO_CLARO = {
+  rejilla: "rgba(16,24,40,0.10)",
+  eje: "rgba(30,38,55,0.50)",
+  marca: "rgba(30,38,55,0.40)",
+  etiqueta: "rgba(30,38,55,0.70)",
+  asintota: "rgba(45, 95, 205, 0.35)",
+  halo: "rgba(16, 24, 40, 0.16)",
+  puntoNotable: "rgba(168, 86, 10, 1.0)",
+  interseccion: "rgba(109, 40, 217, 1.0)",
+  cursor: "rgba(24, 30, 44, 0.90)",
+  guiaCrosshair: "rgba(45, 80, 180, 0.32)",
+  textoCrosshair: "rgba(30, 45, 90, 0.95)",
+  anilloCarril: "rgba(168, 86, 10, 0.95)",
+  rellenoPositivo: "rgba(47, 109, 246, 0.14)",
+  rellenoNegativo: "rgba(214, 70, 50, 0.14)",
+  tramaPositiva: "rgba(47, 109, 246, 0.30)",
+  tramaNegativa: "rgba(214, 70, 50, 0.30)",
+  bordeRegion: "rgba(37, 85, 200, 0.95)",
+  curvas: [
+    [0.184, 0.427, 0.965, 1],
+    // azul   #2f6df6
+    [0.659, 0.337, 0.039, 1],
+    // naranja #a8560a
+    [0.122, 0.541, 0.298, 1],
+    // verde  #1f8a4c
+    [0.545, 0.247, 0.78, 1],
+    // morado #8b3fc7
+    [0.812, 0.184, 0.271, 1],
+    // rojo   #cf2f45
+    [0.051, 0.498, 0.588, 1]
+    // cian   #0d7f96
+  ]
+};
+var activa = PLANO_OSCURO;
+function fijarTemaPlano(oscuro) {
+  activa = oscuro ? PLANO_OSCURO : PLANO_CLARO;
+}
+function paletaPlano() {
+  return activa;
+}
+function colorCurva(indice) {
+  const c = activa.curvas;
+  return c[(indice % c.length + c.length) % c.length];
+}
+
 // src/motor/rendering/RendererCanvas2D.ts
+var colorDe = (e3) => e3.rol !== void 0 ? colorCurva(e3.rol) : e3.color;
 var css = (c) => `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)}, ${c[3]})`;
 var LIM_PX = 1e6;
 var clampPx = (v) => v < -LIM_PX ? -LIM_PX : v > LIM_PX ? LIM_PX : v;
-var RELLENO_POSITIVO = "rgba(90, 165, 255, 0.20)";
-var RELLENO_NEGATIVO = "rgba(240, 110, 90, 0.20)";
-var TRAMA_POSITIVA = "rgba(140, 195, 255, 0.30)";
-var TRAMA_NEGATIVA = "rgba(255, 150, 125, 0.30)";
+var RELLENO_POSITIVO = PLANO_OSCURO.rellenoPositivo;
+var RELLENO_NEGATIVO = PLANO_OSCURO.rellenoNegativo;
+var TRAMA_POSITIVA = PLANO_OSCURO.tramaPositiva;
+var TRAMA_NEGATIVA = PLANO_OSCURO.tramaNegativa;
 var TRAMA_PASO_PX = 12;
-var BORDE_REGION = "rgba(110, 175, 255, 0.95)";
+var BORDE_REGION = PLANO_OSCURO.bordeRegion;
 var BORDE_GROSOR_PX = 2;
 var RendererCanvas2D = class {
   constructor(ctx) {
@@ -55221,7 +55392,7 @@ var RendererCanvas2D = class {
     const ctx = this.ctx;
     const clamp2 = clampPx;
     for (const { geometria, estilo } of items) {
-      ctx.strokeStyle = css(estilo.color);
+      ctx.strokeStyle = css(colorDe(estilo));
       ctx.lineWidth = estilo.grosorPx;
       ctx.lineJoin = "round";
       for (const rama of geometria.ramas) {
@@ -55275,9 +55446,9 @@ var RendererCanvas2D = class {
             ctx.lineTo(run[i2], run[i2 + 1]);
           ctx.lineTo(run[run.length - 2], ejeY);
           ctx.closePath();
-          ctx.fillStyle = signo2 > 0 ? RELLENO_POSITIVO : RELLENO_NEGATIVO;
+          ctx.fillStyle = signo2 > 0 ? paletaPlano().rellenoPositivo : paletaPlano().rellenoNegativo;
           ctx.fill();
-          tramar(signo2 > 0 ? TRAMA_POSITIVA : TRAMA_NEGATIVA);
+          tramar(signo2 > 0 ? paletaPlano().tramaPositiva : paletaPlano().tramaNegativa);
         }
         run = [];
         signo2 = 0;
@@ -55303,7 +55474,7 @@ var RendererCanvas2D = class {
       }
       rellenar();
       if (poly.length >= 4) {
-        ctx.strokeStyle = BORDE_REGION;
+        ctx.strokeStyle = paletaPlano().bordeRegion;
         ctx.lineWidth = BORDE_GROSOR_PX;
         for (const k of [0, poly.length - 2]) {
           const bx = clampPx(aPantallaX(vp, poly[k]));
@@ -55323,7 +55494,7 @@ var RendererCanvas2D = class {
     const ctx = this.ctx;
     ctx.save();
     ctx.setLineDash([4, 6]);
-    ctx.strokeStyle = "rgba(100, 150, 255, 0.3)";
+    ctx.strokeStyle = paletaPlano().asintota;
     ctx.lineWidth = 1;
     for (const { geometria } of items) {
       for (const a of geometria.asintotas) {
@@ -55362,11 +55533,11 @@ var RendererCanvas2D = class {
           continue;
         ctx.beginPath();
         ctx.arc(px, py, 4.5, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+        ctx.fillStyle = paletaPlano().halo;
         ctx.fill();
         ctx.beginPath();
         ctx.arc(px, py, 3, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255, 160, 40, 1.0)";
+        ctx.fillStyle = paletaPlano().puntoNotable;
         ctx.fill();
       }
     }
@@ -55382,11 +55553,11 @@ var RendererCanvas2D = class {
         continue;
       ctx.beginPath();
       ctx.arc(px, py, 4.5, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+      ctx.fillStyle = paletaPlano().halo;
       ctx.fill();
       ctx.beginPath();
       ctx.arc(px, py, 3, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(168, 85, 247, 1.0)";
+      ctx.fillStyle = paletaPlano().interseccion;
       ctx.fill();
     }
   }
@@ -55442,10 +55613,9 @@ var Overlay = class {
     const W = vp.anchoPx;
     const H = vp.altoPx;
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = "#1e1e1e";
-    ctx.fillRect(0, 0, W, H);
     const { x: ticksX, y: ticksY } = generarTicksCuadrados(vp);
-    ctx.strokeStyle = "rgba(130,130,150,0.12)";
+    const pal = paletaPlano();
+    ctx.strokeStyle = pal.rejilla;
     ctx.lineWidth = 0.5;
     for (const x of ticksX) {
       const px = aPantallaX(vp, x);
@@ -55461,7 +55631,7 @@ var Overlay = class {
       ctx.lineTo(W, py);
       ctx.stroke();
     }
-    ctx.strokeStyle = "rgba(160,160,170,0.7)";
+    ctx.strokeStyle = pal.eje;
     ctx.lineWidth = 1;
     if (vp.domY[0] <= 0 && vp.domY[1] >= 0) {
       const y = aPantallaY(vp, 0);
@@ -55488,13 +55658,13 @@ var Overlay = class {
       const px = aPantallaX(vp, x);
       if (px < 10 || px > W - 10)
         continue;
-      ctx.strokeStyle = "rgba(160,160,170,0.5)";
+      ctx.strokeStyle = pal.marca;
       ctx.lineWidth = 0.75;
       ctx.beginPath();
       ctx.moveTo(px, ceroY - 3);
       ctx.lineTo(px, ceroY + 3);
       ctx.stroke();
-      ctx.fillStyle = "rgba(160,160,170,0.85)";
+      ctx.fillStyle = pal.etiqueta;
       ctx.fillText(formatearNumero(x), px, ceroY + 5);
     }
     ctx.textAlign = "right";
@@ -55505,13 +55675,13 @@ var Overlay = class {
       const py = aPantallaY(vp, y);
       if (py < 10 || py > H - 10)
         continue;
-      ctx.strokeStyle = "rgba(160,160,170,0.5)";
+      ctx.strokeStyle = pal.marca;
       ctx.lineWidth = 0.75;
       ctx.beginPath();
       ctx.moveTo(ceroX - 3, py);
       ctx.lineTo(ceroX + 3, py);
       ctx.stroke();
-      ctx.fillStyle = "rgba(160,160,170,0.85)";
+      ctx.fillStyle = pal.etiqueta;
       ctx.fillText(formatearNumero(y), ceroX - 6, py);
     }
   }
@@ -55539,7 +55709,7 @@ var Crosshair = class {
     ctx.translate(px, py);
     ctx.scale(escala, escala);
     ctx.translate(-480, 480);
-    ctx.fillStyle = "rgba(235, 238, 245, 0.95)";
+    ctx.fillStyle = paletaPlano().cursor;
     ctx.fill(this.cursorPath);
     ctx.restore();
   }
@@ -55562,7 +55732,7 @@ var Crosshair = class {
     ctx.save();
     ctx.lineCap = "round";
     ctx.setLineDash([1.5, 5]);
-    ctx.strokeStyle = "rgba(140, 170, 255, 0.3)";
+    ctx.strokeStyle = paletaPlano().guiaCrosshair;
     ctx.lineWidth = 1.25;
     ctx.beginPath();
     ctx.moveTo(cursorPx, 0);
@@ -55579,15 +55749,16 @@ var Crosshair = class {
     if (yVisible) {
       ctx.beginPath();
       ctx.arc(cursorPx, py, 4.5, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+      ctx.fillStyle = paletaPlano().halo;
       ctx.fill();
       ctx.beginPath();
       ctx.arc(cursorPx, py, 3, 0, Math.PI * 2);
-      const c = item == null ? void 0 : item.estilo.color;
-      ctx.fillStyle = c ? `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)}, 1)` : "rgba(80, 160, 255, 1.0)";
+      const e3 = item == null ? void 0 : item.estilo;
+      const c = e3 ? e3.rol !== void 0 ? colorCurva(e3.rol) : e3.color : colorCurva(0);
+      ctx.fillStyle = `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)}, 1)`;
       ctx.fill();
       if (anclado) {
-        ctx.strokeStyle = "rgba(255, 160, 40, 0.9)";
+        ctx.strokeStyle = paletaPlano().anilloCarril;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(cursorPx, py, 7, 0, Math.PI * 2);
@@ -55599,7 +55770,7 @@ var Crosshair = class {
     ctx.textBaseline = "top";
     ctx.font = "11px monospace";
     const tx = cursorPx + (aLaDerecha ? 5 : -5);
-    ctx.fillStyle = "rgba(200, 210, 255, 0.9)";
+    ctx.fillStyle = paletaPlano().textoCrosshair;
     ctx.fillText(`x = ${formatearNumero(worldX)}`, tx, 4);
     ctx.fillText(`y = ${formatearNumero(y)}`, tx, 18);
     ctx.restore();
@@ -56353,7 +56524,9 @@ var Escena = class {
   }
   /** Color de cada curva (para los botones de selección del host). */
   colores() {
-    return this.objetos.map((o) => o.estilo.color);
+    return this.objetos.map(
+      (o) => o.estilo.rol !== void 0 ? colorCurva(o.estilo.rol) : o.estilo.color
+    );
   }
   /** Índice de la curva que siguen crosshair y carril. */
   seleccionActual() {
@@ -56367,20 +56540,6 @@ var Escena = class {
 };
 
 // src/motor/app/composicion.ts
-var PALETA = [
-  [0.31, 0.62, 1, 1],
-  // azul
-  [1, 0.63, 0.2, 1],
-  // naranja
-  [0.4, 0.85, 0.45, 1],
-  // verde
-  [0.85, 0.45, 0.9, 1],
-  // morado
-  [0.95, 0.4, 0.45, 1],
-  // rojo
-  [0.35, 0.8, 0.85, 1]
-  // cian
-];
 function crearProveedor(objeto) {
   if (objeto.tipo === "implicita") {
     const F = objeto.F;
@@ -56450,8 +56609,9 @@ function objetoEscena(ec, id, indiceColor, ocultarPuntosEje = false) {
   const base = proveedorDeEcuacion(ec, id);
   const proveedor = new ProveedorConCache(ocultarPuntosEje ? new ProveedorSinPuntosEje(base) : base);
   const estilo = {
-    color: [...PALETA[indiceColor % PALETA.length]],
-    grosorPx: 2
+    color: [...colorCurva(indiceColor)],
+    grosorPx: 2,
+    rol: indiceColor
   };
   return { proveedor, estilo };
 }
@@ -57410,6 +57570,7 @@ var EN = {
     resumenNotables: "Notable points summary",
     original: "Original",
     transformaciones: "Transformations",
+    cerrarMenu: "Close menu",
     despejarY: "Solve for y",
     operador: "Operator",
     derivadaEvaluada: "Evaluated derivative",
@@ -57513,6 +57674,7 @@ var ES = {
     resumenNotables: "Resumen de puntos notables",
     original: "Original",
     transformaciones: "Transformaciones",
+    cerrarMenu: "Cerrar men\xFA",
     despejarY: "Despejar y",
     operador: "Operador",
     derivadaEvaluada: "Derivada evaluada",
@@ -57779,13 +57941,17 @@ var PestanaAjustesLMath = class extends import_obsidian2.PluginSettingTab {
 };
 
 // src/host-obsidian/MotorExperimental.ts
+function esTemaOscuro(el) {
+  return el.doc.body.classList.contains("theme-dark");
+}
 var ICONO = {
   inicio: "M220-180h150v-250h220v250h150v-390L480-765 220-570v390Zm-60 60v-480l320-240 320 240v480H530v-250H430v250H160Zm320-353Z",
   acercar: "M450-450H200v-60h250v-250h60v250h250v60H510v250h-60v-250Z",
   alejar: "M200-450v-60h560v60H200Z",
   carril: "M450-42v-75q-137-14-228-105T117-450H42v-60h75q14-137 105-228t228-105v-75h60v75q137 14 228 105t105 228h75v60h-75q-14 137-105 228T510-117v75h-60Zm244.5-223.5Q784-355 784-480t-89.5-214.5Q605-784 480-784t-214.5 89.5Q176-605 176-480t89.5 214.5Q355-176 480-176t214.5-89.5Zm-321-108Q330-417 330-480t43.5-106.5Q417-630 480-630t106.5 43.5Q630-543 630-480t-43.5 106.5Q543-330 480-330t-106.5-43.5ZM544-416q26-26 26-64t-26-64q-26-26-64-26t-64 26q-26 26-26 64t26 64q26 26 64 26t64-26Zm-64-64Z",
   info: "M453-280h60v-240h-60v240Zm50.5-323.2q9.5-9.2 9.5-22.8 0-14.45-9.48-24.22-9.48-9.78-23.5-9.78t-23.52 9.78Q447-640.45 447-626q0 13.6 9.48 22.8 9.48 9.2 23.5 9.2t23.52-9.2ZM480.27-80q-82.74 0-155.5-31.5Q252-143 197.5-197.5t-86-127.34Q80-397.68 80-480.5t31.5-155.66Q143-709 197.5-763t127.34-85.5Q397.68-880 480.5-880t155.66 31.5Q709-817 763-763t85.5 127Q880-563 880-480.27q0 82.74-31.5 155.5Q817-252 763-197.68q-54 54.31-127 86Q563-80 480.27-80Zm.23-60Q622-140 721-239.5t99-241Q820-622 721.19-721T480-820q-141 0-240.5 98.81T140-480q0 141 99.5 240.5t241 99.5Zm-.5-340Z",
-  menu: "M120-240v-60h720v60H120Zm0-210v-60h720v60H120Zm0-210v-60h720v60H120Z"
+  menu: "M120-240v-60h720v60H120Zm0-210v-60h720v60H120Zm0-210v-60h720v60H120Z",
+  cerrar: "m249-207-42-42 231-231-231-231 42-42 231 231 231-231 42 42-231 231 231 231-42 42-231-231-231 231Z"
 };
 var MotorExperimental = class {
   // `sistema=false` → bloque obs-graph (una función). `sistema=true` → bloque
@@ -57851,13 +58017,13 @@ var MotorExperimental = class {
     const degenerada = degeneradaCruda ? localizarVelo(degeneradaCruda) : null;
     if (degenerada) {
       const velo = wrap.createDiv();
-      velo.style.cssText = "position:absolute; inset:0; background:rgba(18,18,18,0.55); pointer-events:none;";
+      velo.style.cssText = "position:absolute; inset:0; background:var(--lmath-velo); pointer-events:none;";
       const msg = wrap.createDiv();
       msg.style.cssText = "position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:8px; padding:24px; box-sizing:border-box; pointer-events:none;";
       const titulo = msg.createDiv({ text: degenerada.etiqueta });
-      titulo.setCssStyles({ fontSize: "20px", fontWeight: "600", color: "rgba(200,210,255,0.95)" });
+      titulo.setCssStyles({ fontSize: "20px", fontWeight: "600", color: "var(--lmath-texto)" });
       const detalle = msg.createDiv({ text: degenerada.detalle });
-      detalle.style.cssText = "font-size:12px; line-height:1.4; max-width:320px; color:rgba(190,195,210,0.85);";
+      detalle.style.cssText = "font-size:12px; line-height:1.4; max-width:320px; color:var(--lmath-texto-tenue);";
     }
     const exprGraph = this.exprExplicita(graficadas);
     if (exprGraph && !degenerada)
@@ -57866,6 +58032,7 @@ var MotorExperimental = class {
     let navegacion;
     const pintar = () => {
       const vp = camara.viewport();
+      fijarTemaPlano(esTemaOscuro(wrap));
       escena.mostrarNotables(this.obtenerAjustes().puntosNotables);
       const mx = camara.cursorPx();
       const my = camara.cursorPy();
@@ -57912,6 +58079,8 @@ var MotorExperimental = class {
       if (timerFinal !== null)
         window.clearTimeout(timerFinal);
     });
+    const refTema = this.plugin.app.workspace.on("css-change", () => programarPintado());
+    limpieza.register(() => this.plugin.app.workspace.offref(refTema));
     camara = new Camara(canvas, H, {
       // pan/zoom: pasada interactiva mientras dura el gesto + programa la final
       // (cada evento reinicia el debounce → la final se dispara al parar).
@@ -57979,7 +58148,7 @@ var MotorExperimental = class {
     window.addEventListener("resize", redimensionar);
     limpieza.register(() => window.removeEventListener("resize", redimensionar));
     limpieza.register(() => camara.destruir());
-    const estiloZoom = (arriba) => "position:absolute; right:8px; top:" + arriba + "px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:15px; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; color:rgba(220,220,220,0.85); background:rgba(30,30,30,0.85); border:1px solid rgba(255,255,255,0.18);";
+    const estiloZoom = (arriba) => "position:absolute; right:8px; top:" + arriba + "px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:15px; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; color:var(--lmath-texto-tenue); background:var(--lmath-chip); border:1px solid var(--lmath-borde);";
     const btnInicio = wrap.createDiv();
     this.ponerTooltip(btnInicio, t().botones.vistaInicial);
     btnInicio.style.cssText = estiloZoom(6);
@@ -58019,7 +58188,7 @@ var MotorExperimental = class {
     const btnCarril = wrap.createDiv();
     this.ponerTooltip(btnCarril, t().botones.carril);
     const estiloBtn = (activo) => {
-      btnCarril.style.cssText = "position:absolute; bottom:8px; left:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; " + (activo ? "color:rgba(20,20,20,0.95); background:rgba(255,170,60,0.95); border:1px solid rgba(255,170,60,0.95);" : "color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); border:1px solid rgba(255,160,40,0.5);");
+      btnCarril.style.cssText = "position:absolute; bottom:8px; left:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; " + (activo ? "color:var(--lmath-acento-contraste); background:var(--lmath-acento); border:1px solid var(--lmath-acento);" : "color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde);");
     };
     estiloBtn(false);
     this.montarIcono(btnCarril, "carril", 15);
@@ -58035,7 +58204,7 @@ var MotorExperimental = class {
         this.ponerTooltip(b, t().botones.seleccionarEcuacion(i2 + 1));
         const rgb = `rgb(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)})`;
         const estilo = (sel) => {
-          b.style.cssText = `position:absolute; bottom:10px; left:${38 + i2 * 24}px; width:18px; height:18px; border-radius:50%; cursor:pointer; user-select:none; z-index:5; box-sizing:border-box; background:${rgb}; ` + (sel ? "border:2px solid rgba(255,255,255,0.95);" : "border:2px solid rgba(0,0,0,0.35);");
+          b.style.cssText = `position:absolute; bottom:10px; left:${38 + i2 * 24}px; width:18px; height:18px; border-radius:50%; cursor:pointer; user-select:none; z-index:5; box-sizing:border-box; background:${rgb}; ` + (sel ? "border:2px solid var(--lmath-texto);" : "border:2px solid var(--lmath-borde);");
         };
         estilo(i2 === escena.seleccionActual());
         b.addEventListener("click", () => {
@@ -58060,10 +58229,10 @@ var MotorExperimental = class {
     if (this.sistema) {
       const btnSolucion = wrap.createDiv();
       this.ponerTooltip(btnSolucion, t().botones.solucionesSistema);
-      btnSolucion.style.cssText = "position:absolute; bottom:8px; right:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; user-select:none; z-index:5;";
+      btnSolucion.style.cssText = "position:absolute; bottom:8px; right:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; user-select:none; z-index:5;";
       this.montarIcono(btnSolucion, "info", 15);
       const popSolucion = wrap.createDiv();
-      popSolucion.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:rgba(20,20,20,0.95); border:1px solid rgba(255,255,255,0.12); border-radius:6px; font-size:11px; line-height:1.5; color:rgba(230,230,235,0.92); z-index:5; box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+      popSolucion.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:6px; font-size:11px; line-height:1.5; color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);";
       const sistemaPeriodico = visibles.some((ec) => ec.split("=").some((lado) => tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado.trim())))));
       const MIN_PERIODICO = 3;
       const MAX_LISTA = 20;
@@ -58137,10 +58306,10 @@ var MotorExperimental = class {
       const esTrig = !acotadaPorPeriodo && graficadas[0].split("=").some((lado) => tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado.trim()))));
       const btnInfo = wrap.createDiv();
       this.ponerTooltip(btnInfo, t().botones.resumenNotables);
-      btnInfo.style.cssText = "position:absolute; bottom:8px; right:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; user-select:none; z-index:5;";
+      btnInfo.style.cssText = "position:absolute; bottom:8px; right:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; user-select:none; z-index:5;";
       this.montarIcono(btnInfo, "info", 15);
       const pop = wrap.createDiv();
-      pop.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:rgba(20,20,20,0.95); border:1px solid rgba(255,255,255,0.12); border-radius:6px; font-size:11px; line-height:1.5; color:rgba(230,230,235,0.92); z-index:5; box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+      pop.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:6px; font-size:11px; line-height:1.5; color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);";
       const refrescarInfo = () => {
         pop.empty();
         const r = escena.resumenNotables(camara.viewport());
@@ -58235,13 +58404,13 @@ var MotorExperimental = class {
       const enmarcado = estilo === "enmarcado";
       const flexMarco = compartirAlto ? "flex:1 1 0;" : `flex:0 0 auto; height:${ALTO_TARJETA}px;`;
       const marco = padre.createDiv();
-      marco.style.cssText = "position:relative; overflow:hidden; min-height:0; " + flexMarco + (enmarcado ? " border:1px solid rgba(255,255,255,0.11); border-radius:12px; background:rgba(0,0,0,0.22);" : "");
+      marco.style.cssText = "position:relative; overflow:hidden; min-height:0; " + flexMarco + (enmarcado ? " border:1px solid var(--lmath-borde); border-radius:12px; background:var(--lmath-superficie);" : "");
       const area = marco.createDiv({ cls: "lmath-latex" });
       area.style.cssText = `width:100%; height:100%; box-sizing:border-box; padding:${enmarcado ? "8px 24px" : "24px"}; display:flex; align-items:safe center; justify-content:safe center; overflow-x:hidden; overflow-y:hidden;`;
-      area.setCssStyles({ scrollbarWidth: "thin", scrollbarColor: "#3a3a3a #1e1e1e" });
+      area.setCssStyles({ scrollbarWidth: "thin", scrollbarColor: "var(--lmath-borde) transparent" });
       const fadeOverlay = marco.createDiv();
       fadeOverlay.style.cssText = "position:absolute; inset:0; pointer-events:none; overflow:hidden; " + (enmarcado ? "border-radius:12px;" : "");
-      const fadeColor = "rgba(30, 30, 30, 0.85)";
+      const fadeColor = "var(--lmath-superficie)";
       const fadeIzq = fadeOverlay.createDiv();
       fadeIzq.style.cssText = `position:absolute; top:0; bottom:0; left:0; width:32px; opacity:0; transition:opacity 0.15s ease; background:linear-gradient(to right, ${fadeColor}, transparent);`;
       const fadeDer = fadeOverlay.createDiv();
@@ -58329,7 +58498,7 @@ var MotorExperimental = class {
    *  panel según estén ACTIVOS (resaltado) o no (atenuado). Lo comparten el botón de
    *  texto (`estiloBotonPanel`) y el botón-icono de opciones (`estiloBotonOpciones`). */
   chromeBotonPanel(activo) {
-    return activo ? "color:rgba(240,240,245,0.96); background:rgba(58,58,64,0.96); border:1px solid rgba(255,255,255,0.18); box-shadow:0 2px 6px rgba(0,0,0,0.45);" : "color:rgba(205,205,215,0.7); background:rgba(40,40,44,0.92); border:1px solid rgba(255,255,255,0.08); box-shadow:0 2px 5px rgba(0,0,0,0.35);";
+    return activo ? "color:var(--lmath-texto); background:var(--lmath-chip-activo); border:1px solid var(--lmath-borde-activo); box-shadow:var(--lmath-sombra);" : "color:var(--lmath-texto-tenue); background:var(--lmath-chip); border:1px solid var(--lmath-borde); box-shadow:var(--lmath-sombra);";
   }
   /** Estilo compartido de los botones de TEXTO de la barra (Original, Derivada): activo =
    *  resaltado; inactivo = atenuado. Texto en Lora. */
@@ -58348,14 +58517,27 @@ var MotorExperimental = class {
   ponerTooltip(el, texto) {
     (0, import_obsidian3.setTooltip)(el, texto, { placement: "top" });
   }
-  /** Crea el botón-icono de opciones (icono de menú) dentro de la barra dada y lo devuelve.
-   *  Reemplaza al antiguo "Opciones ▾"; común a los tres bloques. El resaltado se aplica
-   *  luego con `estiloBotonOpciones` (en cada `sincronizar`). */
+  /** Crea el botón-icono de opciones dentro de la barra dada y lo devuelve. Reemplaza al
+   *  antiguo "Opciones ▾"; común a los tres bloques. `titulo` es su tooltip CERRADO (lo que
+   *  despliega, distinto en cada bloque). El icono (☰/✕) lo pone `iconoBotonOpciones`; el
+   *  resaltado, `estiloBotonOpciones` (ambos en cada `sincronizar`). */
   crearBotonOpciones(barra, titulo) {
     const b = barra.createDiv();
-    this.ponerTooltip(b, titulo);
-    this.montarIcono(b, "menu", 18);
+    this.iconoBotonOpciones(b, false, titulo);
     return b;
+  }
+  /** Pone en el botón de opciones el glifo que corresponde a su estado: ☰ cuando el menú
+   *  está CERRADO (pulsar abre) y ✕ cuando está ABIERTO (pulsar cierra), con el tooltip
+   *  describiendo esa acción —`titulo` es el del estado cerrado—. `sincronizar` lo llama en
+   *  cada clic, así que solo repinta cuando el glifo CAMBIA (`dataset.icono` = el actual). */
+  iconoBotonOpciones(b, abierto, titulo) {
+    const nombre = abierto ? "cerrar" : "menu";
+    if (b.dataset.icono === nombre)
+      return;
+    b.dataset.icono = nombre;
+    b.empty();
+    this.montarIcono(b, nombre, 18);
+    this.ponerTooltip(b, abierto ? t().botones.cerrarMenu : titulo);
   }
   /** Pinta un icono de `ICONO` (lado `px`) como <svg> hijo de `el`, heredando el color vía
    *  `fill:currentColor`. Sin `innerHTML`: usa la API DOM de Obsidian (createSvg). */
@@ -58433,9 +58615,9 @@ var MotorExperimental = class {
       const menu = panelLatex.createDiv();
       menu.style.cssText = "position:absolute; top:36px; left:0; right:0; z-index:7; display:none; flex-direction:column; align-items:center; pointer-events:none;";
       const caja = menu.createDiv();
-      caja.style.cssText = 'pointer-events:auto; display:flex; flex-direction:column; gap:2px; padding:4px; border-radius:10px; background:rgba(38,38,42,0.98); border:1px solid rgba(255,255,255,0.1); box-shadow:0 4px 12px rgba(0,0,0,0.5); font-family:"Lora", var(--font-interface);';
+      caja.style.cssText = 'pointer-events:auto; display:flex; flex-direction:column; gap:2px; padding:4px; border-radius:10px; background:var(--lmath-panel); border:1px solid var(--lmath-borde); box-shadow:var(--lmath-sombra-flotante); font-family:"Lora", var(--font-interface);';
       const itemEstilo = (el, habilitado) => {
-        el.style.cssText = "padding:5px 14px; font-size:11px; line-height:1.15; user-select:none; border-radius:6px; white-space:nowrap; text-align:center; transition:background 0.12s ease, color 0.12s ease; " + (habilitado ? "color:rgba(225,225,232,0.92); cursor:pointer; pointer-events:auto;" : "color:rgba(150,150,160,0.32); cursor:default; pointer-events:none;");
+        el.style.cssText = "padding:5px 14px; font-size:11px; line-height:1.15; user-select:none; border-radius:6px; white-space:nowrap; text-align:center; transition:background 0.12s ease, color 0.12s ease; " + (habilitado ? "color:var(--lmath-texto); cursor:pointer; pointer-events:auto;" : "color:var(--lmath-texto-apagado); cursor:default; pointer-events:none;");
       };
       const items = transformaciones.map((t2) => {
         const el = caja.createDiv();
@@ -58448,6 +58630,7 @@ var MotorExperimental = class {
       const sincronizar = () => {
         estiloBoton(btnOriginal, esOriginal());
         this.estiloBotonOpciones(btnOpciones, !esOriginal() || abierto);
+        this.iconoBotonOpciones(btnOpciones, abierto, t().botones.transformaciones);
         const actual = bloqueALatex(estado);
         items.forEach((el, i2) => itemEstilo(el, bloqueALatex(transformaciones[i2].fn(estado)) !== actual));
         menu.style.display = abierto ? "flex" : "none";
@@ -58514,9 +58697,9 @@ var MotorExperimental = class {
     const menu = panelLatex.createDiv();
     menu.style.cssText = "position:absolute; top:36px; left:0; right:0; z-index:7; display:none; flex-direction:column; align-items:center; pointer-events:none;";
     const caja = menu.createDiv();
-    caja.style.cssText = 'pointer-events:auto; display:flex; flex-direction:column; gap:2px; padding:4px; border-radius:10px; background:rgba(38,38,42,0.98); border:1px solid rgba(255,255,255,0.1); box-shadow:0 4px 12px rgba(0,0,0,0.5); font-family:"Lora", var(--font-interface);';
+    caja.style.cssText = 'pointer-events:auto; display:flex; flex-direction:column; gap:2px; padding:4px; border-radius:10px; background:var(--lmath-panel); border:1px solid var(--lmath-borde); box-shadow:var(--lmath-sombra-flotante); font-family:"Lora", var(--font-interface);';
     const itemEstilo = (el, habilitado) => {
-      el.style.cssText = "padding:5px 14px; font-size:11px; line-height:1.15; user-select:none; border-radius:6px; white-space:nowrap; text-align:center; transition:background 0.12s ease, color 0.12s ease; " + (habilitado ? "color:rgba(225,225,232,0.92); cursor:pointer; pointer-events:auto;" : "color:rgba(150,150,160,0.32); cursor:default; pointer-events:none;");
+      el.style.cssText = "padding:5px 14px; font-size:11px; line-height:1.15; user-select:none; border-radius:6px; white-space:nowrap; text-align:center; transition:background 0.12s ease, color 0.12s ease; " + (habilitado ? "color:var(--lmath-texto); cursor:pointer; pointer-events:auto;" : "color:var(--lmath-texto-apagado); cursor:default; pointer-events:none;");
     };
     const opciones = [
       { etiqueta: t().botones.derivada, tex: "f'(x)", vista: "derivada" },
@@ -58539,6 +58722,7 @@ var MotorExperimental = class {
     const sincronizar = () => {
       this.estiloBotonPanel(btnOriginal, vista === "operador");
       this.estiloBotonOpciones(btnOpciones, vista !== "operador" || abierto);
+      this.iconoBotonOpciones(btnOpciones, abierto, t().botones.derivadaEvaluada);
       const actual = firmaDe(vista);
       items.forEach((el, i2) => itemEstilo(el, firmaDe(opciones[i2].vista) !== actual));
       menu.style.display = abierto ? "flex" : "none";
@@ -58611,9 +58795,9 @@ var MotorExperimental = class {
     const menu = panelLatex.createDiv();
     menu.style.cssText = "position:absolute; top:36px; left:0; right:0; z-index:7; display:none; flex-direction:column; align-items:center; pointer-events:none;";
     const caja = menu.createDiv();
-    caja.style.cssText = 'pointer-events:auto; display:flex; flex-direction:column; gap:2px; padding:4px; border-radius:10px; background:rgba(38,38,42,0.98); border:1px solid rgba(255,255,255,0.1); box-shadow:0 4px 12px rgba(0,0,0,0.5); font-family:"Lora", var(--font-interface);';
+    caja.style.cssText = 'pointer-events:auto; display:flex; flex-direction:column; gap:2px; padding:4px; border-radius:10px; background:var(--lmath-panel); border:1px solid var(--lmath-borde); box-shadow:var(--lmath-sombra-flotante); font-family:"Lora", var(--font-interface);';
     const itemEstilo = (el, habilitado) => {
-      el.style.cssText = "padding:5px 14px; font-size:11px; line-height:1.15; user-select:none; border-radius:6px; white-space:nowrap; text-align:center; transition:background 0.12s ease, color 0.12s ease; " + (habilitado ? "color:rgba(225,225,232,0.92); cursor:pointer; pointer-events:auto;" : "color:rgba(150,150,160,0.32); cursor:default; pointer-events:none;");
+      el.style.cssText = "padding:5px 14px; font-size:11px; line-height:1.15; user-select:none; border-radius:6px; white-space:nowrap; text-align:center; transition:background 0.12s ease, color 0.12s ease; " + (habilitado ? "color:var(--lmath-texto); cursor:pointer; pointer-events:auto;" : "color:var(--lmath-texto-apagado); cursor:default; pointer-events:none;");
     };
     const opciones = [
       { etiqueta: t().botones.primitiva, tex: "\\left[F(x)\\right]_a^b", vista: "resultado" },
@@ -58634,6 +58818,7 @@ var MotorExperimental = class {
     const sincronizar = () => {
       this.estiloBotonPanel(btnOriginal, vista === "operador");
       this.estiloBotonOpciones(btnOpciones, vista !== "operador" || abierto);
+      this.iconoBotonOpciones(btnOpciones, abierto, t().botones.primitivaEvaluada);
       const actual = firmaDe(vista);
       items.forEach((el, i2) => itemEstilo(el, firmaDe(opciones[i2].vista) !== actual));
       menu.style.display = abierto ? "flex" : "none";
@@ -58858,10 +59043,10 @@ var MotorExperimental = class {
     }
     const btnInfo = wrap.createDiv();
     this.ponerTooltip(btnInfo, t().botones.resumenNotables);
-    btnInfo.style.cssText = "position:absolute; bottom:8px; right:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; user-select:none; z-index:5;";
+    btnInfo.style.cssText = "position:absolute; bottom:8px; right:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; user-select:none; z-index:5;";
     this.montarIcono(btnInfo, "info", 15);
     const pop = wrap.createDiv();
-    pop.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:rgba(20,20,20,0.95); border:1px solid rgba(255,255,255,0.12); border-radius:6px; font-size:11px; line-height:1.5; color:rgba(230,230,235,0.92); z-index:5; box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+    pop.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:6px; font-size:11px; line-height:1.5; color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);";
     for (const l of lineas) {
       const div2 = pop.createDiv({ text: l.texto });
       if (l.tex)

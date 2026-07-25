@@ -31,6 +31,31 @@ import type {
 import { analizarFrecuencia, envolvente } from "./envolventeAltaFrecuencia";
 import { crearViewport } from "../../scene/viewport-utils";
 
+// PRESUPUESTO DE REFINADO, en vértices por COLUMNA DE PÍXEL.
+//
+// El refinado solo se detenía por `PROF_MAX` (12/18 bisecciones), que acota la profundidad
+// por intervalo pero NO la geometría total: con una oscilación irresoluble Y NO ACOTADA el
+// refinado se dispara en TODOS los intervalos base a la vez. `tan(e^x)` en la vista por
+// defecto —donde la frecuencia local es e^x/π, o sea ~10⁸ oscilaciones por píxel en el borde
+// derecho— producía 1.084.444 ramas y 21.460.279 vértices en 30 s, con 1,14 GB de heap: no es
+// una curva, es ruido de aliasing del tamaño de la RAM. Obsidian se quedaba sin memoria y sin
+// hilo principal, y como el bloque se re-renderiza al abrir la nota, la congelación
+// sobrevivía a reiniciar la app (había que borrar el bloque desde fuera).
+//
+// Ese caso NO lo cubre el régimen de alta frecuencia (`envolventeAltaFrecuencia`): su prueba
+// GLOBAL de acotación lo descarta a propósito —una función ilimitada no tiene banda que
+// dibujar, tiene asíntotas— y lo devuelve al sampler, que hasta ahora lo aceptaba sin freno.
+//
+// La cota es por PÍXEL, no absoluta: es la resolución la que dice cuánta geometría tiene
+// sentido, y así una pantalla de móvil (donde esto mataba la app) se protege sola. El listón
+// se calibró contra el repertorio: el caso legítimo más caro es `tan(x²)` a semiY=300, con
+// 699 vértices por columna; 2048 deja casi 3× de margen, así que NINGUNA curva del repertorio
+// lo alcanza y su geometría sigue siendo bit a bit la de antes (mismo camino de código).
+// Al agotarse, el trazado NO se corta: deja de SUBDIVIDIR y sigue con el muestreo base, que
+// ya está acotado por MUESTRAS. La curva se dibuja entera, sin el detalle sub-píxel que a esa
+// densidad no distingue nada.
+const VERTICES_POR_COLUMNA_MAX = 2048;
+
 export class TrazadorExplicitoAdaptativo implements TrazadorExplicito {
   /**
    * Trazado de y=f(x). Antes de muestrear, se comprueba si hay tramos donde la curva
@@ -114,6 +139,13 @@ export class TrazadorExplicitoAdaptativo implements TrazadorExplicito {
     const syPx = (y: number): number =>
       H - ((y - domY[0]) / (domY[1] - domY[0])) * H;
 
+    // Cota dura de geometría de ESTE intervalo (ver VERTICES_POR_COLUMNA_MAX). Al ir ligada al
+    // ancho en píxeles del viewport recibido, los sub-viewports del régimen de alta frecuencia
+    // —cuyo `anchoPx` se escala con el tramo— reparten el presupuesto en proporción a lo que
+    // ocupan, así que la suma sigue acotada por el mismo listón.
+    const MAX_VERTICES = Math.max(1, Math.round(viewport.anchoPx)) * VERTICES_POR_COLUMNA_MAX;
+    let vertices = 0;
+
     const polilineas: number[][] = [];
     const asintotas: number[] = []; // detectadas para el refinado; no se exponen aún
     let segmento: number[] = [];
@@ -127,10 +159,12 @@ export class TrazadorExplicitoAdaptativo implements TrazadorExplicito {
     // quede fuera de pantalla (el recorte visual lo hace el renderer). Un valor
     // no finito (polo) trepa al borde según el signo.
     const emit = (x: number, y: number) => {
+      vertices++;
       segmento.push(x, Number.isFinite(y) ? y : y > 0 ? yTop : yBot);
     };
     // Fuerza el punto al borde según hacia dónde dispara la rama (signo de y).
     const emitPolo = (x: number, y: number) => {
+      vertices++;
       segmento.push(x, y >= 0 ? yTop : yBot);
     };
     const registrarAsintota = (x: number) => {
@@ -277,8 +311,14 @@ export class TrazadorExplicitoAdaptativo implements TrazadorExplicito {
       );
       const cambioSigno = finA && finB && ya * yb < 0;
 
+      // Refinado AGOTADO: por profundidad (el freno de siempre) o por PRESUPUESTO (la cota de
+      // geometría por píxel). Se unifican en una sola bandera porque `esCruceContinuo` —más
+      // abajo— también pregunta "¿ya no se puede subdividir más?": si mirase solo `prof`, con el
+      // presupuesto agotado dejaría de reconocer los cruces continuos y los partiría en dos ramas
+      // con una asíntota fantasma en medio.
+      const agotado = prof >= PROF_MAX || vertices >= MAX_VERTICES;
       const refinar =
-        prof < PROF_MAX &&
+        !agotado &&
         (poloEnTramo || cambioSigno || (saltoPx > SALTO_PX_MAX && !fueraMismoLado));
       if (refinar) {
         const xm = (xa + xb) / 2;
@@ -297,7 +337,7 @@ export class TrazadorExplicitoAdaptativo implements TrazadorExplicito {
       // refinado agotado (antes, `cambioSigno` lo habría subdividido). AMBOS extremos deben
       // ser FINITOS: un cruce continuo los tiene (enormes pero finitos); si uno es ±∞ es un
       // polo real (1/x en 0) y lo resuelve la lógica de siempre más abajo.
-      if (cruza && prof >= PROF_MAX && finA && finB && esCruceContinuo(xa, ya, xb, yb)) {
+      if (cruza && agotado && finA && finB && esCruceContinuo(xa, ya, xb, yb)) {
         emit(xb, yb);
         return;
       }

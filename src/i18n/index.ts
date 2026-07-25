@@ -48,6 +48,7 @@ export interface Textos {
     resumenNotables: string;
     original: string;
     transformaciones: string;
+    cerrarMenu: string;
     despejarY: string;
     operador: string;
     derivadaEvaluada: string;
@@ -150,6 +151,7 @@ const EN: Textos = {
     resumenNotables: "Notable points summary",
     original: "Original",
     transformaciones: "Transformations",
+    cerrarMenu: "Close menu",
     despejarY: "Solve for y",
     operador: "Operator",
     derivadaEvaluada: "Evaluated derivative",
@@ -277,6 +279,7 @@ const ES: Textos = {
     resumenNotables: "Resumen de puntos notables",
     original: "Original",
     transformaciones: "Transformaciones",
+    cerrarMenu: "Cerrar menú",
     despejarY: "Despejar y",
     operador: "Operador",
     derivadaEvaluada: "Derivada evaluada",

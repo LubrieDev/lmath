@@ -134,6 +134,10 @@ function recolectar(
   if (viewport) {
     const epsY = ((viewport.domY[1] - viewport.domY[0]) / viewport.altoPx) * 0.5; // ½ px
     const margenX = ((viewport.domX[1] - viewport.domX[0]) / viewport.anchoPx) * 2; // 2 px
+    // Índice de las raíces YA marcadas, para preguntar "¿hay una a menos de margenX?" en tiempo
+    // constante en vez de recorrerlas todas (ver `IndiceX`).
+    const indiceRaices = new IndiceX(margenX);
+    for (const r of raices) indiceRaices.anadir(r.punto.x);
     for (const rama of ramas) {
       const p = rama.puntos;
       const n = p.length / 2;
@@ -153,8 +157,10 @@ function recolectar(
         const yVecina = p[v * 2 + 1];
         if (y === 0 && yVecina === 0) continue;
         if (x < viewport.domX[0] + margenX || x > viewport.domX[1] - margenX) continue;
-        if (raices.some((r) => Math.abs(r.punto.x - x) <= margenX)) continue; // ya marcada
-        raices.push({ punto: { x, y: 0 }, tipo: "raiz", objetoId });
+        if (indiceRaices.hayCerca(x)) continue; // ya marcada
+        const raiz: PuntoNotable = { punto: { x, y: 0 }, tipo: "raiz", objetoId };
+        raices.push(raiz);
+        indiceRaices.anadir(x);
       }
     }
   }
@@ -172,12 +178,72 @@ function recolectar(
   };
 }
 
-/** Quita puntos que coinciden en posición (dentro de tolerancia), conservando el 1º. */
+/**
+ * Índice por CELDAS de una dimensión: responde "¿hay algún valor guardado a ≤ tol?" mirando
+ * solo tres celdas, en vez de recorrer la lista entera.
+ *
+ * La celda mide exactamente `tol`, así que un valor a distancia ≤ tol cae por fuerza en la
+ * celda propia o en una de las dos contiguas: la respuesta es EXACTAMENTE la del barrido
+ * lineal, no una aproximación. Un valor no finito cae en la celda `NaN` y nunca empareja
+ * (`|NaN − NaN| <= tol` es falso), igual que con el barrido.
+ */
+class IndiceX {
+  private readonly celdas = new Map<number, number[]>();
+  constructor(private readonly tol: number) {}
+
+  anadir(x: number): void {
+    const c = Math.floor(x / this.tol);
+    const lista = this.celdas.get(c);
+    if (lista) lista.push(x);
+    else this.celdas.set(c, [x]);
+  }
+
+  hayCerca(x: number): boolean {
+    const c = Math.floor(x / this.tol);
+    for (let d = -1; d <= 1; d++) {
+      const lista = this.celdas.get(c + d);
+      if (lista !== undefined && lista.some((q) => Math.abs(q - x) <= this.tol)) return true;
+    }
+    return false;
+  }
+}
+
+/**
+ * Quita puntos que coinciden en posición (dentro de tolerancia), conservando el 1º.
+ *
+ * Rejilla de celdas (tolX × tolY) con el mismo argumento que `IndiceX` extendido al plano: un
+ * punto a ≤(tolX,tolY) del candidato está en su celda o en una de las 8 contiguas, así que
+ * mirar 3×3 celdas da el MISMO resultado que comparar contra todos los conservados. Hacía
+ * falta porque el barrido era O(n²) sobre una lista que en una curva patológica tiene millones
+ * de entradas: con `tan(e^x)` la deduplicación no terminaba (>9 min y subiendo) y era la mitad
+ * de la congelación de la app —la otra mitad, la geometría sin cota que la alimentaba—.
+ */
 function dedupe(pts: PuntoNotable[], tolX: number, tolY: number): PuntoNotable[] {
   const out: PuntoNotable[] = [];
-  for (const p of pts)
-    if (!out.some((q) => Math.abs(q.punto.x - p.punto.x) <= tolX && Math.abs(q.punto.y - p.punto.y) <= tolY))
-      out.push(p);
+  // Tolerancia cero (o negativa) haría degenerar el índice de celdas; no ocurre con un viewport
+  // real, pero la firma la admite y un divisor 0 daría celdas ±Infinity.
+  const cx = tolX > 0 ? tolX : 1e-300;
+  const cy = tolY > 0 ? tolY : 1e-300;
+  const celdas = new Map<string, PuntoNotable[]>();
+  for (const p of pts) {
+    const ix = Math.floor(p.punto.x / cx);
+    const iy = Math.floor(p.punto.y / cy);
+    let repetido = false;
+    for (let dx = -1; dx <= 1 && !repetido; dx++)
+      for (let dy = -1; dy <= 1 && !repetido; dy++) {
+        const vecinos = celdas.get(`${ix + dx},${iy + dy}`);
+        if (vecinos !== undefined)
+          repetido = vecinos.some(
+            (q) => Math.abs(q.punto.x - p.punto.x) <= tolX && Math.abs(q.punto.y - p.punto.y) <= tolY
+          );
+      }
+    if (repetido) continue;
+    out.push(p);
+    const clave = `${ix},${iy}`;
+    const lista = celdas.get(clave);
+    if (lista) lista.push(p);
+    else celdas.set(clave, [p]);
+  }
   return out;
 }
 

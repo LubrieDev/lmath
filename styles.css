@@ -1,13 +1,66 @@
+/* ─────────────────────────────────────────────
+   Tokens del MARCO (contenedor, panel, botones, menús)
+
+   Todos derivan de las variables de Obsidian, así que el bloque encaja con CUALQUIER
+   tema —también los de la comunidad— sin que tengamos que mantener una paleta por cada
+   uno. Antes el marco era `#1e1e1e` fijo y no fijaba color de texto: en tema claro la
+   fórmula heredaba `--text-normal` (casi negro) sobre panel casi negro y quedaba
+   ilegible, y el bloque era una isla oscura en mitad de una nota blanca.
+
+   La TINTA del plano (rejilla, ejes, curvas) NO está aquí: es paleta propia en dos
+   versiones, porque necesita contraste garantizado entre capas y ninguna variable de
+   tema lo promete. Ver `src/motor/rendering/paleta.ts`.
+
+   Las dos declaraciones seguidas de los tokens "-activo" son un respaldo deliberado:
+   si `color-mix` no está disponible, queda la primera (plana pero válida).
+   ───────────────────────────────────────────── */
 .lmath-container {
+  --lmath-superficie: var(--background-primary);
+  --lmath-panel: var(--background-secondary);
+  --lmath-borde: var(--background-modifier-border);
+  --lmath-texto: var(--text-normal);
+  --lmath-texto-tenue: var(--text-muted);
+  --lmath-texto-apagado: var(--text-faint);
+  /* Chip flotante (inicio, zoom, ⓘ) y botones de la barra del panel. Se posan SOBRE el
+     plano, cuya superficie es `--background-primary`; usar la secundaria los despega. */
+  --lmath-chip: var(--background-secondary);
+  --lmath-chip-activo: var(--background-secondary);
+  --lmath-chip-activo: color-mix(in srgb, var(--text-normal) 12%, var(--background-secondary));
+  --lmath-borde-activo: var(--background-modifier-border);
+  --lmath-borde-activo: color-mix(in srgb, var(--text-normal) 24%, var(--background-modifier-border));
+  /* Velo de bloque degenerado: atenúa el plano sin fijar color de tema. */
+  --lmath-velo: rgba(0, 0, 0, 0.55);
+  /* Acento ÁMBAR del carril y del ⓘ: es estado del plano, no cromo, así que es nuestro
+     (identidad del plugin) y lleva variante clara, como la tinta. */
+  --lmath-acento: rgba(255, 170, 60, 0.95);
+  --lmath-acento-suave: rgba(255, 200, 130, 0.95);
+  --lmath-acento-borde: rgba(255, 160, 40, 0.5);
+  --lmath-acento-contraste: rgba(20, 20, 20, 0.95);
+  --lmath-sombra: var(--shadow-s, 0 2px 6px rgba(0, 0, 0, 0.35));
+  --lmath-sombra-flotante: var(--shadow-l, 0 4px 12px rgba(0, 0, 0, 0.4));
+
   display: flex;
   flex-direction: row;
   align-items: center;
-  background-color: #1e1e1e;
+  background-color: var(--lmath-panel);
+  /* El panel de la fórmula heredaba el color de texto del tema sobre un fondo fijo
+     oscuro. Fijarlo aquí ata las dos mitades del contraste al MISMO par de variables. */
+  color: var(--lmath-texto);
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--lmath-borde);
   min-height: 261px;
   margin: 16px;
+}
+
+.theme-light .lmath-container {
+  --lmath-velo: rgba(255, 255, 255, 0.62);
+  /* Mismo ámbar que la tinta del plano en claro (`paleta.ts`): 5,25:1 sobre blanco, y
+     con texto blanco encima cuando va relleno. */
+  --lmath-acento: #a8560a;
+  --lmath-acento-suave: #a8560a;
+  --lmath-acento-borde: rgba(194, 98, 10, 0.45);
+  --lmath-acento-contraste: #ffffff;
 }
 
 .lmath-container .lmath-latex {
@@ -72,7 +125,11 @@
   width: 50%;
   height: 261px;
   position: relative;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  /* Superficie del PLANO. El lienzo ya no rellena su fondo (solo limpia), así que este
+     color es el que se ve tras la rejilla: el plano es del mismo material que la nota y
+     sigue al tema sin repintar. */
+  background-color: var(--lmath-superficie);
+  border-left: 1px solid var(--lmath-borde);
   overflow: hidden;
   box-sizing: border-box;
   /* Fuente Lora SOLO para el texto de la interfaz del plugin (popovers, etiquetas,

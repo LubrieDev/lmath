@@ -44,6 +44,7 @@ import { normalizarEntrada, contieneYLibre, comandosNoSoportados } from "../pars
 import { compilarFuncion } from "../evaluador";
 import { clasificarDegenerada, type FuncionDegenerada } from "../degeneradas";
 import { analizarFuncion, tieneTrigonometria, estadoGrupo, raicesALatex } from "../analisis";
+import { fijarTemaPlano } from "../motor/rendering/paleta";
 
 // Estilo visual de una tarjeta de fórmula del panel izquierdo. Enum (no un booleano
 // `alwaysFramed`) para que el catálogo de estilos crezca sin multiplicar banderas: hoy
@@ -54,6 +55,17 @@ type EstiloTarjeta = "plano" | "enmarcado";
 // Iconos del plano (Material Symbols de Google, viewBox 0 -960 960 960). Se pintan como
 // <svg> inline con `fill:currentColor`: heredan el color del botón y siguen su resaltado
 // activo/inactivo, igual que los glifos de texto a los que sustituyen.
+/**
+ * ¿El tema activo es oscuro? Es LO ÚNICO que se le pregunta al tema para elegir la paleta
+ * del plano (ver `motor/rendering/paleta.ts`): Obsidian marca el documento con
+ * `theme-dark`/`theme-light` sea cual sea el tema instalado, así que la respuesta vale
+ * también para los de la comunidad. Se pregunta al DOCUMENTO DEL ELEMENTO (`el.doc`), no al
+ * global: un bloque puede estar en una ventana desprendida, que tiene su propio `body`.
+ */
+function esTemaOscuro(el: HTMLElement): boolean {
+  return el.doc.body.classList.contains("theme-dark");
+}
+
 const ICONO = {
   inicio: "M220-180h150v-250h220v250h150v-390L480-765 220-570v390Zm-60 60v-480l320-240 320 240v480H530v-250H430v250H160Zm320-353Z",
   acercar: "M450-450H200v-60h250v-250h60v250h250v60H510v250h-60v-250Z",
@@ -61,6 +73,7 @@ const ICONO = {
   carril: "M450-42v-75q-137-14-228-105T117-450H42v-60h75q14-137 105-228t228-105v-75h60v75q137 14 228 105t105 228h75v60h-75q-14 137-105 228T510-117v75h-60Zm244.5-223.5Q784-355 784-480t-89.5-214.5Q605-784 480-784t-214.5 89.5Q176-605 176-480t89.5 214.5Q355-176 480-176t214.5-89.5Zm-321-108Q330-417 330-480t43.5-106.5Q417-630 480-630t106.5 43.5Q630-543 630-480t-43.5 106.5Q543-330 480-330t-106.5-43.5ZM544-416q26-26 26-64t-26-64q-26-26-64-26t-64 26q-26 26-26 64t26 64q26 26 64 26t64-26Zm-64-64Z",
   info: "M453-280h60v-240h-60v240Zm50.5-323.2q9.5-9.2 9.5-22.8 0-14.45-9.48-24.22-9.48-9.78-23.5-9.78t-23.52 9.78Q447-640.45 447-626q0 13.6 9.48 22.8 9.48 9.2 23.5 9.2t23.52-9.2ZM480.27-80q-82.74 0-155.5-31.5Q252-143 197.5-197.5t-86-127.34Q80-397.68 80-480.5t31.5-155.66Q143-709 197.5-763t127.34-85.5Q397.68-880 480.5-880t155.66 31.5Q709-817 763-763t85.5 127Q880-563 880-480.27q0 82.74-31.5 155.5Q817-252 763-197.68q-54 54.31-127 86Q563-80 480.27-80Zm.23-60Q622-140 721-239.5t99-241Q820-622 721.19-721T480-820q-141 0-240.5 98.81T140-480q0 141 99.5 240.5t241 99.5Zm-.5-340Z",
   menu: "M120-240v-60h720v60H120Zm0-210v-60h720v60H120Zm0-210v-60h720v60H120Z",
+  cerrar: "m249-207-42-42 231-231-231-231 42-42 231 231 231-231 42 42-231 231 231 231-42 42-231-231-231 231Z",
 } as const;
 
 export class MotorExperimental {
@@ -179,7 +192,7 @@ export class MotorExperimental {
     if (degenerada) {
       const velo = wrap.createDiv();
       velo.style.cssText =
-        "position:absolute; inset:0; background:rgba(18,18,18,0.55); " +
+        "position:absolute; inset:0; background:var(--lmath-velo); " +
         "pointer-events:none;";
       const msg = wrap.createDiv();
       msg.style.cssText =
@@ -187,11 +200,11 @@ export class MotorExperimental {
         "align-items:center; justify-content:center; text-align:center; " +
         "gap:8px; padding:24px; box-sizing:border-box; pointer-events:none;";
       const titulo = msg.createDiv({ text: degenerada.etiqueta });
-      titulo.setCssStyles({ fontSize: "20px", fontWeight: "600", color: "rgba(200,210,255,0.95)" });
+      titulo.setCssStyles({ fontSize: "20px", fontWeight: "600", color: "var(--lmath-texto)" });
       const detalle = msg.createDiv({ text: degenerada.detalle });
       detalle.style.cssText =
         "font-size:12px; line-height:1.4; max-width:320px; " +
-        "color:rgba(190,195,210,0.85);";
+        "color:var(--lmath-texto-tenue);";
     }
 
     // Botón ⓘ de obs-graph: resumen de puntos notables de la función (intersección
@@ -207,6 +220,11 @@ export class MotorExperimental {
     let navegacion!: Navegacion;
     const pintar = () => {
       const vp = camara.viewport();
+      // Tema del PLANO, leído vivo en cada pintado (una comprobación de clase es gratis, y
+      // el color se consulta al pintar, no al construir la escena): así el bloque cambia de
+      // paleta con el tema sin rehacer geometría ni perder el zoom. El MARCO no pasa por
+      // aquí —sus colores son variables CSS y los recalcula el navegador solo—.
+      fijarTemaPlano(esTemaOscuro(wrap));
       // Preferencia de marcadores, leída VIVA en cada pintado (asignar un booleano es
       // gratis): así apagar el ajuste se ve en el siguiente repintado del bloque —basta
       // pasar el ratón por el plano— sin recargar el plugin.
@@ -264,6 +282,13 @@ export class MotorExperimental {
       if (rafId !== null) window.cancelAnimationFrame(rafId);
       if (timerFinal !== null) window.clearTimeout(timerFinal);
     });
+
+    // Cambio de tema (o de snippet CSS) → repintar. El marco se recolorea solo, porque son
+    // variables CSS; el plano no, porque es un lienzo: hay que volver a pintarlo para que
+    // `pintar` relea la paleta. Es un REPINTADO, no un recálculo: la geometría cacheada
+    // sirve igual y el zoom/desplazamiento del usuario se conservan.
+    const refTema = this.plugin.app.workspace.on("css-change", () => programarPintado());
+    limpieza.register(() => this.plugin.app.workspace.offref(refTema));
 
     camara = new Camara(canvas, H, {
       // pan/zoom: pasada interactiva mientras dura el gesto + programa la final
@@ -371,8 +396,8 @@ export class MotorExperimental {
       "position:absolute; right:8px; top:" + arriba + "px; width:22px; height:22px; " +
       "display:flex; align-items:center; justify-content:center; font-size:15px; " +
       "line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; " +
-      "color:rgba(220,220,220,0.85); background:rgba(30,30,30,0.85); " +
-      "border:1px solid rgba(255,255,255,0.18);";
+      "color:var(--lmath-texto-tenue); background:var(--lmath-chip); " +
+      "border:1px solid var(--lmath-borde);";
     const btnInicio = wrap.createDiv();
     this.ponerTooltip(btnInicio, t().botones.vistaInicial);
     btnInicio.style.cssText = estiloZoom(6);
@@ -425,10 +450,10 @@ export class MotorExperimental {
         "display:flex; align-items:center; justify-content:center; font-size:14px; " +
         "line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; " +
         (activo
-          ? "color:rgba(20,20,20,0.95); background:rgba(255,170,60,0.95); " +
-            "border:1px solid rgba(255,170,60,0.95);"
-          : "color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); " +
-            "border:1px solid rgba(255,160,40,0.5);");
+          ? "color:var(--lmath-acento-contraste); background:var(--lmath-acento); " +
+            "border:1px solid var(--lmath-acento);"
+          : "color:var(--lmath-acento-suave); background:var(--lmath-chip); " +
+            "border:1px solid var(--lmath-acento-borde);");
     };
     estiloBtn(false);
     // El icono persiste como hijo <svg> aunque estiloBtn reescriba el cssText del div en
@@ -454,7 +479,7 @@ export class MotorExperimental {
             `position:absolute; bottom:10px; left:${38 + i * 24}px; width:18px; height:18px; ` +
             "border-radius:50%; cursor:pointer; user-select:none; z-index:5; box-sizing:border-box; " +
             `background:${rgb}; ` +
-            (sel ? "border:2px solid rgba(255,255,255,0.95);" : "border:2px solid rgba(0,0,0,0.35);");
+            (sel ? "border:2px solid var(--lmath-texto);" : "border:2px solid var(--lmath-borde);");
         };
         estilo(i === escena.seleccionActual());
         b.addEventListener("click", () => {
@@ -488,8 +513,8 @@ export class MotorExperimental {
       btnSolucion.style.cssText =
         "position:absolute; bottom:8px; right:8px; width:22px; height:22px; " +
         "display:flex; align-items:center; justify-content:center; font-size:14px; " +
-        "line-height:1; color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); " +
-        "border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; " +
+        "line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); " +
+        "border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; " +
         "user-select:none; z-index:5;";
       this.montarIcono(btnSolucion, "info", 15);
 
@@ -497,9 +522,9 @@ export class MotorExperimental {
       popSolucion.style.cssText =
         "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; " +
         "max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; " +
-        "background:rgba(20,20,20,0.95); border:1px solid rgba(255,255,255,0.12); " +
+        "background:var(--lmath-panel); border:1px solid var(--lmath-borde); " +
         "border-radius:6px; font-size:11px; line-height:1.5; " +
-        "color:rgba(230,230,235,0.92); z-index:5; box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+        "color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);";
 
       // ¿El sistema es PERIÓDICO? (alguna ecuación usa una función trig como sin/
       // cos/tan…). Un sistema periódico repite sus soluciones sin fin → si además
@@ -607,8 +632,8 @@ export class MotorExperimental {
       btnInfo.style.cssText =
         "position:absolute; bottom:8px; right:8px; width:22px; height:22px; " +
         "display:flex; align-items:center; justify-content:center; font-size:14px; " +
-        "line-height:1; color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); " +
-        "border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; " +
+        "line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); " +
+        "border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; " +
         "user-select:none; z-index:5;";
       this.montarIcono(btnInfo, "info", 15);
 
@@ -616,9 +641,9 @@ export class MotorExperimental {
       pop.style.cssText =
         "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; " +
         "max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; " +
-        "background:rgba(20,20,20,0.95); border:1px solid rgba(255,255,255,0.12); " +
+        "background:var(--lmath-panel); border:1px solid var(--lmath-borde); " +
         "border-radius:6px; font-size:11px; line-height:1.5; " +
-        "color:rgba(230,230,235,0.92); z-index:5; box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+        "color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);";
 
       const refrescarInfo = () => {
         pop.empty();
@@ -728,8 +753,10 @@ export class MotorExperimental {
     // Construye un ÁREA de scroll horizontal AUTÓNOMA dentro de `padre`: su propio
     // desbordamiento, fades laterales, rueda y observador de tamaño. El `estilo` fija
     // solo su aspecto: "enmarcado" la envuelve en una caja redondeada y algo más oscura
-    // que el panel (`rgba(0,0,0,.22)` = oscurece lo que haya detrás, sin fijar un color
-    // de tema); "plano" la deja sin recuadro llenando el hueco (reservado a futuros
+    // que el panel (`--lmath-superficie`, la primaria del tema sobre la secundaria del
+    // panel: el mismo escalón de material que usa Obsidian para sus tarjetas, y el mismo
+    // color con el que degradan los fades laterales); "plano" la deja sin recuadro
+    // llenando el hueco (reservado a futuros
     // paneles; el panel actual usa siempre "enmarcado"). `compartirAlto` es un eje
     // ORTOGONAL al estilo (layout, no aspecto): true → la tarjeta reparte a partes iguales la
     // altura de la columna (varias tarjetas de la vista "ambas", cada una = ALTO_TARJETA, sin
@@ -754,8 +781,8 @@ export class MotorExperimental {
       marco.style.cssText =
         "position:relative; overflow:hidden; min-height:0; " + flexMarco +
         (enmarcado
-          ? " border:1px solid rgba(255,255,255,0.11); border-radius:12px; " +
-            "background:rgba(0,0,0,0.22);"
+          ? " border:1px solid var(--lmath-borde); border-radius:12px; " +
+            "background:var(--lmath-superficie);"
           : "");
 
       // Área scrolleable (hereda el tamaño de fuente KaTeX por la clase). Centra la
@@ -771,7 +798,7 @@ export class MotorExperimental {
         `padding:${enmarcado ? "8px 24px" : "24px"}; ` +
         "display:flex; align-items:safe center; justify-content:safe center; " +
         "overflow-x:hidden; overflow-y:hidden;";
-      area.setCssStyles({ scrollbarWidth: "thin", scrollbarColor: "#3a3a3a #1e1e1e" });
+      area.setCssStyles({ scrollbarWidth: "thin", scrollbarColor: "var(--lmath-borde) transparent" });
 
       // Overlay de fade: HERMANO del área (un absolute dentro del scroller viajaría con
       // el contenido). Se ciñe al marco redondeado con el mismo recorte.
@@ -779,7 +806,7 @@ export class MotorExperimental {
       fadeOverlay.style.cssText =
         "position:absolute; inset:0; pointer-events:none; overflow:hidden; " +
         (enmarcado ? "border-radius:12px;" : "");
-      const fadeColor = "rgba(30, 30, 30, 0.85)";
+      const fadeColor = "var(--lmath-superficie)";
       const fadeIzq = fadeOverlay.createDiv();
       fadeIzq.style.cssText =
         "position:absolute; top:0; bottom:0; left:0; width:32px; opacity:0; " +
@@ -923,10 +950,10 @@ export class MotorExperimental {
    *  texto (`estiloBotonPanel`) y el botón-icono de opciones (`estiloBotonOpciones`). */
   private chromeBotonPanel(activo: boolean): string {
     return activo
-      ? "color:rgba(240,240,245,0.96); background:rgba(58,58,64,0.96); " +
-        "border:1px solid rgba(255,255,255,0.18); box-shadow:0 2px 6px rgba(0,0,0,0.45);"
-      : "color:rgba(205,205,215,0.7); background:rgba(40,40,44,0.92); " +
-        "border:1px solid rgba(255,255,255,0.08); box-shadow:0 2px 5px rgba(0,0,0,0.35);";
+      ? "color:var(--lmath-texto); background:var(--lmath-chip-activo); " +
+        "border:1px solid var(--lmath-borde-activo); box-shadow:var(--lmath-sombra);"
+      : "color:var(--lmath-texto-tenue); background:var(--lmath-chip); " +
+        "border:1px solid var(--lmath-borde); box-shadow:var(--lmath-sombra);";
   }
 
   /** Estilo compartido de los botones de TEXTO de la barra (Original, Derivada): activo =
@@ -959,14 +986,27 @@ export class MotorExperimental {
     setTooltip(el, texto, { placement: "top" });
   }
 
-  /** Crea el botón-icono de opciones (icono de menú) dentro de la barra dada y lo devuelve.
-   *  Reemplaza al antiguo "Opciones ▾"; común a los tres bloques. El resaltado se aplica
-   *  luego con `estiloBotonOpciones` (en cada `sincronizar`). */
+  /** Crea el botón-icono de opciones dentro de la barra dada y lo devuelve. Reemplaza al
+   *  antiguo "Opciones ▾"; común a los tres bloques. `titulo` es su tooltip CERRADO (lo que
+   *  despliega, distinto en cada bloque). El icono (☰/✕) lo pone `iconoBotonOpciones`; el
+   *  resaltado, `estiloBotonOpciones` (ambos en cada `sincronizar`). */
   private crearBotonOpciones(barra: HTMLElement, titulo: string): HTMLElement {
     const b = barra.createDiv();
-    this.ponerTooltip(b, titulo);
-    this.montarIcono(b, "menu", 18);
+    this.iconoBotonOpciones(b, false, titulo);
     return b;
+  }
+
+  /** Pone en el botón de opciones el glifo que corresponde a su estado: ☰ cuando el menú
+   *  está CERRADO (pulsar abre) y ✕ cuando está ABIERTO (pulsar cierra), con el tooltip
+   *  describiendo esa acción —`titulo` es el del estado cerrado—. `sincronizar` lo llama en
+   *  cada clic, así que solo repinta cuando el glifo CAMBIA (`dataset.icono` = el actual). */
+  private iconoBotonOpciones(b: HTMLElement, abierto: boolean, titulo: string): void {
+    const nombre = abierto ? "cerrar" : "menu";
+    if (b.dataset.icono === nombre) return;
+    b.dataset.icono = nombre;
+    b.empty();
+    this.montarIcono(b, nombre, 18);
+    this.ponerTooltip(b, abierto ? t().botones.cerrarMenu : titulo);
   }
 
   /** Pinta un icono de `ICONO` (lado `px`) como <svg> hijo de `el`, heredando el color vía
@@ -1085,8 +1125,8 @@ export class MotorExperimental {
       const caja = menu.createDiv();
       caja.style.cssText =
         "pointer-events:auto; display:flex; flex-direction:column; gap:2px; padding:4px; " +
-        "border-radius:10px; background:rgba(38,38,42,0.98); " +
-        "border:1px solid rgba(255,255,255,0.1); box-shadow:0 4px 12px rgba(0,0,0,0.5); " +
+        "border-radius:10px; background:var(--lmath-panel); " +
+        "border:1px solid var(--lmath-borde); box-shadow:var(--lmath-sombra-flotante); " +
         "font-family:\"Lora\", var(--font-interface);";
       // Estilo de cada opción según esté HABILITADA (produciría un cambio) o no
       // (oscurecida y sin poder clicar, vía pointer-events).
@@ -1096,8 +1136,8 @@ export class MotorExperimental {
           "border-radius:6px; white-space:nowrap; text-align:center; " +
           "transition:background 0.12s ease, color 0.12s ease; " +
           (habilitado
-            ? "color:rgba(225,225,232,0.92); cursor:pointer; pointer-events:auto;"
-            : "color:rgba(150,150,160,0.32); cursor:default; pointer-events:none;");
+            ? "color:var(--lmath-texto); cursor:pointer; pointer-events:auto;"
+            : "color:var(--lmath-texto-apagado); cursor:default; pointer-events:none;");
       };
       // Cada opción es un div cuyo contenido es el GLIFO matemático de la transformación
       // (`y=f(x)` para Despejar), renderizado con KaTeX; el `etiqueta` queda como título
@@ -1116,6 +1156,7 @@ export class MotorExperimental {
       const sincronizar = () => {
         estiloBoton(btnOriginal, esOriginal());
         this.estiloBotonOpciones(btnOpciones, !esOriginal() || abierto);
+        this.iconoBotonOpciones(btnOpciones, abierto, t().botones.transformaciones);
         const actual = bloqueALatex(estado);
         items.forEach((el, i) => itemEstilo(el, bloqueALatex(transformaciones[i].fn(estado)) !== actual));
         menu.style.display = abierto ? "flex" : "none";
@@ -1210,8 +1251,8 @@ export class MotorExperimental {
     const caja = menu.createDiv();
     caja.style.cssText =
       "pointer-events:auto; display:flex; flex-direction:column; gap:2px; padding:4px; " +
-      "border-radius:10px; background:rgba(38,38,42,0.98); " +
-      "border:1px solid rgba(255,255,255,0.1); box-shadow:0 4px 12px rgba(0,0,0,0.5); " +
+      "border-radius:10px; background:var(--lmath-panel); " +
+      "border:1px solid var(--lmath-borde); box-shadow:var(--lmath-sombra-flotante); " +
       "font-family:\"Lora\", var(--font-interface);";
     const itemEstilo = (el: HTMLElement, habilitado: boolean) => {
       el.style.cssText =
@@ -1219,8 +1260,8 @@ export class MotorExperimental {
         "border-radius:6px; white-space:nowrap; text-align:center; " +
         "transition:background 0.12s ease, color 0.12s ease; " +
         (habilitado
-          ? "color:rgba(225,225,232,0.92); cursor:pointer; pointer-events:auto;"
-          : "color:rgba(150,150,160,0.32); cursor:default; pointer-events:none;");
+          ? "color:var(--lmath-texto); cursor:pointer; pointer-events:auto;"
+          : "color:var(--lmath-texto-apagado); cursor:default; pointer-events:none;");
     };
 
     // Única opción del menú: la derivada evaluada, con el glifo `f'(x)`. Se habilita/
@@ -1250,6 +1291,7 @@ export class MotorExperimental {
     const sincronizar = () => {
       this.estiloBotonPanel(btnOriginal, vista === "operador");
       this.estiloBotonOpciones(btnOpciones, vista !== "operador" || abierto);
+      this.iconoBotonOpciones(btnOpciones, abierto, t().botones.derivadaEvaluada);
       const actual = firmaDe(vista);
       items.forEach((el, i) => itemEstilo(el, firmaDe(opciones[i].vista) !== actual));
       menu.style.display = abierto ? "flex" : "none";
@@ -1352,8 +1394,8 @@ export class MotorExperimental {
     const caja = menu.createDiv();
     caja.style.cssText =
       "pointer-events:auto; display:flex; flex-direction:column; gap:2px; padding:4px; " +
-      "border-radius:10px; background:rgba(38,38,42,0.98); " +
-      "border:1px solid rgba(255,255,255,0.1); box-shadow:0 4px 12px rgba(0,0,0,0.5); " +
+      "border-radius:10px; background:var(--lmath-panel); " +
+      "border:1px solid var(--lmath-borde); box-shadow:var(--lmath-sombra-flotante); " +
       "font-family:\"Lora\", var(--font-interface);";
     const itemEstilo = (el: HTMLElement, habilitado: boolean) => {
       el.style.cssText =
@@ -1361,8 +1403,8 @@ export class MotorExperimental {
         "border-radius:6px; white-space:nowrap; text-align:center; " +
         "transition:background 0.12s ease, color 0.12s ease; " +
         (habilitado
-          ? "color:rgba(225,225,232,0.92); cursor:pointer; pointer-events:auto;"
-          : "color:rgba(150,150,160,0.32); cursor:default; pointer-events:none;");
+          ? "color:var(--lmath-texto); cursor:pointer; pointer-events:auto;"
+          : "color:var(--lmath-texto-apagado); cursor:default; pointer-events:none;");
     };
 
     // Dos opciones del menú: la PRIMITIVA evaluada (glifo `[F(x)]_a^b`) y AMBAS (operador
@@ -1387,6 +1429,7 @@ export class MotorExperimental {
     const sincronizar = () => {
       this.estiloBotonPanel(btnOriginal, vista === "operador");
       this.estiloBotonOpciones(btnOpciones, vista !== "operador" || abierto);
+      this.iconoBotonOpciones(btnOpciones, abierto, t().botones.primitivaEvaluada);
       const actual = firmaDe(vista);
       items.forEach((el, i) => itemEstilo(el, firmaDe(opciones[i].vista) !== actual));
       menu.style.display = abierto ? "flex" : "none";
@@ -1641,8 +1684,8 @@ export class MotorExperimental {
     btnInfo.style.cssText =
       "position:absolute; bottom:8px; right:8px; width:22px; height:22px; " +
       "display:flex; align-items:center; justify-content:center; font-size:14px; " +
-      "line-height:1; color:rgba(255,200,130,0.95); background:rgba(30,30,30,0.85); " +
-      "border:1px solid rgba(255,160,40,0.5); border-radius:50%; cursor:pointer; " +
+      "line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); " +
+      "border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; " +
       "user-select:none; z-index:5;";
     this.montarIcono(btnInfo, "info", 15);
 
@@ -1650,9 +1693,9 @@ export class MotorExperimental {
     pop.style.cssText =
       "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; " +
       "max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; " +
-      "background:rgba(20,20,20,0.95); border:1px solid rgba(255,255,255,0.12); " +
+      "background:var(--lmath-panel); border:1px solid var(--lmath-borde); " +
       "border-radius:6px; font-size:11px; line-height:1.5; " +
-      "color:rgba(230,230,235,0.92); z-index:5; box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+      "color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);";
     for (const l of lineas) {
       const div = pop.createDiv({ text: l.texto });
       // La parte matemática (p. ej. `x\in[0,1)`) va renderizada con KaTeX en línea,

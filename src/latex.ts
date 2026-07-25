@@ -71,6 +71,66 @@ const NOMBRE_FUNCION_TEX: Record<string, string> = {
 // pinta como `\left(<u>\right)`: un nodo de función SIEMPRE se renderiza, mathjs no lo poda.
 const PAREN_DESNUDA = "parenDesnuda";
 
+// Constantes con NOMBRE: no son variables libres, así que un exponente hecho de ellas
+// (`φ/2`, `π/3`, `2e/5`) es un NÚMERO, aunque no se escriba con dígitos. Es lo que separa
+// `x^{φ/2}` —una potencia fraccionaria, o sea un radical— de `e^{x/2}`, donde el exponente
+// depende de x y la forma exponencial es la legible.
+const CONSTANTES_TEX = new Set(["pi", "e", "tau", "phi", "Infinity", "NaN"]);
+
+/** Quita los paréntesis explícitos que envuelven a un nodo (`((u))` → `u`). */
+function pelar(n: Nodo): Nodo {
+  let r = n;
+  while (r.type === "ParenthesisNode") r = r.content;
+  return r;
+}
+
+/**
+ * Potencia de exponente RACIONAL → RADICAL: `x^{φ/2}` se pinta `\sqrt{x^{φ}}`, no
+ * `x^{\frac{φ}{2}}`.
+ *
+ * El plugin YA pintaba como radical la potencia fraccionaria —`x^{1/2}`→`\sqrt{x}`,
+ * `x^{2/3}`→`\sqrt[3]{x^{2}}`—, pero esa reescritura es de `simplify` (mathjs) y solo
+ * reconoce el exponente escrito como cociente de ENTEROS LITERALES. Por eso la MISMA
+ * función salía de dos formas distintas según cómo se hubiera escrito: `x^{1/2}` daba
+ * `\sqrt{x}` y `x^{0.5}` daba `x^{\frac{1}{2}}` (el decimal se convierte en fracción
+ * DESPUÉS de simplify, que ya no vuelve a mirar), y `x^{0.5φ}` daba `x^{\frac{φ}{2}}`
+ * porque el numerador no es un dígito. Decidirlo aquí —en el emisor, por donde pasan
+ * todas las formas— hace que la tipografía dependa de la EXPRESIÓN y no de la etapa que
+ * la tocó primero.
+ *
+ * Condiciones (conservadoras, para no reescribir lo que ya se lee mejor tal cual):
+ *   • denominador entero ≥2 (el índice del radical);
+ *   • numerador SIN variables libres (`e^{x/2}` conserva su forma exponencial);
+ *   • numerador no negativo (`x^{-1/2}` seguiría leyéndose como potencia; pintarlo
+ *     `\sqrt{x^{-1}}` no aclara nada y el recíproco pide otra decisión, la de `\frac`).
+ * El cuerpo se compone reconstruyendo `base^numerador` y dejando que mathjs lo pinte, así
+ * hereda su política de paréntesis: `(x+1)^{φ/2}` → `\sqrt{\left(x+1\right)^{\phi}}`.
+ */
+function radicalDeExponente(base: Nodo, exp: Nodo, options: object): string | undefined {
+  const e = pelar(exp);
+  if (e.type !== "OperatorNode" || e.op !== "/" || e.args?.length !== 2) return undefined;
+  const num = pelar(e.args[0]);
+  const den = pelar(e.args[1]);
+  if (den.type !== "ConstantNode") return undefined;
+  const indice = den.value;
+  if (typeof indice !== "number" || !Number.isInteger(indice) || indice < 2) return undefined;
+  // Numerador negativo: se deja como potencia (ver la cabecera).
+  if (num.type === "ConstantNode" && typeof num.value === "number" && num.value < 0) return undefined;
+  if (num.type === "OperatorNode" && num.op === "-" && num.args?.length === 1) return undefined;
+  // Variables libres en el exponente → no es un número: `e^{x/2}` no es una raíz.
+  const libres = num.filter(
+    (nn: Nodo, camino: string, padre: Nodo | null) =>
+      nn.type === "SymbolNode" && !CONSTANTES_TEX.has(nn.name) &&
+      !(padre !== null && padre.type === "FunctionNode" && camino === "fn")
+  );
+  if (libres.length > 0) return undefined;
+  const unitario = num.type === "ConstantNode" && num.value === 1;
+  const cuerpo = unitario
+    ? pelar(base).toTex(options)
+    : opNodo("^", "pow", [base, num]).toTex(options);
+  return indice === 2 ? `\\sqrt{${cuerpo}}` : `\\sqrt[${indice}]{${cuerpo}}`;
+}
+
 function manejadorFuncionesTex(node: Nodo, options: object): string | undefined {
   // Centinela de parentización forzada: `parenDesnuda(u)` → `\left(<u>\right)`.
   if (node.type === "FunctionNode" && node.fn?.name === PAREN_DESNUDA && node.args.length === 1)
@@ -158,6 +218,11 @@ function manejadorFuncionesTex(node: Nodo, options: object): string | undefined 
     const expNegativo = exp.type === "ConstantNode" && exp.value < 0;
     if (nombreTex && !expNegativo)
       return argFuncion(b.args[0], `${nombreTex}^{${exp.toTex(options)}}`);
+    // Exponente racional → radical (`x^{φ/2}` → `\sqrt{x^{φ}}`). Va DESPUÉS de la potencia
+    // de función para no robarle `\sin^{1/2}`… que de todos modos no llega aquí: esa regla
+    // solo actúa con `nombreTex`, y entonces ya ha devuelto.
+    const radical = radicalDeExponente(base, exp, options);
+    if (radical) return radical;
   }
   return undefined;
 }

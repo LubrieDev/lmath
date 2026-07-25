@@ -33,20 +33,11 @@ import { despejarRamas, tienePolos, campoTranspuesto, separarTrigY, ramasMonomio
 import { despejeExplicito } from "../../despejar";
 import { detectarPeriodos } from "../analysis/periodicidadCampo";
 import { RendererCanvas2D } from "../rendering/RendererCanvas2D";
+import { colorCurva } from "../rendering/paleta";
 import { Overlay } from "../rendering/overlay/Overlay";
 import { Crosshair } from "../rendering/Crosshair";
 import { Escena, type ObjetoEscena } from "../scene/Escena";
 
-// Paleta por ecuación del sistema (se recicla si hay más ecuaciones que colores). El
-// azul/naranja iniciales coinciden con obs-graph/obs-system. Un color = un `Estilo`.
-const PALETA: ReadonlyArray<readonly [number, number, number, number]> = [
-  [0.31, 0.62, 1.0, 1.0],   // azul
-  [1.0, 0.63, 0.20, 1.0],   // naranja
-  [0.40, 0.85, 0.45, 1.0],  // verde
-  [0.85, 0.45, 0.90, 1.0],  // morado
-  [0.95, 0.40, 0.45, 1.0],  // rojo
-  [0.35, 0.80, 0.85, 1.0],  // cian
-];
 
 /**
  * Elige y construye el proveedor de geometría para UN objeto matemático (el dispatcher
@@ -155,9 +146,14 @@ function proveedorDeEcuacion(ec: string, id: string): ProveedorGeometria {
 function objetoEscena(ec: string, id: string, indiceColor: number, ocultarPuntosEje = false): ObjetoEscena {
   const base = proveedorDeEcuacion(ec, id);
   const proveedor = new ProveedorConCache(ocultarPuntosEje ? new ProveedorSinPuntosEje(base) : base);
+  // El color se declara por PAPEL (`rol` = índice de ecuación) y lo resuelve la paleta activa
+  // al pintar: los seis matices del bloque son los mismos en ambos temas, pero en fondo claro
+  // van oscurecidos para contrastar. `color` guarda el valor del tema en curso como respaldo
+  // para quien lea el estilo sin pasar por el renderizador.
   const estilo: Estilo = {
-    color: [...PALETA[indiceColor % PALETA.length]] as [number, number, number, number],
+    color: [...colorCurva(indiceColor)] as [number, number, number, number],
     grosorPx: 2,
+    rol: indiceColor,
   };
   return { proveedor, estilo };
 }

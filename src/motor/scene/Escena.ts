@@ -25,6 +25,7 @@ import {
 import { interseccionesDeGeometrias, MAX_PUNTOS } from "../analysis/interseccionesRamas";
 import { recortarRegion } from "../analysis/areaBajoRama";
 import { resumenPuntosNotables, type ResumenNotables } from "../analysis/puntosNotablesDeRama";
+import { colorCurva } from "../rendering/paleta";
 import { semiYAutoencuadre, semiYAcotado } from "./autoencuadre";
 
 export interface ObjetoEscena {
@@ -368,7 +369,11 @@ export class Escena {
 
   /** Color de cada curva (para los botones de selección del host). */
   colores(): ReadonlyArray<readonly [number, number, number, number]> {
-    return this.objetos.map((o) => o.estilo.color);
+    // Se resuelven contra la paleta ACTIVA (igual que al pintar la curva), para que los
+    // botones de selección del host sigan al tema sin reconstruir la escena.
+    return this.objetos.map((o) =>
+      o.estilo.rol !== undefined ? colorCurva(o.estilo.rol) : o.estilo.color
+    );
   }
 
   /** Índice de la curva que siguen crosshair y carril. */

@@ -9,6 +9,7 @@
 
 import type { Viewport } from "../../contracts";
 import { aPantallaX, aPantallaY } from "../../scene/viewport-utils";
+import { paletaPlano } from "../paleta";
 
 /** Paso "bonito" (1·10ⁿ, 2·10ⁿ, 5·10ⁿ) que cubre `rango` con ≤ maxTicks divisiones. */
 function pasoBonito(rango: number, maxTicks: number): number {
@@ -91,16 +92,18 @@ export class Overlay {
     const W = vp.anchoPx;
     const H = vp.altoPx;
 
-    // Fondo (capa más baja del frame).
+    // Fondo: SOLO se limpia. El color de la superficie lo pone el CSS del canvas
+    // (`--background-primary` de Obsidian), así el plano es del mismo material que la nota
+    // y sigue al tema —incluidos los de la comunidad— sin repintar nada. Antes se rellenaba
+    // aquí con `#1e1e1e` fijo, que es lo que convertía el bloque en una isla oscura.
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = "#1e1e1e";
-    ctx.fillRect(0, 0, W, H);
 
     // Ticks COMUNES a ambos ejes → celdas cuadradas (la escala px/unidad es 1:1).
     const { x: ticksX, y: ticksY } = generarTicksCuadrados(vp);
+    const pal = paletaPlano();
 
     // Rejilla tenue.
-    ctx.strokeStyle = "rgba(130,130,150,0.12)";
+    ctx.strokeStyle = pal.rejilla;
     ctx.lineWidth = 0.5;
     for (const x of ticksX) {
       const px = aPantallaX(vp, x);
@@ -112,7 +115,7 @@ export class Overlay {
     }
 
     // Ejes principales.
-    ctx.strokeStyle = "rgba(160,160,170,0.7)";
+    ctx.strokeStyle = pal.eje;
     ctx.lineWidth = 1;
     if (vp.domY[0] <= 0 && vp.domY[1] >= 0) {
       const y = aPantallaY(vp, 0);
@@ -134,9 +137,9 @@ export class Overlay {
       if (Math.abs(x) < 1e-9) continue;
       const px = aPantallaX(vp, x);
       if (px < 10 || px > W - 10) continue;
-      ctx.strokeStyle = "rgba(160,160,170,0.5)"; ctx.lineWidth = 0.75;
+      ctx.strokeStyle = pal.marca; ctx.lineWidth = 0.75;
       ctx.beginPath(); ctx.moveTo(px, ceroY - 3); ctx.lineTo(px, ceroY + 3); ctx.stroke();
-      ctx.fillStyle = "rgba(160,160,170,0.85)";
+      ctx.fillStyle = pal.etiqueta;
       ctx.fillText(formatearNumero(x), px, ceroY + 5);
     }
 
@@ -146,9 +149,9 @@ export class Overlay {
       if (Math.abs(y) < 1e-9) continue;
       const py = aPantallaY(vp, y);
       if (py < 10 || py > H - 10) continue;
-      ctx.strokeStyle = "rgba(160,160,170,0.5)"; ctx.lineWidth = 0.75;
+      ctx.strokeStyle = pal.marca; ctx.lineWidth = 0.75;
       ctx.beginPath(); ctx.moveTo(ceroX - 3, py); ctx.lineTo(ceroX + 3, py); ctx.stroke();
-      ctx.fillStyle = "rgba(160,160,170,0.85)";
+      ctx.fillStyle = pal.etiqueta;
       ctx.fillText(formatearNumero(y), ceroX - 6, py);
     }
   }

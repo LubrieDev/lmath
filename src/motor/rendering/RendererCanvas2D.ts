@@ -14,11 +14,20 @@
 
 import type { Geometria, Estilo, Viewport, Punto } from "../contracts";
 import { aPantallaX, aPantallaY } from "../scene/viewport-utils";
+import { paletaPlano, colorCurva, PLANO_OSCURO } from "./paleta";
 
 export interface ItemDibujo {
   readonly geometria: Geometria;
   readonly estilo: Estilo;
 }
+
+/**
+ * Color con el que se pinta un `Estilo`: si declara `rol` (índice de ecuación) se resuelve
+ * contra la paleta ACTIVA, para que un cambio de tema se aplique con un repintado y sin
+ * reconstruir la escena; si no lo declara, el color fijo que traiga.
+ */
+const colorDe = (e: Estilo): readonly [number, number, number, number] =>
+  e.rol !== undefined ? colorCurva(e.rol) : e.color;
 
 const css = (c: readonly [number, number, number, number]): string =>
   `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)}, ${c[3]})`;
@@ -32,20 +41,20 @@ const clampPx = (v: number): number => (v < -LIM_PX ? -LIM_PX : v > LIM_PX ? LIM
 // Tintes del RELLENO de la integral definida (obs-integral). Dos colores fijos para que
 // el ÁREA CON SIGNO se lea de un vistazo, independientemente del color de la curva: frío
 // sobre el eje (f>0), cálido bajo el eje (f<0). Translúcidos para no tapar rejilla ni curva.
-export const RELLENO_POSITIVO = "rgba(90, 165, 255, 0.20)";
-export const RELLENO_NEGATIVO = "rgba(240, 110, 90, 0.20)";
+export const RELLENO_POSITIVO = PLANO_OSCURO.rellenoPositivo;
+export const RELLENO_NEGATIVO = PLANO_OSCURO.rellenoNegativo;
 
 // Tramado DIAGONAL sobre el relleno (estilo libro de cálculo): hace legible la región
 // aunque el tinte translúcido se confunda con el fondo, sin taparla (trazo fino, SÓLIDO
 // y translúcido, mismo frío/cálido que el relleno para conservar el signo).
-export const TRAMA_POSITIVA = "rgba(140, 195, 255, 0.30)";
-export const TRAMA_NEGATIVA = "rgba(255, 150, 125, 0.30)";
+export const TRAMA_POSITIVA = PLANO_OSCURO.tramaPositiva;
+export const TRAMA_NEGATIVA = PLANO_OSCURO.tramaNegativa;
 const TRAMA_PASO_PX = 12;      // separación entre diagonales
 
 // Borde de la región: línea vertical del eje a la curva en cada extremo (x=a y x=b),
 // para que los LÍMITES de integración se lean en el plano y no solo en el LaTeX. Azul
 // de la familia del relleno pero sólido (el blanco deslumbraba sobre el tema oscuro).
-export const BORDE_REGION = "rgba(110, 175, 255, 0.95)";
+export const BORDE_REGION = PLANO_OSCURO.bordeRegion;
 const BORDE_GROSOR_PX = 2;
 
 export class RendererCanvas2D {
@@ -68,7 +77,7 @@ export class RendererCanvas2D {
 
     // Las ramas de cada geometría, con su estilo. Una sola maquinaria para todo.
     for (const { geometria, estilo } of items) {
-      ctx.strokeStyle = css(estilo.color);
+      ctx.strokeStyle = css(colorDe(estilo));
       ctx.lineWidth = estilo.grosorPx;
       ctx.lineJoin = "round";
       for (const rama of geometria.ramas) {
@@ -128,9 +137,9 @@ export class RendererCanvas2D {
           for (let i = 0; i < run.length; i += 2) ctx.lineTo(run[i], run[i + 1]);
           ctx.lineTo(run[run.length - 2], ejeY);
           ctx.closePath();
-          ctx.fillStyle = signo > 0 ? RELLENO_POSITIVO : RELLENO_NEGATIVO;
+          ctx.fillStyle = signo > 0 ? paletaPlano().rellenoPositivo : paletaPlano().rellenoNegativo;
           ctx.fill();
-          tramar(signo > 0 ? TRAMA_POSITIVA : TRAMA_NEGATIVA);
+          tramar(signo > 0 ? paletaPlano().tramaPositiva : paletaPlano().tramaNegativa);
         }
         run = []; signo = 0;
       };
@@ -157,7 +166,7 @@ export class RendererCanvas2D {
       // interpolados por `recortarRegion`) una vertical clara del eje a la curva. Si el
       // extremo cae en y=0 (p.ej. a=0 en x²) el trazo degenera a un punto: invisible, bien.
       if (poly.length >= 4) {
-        ctx.strokeStyle = BORDE_REGION;
+        ctx.strokeStyle = paletaPlano().bordeRegion;
         ctx.lineWidth = BORDE_GROSOR_PX;
         for (const k of [0, poly.length - 2]) {
           const bx = clampPx(aPantallaX(vp, poly[k]));
@@ -178,7 +187,7 @@ export class RendererCanvas2D {
     const ctx = this.ctx;
     ctx.save();
     ctx.setLineDash([4, 6]);
-    ctx.strokeStyle = "rgba(100, 150, 255, 0.3)";
+    ctx.strokeStyle = paletaPlano().asintota;
     ctx.lineWidth = 1;
     for (const { geometria } of items) {
       for (const a of geometria.asintotas) {
@@ -208,11 +217,11 @@ export class RendererCanvas2D {
         if (px < 0 || px > vp.anchoPx || py < 0 || py > vp.altoPx) continue;
         ctx.beginPath();
         ctx.arc(px, py, 4.5, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+        ctx.fillStyle = paletaPlano().halo;
         ctx.fill();
         ctx.beginPath();
         ctx.arc(px, py, 3, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255, 160, 40, 1.0)";
+        ctx.fillStyle = paletaPlano().puntoNotable;
         ctx.fill();
       }
     }
@@ -228,11 +237,11 @@ export class RendererCanvas2D {
       if (px < 0 || px > vp.anchoPx || py < 0 || py > vp.altoPx) continue;
       ctx.beginPath();
       ctx.arc(px, py, 4.5, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+      ctx.fillStyle = paletaPlano().halo;
       ctx.fill();
       ctx.beginPath();
       ctx.arc(px, py, 3, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(168, 85, 247, 1.0)";
+      ctx.fillStyle = paletaPlano().interseccion;
       ctx.fill();
     }
   }

@@ -14,6 +14,7 @@ import type { ItemDibujo } from "./RendererCanvas2D";
 import { aPantallaY, aMundoX } from "../scene/viewport-utils";
 import { yEnRamas } from "../analysis/lecturaRama";
 import { formatearNumero } from "./overlay/Overlay";
+import { paletaPlano, colorCurva } from "./paleta";
 
 // Icono del cursor: Material Symbols "point_scan" (24dp, viewBox 0 -960 960 960). Solo la
 // cadena del path; el Path2D se construye PEREZOSAMENTE en el primer dibujo (Path2D no
@@ -43,7 +44,7 @@ export class Crosshair {
     ctx.translate(px, py);
     ctx.scale(escala, escala);
     ctx.translate(-480, 480); // lleva el centro del viewBox (480,-480) a (px, py)
-    ctx.fillStyle = "rgba(235, 238, 245, 0.95)";
+    ctx.fillStyle = paletaPlano().cursor;
     ctx.fill(this.cursorPath);
     ctx.restore();
   }
@@ -88,7 +89,7 @@ export class Crosshair {
     // produce puntos circulares espaciados, en vez de guiones largos.
     ctx.lineCap = "round";
     ctx.setLineDash([1.5, 5]);
-    ctx.strokeStyle = "rgba(140, 170, 255, 0.3)";
+    ctx.strokeStyle = paletaPlano().guiaCrosshair;
     ctx.lineWidth = 1.25;
     ctx.beginPath(); ctx.moveTo(cursorPx, 0); ctx.lineTo(cursorPx, H); ctx.stroke();
     if (yVisible) {
@@ -101,19 +102,19 @@ export class Crosshair {
     if (yVisible) {
       ctx.beginPath();
       ctx.arc(cursorPx, py, 4.5, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+      ctx.fillStyle = paletaPlano().halo;
       ctx.fill();
       ctx.beginPath();
       ctx.arc(cursorPx, py, 3, 0, Math.PI * 2);
       // Disco del color de la curva seleccionada (coincide con su botón); azul si falta.
-      const c = item?.estilo.color;
-      ctx.fillStyle = c
-        ? `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)}, 1)`
-        : "rgba(80, 160, 255, 1.0)";
+      const e = item?.estilo;
+      const c = e ? (e.rol !== undefined ? colorCurva(e.rol) : e.color) : colorCurva(0);
+      ctx.fillStyle =
+        `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)}, 1)`;
       ctx.fill();
       // Modo carril: anillo naranja para distinguir el punto anclado.
       if (anclado) {
-        ctx.strokeStyle = "rgba(255, 160, 40, 0.9)";
+        ctx.strokeStyle = paletaPlano().anilloCarril;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(cursorPx, py, 7, 0, Math.PI * 2);
@@ -127,7 +128,7 @@ export class Crosshair {
     ctx.textBaseline = "top";
     ctx.font = "11px monospace";
     const tx = cursorPx + (aLaDerecha ? 5 : -5);
-    ctx.fillStyle = "rgba(200, 210, 255, 0.9)";
+    ctx.fillStyle = paletaPlano().textoCrosshair;
     ctx.fillText(`x = ${formatearNumero(worldX)}`, tx, 4);
     ctx.fillText(`y = ${formatearNumero(y)}`, tx, 18);
 
