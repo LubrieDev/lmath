@@ -22,6 +22,7 @@ import "./modulos/trazado.test";        // samplers, continuación, caché, punt
 import "./modulos/despeje.test";        // panel Despejar y / Simplificar y batería del despejador
 import "./modulos/parser-latex.test";   // entrada (± , comandos LaTeX) y renderizado de fórmulas
 import "./modulos/carril.test";         // seguimiento de la cámara sobre la curva
+import "./modulos/gestos.test";         // punteros sobre el plano: arrastre, pellizco, cancelación
 import "./modulos/implicitas.test";     // separación, polos, periodicidad y teselado
 import "./modulos/parametricas.test";   // paramétricas y polares
 import "./modulos/escena.test";         // sistemas, intersecciones, autoencuadre, estrés

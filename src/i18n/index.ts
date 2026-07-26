@@ -47,6 +47,12 @@ export interface Textos {
     solucionesSistema: string;
     resumenNotables: string;
     original: string;
+    /** Botón flotante del plano que despliega el panel de la fórmula (bloque estrecho). */
+    verFormula: string;
+    /** El mismo botón con el panel ya abierto: lo cierra. */
+    cerrarFormula: string;
+    /** Chip táctil que lleva al código del bloque (sustituye al `</>` de escritorio). */
+    editarBloque: string;
     transformaciones: string;
     cerrarMenu: string;
     despejarY: string;
@@ -150,6 +156,9 @@ const EN: Textos = {
     solucionesSistema: "System solutions",
     resumenNotables: "Notable points summary",
     original: "Original",
+    verFormula: "Show the formula",
+    cerrarFormula: "Hide the formula",
+    editarBloque: "Edit the block",
     transformaciones: "Transformations",
     cerrarMenu: "Close menu",
     despejarY: "Solve for y",
@@ -278,6 +287,9 @@ const ES: Textos = {
     solucionesSistema: "Soluciones del sistema",
     resumenNotables: "Resumen de puntos notables",
     original: "Original",
+    verFormula: "Ver la fórmula",
+    cerrarFormula: "Ocultar la fórmula",
+    editarBloque: "Editar el bloque",
     transformaciones: "Transformaciones",
     cerrarMenu: "Cerrar menú",
     despejarY: "Despejar y",

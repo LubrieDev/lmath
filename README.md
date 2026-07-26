@@ -111,7 +111,7 @@ LMath is an [Obsidian](https://obsidian.md) plugin for graphing functions, syste
 
 ### Manual
 
-1. Download `main.js`, `manifest.json` and `styles.css` from the latest release.
+1. Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/LubrieDev/lmath/releases)
 2. Create the `lmath` folder inside `<your-vault>/.obsidian/plugins/`.
 3. Copy the files there.
 4. In Obsidian: **Settings → Community plugins** → enable **LMath**.

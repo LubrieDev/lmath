@@ -42,6 +42,10 @@
   display: flex;
   flex-direction: row;
   align-items: center;
+  /* Ancla del panel de la fórmula cuando el bloque es ESTRECHO: ahí el panel sale del flujo
+     (`position:absolute`) y flota sobre el plano, con lo que el plano —que ya pide
+     `width:100%`— se queda la fila entero. Ver `Reparto` en MotorExperimental.ts. */
+  position: relative;
   background-color: var(--lmath-panel);
   /* El panel de la fórmula heredaba el color de texto del tema sobre un fondo fijo
      oscuro. Fijarlo aquí ata las dos mitades del contraste al MISMO par de variables. */
@@ -51,6 +55,19 @@
   border: 1px solid var(--lmath-borde);
   min-height: 261px;
   margin: 16px;
+}
+
+/* Bloque ESTRECHO (teléfono en vertical, panel lateral angosto): el alto lo manda el plano,
+   que lo deriva de su ancho. El mínimo de 261 dejaría una franja de panel vacía por debajo
+   en cuanto el bloque fuese más estrecho que ~318px. */
+.lmath-container.lmath-estrecho {
+  min-height: 0;
+}
+
+/* Sin fórmula a la izquierda no hay nada que separar: ese borde era la costura entre las dos
+   columnas y suelto se lee como una raya pegada al margen. */
+.lmath-container.lmath-estrecho .lmath-grafica {
+  border-left: 0;
 }
 
 .theme-light .lmath-container {

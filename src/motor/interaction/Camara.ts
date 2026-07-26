@@ -22,6 +22,20 @@ export interface CallbacksCamara {
   readonly onCursor: () => void;
 }
 
+/** Capacidades del entorno que cambian lo que la cámara ESCUCHA (no lo que hace). */
+export interface OpcionesCamara {
+  /**
+   * ¿Hay un puntero al que seguir cuando NO se está arrastrando? Con el dedo no
+   * existe el hover: el puntero solo da señales mientras toca, y todas ellas son
+   * un arrastre. Poniéndolo en false la cámara deja de registrar posición de
+   * cursor, así que `cursorPx()`/`cursorPy()` devuelven siempre null y quien
+   * pinta omite por sus propias guardas el crosshair y la cruz del cursor: se
+   * apagan EN EL ORIGEN, sin condicionales repartidos por el pintado.
+   * Por defecto true (ratón), que es lo que asumen las pruebas del motor.
+   */
+  readonly seguirCursor?: boolean;
+}
+
 // Rango vertical por defecto de la vista (el horizontal se deriva del aspecto,
 // celdas 1:1). Es el estado inicial y al que vuelve `restaurarVista`.
 const DOM_Y_DEFECTO: readonly [number, number] = [-7, 7];
@@ -44,6 +58,21 @@ const TAU_ZOOM_MS = 90;
 
 /** Resto de zoom (en logaritmo) por debajo del cual se salda de golpe: e^0.0001 − 1 ≈ 0,01%. */
 const LOG_ZOOM_MINIMO = 1e-4;
+
+/**
+ * Separación mínima entre dos dedos (px CSS) para que el pellizco cuente como ESCALA. Por
+ * debajo, la razón de separaciones se dispara con un movimiento de nada —y en el límite
+ * divide por cero—, así que el gesto se queda solo en desplazamiento. 24px es como dos dedos
+ * tocándose: por debajo, ni el usuario está midiendo una escala.
+ */
+const SEPARACION_MINIMA_PELLIZCO = 24;
+
+/**
+ * Tope de escala por EVENTO de pellizco. Un dedo que reaparece lejos (tras un
+ * `pointercancel`, o al apoyar un tercero) daría una razón enorme en un solo frame; con el
+ * tope, lo peor que puede pasar es una muesca gorda, no un salto de varios órdenes.
+ */
+const FACTOR_MAXIMO_PELLIZCO = 4;
 
 /**
  * Centro de encuadre ACOTADO para el seguimiento del carril: el encuadre
@@ -71,8 +100,16 @@ export class Camara {
   private altoPx: number;
   private dpr: number;
 
-  private arrastrando = false;
-  private ultimo = { x: 0, y: 0 };
+  // ── Punteros activos sobre el plano ───────────────────────────────────────────────────
+  // Un MAPA por `pointerId`, no un solo punto: con dos dedos, el `pointerdown` del segundo
+  // pisaba el `ultimo` del primero y la vista pegaba un salto entre un dedo y otro. Guardando
+  // la última posición DE CADA UNO, el gesto se lee entero (uno = arrastre, dos = pellizco) y
+  // levantar un dedo no produce salto: al que queda ya se le conoce su posición, así que el
+  // siguiente movimiento mide desde ahí.
+  private readonly punteros = new Map<number, { x: number; y: number }>();
+  // Foto del pellizco en el último evento (separación y punto medio en px CSS). null cuando no
+  // hay dos dedos: el primer movimiento de cada pellizco solo toma referencia, no mueve nada.
+  private pellizco: { separacion: number; cx: number; cy: number } | null = null;
   private curX: number | null = null;
   private curY: number | null = null;
 
@@ -96,40 +133,58 @@ export class Camara {
   constructor(
     private readonly canvas: HTMLCanvasElement,
     altoPx: number,
-    private readonly cb: CallbacksCamara
+    private readonly cb: CallbacksCamara,
+    opciones: OpcionesCamara = {}
   ) {
     this.altoPx = altoPx;
     this.dpr = Math.ceil(window.devicePixelRatio || 1);
+    const seguirCursor = opciones.seguirCursor ?? true;
 
     const onDown = (e: PointerEvent) => {
       this.cancelarAnimacion(); // arrastrar mientras la vista se mueve sola sería un tira y afloja
-      this.arrastrando = true;
-      this.ultimo = { x: e.offsetX, y: e.offsetY };
+      this.punteros.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+      this.pellizco = null;     // cambió el nº de dedos: el pellizco se re-siembra
       this.curX = null; this.curY = null; // ocultar cruz/crosshair durante el arrastre
       this.canvas.setPointerCapture(e.pointerId);
       this.cb.onCursor();
     };
     const onMove = (e: PointerEvent) => {
-      if (this.arrastrando) {
-        const dx = e.offsetX - this.ultimo.x;
-        const dy = e.offsetY - this.ultimo.y;
-        this.ultimo = { x: e.offsetX, y: e.offsetY };
-        const rx = (this.domX[1] - this.domX[0]) / this.anchoPx;
-        const ry = (this.domY[1] - this.domY[0]) / this.altoPx;
-        this.domX = [this.domX[0] - dx * rx, this.domX[1] - dx * rx];
-        this.domY = [this.domY[0] + dy * ry, this.domY[1] + dy * ry];
+      const previo = this.punteros.get(e.pointerId);
+      if (previo) {
+        const x = e.offsetX, y = e.offsetY;
+        this.punteros.set(e.pointerId, { x, y });
+        // Dos dedos o más → pellizco (escala + desplazamiento del punto medio). Uno → el
+        // arrastre de siempre, con el MISMO cálculo: con un solo puntero la vista resultante
+        // es idéntica a la de antes de existir el mapa.
+        if (this.punteros.size >= 2) this.pellizcar();
+        else this.arrastrar(x - previo.x, y - previo.y);
         this.cb.onViewport();
-      } else {
+      } else if (seguirCursor) {
+        // Sin hover (táctil) esta rama no llega a ejecutarse nunca —moverse tocando ES
+        // arrastrar—, pero se apaga explícitamente: así el contrato "no hay cursor" lo
+        // fija quien construye la cámara y no depende de qué eventos emita el sistema.
         this.curX = e.offsetX;
         this.curY = e.offsetY;
         this.cb.onCursor();
       }
     };
-    const onUp = (e: PointerEvent) => {
-      this.arrastrando = false;
-      this.canvas.releasePointerCapture(e.pointerId);
+    // Fin de un puntero. `pointercancel` entra por aquí igual que `pointerup`: el sistema
+    // puede quitarnos un dedo a media faena (un gesto del sistema operativo, una llamada
+    // entrante, el navegador reclamando el gesto para desplazar la página). Sin tratarlo, ese
+    // dedo se quedaba para siempre "apoyado" y el estado del gesto no volvía a ser correcto.
+    const onSoltar = (e: PointerEvent) => {
+      if (!this.punteros.delete(e.pointerId)) return;
+      // Tras un `pointercancel` la captura ya no es nuestra: soltarla lanzaría.
+      if (this.canvas.hasPointerCapture?.(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
+      // Cambió el nº de dedos: el pellizco se re-siembra en el próximo movimiento. Pasar de
+      // dos a uno NO da salto —del dedo que queda ya se conoce su última posición—.
+      this.pellizco = null;
     };
     const onLeave = () => {
+      // Sin cursor que seguir no hay nada que borrar, y sí un repintado que ahorrarse:
+      // en táctil `pointerleave` llega tras CADA toque (el dedo se va del canvas al
+      // levantarse), así que repintar aquí sería una pasada por toque, para nada.
+      if (!seguirCursor) return;
       this.curX = null; this.curY = null;
       this.cb.onCursor();
     };
@@ -137,25 +192,86 @@ export class Camara {
       e.preventDefault();
       this.cancelarAnimacion(); // la rueda toma el mando: la animación en curso ya no vale
       const factor = e.deltaY > 0 ? FACTOR_ZOOM_MUESCA : 1 / FACTOR_ZOOM_MUESCA;
-      const mx = this.domX[0] + (e.offsetX / this.anchoPx) * (this.domX[1] - this.domX[0]);
-      const my = this.domY[1] - (e.offsetY / this.altoPx) * (this.domY[1] - this.domY[0]);
-      this.domX = [mx + (this.domX[0] - mx) * factor, mx + (this.domX[1] - mx) * factor];
-      this.domY = [my + (this.domY[0] - my) * factor, my + (this.domY[1] - my) * factor];
+      this.escalarEn(e.offsetX, e.offsetY, factor);
       this.cb.onViewport();
     };
 
     canvas.addEventListener("pointerdown", onDown);
     canvas.addEventListener("pointermove", onMove);
-    canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointerup", onSoltar);
+    canvas.addEventListener("pointercancel", onSoltar);
     canvas.addEventListener("pointerleave", onLeave);
     canvas.addEventListener("wheel", onWheel, { passive: false });
     this.limpiezas.push(
       () => canvas.removeEventListener("pointerdown", onDown),
       () => canvas.removeEventListener("pointermove", onMove),
-      () => canvas.removeEventListener("pointerup", onUp),
+      () => canvas.removeEventListener("pointerup", onSoltar),
+      () => canvas.removeEventListener("pointercancel", onSoltar),
       () => canvas.removeEventListener("pointerleave", onLeave),
       () => canvas.removeEventListener("wheel", onWheel)
     );
+  }
+
+  /**
+   * Desplaza la vista el equivalente en mundo a un movimiento de `dxPx`, `dyPx` PÍXELES de
+   * pantalla. Es el cálculo que hacía el arrastre en línea, extraído tal cual: lo comparten el
+   * dedo solo y el punto medio del pellizco, así que arrastrar con uno o con dos mueve la
+   * vista exactamente lo mismo.
+   */
+  private arrastrar(dxPx: number, dyPx: number): void {
+    const rx = (this.domX[1] - this.domX[0]) / this.anchoPx;
+    const ry = (this.domY[1] - this.domY[0]) / this.altoPx;
+    this.domX = [this.domX[0] - dxPx * rx, this.domX[1] - dxPx * rx];
+    this.domY = [this.domY[0] + dyPx * ry, this.domY[1] + dyPx * ry];
+  }
+
+  /**
+   * Escala la vista por `factor` ANCLADA en el punto de pantalla (px, py): el punto del mundo
+   * que hay justo ahí no se mueve ni un píxel. `factor > 1` aleja (la vista abarca más mundo).
+   *
+   * Es la misma aritmética que usaba la rueda anclada al cursor, ahora compartida con el
+   * pellizco: una sola invariante que mantener, y una sola que probar.
+   */
+  private escalarEn(px: number, py: number, factor: number): void {
+    const mx = this.domX[0] + (px / this.anchoPx) * (this.domX[1] - this.domX[0]);
+    const my = this.domY[1] - (py / this.altoPx) * (this.domY[1] - this.domY[0]);
+    this.domX = [mx + (this.domX[0] - mx) * factor, mx + (this.domX[1] - mx) * factor];
+    this.domY = [my + (this.domY[0] - my) * factor, my + (this.domY[1] - my) * factor];
+  }
+
+  /**
+   * Un paso del PELLIZCO, con los dos primeros dedos apoyados. Hace las dos cosas que el gesto
+   * dice a la vez, en el orden en que se perciben:
+   *
+   *   1. El PUNTO MEDIO arrastra la vista, igual que haría un dedo solo (dos dedos que se
+   *      mueven juntos, sin separarse, desplazan; es lo que espera la mano).
+   *   2. La SEPARACIÓN escala, anclada en ese punto medio: separar los dedos ACERCA la vista
+   *      —más separación ⇒ menos mundo en pantalla ⇒ factor < 1—, que es lo que hace cualquier
+   *      mapa o galería de fotos. El mundo bajo los dedos se queda donde está.
+   *
+   * El primer evento de cada pellizco solo toma referencia (no mueve nada): sin una foto
+   * anterior no hay ni desplazamiento ni razón de escala que aplicar. Por eso `pellizco` se
+   * pone a null cada vez que cambia el número de dedos.
+   */
+  private pellizcar(): void {
+    const dedos = [...this.punteros.values()];
+    const a = dedos[0], b = dedos[1];
+    const separacion = Math.hypot(a.x - b.x, a.y - b.y);
+    const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+    const previo = this.pellizco;
+    this.pellizco = { separacion, cx, cy };
+    if (!previo) return;                       // primer evento del gesto: solo referencia
+
+    this.arrastrar(cx - previo.cx, cy - previo.cy);
+
+    // Con los dedos casi juntos la razón se dispara (y en el límite divide por cero): por
+    // debajo de esta separación el gesto ya no distingue escala, solo desplazamiento.
+    if (separacion < SEPARACION_MINIMA_PELLIZCO || previo.separacion < SEPARACION_MINIMA_PELLIZCO) return;
+    // Tope por evento: un salto de posiciones (un dedo que reaparece lejos tras un
+    // `pointercancel`) no puede convertirse en un zoom de varios órdenes en un frame.
+    const factor = Math.max(1 / FACTOR_MAXIMO_PELLIZCO, Math.min(FACTOR_MAXIMO_PELLIZCO,
+      previo.separacion / separacion));
+    this.escalarEn(cx, cy, factor);
   }
 
   /** Foto inmutable del estado actual de cámara. */

@@ -2815,7 +2815,7 @@ __export(main_exports, {
   default: () => LMathPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian4 = require("obsidian");
+var import_obsidian5 = require("obsidian");
 
 // src/engines/obs-graph/GraphEngine.ts
 var import_obsidian = require("obsidian");
@@ -50084,7 +50084,7 @@ var GraphEngine = class {
 };
 
 // src/host-obsidian/MotorExperimental.ts
-var import_obsidian3 = require("obsidian");
+var import_obsidian4 = require("obsidian");
 
 // src/motor/scene/viewport-utils.ts
 function crearViewport(domX, domY, anchoPx, altoPx, dpr) {
@@ -50111,12 +50111,14 @@ var DOM_Y_DEFECTO = [-7, 7];
 var FACTOR_ZOOM_MUESCA = 1.05;
 var TAU_ZOOM_MS = 90;
 var LOG_ZOOM_MINIMO = 1e-4;
+var SEPARACION_MINIMA_PELLIZCO = 24;
+var FACTOR_MAXIMO_PELLIZCO = 4;
 function centroCarrilAcotado(centro, semirrango) {
   const max3 = semirrango * 2 ** 46;
   return Math.max(-max3, Math.min(max3, centro));
 }
 var Camara = class {
-  constructor(canvas, altoPx, cb) {
+  constructor(canvas, altoPx, cb, opciones = {}) {
     this.canvas = canvas;
     this.cb = cb;
     this.domX = [-8.3453, 8.3453];
@@ -50127,8 +50129,16 @@ var Camara = class {
     // curva hasta el garabato del que veníamos: la vista base del bloque es la encuadrada.
     this.semiYBase = (DOM_Y_DEFECTO[1] - DOM_Y_DEFECTO[0]) / 2;
     this.anchoPx = 768;
-    this.arrastrando = false;
-    this.ultimo = { x: 0, y: 0 };
+    // ── Punteros activos sobre el plano ───────────────────────────────────────────────────
+    // Un MAPA por `pointerId`, no un solo punto: con dos dedos, el `pointerdown` del segundo
+    // pisaba el `ultimo` del primero y la vista pegaba un salto entre un dedo y otro. Guardando
+    // la última posición DE CADA UNO, el gesto se lee entero (uno = arrastre, dos = pellizco) y
+    // levantar un dedo no produce salto: al que queda ya se le conoce su posición, así que el
+    // siguiente movimiento mide desde ahí.
+    this.punteros = /* @__PURE__ */ new Map();
+    // Foto del pellizco en el último evento (separación y punto medio en px CSS). null cuando no
+    // hay dos dedos: el primer movimiento de cada pellizco solo toma referencia, no mueve nada.
+    this.pellizco = null;
     this.curX = null;
     this.curY = null;
     // ── Animación de vista (botones + / − y 🏠) ────────────────────────────────────────────
@@ -50146,38 +50156,46 @@ var Camara = class {
     // ¿La animación en curso es el regreso a la vista base (🏠)?
     this.volviendoAInicio = false;
     this.limpiezas = [];
+    var _a;
     this.altoPx = altoPx;
     this.dpr = Math.ceil(window.devicePixelRatio || 1);
+    const seguirCursor = (_a = opciones.seguirCursor) != null ? _a : true;
     const onDown = (e3) => {
       this.cancelarAnimacion();
-      this.arrastrando = true;
-      this.ultimo = { x: e3.offsetX, y: e3.offsetY };
+      this.punteros.set(e3.pointerId, { x: e3.offsetX, y: e3.offsetY });
+      this.pellizco = null;
       this.curX = null;
       this.curY = null;
       this.canvas.setPointerCapture(e3.pointerId);
       this.cb.onCursor();
     };
     const onMove = (e3) => {
-      if (this.arrastrando) {
-        const dx = e3.offsetX - this.ultimo.x;
-        const dy = e3.offsetY - this.ultimo.y;
-        this.ultimo = { x: e3.offsetX, y: e3.offsetY };
-        const rx = (this.domX[1] - this.domX[0]) / this.anchoPx;
-        const ry = (this.domY[1] - this.domY[0]) / this.altoPx;
-        this.domX = [this.domX[0] - dx * rx, this.domX[1] - dx * rx];
-        this.domY = [this.domY[0] + dy * ry, this.domY[1] + dy * ry];
+      const previo = this.punteros.get(e3.pointerId);
+      if (previo) {
+        const x = e3.offsetX, y = e3.offsetY;
+        this.punteros.set(e3.pointerId, { x, y });
+        if (this.punteros.size >= 2)
+          this.pellizcar();
+        else
+          this.arrastrar(x - previo.x, y - previo.y);
         this.cb.onViewport();
-      } else {
+      } else if (seguirCursor) {
         this.curX = e3.offsetX;
         this.curY = e3.offsetY;
         this.cb.onCursor();
       }
     };
-    const onUp = (e3) => {
-      this.arrastrando = false;
-      this.canvas.releasePointerCapture(e3.pointerId);
+    const onSoltar = (e3) => {
+      var _a2, _b;
+      if (!this.punteros.delete(e3.pointerId))
+        return;
+      if ((_b = (_a2 = this.canvas).hasPointerCapture) == null ? void 0 : _b.call(_a2, e3.pointerId))
+        this.canvas.releasePointerCapture(e3.pointerId);
+      this.pellizco = null;
     };
     const onLeave = () => {
+      if (!seguirCursor)
+        return;
       this.curX = null;
       this.curY = null;
       this.cb.onCursor();
@@ -50186,24 +50204,80 @@ var Camara = class {
       e3.preventDefault();
       this.cancelarAnimacion();
       const factor = e3.deltaY > 0 ? FACTOR_ZOOM_MUESCA : 1 / FACTOR_ZOOM_MUESCA;
-      const mx = this.domX[0] + e3.offsetX / this.anchoPx * (this.domX[1] - this.domX[0]);
-      const my = this.domY[1] - e3.offsetY / this.altoPx * (this.domY[1] - this.domY[0]);
-      this.domX = [mx + (this.domX[0] - mx) * factor, mx + (this.domX[1] - mx) * factor];
-      this.domY = [my + (this.domY[0] - my) * factor, my + (this.domY[1] - my) * factor];
+      this.escalarEn(e3.offsetX, e3.offsetY, factor);
       this.cb.onViewport();
     };
     canvas.addEventListener("pointerdown", onDown);
     canvas.addEventListener("pointermove", onMove);
-    canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointerup", onSoltar);
+    canvas.addEventListener("pointercancel", onSoltar);
     canvas.addEventListener("pointerleave", onLeave);
     canvas.addEventListener("wheel", onWheel, { passive: false });
     this.limpiezas.push(
       () => canvas.removeEventListener("pointerdown", onDown),
       () => canvas.removeEventListener("pointermove", onMove),
-      () => canvas.removeEventListener("pointerup", onUp),
+      () => canvas.removeEventListener("pointerup", onSoltar),
+      () => canvas.removeEventListener("pointercancel", onSoltar),
       () => canvas.removeEventListener("pointerleave", onLeave),
       () => canvas.removeEventListener("wheel", onWheel)
     );
+  }
+  /**
+   * Desplaza la vista el equivalente en mundo a un movimiento de `dxPx`, `dyPx` PÍXELES de
+   * pantalla. Es el cálculo que hacía el arrastre en línea, extraído tal cual: lo comparten el
+   * dedo solo y el punto medio del pellizco, así que arrastrar con uno o con dos mueve la
+   * vista exactamente lo mismo.
+   */
+  arrastrar(dxPx, dyPx) {
+    const rx = (this.domX[1] - this.domX[0]) / this.anchoPx;
+    const ry = (this.domY[1] - this.domY[0]) / this.altoPx;
+    this.domX = [this.domX[0] - dxPx * rx, this.domX[1] - dxPx * rx];
+    this.domY = [this.domY[0] + dyPx * ry, this.domY[1] + dyPx * ry];
+  }
+  /**
+   * Escala la vista por `factor` ANCLADA en el punto de pantalla (px, py): el punto del mundo
+   * que hay justo ahí no se mueve ni un píxel. `factor > 1` aleja (la vista abarca más mundo).
+   *
+   * Es la misma aritmética que usaba la rueda anclada al cursor, ahora compartida con el
+   * pellizco: una sola invariante que mantener, y una sola que probar.
+   */
+  escalarEn(px, py, factor) {
+    const mx = this.domX[0] + px / this.anchoPx * (this.domX[1] - this.domX[0]);
+    const my = this.domY[1] - py / this.altoPx * (this.domY[1] - this.domY[0]);
+    this.domX = [mx + (this.domX[0] - mx) * factor, mx + (this.domX[1] - mx) * factor];
+    this.domY = [my + (this.domY[0] - my) * factor, my + (this.domY[1] - my) * factor];
+  }
+  /**
+   * Un paso del PELLIZCO, con los dos primeros dedos apoyados. Hace las dos cosas que el gesto
+   * dice a la vez, en el orden en que se perciben:
+   *
+   *   1. El PUNTO MEDIO arrastra la vista, igual que haría un dedo solo (dos dedos que se
+   *      mueven juntos, sin separarse, desplazan; es lo que espera la mano).
+   *   2. La SEPARACIÓN escala, anclada en ese punto medio: separar los dedos ACERCA la vista
+   *      —más separación ⇒ menos mundo en pantalla ⇒ factor < 1—, que es lo que hace cualquier
+   *      mapa o galería de fotos. El mundo bajo los dedos se queda donde está.
+   *
+   * El primer evento de cada pellizco solo toma referencia (no mueve nada): sin una foto
+   * anterior no hay ni desplazamiento ni razón de escala que aplicar. Por eso `pellizco` se
+   * pone a null cada vez que cambia el número de dedos.
+   */
+  pellizcar() {
+    const dedos = [...this.punteros.values()];
+    const a = dedos[0], b = dedos[1];
+    const separacion = Math.hypot(a.x - b.x, a.y - b.y);
+    const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+    const previo = this.pellizco;
+    this.pellizco = { separacion, cx, cy };
+    if (!previo)
+      return;
+    this.arrastrar(cx - previo.cx, cy - previo.cy);
+    if (separacion < SEPARACION_MINIMA_PELLIZCO || previo.separacion < SEPARACION_MINIMA_PELLIZCO)
+      return;
+    const factor = Math.max(1 / FACTOR_MAXIMO_PELLIZCO, Math.min(
+      FACTOR_MAXIMO_PELLIZCO,
+      previo.separacion / separacion
+    ));
+    this.escalarEn(cx, cy, factor);
   }
   /** Foto inmutable del estado actual de cámara. */
   viewport() {
@@ -57569,6 +57643,9 @@ var EN = {
     solucionesSistema: "System solutions",
     resumenNotables: "Notable points summary",
     original: "Original",
+    verFormula: "Show the formula",
+    cerrarFormula: "Hide the formula",
+    editarBloque: "Edit the block",
     transformaciones: "Transformations",
     cerrarMenu: "Close menu",
     despejarY: "Solve for y",
@@ -57673,6 +57750,9 @@ var ES = {
     solucionesSistema: "Soluciones del sistema",
     resumenNotables: "Resumen de puntos notables",
     original: "Original",
+    verFormula: "Ver la f\xF3rmula",
+    cerrarFormula: "Ocultar la f\xF3rmula",
+    editarBloque: "Editar el bloque",
     transformaciones: "Transformaciones",
     cerrarMenu: "Cerrar men\xFA",
     despejarY: "Despejar y",
@@ -57940,7 +58020,33 @@ var PestanaAjustesLMath = class extends import_obsidian2.PluginSettingTab {
   }
 };
 
+// src/host-obsidian/plataforma.ts
+var import_obsidian3 = require("obsidian");
+function esTactil() {
+  return import_obsidian3.Platform.isMobile;
+}
+
 // src/host-obsidian/MotorExperimental.ts
+var ALTO_PANEL = 261;
+var ANCHO_MINIMO_COLUMNAS = 520;
+var PROPORCION_PLANO_FLOTANTE = 0.82;
+var ALTO_PANEL_FLOTANTE = 180;
+var MARGEN_FLOTANTE = 8;
+function ladoChip(tactil) {
+  return tactil ? 30 : 22;
+}
+function ladoIcono(lado) {
+  return Math.round(lado * 0.66);
+}
+function huecoChips(lado) {
+  return MARGEN_FLOTANTE + lado + MARGEN_FLOTANTE;
+}
+function aplicarCajaPanel(reparto) {
+  const panel = reparto.panel;
+  if (!panel)
+    return;
+  panel.style.cssText = reparto.estrecho ? `position:absolute; z-index:6; box-sizing:border-box; display:${reparto.abierto ? "flex" : "none"}; left:${MARGEN_FLOTANTE}px; right:${MARGEN_FLOTANTE}px; bottom:${huecoChips(reparto.ladoChip)}px; width:auto; height:${ALTO_PANEL_FLOTANTE}px; padding:0; overflow:hidden; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:12px; box-shadow:var(--lmath-sombra-flotante);` : `position:relative; width:50%; height:${ALTO_PANEL}px; padding:0; overflow:hidden;`;
+}
 function esTemaOscuro(el) {
   return el.doc.body.classList.contains("theme-dark");
 }
@@ -57951,7 +58057,10 @@ var ICONO = {
   carril: "M450-42v-75q-137-14-228-105T117-450H42v-60h75q14-137 105-228t228-105v-75h60v75q137 14 228 105t105 228h75v60h-75q-14 137-105 228T510-117v75h-60Zm244.5-223.5Q784-355 784-480t-89.5-214.5Q605-784 480-784t-214.5 89.5Q176-605 176-480t89.5 214.5Q355-176 480-176t214.5-89.5Zm-321-108Q330-417 330-480t43.5-106.5Q417-630 480-630t106.5 43.5Q630-543 630-480t-43.5 106.5Q543-330 480-330t-106.5-43.5ZM544-416q26-26 26-64t-26-64q-26-26-64-26t-64 26q-26 26-26 64t26 64q26 26 64 26t64-26Zm-64-64Z",
   info: "M453-280h60v-240h-60v240Zm50.5-323.2q9.5-9.2 9.5-22.8 0-14.45-9.48-24.22-9.48-9.78-23.5-9.78t-23.52 9.78Q447-640.45 447-626q0 13.6 9.48 22.8 9.48 9.2 23.5 9.2t23.52-9.2ZM480.27-80q-82.74 0-155.5-31.5Q252-143 197.5-197.5t-86-127.34Q80-397.68 80-480.5t31.5-155.66Q143-709 197.5-763t127.34-85.5Q397.68-880 480.5-880t155.66 31.5Q709-817 763-763t85.5 127Q880-563 880-480.27q0 82.74-31.5 155.5Q817-252 763-197.68q-54 54.31-127 86Q563-80 480.27-80Zm.23-60Q622-140 721-239.5t99-241Q820-622 721.19-721T480-820q-141 0-240.5 98.81T140-480q0 141 99.5 240.5t241 99.5Zm-.5-340Z",
   menu: "M120-240v-60h720v60H120Zm0-210v-60h720v60H120Zm0-210v-60h720v60H120Z",
-  cerrar: "m249-207-42-42 231-231-231-231 42-42 231 231 231-231 42 42-231 231 231 231-42 42-231-231-231 231Z"
+  cerrar: "m249-207-42-42 231-231-231-231 42-42 231 231 231-231 42 42-231 231 231 231-42 42-231-231-231 231Z",
+  // Editar el bloque: en móvil no existe el botón `</>` de Obsidian —aparece al pasar el
+  // ratón, y no hay ratón—, así que el bloque se queda sin puerta a su propio código.
+  editar: "M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h405l-60 60H180v600h600v-348l60-60v408q0 24-18 42t-42 18H180Zm300-360ZM360-360v-170l382-382q9-9 20-13t22-4q11 0 22.32 4.5Q817.63-920 827-911l83 84q8.61 8.96 13.3 19.78 4.7 10.83 4.7 22.02 0 11.2-4.5 22.7T910-742L530-360H360Zm508-425-84-84 84 84ZM420-420h85l253-253-43-42-43-42-252 251v86Zm295-295-43-42 43 42 43 42-43-42Z"
 };
 var MotorExperimental = class {
   // `sistema=false` → bloque obs-graph (una función). `sistema=true` → bloque
@@ -57974,8 +58083,12 @@ var MotorExperimental = class {
   async process(source, el, ctx) {
     var _a;
     const contenedor = el.createDiv({ cls: "lmath-container" });
-    const limpieza = new import_obsidian3.MarkdownRenderChild(contenedor);
+    const limpieza = new import_obsidian4.MarkdownRenderChild(contenedor);
     ctx.addChild(limpieza);
+    const revelar = () => contenedor.setCssStyles({ visibility: "visible" });
+    contenedor.setCssStyles({ visibility: "hidden" });
+    const redDeSeguridad = window.setTimeout(revelar, 2e3);
+    limpieza.register(() => window.clearTimeout(redDeSeguridad));
     const ecuaciones = dividirEcuaciones(source);
     const visibles = this.sistema ? ecuaciones : ecuaciones.slice(0, 1);
     const funcionEscrita = this.derivada && visibles.length ? extraerFuncion(visibles[0]) : null;
@@ -57984,15 +58097,49 @@ var MotorExperimental = class {
     const integralDatos = this.integral ? extraerIntegral(source) : null;
     const graficadas = this.integral ? integralDatos ? [integralDatos.integrando] : [] : this.derivada ? derivadaExpr ? [derivadaExpr] : [] : visibles;
     const fuenteGrafico = this.integral ? (_a = integralDatos == null ? void 0 : integralDatos.integrando) != null ? _a : "" : this.derivada ? derivadaExpr != null ? derivadaExpr : "" : source;
+    const tactil = esTactil();
+    const reparto = {
+      estrecho: false,
+      abierto: false,
+      panel: null,
+      ladoChip: ladoChip(tactil)
+    };
     if (this.integral)
-      await this.montarPanelIntegral(contenedor, source, ctx, limpieza);
+      await this.montarPanelIntegral(contenedor, source, ctx, limpieza, reparto);
     else if (this.derivada)
-      await this.montarPanelDerivada(contenedor, visibles, ctx, limpieza);
+      await this.montarPanelDerivada(contenedor, visibles, ctx, limpieza, reparto);
     else
-      await this.montarPanelLatex(contenedor, visibles, ctx, limpieza);
-    const H = 261;
+      await this.montarPanelLatex(contenedor, visibles, ctx, limpieza, reparto);
+    const H = ALTO_PANEL;
     const wrap = contenedor.createDiv({ cls: "lmath-grafica" });
     wrap.style.cssText = `position:relative; width:100%; height:${H}px;`;
+    let sincronizarBotonFormula = () => {
+    };
+    let cerrarFormula = () => {
+    };
+    const cierresInfo = [];
+    const exclusion = {
+      alAbrir: () => cerrarFormula(),
+      registrar: (cerrar) => cierresInfo.push(cerrar)
+    };
+    let anchoAplicado = -1;
+    const aplicarReparto = () => {
+      const ancho = contenedor.clientWidth;
+      if (ancho <= 0)
+        return;
+      const estrecho = ancho < ANCHO_MINIMO_COLUMNAS;
+      if (estrecho === reparto.estrecho && ancho === anchoAplicado)
+        return;
+      anchoAplicado = ancho;
+      reparto.estrecho = estrecho;
+      if (!estrecho)
+        reparto.abierto = false;
+      contenedor.toggleClass("lmath-estrecho", estrecho);
+      aplicarCajaPanel(reparto);
+      sincronizarBotonFormula();
+      wrap.style.height = estrecho ? `${Math.round(ancho * PROPORCION_PLANO_FLOTANTE)}px` : `${H}px`;
+    };
+    aplicarReparto();
     const canvas = wrap.createEl("canvas");
     canvas.setCssStyles({
       position: "absolute",
@@ -58000,11 +58147,19 @@ var MotorExperimental = class {
       left: "0",
       width: "100%",
       height: "100%",
-      cursor: "none"
+      cursor: tactil ? "default" : "none",
+      // El dedo mueve el PLANO, en los dos ejes, y dos dedos hacen zoom: el navegador no se
+      // queda ningún gesto que empiece aquí. Va SOLO en el lienzo, no en el bloque: los toques
+      // que empiezan en los márgenes, encima, debajo o sobre el panel de la fórmula —180 de
+      // los 263px cuando está abierto— siguen desplazando la nota con normalidad, así que el
+      // bloque nunca atrapa el desplazamiento. Y los gestos del sistema (deslizar desde el
+      // borde para la barra lateral) empiezan fuera del lienzo, así que tampoco sufren.
+      touchAction: "none"
     });
     const ctx2d = canvas.getContext("2d");
     if (!ctx2d) {
       wrap.createEl("p", { text: t().canvasNoDisponible });
+      revelar();
       return;
     }
     const escena = this.sistema ? crearMotorSistema(ctx2d, source) : crearMotor(ctx2d, fuenteGrafico);
@@ -58026,17 +58181,20 @@ var MotorExperimental = class {
       detalle.style.cssText = "font-size:12px; line-height:1.4; max-width:320px; color:var(--lmath-texto-tenue);";
     }
     const exprGraph = this.exprExplicita(graficadas);
-    if (exprGraph && !degenerada)
-      this.montarBotonInfo(wrap, exprGraph, ctx);
+    let hayChipInfo = false;
+    if (exprGraph && !degenerada) {
+      this.montarBotonInfo(wrap, exprGraph, ctx, reparto.ladoChip, exclusion);
+      hayChipInfo = true;
+    }
     let camara;
-    let navegacion;
+    let navegacion = null;
     const pintar = () => {
       const vp = camara.viewport();
       fijarTemaPlano(esTemaOscuro(wrap));
       escena.mostrarNotables(this.obtenerAjustes().puntosNotables);
       const mx = camara.cursorPx();
       const my = camara.cursorPy();
-      if (navegacion.railOn) {
+      if (navegacion == null ? void 0 : navegacion.railOn) {
         escena.pintar(vp, aPantallaX(vp, navegacion.railX), true, navegacion.railY, mx, my);
       } else {
         escena.pintar(vp, mx, false, void 0, mx, my);
@@ -58089,18 +58247,26 @@ var MotorExperimental = class {
         programarFinal();
       },
       onCursor: () => programarPintado()
+    }, {
+      // Con el dedo no hay hover: la cámara no registra posición de cursor y, por las
+      // guardas de `Escena.pintar`, se apagan de una vez el crosshair matemático y la
+      // cruz del cursor. Un solo interruptor, en el origen.
+      seguirCursor: !tactil
     });
-    navegacion = new Navegacion(canvas, camara, {
-      y: (x) => escena.yEnCurva(x),
-      avanzarArco: (x, y, deltaPx, vp, recortar) => escena.avanzarArcoEnCurva(x, y, deltaPx, vp, recortar),
-      hayVecina: (x, y, dir, vp) => escena.hayRamaVecinaCarril(x, y, dir, vp),
-      tieneAsintotasVerticales: () => escena.tieneAsintotasVerticales()
-    }, () => {
-      escena.actualizar(camara.viewport(), "interactiva");
-      pintar();
-      programarFinal();
-    });
-    limpieza.register(() => navegacion.destruir());
+    if (!tactil) {
+      navegacion = new Navegacion(canvas, camara, {
+        y: (x) => escena.yEnCurva(x),
+        avanzarArco: (x, y, deltaPx, vp, recortar) => escena.avanzarArcoEnCurva(x, y, deltaPx, vp, recortar),
+        hayVecina: (x, y, dir, vp) => escena.hayRamaVecinaCarril(x, y, dir, vp),
+        tieneAsintotasVerticales: () => escena.tieneAsintotasVerticales()
+      }, () => {
+        escena.actualizar(camara.viewport(), "interactiva");
+        pintar();
+        programarFinal();
+      });
+      const nav = navegacion;
+      limpieza.register(() => nav.destruir());
+    }
     let W = 0, Hcss = 0, dprPrev = 0;
     const redimensionar = () => {
       const caja = canvas.getBoundingClientRect();
@@ -58145,22 +58311,29 @@ var MotorExperimental = class {
     const observador = new ResizeObserver(() => redimensionar());
     observador.observe(wrap);
     limpieza.register(() => observador.disconnect());
+    const observadorReparto = new ResizeObserver(() => aplicarReparto());
+    observadorReparto.observe(contenedor);
+    limpieza.register(() => observadorReparto.disconnect());
     window.addEventListener("resize", redimensionar);
     limpieza.register(() => window.removeEventListener("resize", redimensionar));
     limpieza.register(() => camara.destruir());
-    const estiloZoom = (arriba) => "position:absolute; right:8px; top:" + arriba + "px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:15px; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; color:var(--lmath-texto-tenue); background:var(--lmath-chip); border:1px solid var(--lmath-borde);";
+    const lado = reparto.ladoChip;
+    const iconoChip = ladoIcono(lado);
+    const escalonZoom = lado + 4;
+    const estiloZoom = (arriba) => `position:absolute; right:8px; top:${arriba}px; width:${lado}px; height:${lado}px; display:flex; align-items:center; justify-content:center; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; color:var(--lmath-texto-tenue); background:var(--lmath-chip); border:1px solid var(--lmath-borde);`;
     const btnInicio = wrap.createDiv();
     this.ponerTooltip(btnInicio, t().botones.vistaInicial);
     btnInicio.style.cssText = estiloZoom(6);
-    this.montarIcono(btnInicio, "inicio", 15);
+    this.montarIcono(btnInicio, "inicio", iconoChip);
     const btnMas = wrap.createDiv();
     this.ponerTooltip(btnMas, t().botones.acercar);
-    btnMas.style.cssText = estiloZoom(32);
-    this.montarIcono(btnMas, "acercar", 15);
+    btnMas.style.cssText = estiloZoom(6 + escalonZoom);
+    this.montarIcono(btnMas, "acercar", iconoChip);
     const btnMenos = wrap.createDiv();
     this.ponerTooltip(btnMenos, t().botones.alejar);
-    btnMenos.style.cssText = estiloZoom(58);
-    this.montarIcono(btnMenos, "alejar", 15);
+    btnMenos.style.cssText = estiloZoom(6 + 2 * escalonZoom);
+    this.montarIcono(btnMenos, "alejar", iconoChip);
+    const columnaZoom = [btnInicio, btnMas, btnMenos];
     btnInicio.addEventListener("click", () => camara.volverAVistaBase());
     const CADENCIA_ZOOM_MS = 100;
     const zoomMantenido = (btn, acercar) => {
@@ -58185,26 +58358,43 @@ var MotorExperimental = class {
     };
     zoomMantenido(btnMas, true);
     zoomMantenido(btnMenos, false);
-    const btnCarril = wrap.createDiv();
-    this.ponerTooltip(btnCarril, t().botones.carril);
-    const estiloBtn = (activo) => {
-      btnCarril.style.cssText = "position:absolute; bottom:8px; left:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; " + (activo ? "color:var(--lmath-acento-contraste); background:var(--lmath-acento); border:1px solid var(--lmath-acento);" : "color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde);");
+    let sincronizarCarril = () => {
     };
-    estiloBtn(false);
-    this.montarIcono(btnCarril, "carril", 15);
-    btnCarril.addEventListener("click", () => {
-      navegacion.alternarCarril();
-      estiloBtn(navegacion.railOn);
-    });
+    if (!tactil) {
+      const btnCarril = wrap.createDiv();
+      this.ponerTooltip(btnCarril, t().botones.carril);
+      const estiloBtn = (activo) => {
+        btnCarril.style.cssText = `position:absolute; bottom:8px; left:8px; width:${lado}px; height:${lado}px; display:flex; align-items:center; justify-content:center; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; ` + (activo ? "color:var(--lmath-acento-contraste); background:var(--lmath-acento); border:1px solid var(--lmath-acento);" : "color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde);");
+      };
+      estiloBtn(false);
+      this.montarIcono(btnCarril, "carril", iconoChip);
+      btnCarril.addEventListener("click", () => {
+        if (!navegacion)
+          return;
+        navegacion.alternarCarril();
+        estiloBtn(navegacion.railOn);
+      });
+      sincronizarCarril = () => {
+        const recorrible = escena.curvaRecorrible();
+        if (!recorrible && (navegacion == null ? void 0 : navegacion.railOn)) {
+          navegacion.alternarCarril();
+          estiloBtn(false);
+        }
+        btnCarril.style.display = recorrible ? "flex" : "none";
+      };
+    }
     const colores = escena.colores();
     const estilosSel = [];
     if (colores.length >= 2) {
+      const ladoSel = tactil ? 24 : 18;
+      const bajoSel = 8 + Math.round((lado - ladoSel) / 2);
+      const inicioSel = tactil ? 8 : 8 + lado + 8;
       colores.forEach((c, i2) => {
         const b = wrap.createDiv();
         this.ponerTooltip(b, t().botones.seleccionarEcuacion(i2 + 1));
         const rgb = `rgb(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)})`;
         const estilo = (sel) => {
-          b.style.cssText = `position:absolute; bottom:10px; left:${38 + i2 * 24}px; width:18px; height:18px; border-radius:50%; cursor:pointer; user-select:none; z-index:5; box-sizing:border-box; background:${rgb}; ` + (sel ? "border:2px solid var(--lmath-texto);" : "border:2px solid var(--lmath-borde);");
+          b.style.cssText = `position:absolute; bottom:${bajoSel}px; left:${inicioSel + i2 * (ladoSel + 6)}px; width:${ladoSel}px; height:${ladoSel}px; border-radius:50%; cursor:pointer; user-select:none; z-index:5; box-sizing:border-box; background:${rgb}; ` + (sel ? "border:2px solid var(--lmath-texto);" : "border:2px solid var(--lmath-borde);");
         };
         estilo(i2 === escena.seleccionActual());
         b.addEventListener("click", () => {
@@ -58218,22 +58408,19 @@ var MotorExperimental = class {
     const sincronizarControles = () => {
       const sel = escena.seleccionActual();
       estilosSel.forEach((estilo, i2) => estilo(i2 === sel));
-      const recorrible = escena.curvaRecorrible();
-      if (!recorrible && navegacion.railOn) {
-        navegacion.alternarCarril();
-        estiloBtn(false);
-      }
-      btnCarril.style.display = recorrible ? "flex" : "none";
+      sincronizarCarril();
     };
     sincronizarControles();
     if (this.sistema) {
+      hayChipInfo = true;
       const btnSolucion = wrap.createDiv();
       this.ponerTooltip(btnSolucion, t().botones.solucionesSistema);
-      btnSolucion.style.cssText = "position:absolute; bottom:8px; right:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; user-select:none; z-index:5;";
-      this.montarIcono(btnSolucion, "info", 15);
+      btnSolucion.style.cssText = this.estiloChipInfo(lado);
+      this.montarIcono(btnSolucion, "info", iconoChip);
       const popSolucion = wrap.createDiv();
-      popSolucion.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:6px; font-size:11px; line-height:1.5; color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);";
-      const sistemaPeriodico = visibles.some((ec) => ec.split("=").some((lado) => tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado.trim())))));
+      popSolucion.style.cssText = this.estiloPopoverInfo(lado);
+      exclusion.registrar(() => popSolucion.setCssStyles({ display: "none" }));
+      const sistemaPeriodico = visibles.some((ec) => ec.split("=").some((lado2) => tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado2.trim())))));
       const MIN_PERIODICO = 3;
       const MAX_LISTA = 20;
       const refrescarSolucion = () => {
@@ -58290,12 +58477,15 @@ var MotorExperimental = class {
       btnSolucion.addEventListener("click", (e3) => {
         e3.stopPropagation();
         const abierto = popSolucion.style.display !== "none";
-        if (!abierto)
+        if (!abierto) {
+          exclusion.alAbrir();
           refrescarSolucion();
-        popSolucion.style.display = abierto ? "none" : "block";
+        }
+        popSolucion.setCssStyles({ display: abierto ? "none" : "block" });
       });
     }
     if (!this.sistema && !degenerada && graficadas.length > 0 && !exprGraph) {
+      hayChipInfo = true;
       let tipo;
       try {
         tipo = construirObjeto(graficadas[0], "info").tipo;
@@ -58303,13 +58493,14 @@ var MotorExperimental = class {
         tipo = "";
       }
       const acotadaPorPeriodo = tipo === "parametrica" || tipo === "polar";
-      const esTrig = !acotadaPorPeriodo && graficadas[0].split("=").some((lado) => tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado.trim()))));
+      const esTrig = !acotadaPorPeriodo && graficadas[0].split("=").some((lado2) => tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado2.trim()))));
       const btnInfo = wrap.createDiv();
       this.ponerTooltip(btnInfo, t().botones.resumenNotables);
-      btnInfo.style.cssText = "position:absolute; bottom:8px; right:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; user-select:none; z-index:5;";
-      this.montarIcono(btnInfo, "info", 15);
+      btnInfo.style.cssText = this.estiloChipInfo(lado);
+      this.montarIcono(btnInfo, "info", iconoChip);
       const pop = wrap.createDiv();
-      pop.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:6px; font-size:11px; line-height:1.5; color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);";
+      pop.style.cssText = this.estiloPopoverInfo(lado);
+      exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
       const refrescarInfo = () => {
         pop.empty();
         const r = escena.resumenNotables(camara.viewport());
@@ -58358,10 +58549,130 @@ var MotorExperimental = class {
       btnInfo.addEventListener("click", (e3) => {
         e3.stopPropagation();
         const abierto = pop.style.display !== "none";
-        if (!abierto)
+        if (!abierto) {
+          exclusion.alAbrir();
           refrescarInfo();
-        pop.style.display = abierto ? "none" : "block";
+        }
+        pop.setCssStyles({ display: abierto ? "none" : "block" });
       });
+    }
+    const btnFormula = wrap.createDiv();
+    const derechaFormula = MARGEN_FLOTANTE + (hayChipInfo ? lado + MARGEN_FLOTANTE : 0);
+    const estiloBotonFormula = () => {
+      btnFormula.style.cssText = `position:absolute; bottom:${MARGEN_FLOTANTE}px; right:${derechaFormula}px; height:${lado}px; min-width:${lado}px; padding:0 8px; box-sizing:border-box; display:${reparto.estrecho ? "flex" : "none"}; align-items:center; justify-content:center; font-size:11px; line-height:1; border-radius:8px; cursor:pointer; user-select:none; z-index:7; ` + (reparto.abierto ? "color:var(--lmath-texto); background:var(--lmath-chip-activo); border:1px solid var(--lmath-borde-activo);" : "color:var(--lmath-texto-tenue); background:var(--lmath-chip); border:1px solid var(--lmath-borde);");
+    };
+    const pintarGlifoFormula = () => {
+      const nombre = reparto.abierto ? "cerrar" : "formula";
+      if (btnFormula.dataset.glifo === nombre)
+        return;
+      btnFormula.dataset.glifo = nombre;
+      btnFormula.empty();
+      if (reparto.abierto)
+        this.montarIcono(btnFormula, "cerrar", iconoChip);
+      else
+        this.montarEtiquetaMath(btnFormula, "f(x)", ctx);
+      this.ponerTooltip(
+        btnFormula,
+        reparto.abierto ? t().botones.cerrarFormula : t().botones.verFormula
+      );
+    };
+    let btnEditar = null;
+    sincronizarBotonFormula = () => {
+      estiloBotonFormula();
+      pintarGlifoFormula();
+      btnEditar == null ? void 0 : btnEditar.setCssStyles({ display: reparto.abierto ? "none" : "flex" });
+      for (const b of columnaZoom)
+        b.setCssStyles({ display: reparto.abierto ? "none" : "flex" });
+    };
+    sincronizarBotonFormula();
+    const alternarFormula = (abrir) => {
+      if (reparto.abierto === abrir)
+        return;
+      reparto.abierto = abrir;
+      if (abrir)
+        for (const cerrar of cierresInfo)
+          cerrar();
+      aplicarCajaPanel(reparto);
+      sincronizarBotonFormula();
+    };
+    cerrarFormula = () => alternarFormula(false);
+    btnFormula.addEventListener("click", (e3) => {
+      e3.stopPropagation();
+      alternarFormula(!reparto.abierto);
+    });
+    const TOQUE_QUIETO_PX = 8;
+    const TOQUE_MAX_MS = 500;
+    let toqueX = 0, toqueY = 0, toqueMs = 0;
+    wrap.addEventListener("pointerdown", (e3) => {
+      toqueX = e3.clientX;
+      toqueY = e3.clientY;
+      toqueMs = e3.timeStamp;
+    });
+    wrap.addEventListener("click", (e3) => {
+      if (!reparto.abierto)
+        return;
+      const quieto = Math.hypot(e3.clientX - toqueX, e3.clientY - toqueY) <= TOQUE_QUIETO_PX;
+      if (quieto && e3.timeStamp - toqueMs <= TOQUE_MAX_MS)
+        alternarFormula(false);
+    });
+    if (tactil) {
+      btnEditar = wrap.createDiv();
+      this.ponerTooltip(btnEditar, t().botones.editarBloque);
+      btnEditar.style.cssText = `position:absolute; top:6px; left:${MARGEN_FLOTANTE}px; width:${lado}px; height:${lado}px; display:flex; align-items:center; justify-content:center; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:7; color:var(--lmath-texto-tenue); background:var(--lmath-chip); border:1px solid var(--lmath-borde);`;
+      this.montarIcono(btnEditar, "editar", iconoChip);
+      btnEditar.addEventListener("click", (e3) => {
+        e3.stopPropagation();
+        this.editarBloque(contenedor, ctx);
+      });
+    }
+    revelar();
+  }
+  /**
+   * Lleva el cursor al CÓDIGO de este bloque, que es lo que hace el `</>` de Obsidian en
+   * escritorio. Tres pasos, y ninguno se puede dar por hecho:
+   *
+   *  1. QUÉ LÍNEAS ocupa el bloque en el fichero: `getSectionInfo`. Devuelve null cuando el
+   *     bloque no vive en un fichero editable (una vista previa, un embebido, un canvas);
+   *     ahí no hay nada que editar y se sale sin hacer ruido.
+   *  2. QUÉ VISTA lo contiene: la activa, comprobando que sea del MISMO fichero. Sin esa
+   *     comprobación, tocar el chip de un bloque embebido movería el cursor de otra nota.
+   *  3. En LECTURA no hay cursor donde ponerlo, así que primero se pasa la vista a edición.
+   *     El salto se hace después, cuando el editor ya existe.
+   *
+   * El cursor cae DENTRO del cuerpo —nunca en las vallas ```—, así que en Live Preview el
+   * bloque se abre mostrando su fuente, que es lo que se venía a hacer. Y cae al FINAL del
+   * contenido, no al principio: se pulsa "editar" para seguir escribiendo, no para insertar
+   * algo por delante de lo que ya hay.
+   */
+  editarBloque(el, ctx) {
+    var _a;
+    const seccion = ctx.getSectionInfo(el);
+    if (!seccion)
+      return;
+    const vista = this.plugin.app.workspace.getActiveViewOfType(import_obsidian4.MarkdownView);
+    if (!vista || ((_a = vista.file) == null ? void 0 : _a.path) !== ctx.sourcePath)
+      return;
+    const finDelCuerpo = () => {
+      const editor = vista.editor;
+      const esValla = (n) => {
+        var _a2, _b;
+        return (_b = (_a2 = editor.getLine(n)) == null ? void 0 : _a2.trimStart().startsWith("```")) != null ? _b : false;
+      };
+      const ultima = esValla(seccion.lineEnd) ? seccion.lineEnd - 1 : seccion.lineEnd;
+      if (ultima <= seccion.lineStart)
+        return { line: seccion.lineStart + 1, ch: 0 };
+      return { line: ultima, ch: editor.getLine(ultima).length };
+    };
+    const irAlBloque = () => {
+      const destino = finDelCuerpo();
+      vista.editor.setCursor(destino);
+      vista.editor.scrollIntoView({ from: destino, to: destino }, true);
+      vista.editor.focus();
+    };
+    if (vista.getMode() === "preview") {
+      void vista.setState({ ...vista.getState(), mode: "source" }, { history: false }).then(irAlBloque);
+    } else {
+      irAlBloque();
     }
   }
   /**
@@ -58382,15 +58693,15 @@ var MotorExperimental = class {
    * tarjeta es fijo ("enmarcado"). Común a `montarPanelLatex` (toggle
    * Original/Opciones), `montarPanelDerivada` y `montarPanelIntegral`.
    */
-  crearScrollerLatex(contenedor, ctx, limpieza) {
-    const ALTO_PANEL = 261;
+  crearScrollerLatex(contenedor, ctx, limpieza, reparto) {
     const PAD_SUP = 32;
     const PAD_LADO = 8;
     const HUECO = 10;
     const ALTO_TARJETA = (ALTO_PANEL - PAD_SUP - PAD_LADO - HUECO) / 2;
     const ALTO_TARJETA_MAX = ALTO_PANEL - 2 * PAD_SUP;
     const panelLatex = contenedor.createDiv({ cls: "lmath-latex" });
-    panelLatex.style.cssText = `position:relative; width:50%; height:${ALTO_PANEL}px; padding:0; overflow:hidden;`;
+    reparto.panel = panelLatex;
+    aplicarCajaPanel(reparto);
     const zona = panelLatex.createDiv();
     zona.setCssStyles({
       position: "absolute",
@@ -58400,9 +58711,22 @@ var MotorExperimental = class {
       boxSizing: "border-box"
     });
     const TOLERANCIA_SCROLL = 3;
+    let formulasVisibles = 1;
+    const tarjetasLlenan = () => formulasVisibles > 1 || reparto.estrecho;
+    const aplicarGeometriaZona = () => {
+      const llenan = tarjetasLlenan();
+      zona.style.padding = llenan ? `${PAD_SUP}px ${PAD_LADO}px ${PAD_LADO}px ${PAD_LADO}px` : `${PAD_LADO}px`;
+      zona.style.gap = `${HUECO}px`;
+      zona.style.justifyContent = llenan ? "flex-start" : "center";
+    };
+    aplicarGeometriaZona();
+    const observadorZona = new ResizeObserver(() => aplicarGeometriaZona());
+    observadorZona.observe(zona);
+    limpieza.register(() => observadorZona.disconnect());
     const crearArea = (padre, estilo, compartirAlto) => {
       const enmarcado = estilo === "enmarcado";
-      const flexMarco = compartirAlto ? "flex:1 1 0;" : `flex:0 0 auto; height:${ALTO_TARJETA}px;`;
+      const llenar = () => compartirAlto || reparto.estrecho;
+      const flexMarco = llenar() ? "flex:1 1 0;" : `flex:0 0 auto; height:${ALTO_TARJETA}px;`;
       const marco = padre.createDiv();
       marco.style.cssText = "position:relative; overflow:hidden; min-height:0; " + flexMarco + (enmarcado ? " border:1px solid var(--lmath-borde); border-radius:12px; background:var(--lmath-superficie);" : "");
       const area = marco.createDiv({ cls: "lmath-latex" });
@@ -58426,7 +58750,10 @@ var MotorExperimental = class {
       area.addEventListener("scroll", actualizarFade);
       const ajustarAlto = () => {
         var _a;
-        if (!compartirAlto) {
+        if (llenar()) {
+          marco.setCssStyles({ flex: "1 1 0", height: "" });
+        } else {
+          marco.setCssStyles({ flex: "0 0 auto" });
           const hijo = area.firstElementChild;
           const padV = enmarcado ? 16 : 48;
           const necesario = ((_a = hijo == null ? void 0 : hijo.scrollHeight) != null ? _a : 0) + padV + 2;
@@ -58464,16 +58791,15 @@ var MotorExperimental = class {
       zona.empty();
       const formulas = typeof latex === "string" ? [latex] : latex;
       const compartirAlto = formulas.length > 1;
-      zona.style.padding = compartirAlto ? `${PAD_SUP}px ${PAD_LADO}px ${PAD_LADO}px ${PAD_LADO}px` : `${PAD_LADO}px`;
-      zona.style.gap = `${HUECO}px`;
-      zona.style.justifyContent = compartirAlto ? "flex-start" : "center";
+      formulasVisibles = formulas.length;
+      aplicarGeometriaZona();
       const areas = [];
       const disposers = [];
       for (const formula of formulas) {
         const a = crearArea(zona, "enmarcado", compartirAlto);
         areas.push(a);
         disposers.push(a.soltar);
-        await import_obsidian3.MarkdownRenderer.render(
+        await import_obsidian4.MarkdownRenderer.render(
           this.plugin.app,
           "$$" + formula + "$$",
           a.area,
@@ -58511,11 +58837,29 @@ var MotorExperimental = class {
   estiloBotonOpciones(b, activo) {
     b.style.cssText = "pointer-events:auto; box-sizing:border-box; width:26px; height:22px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; cursor:pointer; user-select:none; border-radius:7px; transition:background 0.12s ease, color 0.12s ease; " + this.chromeBotonPanel(activo);
   }
+  /**
+   * Chip ⓘ de la esquina inferior derecha del plano. Los tres bloques que lo tienen (resumen
+   * de una explícita, resumen geométrico y soluciones del sistema) son excluyentes entre sí y
+   * comparten sitio, tamaño y acento: un único estilo evita que se separen al retocar uno.
+   */
+  estiloChipInfo(lado) {
+    return `position:absolute; bottom:8px; right:8px; width:${lado}px; height:${lado}px; display:flex; align-items:center; justify-content:center; line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; user-select:none; z-index:5;`;
+  }
+  /**
+   * Popover del ⓘ: se abre HACIA ARRIBA desde su chip, así que su borde inferior sube con la
+   * fila de chips. Los topes son relativos al PLANO (`min(...)` contra el 100%): en el móvil
+   * el plano mide ~321×263 y un cuadro de 260×200 anclado abajo se saldría por arriba en
+   * cuanto el chip creciera; en escritorio el plano es mayor y los topes fijos siguen mandando.
+   */
+  estiloPopoverInfo(lado) {
+    const bajo = 8 + lado + 6;
+    return `position:absolute; bottom:${bajo}px; right:8px; display:none; max-width:min(260px, calc(100% - 16px)); max-height:min(200px, calc(100% - ${bajo + 8}px)); overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:6px; font-size:11px; line-height:1.5; color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);`;
+  }
   /** Tooltip ÚNICO y consistente para los controles del motor: el de Obsidian (oscuro),
    *  anclado ARRIBA para que el cursor no lo tape. Usa `setTooltip` (API de Obsidian), que NO
    *  pone `title` → sin el tooltip NATIVO del navegador que antes lo duplicaba. */
   ponerTooltip(el, texto) {
-    (0, import_obsidian3.setTooltip)(el, texto, { placement: "top" });
+    (0, import_obsidian4.setTooltip)(el, texto, { placement: "top" });
   }
   /** Crea el botón-icono de opciones dentro de la barra dada y lo devuelve. Reemplaza al
    *  antiguo "Opciones ▾"; común a los tres bloques. `titulo` es su tooltip CERRADO (lo que
@@ -58553,9 +58897,9 @@ var MotorExperimental = class {
    *  fuerza color), así sigue el resaltado activo/inactivo. Async (no bloquea el montaje). */
   montarEtiquetaMath(el, tex, ctx) {
     el.empty();
-    const hijo = new import_obsidian3.MarkdownRenderChild(el);
+    const hijo = new import_obsidian4.MarkdownRenderChild(el);
     ctx.addChild(hijo);
-    void import_obsidian3.MarkdownRenderer.render(this.plugin.app, `$${tex}$`, el, ctx.sourcePath, hijo).then(() => {
+    void import_obsidian4.MarkdownRenderer.render(this.plugin.app, `$${tex}$`, el, ctx.sourcePath, hijo).then(() => {
       const p = el.querySelector("p");
       if (p) {
         while (p.firstChild)
@@ -58589,8 +58933,8 @@ var MotorExperimental = class {
    * Panel izquierdo de obs-graph / obs-system: el scroller de fórmula + la barra de
    * toggle de transformaciones ([Original] [Opciones ▾] con Simplificar / Despejar y).
    */
-  async montarPanelLatex(contenedor, ecuaciones, ctx, limpieza) {
-    const { panelLatex, renderLatex } = this.crearScrollerLatex(contenedor, ctx, limpieza);
+  async montarPanelLatex(contenedor, ecuaciones, ctx, limpieza, reparto) {
+    const { panelLatex, renderLatex } = this.crearScrollerLatex(contenedor, ctx, limpieza, reparto);
     const ajustes = this.obtenerAjustes();
     const base = this.baseAutomatica(ecuaciones, ajustes);
     const original = bloqueALatex(base, this.sistema);
@@ -58678,8 +59022,8 @@ var MotorExperimental = class {
    * fórmula MOSTRADA, como el toggle de obs-graph. Arranca en la vista "Derivada" (es el
    * resultado, el foco del bloque).
    */
-  async montarPanelDerivada(contenedor, ecuaciones, ctx, limpieza) {
-    const { panelLatex, renderLatex } = this.crearScrollerLatex(contenedor, ctx, limpieza);
+  async montarPanelDerivada(contenedor, ecuaciones, ctx, limpieza, reparto) {
+    const { panelLatex, renderLatex } = this.crearScrollerLatex(contenedor, ctx, limpieza, reparto);
     const operadorSimp = derivadaOperadorSimplificadoLatex(ecuaciones);
     const operador = operadorSimp != null ? operadorSimp : derivadaOperadorLatex(ecuaciones);
     const derivada = derivadaLatex(ecuaciones);
@@ -58775,8 +59119,8 @@ var MotorExperimental = class {
    * alterna la fórmula MOSTRADA. El área se calcula UNA vez; si es un caso límite del Nivel 2,
    * el cuerpo es la etiqueta (`\text{Integral divergente}`).
    */
-  async montarPanelIntegral(contenedor, source, ctx, limpieza) {
-    const { panelLatex, renderLatex } = this.crearScrollerLatex(contenedor, ctx, limpieza);
+  async montarPanelIntegral(contenedor, source, ctx, limpieza, reparto) {
+    const { panelLatex, renderLatex } = this.crearScrollerLatex(contenedor, ctx, limpieza, reparto);
     const operador = integralOperadorLatex(source);
     const { cuerpo, conector } = cuerpoAreaLatexExacto(source);
     const barrow = integralPrimitivaLatex(source);
@@ -58986,7 +59330,7 @@ var MotorExperimental = class {
    * enumerarse. El análisis es sobre el rango fijo de `analizarFuncion` (agnóstico
    * de la vista actual), igual que en el motor original.
    */
-  montarBotonInfo(wrap, expr, ctx) {
+  montarBotonInfo(wrap, expr, ctx, lado, exclusion) {
     let evalX;
     try {
       const evalXRaw = compilarFuncion(expr, "x");
@@ -59043,10 +59387,11 @@ var MotorExperimental = class {
     }
     const btnInfo = wrap.createDiv();
     this.ponerTooltip(btnInfo, t().botones.resumenNotables);
-    btnInfo.style.cssText = "position:absolute; bottom:8px; right:8px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; user-select:none; z-index:5;";
-    this.montarIcono(btnInfo, "info", 15);
+    btnInfo.style.cssText = this.estiloChipInfo(lado);
+    this.montarIcono(btnInfo, "info", ladoIcono(lado));
     const pop = wrap.createDiv();
-    pop.style.cssText = "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:6px; font-size:11px; line-height:1.5; color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);";
+    pop.style.cssText = this.estiloPopoverInfo(lado);
+    exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
     for (const l of lineas) {
       const div2 = pop.createDiv({ text: l.texto });
       if (l.tex)
@@ -59054,7 +59399,10 @@ var MotorExperimental = class {
     }
     btnInfo.addEventListener("click", (e3) => {
       e3.stopPropagation();
-      pop.style.display = pop.style.display === "none" ? "block" : "none";
+      const abierto = pop.style.display !== "none";
+      if (!abierto)
+        exclusion.alAbrir();
+      pop.setCssStyles({ display: abierto ? "none" : "block" });
     });
   }
 };
@@ -59090,7 +59438,7 @@ async function registrarFuenteLora(_plugin) {
 }
 
 // main.ts
-var LMathPlugin = class extends import_obsidian4.Plugin {
+var LMathPlugin = class extends import_obsidian5.Plugin {
   constructor() {
     super(...arguments);
     // Selector del motor para el bloque obs-graph. `true` → motor nuevo (src/motor/);
@@ -59105,7 +59453,7 @@ var LMathPlugin = class extends import_obsidian4.Plugin {
   }
   async onload() {
     await this.cargarAjustes();
-    new import_obsidian4.Notice(t().aviso.cargado);
+    new import_obsidian5.Notice(t().aviso.cargado);
     this.addSettingTab(new PestanaAjustesLMath(this.app, this));
     void registrarFuenteLora(this);
     const ajustes = () => this.ajustes;

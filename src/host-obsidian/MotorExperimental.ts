@@ -14,6 +14,7 @@
 import {
   MarkdownRenderChild,
   MarkdownRenderer,
+  MarkdownView,
   Plugin,
   setTooltip,
   type MarkdownPostProcessorContext,
@@ -39,6 +40,7 @@ import {
   integralPrimitivaLatex, cuerpoAreaLatexExacto, etiquetaIntegral,
 } from "../integral";
 import { AJUSTES_POR_DEFECTO, type AjustesTransformaciones } from "./ajustes";
+import { esTactil } from "./plataforma";
 import { t, localizarVelo } from "../i18n";
 import { normalizarEntrada, contieneYLibre, comandosNoSoportados } from "../parser";
 import { compilarFuncion } from "../evaluador";
@@ -51,6 +53,141 @@ import { fijarTemaPlano } from "../motor/rendering/paleta";
 // "enmarcado" (caja redondeada, la ÚNICA que usa el panel: regla "una expresión = una
 // tarjeta") y "plano" (sin recuadro, llena el hueco), reservado para futuros paneles.
 type EstiloTarjeta = "plano" | "enmarcado";
+
+// ── REPARTO del bloque: quién ocupa qué ────────────────────────────────────────────
+// Dos formas de repartir el sitio entre la fórmula y el plano, elegidas por el ANCHO DEL
+// CONTENEDOR y por nada más:
+//
+//   • COLUMNAS (ancho): la fórmula a la izquierda y el plano a la derecha, como siempre.
+//   • FLOTANTE (estrecho): el bloque ES el plano, y el panel de la fórmula pasa a una
+//     tarjeta superpuesta sobre él, que se abre y se cierra con el botón f(x).
+//
+// El criterio es el ANCHO y NO el dispositivo, a propósito: el mismo teléfono en
+// horizontal da ~700px y ahí el reparto en columnas se ve igual de bien que en el
+// escritorio, mientras que un panel lateral estrecho en el escritorio sufre exactamente
+// lo mismo que un teléfono en vertical. Lo que sí depende del dispositivo (crosshair,
+// carril, cruz del cursor) va por otro camino: `plataforma.ts`.
+//
+// El panel NO cambia de padre al cruzar el umbral: sigue siendo hermano del plano y solo
+// cambia su CAJA (de `width:50%` en el flujo a `position:absolute` fuera de él). Al salir
+// del flujo, el plano —que ya pide `width:100%`— ocupa la fila entero él solo. Así rotar
+// el teléfono es reescribir un estilo: KaTeX no se vuelve a renderizar, y el zoom y el
+// desplazamiento de la vista sobreviven al giro.
+
+/** Alto del bloque en el reparto por COLUMNAS (el de siempre). */
+const ALTO_PANEL = 261;
+
+/**
+ * Ancho de contenedor por debajo del cual se pasa al reparto FLOTANTE.
+ *
+ * No es un número redondo cualquiera: en columnas el plano se lleva ⅔ del bloque (el panel
+ * pide 50% y el plano 100%), así que para que el plano no salga MÁS ALTO QUE ANCHO hace
+ * falta ⅔·W ≥ 261 → W ≥ 392. Con 520 el plano nunca baja de 4:3, que es la forma mínima
+ * en la que una gráfica se lee como una gráfica.
+ */
+const ANCHO_MINIMO_COLUMNAS = 520;
+
+/** Alto del plano en FLOTANTE, como fracción de su ancho (16:13 ≈ el 4:3 largo del móvil). */
+const PROPORCION_PLANO_FLOTANTE = 0.82;
+
+/** Alto de la tarjeta flotante de la fórmula. */
+const ALTO_PANEL_FLOTANTE = 180;
+/** Margen de la tarjeta flotante contra el borde del plano, y hueco entre chips. */
+const MARGEN_FLOTANTE = 8;
+
+/**
+ * Lado de los chips redondos del plano (🏠, +, −, ⌖, ⓘ).
+ *
+ * Con RATÓN, 22px: el puntero acierta un blanco de un píxel, y unos chips grandes solo
+ * taparían gráfica. Con el DEDO son la mitad de lo que pide cualquier guía táctil (44px),
+ * así que suben a 30. No a 44: sobre un plano de 321px de ancho, cuatro blancos de 44
+ * ocuparían un tercio del alto y volveríamos a tener el problema que veníamos a resolver.
+ * 30 es el punto en el que el chip se acierta sin mirar y sigue siendo cromo, no contenido.
+ *
+ * Depende de CÓMO SE SEÑALA, no del ancho: un teléfono en horizontal tiene sitio de sobra
+ * para el reparto en columnas y sigue manejándose con el mismo dedo.
+ */
+function ladoChip(tactil: boolean): number {
+  return tactil ? 30 : 22;
+}
+
+/** Lado del icono dentro de un chip: deja el mismo aire proporcional en ambos tamaños. */
+function ladoIcono(lado: number): number {
+  return Math.round(lado * 0.66);
+}
+
+/**
+ * Hueco que la tarjeta flotante deja libre por debajo: exactamente la fila de chips de
+ * abajo. No se pega al borde a propósito — ahí viven el ⓘ y el propio botón con el que se
+ * cierra la fórmula, y un panel que tapa su botón de cerrar es una trampa.
+ */
+function huecoChips(lado: number): number {
+  return MARGEN_FLOTANTE + lado + MARGEN_FLOTANTE;
+}
+
+/**
+ * Estado del reparto, compartido entre el panel (que se crea antes) y el plano. Lo posee
+ * `process`, lo registra `crearScrollerLatex` y lo consultan las tarjetas al recalcular su
+ * alto, así que hay UNA sola respuesta a "¿estamos estrechos?" en todo el bloque.
+ */
+interface Reparto {
+  /** ¿El contenedor no da para poner fórmula y plano lado a lado? */
+  estrecho: boolean;
+  /**
+   * ¿Está desplegado el panel flotante? Solo significa algo en `estrecho`: en columnas la
+   * fórmula está siempre a la vista y no hay nada que abrir. Vive aquí, y no en un booleano
+   * suelto del botón, porque es `aplicarCajaPanel` quien escribe la caja del panel de una
+   * sola vez —posición Y visibilidad—: repartirlo en dos sitios acabaría con un panel
+   * colocado como flotante pero mostrado como columna, o al revés.
+   */
+  abierto: boolean;
+  /** El panel de la fórmula, que registra `crearScrollerLatex` al crearlo. */
+  panel: HTMLElement | null;
+  /**
+   * Lado de los chips del plano (`ladoChip`). Vive aquí porque la caja del panel flotante
+   * depende de él: se apoya JUSTO encima de la fila de chips, así que si los chips crecen,
+   * el panel sube con ellos. Es el único dato de densidad táctil que necesita el reparto.
+   */
+  ladoChip: number;
+}
+
+/**
+ * Los cuadros que se abren SOBRE el plano —el popover del ⓘ y la fórmula flotante— compiten
+ * por el mismo sitio y por la misma atención, así que son EXCLUYENTES: abrir uno cierra el
+ * otro. Se resuelve con este par en vez de con referencias cruzadas porque los tres ⓘ
+ * posibles se montan en sitios distintos (dos en `process`, uno en `montarBotonInfo`) y
+ * ninguno debe conocer al resto: cada uno registra cómo se cierra y avisa de que se abre.
+ */
+interface ExclusionPopover {
+  /** Lo llama quien va a abrirse, para que se cierre lo que hubiera abierto. */
+  alAbrir: () => void;
+  /** Lo llama quien puede quedar abierto, para dejar dicho cómo se le cierra. */
+  registrar: (cerrar: () => void) => void;
+}
+
+/**
+ * Escribe la CAJA del panel según el reparto vigente. Es lo ÚNICO que cambia entre los dos
+ * repartos: el panel no se mueve de sitio en el árbol, ni se vuelve a construir, ni pierde
+ * su contenido; deja de ocupar la mitad izquierda del flujo y pasa a flotar sobre el plano.
+ *
+ * En FLOTANTE se apoya en `huecoChips(...)` en vez de pegarse al borde: la fila
+ * de chips de abajo (ⓘ, y el botón f(x) que lo abrirá) tiene que seguir siendo alcanzable,
+ * incluido el propio botón con el que se cierra. El color es de los tokens del marco
+ * (`--lmath-*`), nunca literales: el panel flotante se ve igual de bien en tema claro.
+ */
+function aplicarCajaPanel(reparto: Reparto): void {
+  const panel = reparto.panel;
+  if (!panel) return;
+  panel.style.cssText = reparto.estrecho
+    ? "position:absolute; z-index:6; box-sizing:border-box; " +
+      `display:${reparto.abierto ? "flex" : "none"}; ` +
+      `left:${MARGEN_FLOTANTE}px; right:${MARGEN_FLOTANTE}px; ` +
+      `bottom:${huecoChips(reparto.ladoChip)}px; width:auto; height:${ALTO_PANEL_FLOTANTE}px; ` +
+      "padding:0; overflow:hidden; background:var(--lmath-panel); " +
+      "border:1px solid var(--lmath-borde); border-radius:12px; " +
+      "box-shadow:var(--lmath-sombra-flotante);"
+    : `position:relative; width:50%; height:${ALTO_PANEL}px; padding:0; overflow:hidden;`;
+}
 
 // Iconos del plano (Material Symbols de Google, viewBox 0 -960 960 960). Se pintan como
 // <svg> inline con `fill:currentColor`: heredan el color del botón y siguen su resaltado
@@ -74,6 +211,9 @@ const ICONO = {
   info: "M453-280h60v-240h-60v240Zm50.5-323.2q9.5-9.2 9.5-22.8 0-14.45-9.48-24.22-9.48-9.78-23.5-9.78t-23.52 9.78Q447-640.45 447-626q0 13.6 9.48 22.8 9.48 9.2 23.5 9.2t23.52-9.2ZM480.27-80q-82.74 0-155.5-31.5Q252-143 197.5-197.5t-86-127.34Q80-397.68 80-480.5t31.5-155.66Q143-709 197.5-763t127.34-85.5Q397.68-880 480.5-880t155.66 31.5Q709-817 763-763t85.5 127Q880-563 880-480.27q0 82.74-31.5 155.5Q817-252 763-197.68q-54 54.31-127 86Q563-80 480.27-80Zm.23-60Q622-140 721-239.5t99-241Q820-622 721.19-721T480-820q-141 0-240.5 98.81T140-480q0 141 99.5 240.5t241 99.5Zm-.5-340Z",
   menu: "M120-240v-60h720v60H120Zm0-210v-60h720v60H120Zm0-210v-60h720v60H120Z",
   cerrar: "m249-207-42-42 231-231-231-231 42-42 231 231 231-231 42 42-231 231 231 231-42 42-231-231-231 231Z",
+  // Editar el bloque: en móvil no existe el botón `</>` de Obsidian —aparece al pasar el
+  // ratón, y no hay ratón—, así que el bloque se queda sin puerta a su propio código.
+  editar: "M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h405l-60 60H180v600h600v-348l60-60v408q0 24-18 42t-42 18H180Zm300-360ZM360-360v-170l382-382q9-9 20-13t22-4q11 0 22.32 4.5Q817.63-920 827-911l83 84q8.61 8.96 13.3 19.78 4.7 10.83 4.7 22.02 0 11.2-4.5 22.7T910-742L530-360H360Zm508-425-84-84 84 84ZM420-420h85l253-253-43-42-43-42-252 251v86Zm295-295-43-42 43 42 43 42-43-42Z",
 } as const;
 
 export class MotorExperimental {
@@ -103,6 +243,24 @@ export class MotorExperimental {
     const contenedor = el.createDiv({ cls: "lmath-container" });
     const limpieza = new MarkdownRenderChild(contenedor);
     ctx.addChild(limpieza);
+
+    // ── El bloque se monta OCULTO y se revela ya pintado ──────────────────────────────
+    // El montaje tiene un punto de espera inevitable: el panel de la fórmula pasa por
+    // MarkdownRenderer (KaTeX) y hay que AGUARDARLO antes de construir el plano. En ese
+    // hueco el navegador pinta lo que haya, que es un bloque con la fórmula y NINGUNA
+    // gráfica —el estado intermedio que se veía al salir del editor en el móvil, donde ese
+    // render es lento de verdad—. Después salta al bloque terminado: un parpadeo.
+    //
+    // `visibility` y no `display:none`: el bloque tiene que seguir OCUPANDO su sitio y
+    // midiendo de verdad, porque el reparto se decide con `clientWidth` y el lienzo se
+    // dimensiona con la caja real. Oculto sigue habiendo layout; sin caja, no habría nada
+    // que medir y el plano arrancaría con métricas falsas.
+    const revelar = () => contenedor.setCssStyles({ visibility: "visible" });
+    contenedor.setCssStyles({ visibility: "hidden" });
+    // Red de seguridad: si algo lanza entre medias, el bloque no puede quedarse invisible
+    // para siempre. Revelar dos veces no cuesta nada; no revelar, cuesta el bloque entero.
+    const redDeSeguridad = window.setTimeout(revelar, 2000);
+    limpieza.register(() => window.clearTimeout(redDeSeguridad));
 
     // Ecuaciones del bloque. obs-graph solo grafica la PRIMERA, así que su panel
     // LaTeX y su clasificación también miran solo esa (coherencia panel↔plano).
@@ -144,28 +302,96 @@ export class MotorExperimental {
       : this.derivada ? (derivadaExpr ?? "") : source;
 
     // ── Panel LaTeX (mitad izquierda), mismo pipeline y UX que el GraphEngine ──
-    if (this.integral) await this.montarPanelIntegral(contenedor, source, ctx, limpieza);
-    else if (this.derivada) await this.montarPanelDerivada(contenedor, visibles, ctx, limpieza);
-    else await this.montarPanelLatex(contenedor, visibles, ctx, limpieza);
+    // ¿Se señala con el dedo? Decide TODO lo que depende del puntero (crosshair, cruz del
+    // cursor, carril, el cursor oculto del canvas) y el TAMAÑO de los controles, y NADA del
+    // reparto del bloque, que se mide del ancho. Ver host-obsidian/plataforma.ts.
+    const tactil = esTactil();
+
+    // Reparto del bloque (columnas o panel flotante). Se crea ANTES que el panel porque el
+    // panel se registra en él al construirse; el valor definitivo lo fija `aplicarReparto`
+    // en cuanto hay una medida real del contenedor, más abajo.
+    const reparto: Reparto = {
+      estrecho: false, abierto: false, panel: null, ladoChip: ladoChip(tactil),
+    };
+
+    if (this.integral) await this.montarPanelIntegral(contenedor, source, ctx, limpieza, reparto);
+    else if (this.derivada) await this.montarPanelDerivada(contenedor, visibles, ctx, limpieza, reparto);
+    else await this.montarPanelLatex(contenedor, visibles, ctx, limpieza, reparto);
 
     // ── Gráfica (derecha). MISMO layout que el motor original: el panel LaTeX
     // pide width:50% y la gráfica width:100% inline; en el flex row del contenedor
     // eso reparte ⅓ para la fórmula y ⅔ para el plano (50 : 100).
-    const H = 261;
+    const H = ALTO_PANEL;
     const wrap = contenedor.createDiv({ cls: "lmath-grafica" });
     wrap.style.cssText = `position:relative; width:100%; height:${H}px;`;
+
+    // ── Reparto: columnas o panel flotante, según el ANCHO del contenedor ─────────────
+    // Se aplica aquí, ANTES del primer dimensionado del canvas y del autoencuadre, para que
+    // la vista base se calcule ya sobre la caja definitiva: encuadrar con 261px de alto para
+    // reencuadrar dos frames después sería un salto visible en cada carga.
+    //
+    // En flotante el plano deja de tener alto FIJO y lo deriva de su ancho: clavar otra
+    // constante devolvería un plano vertical en cuanto el ancho no fuese el del teléfono de
+    // referencia (una tablet, una nota estrecha, una ventana desprendida).
+    // La asigna el botón f(x) cuando se monta, más abajo (los chips se crean después que
+    // esto). Hasta entonces es un no-op: el primer reparto se aplica sin él.
+    let sincronizarBotonFormula: () => void = () => { /* aún no hay botón */ };
+    // Exclusión mutua entre los cuadros que se abren sobre el plano. `cerrarFormula` lo
+    // rellena el botón f(x) al montarse; los ⓘ registran aquí el suyo según se crean.
+    let cerrarFormula: () => void = () => { /* aún no hay panel flotante */ };
+    const cierresInfo: Array<() => void> = [];
+    const exclusion: ExclusionPopover = {
+      alAbrir: () => cerrarFormula(),
+      registrar: (cerrar) => cierresInfo.push(cerrar),
+    };
+    let anchoAplicado = -1;
+    const aplicarReparto = () => {
+      const ancho = contenedor.clientWidth;
+      if (ancho <= 0) return;            // aún sin layout: ya llegará el observador
+      const estrecho = ancho < ANCHO_MINIMO_COLUMNAS;
+      // Con el reparto YA aplicado y el mismo ancho no hay nada que hacer. El ancho entra en
+      // la comparación porque en flotante el ALTO del plano depende de él: cambiar de ancho
+      // sin cruzar el umbral (girar entre dos tamaños estrechos) también obliga a recalcular.
+      if (estrecho === reparto.estrecho && ancho === anchoAplicado) return;
+      anchoAplicado = ancho;
+      reparto.estrecho = estrecho;
+      // Al ensancharse, la fórmula vuelve a su columna y "abierto" deja de significar nada;
+      // se pone a false para que un regreso a estrecho (girar y desgirar) empiece cerrado, y
+      // no con un panel tapando el plano que nadie pidió abrir.
+      if (!estrecho) reparto.abierto = false;
+      contenedor.toggleClass("lmath-estrecho", estrecho);
+      aplicarCajaPanel(reparto);
+      sincronizarBotonFormula();
+      wrap.style.height = estrecho
+        ? `${Math.round(ancho * PROPORCION_PLANO_FLOTANTE)}px`
+        : `${H}px`;
+      // El canvas no se toca aquí: el ResizeObserver de `wrap` ya llama a `redimensionar`,
+      // que remide la caja real, rehace el búfer y repinta con el zoom intacto.
+    };
+    aplicarReparto();
 
     const canvas = wrap.createEl("canvas");
     // cursor:none oculta el cursor del sistema SOLO sobre el área del plano (los
     // botones, con su propio cursor:pointer, no se ven afectados). En su lugar el
     // motor dibuja su propio icono de cursor (Crosshair.dibujarCursorCruz).
+    // En TÁCTIL no se oculta nada: la cruz dibujada no existe (la cámara no sigue
+    // cursor), así que ocultar el puntero dejaría sin ninguno a una tablet con ratón.
     canvas.setCssStyles({
-      position: "absolute", top: "0", left: "0", width: "100%", height: "100%", cursor: "none",
+      position: "absolute", top: "0", left: "0", width: "100%", height: "100%",
+      cursor: tactil ? "default" : "none",
+      // El dedo mueve el PLANO, en los dos ejes, y dos dedos hacen zoom: el navegador no se
+      // queda ningún gesto que empiece aquí. Va SOLO en el lienzo, no en el bloque: los toques
+      // que empiezan en los márgenes, encima, debajo o sobre el panel de la fórmula —180 de
+      // los 263px cuando está abierto— siguen desplazando la nota con normalidad, así que el
+      // bloque nunca atrapa el desplazamiento. Y los gestos del sistema (deslizar desde el
+      // borde para la barra lateral) empiezan fuera del lienzo, así que tampoco sufren.
+      touchAction: "none",
     });
 
     const ctx2d = canvas.getContext("2d");
     if (!ctx2d) {
       wrap.createEl("p", { text: t().canvasNoDisponible });
+      revelar();   // sin lienzo no habrá primer render que revele el bloque
       return;
     }
 
@@ -211,13 +437,23 @@ export class MotorExperimental {
     // Y, raíces, vértices), con los estados "infinitas"/"demasiadas" del análisis.
     // Solo para una función explícita graficable (no en sistemas ni en degeneradas).
     const exprGraph = this.exprExplicita(graficadas);
-    if (exprGraph && !degenerada) this.montarBotonInfo(wrap, exprGraph, ctx);
+    // ¿Hay un chip en la esquina inferior derecha? Los tres ⓘ posibles (resumen de una
+    // explícita, resumen geométrico y soluciones del sistema) se excluyen entre sí y ocupan
+    // el mismo sitio; el botón f(x) se coloca A SU IZQUIERDA cuando existe alguno y en su
+    // lugar cuando no. Se anota al montarlos en vez de recalcular sus condiciones: una copia
+    // de esa lógica se desincronizaría en cuanto cambiara una de las tres.
+    let hayChipInfo = false;
+    if (exprGraph && !degenerada) {
+      this.montarBotonInfo(wrap, exprGraph, ctx, reparto.ladoChip, exclusion);
+      hayChipInfo = true;
+    }
 
     // La cámara emite dos eventos: onViewport (recomputar geometría + pintar) y
     // onCursor (solo pintar el crosshair). `pintar` reusa la geometría cacheada.
     // En modo carril, el crosshair se ancla en railX (no en el ratón).
     let camara!: Camara;
-    let navegacion!: Navegacion;
+    // null en táctil: sin teclado no hay ni carril ni paneo con WASD (ver más abajo).
+    let navegacion: Navegacion | null = null;
     const pintar = () => {
       const vp = camara.viewport();
       // Tema del PLANO, leído vivo en cada pintado (una comprobación de clase es gratis, y
@@ -230,9 +466,11 @@ export class MotorExperimental {
       // pasar el ratón por el plano— sin recargar el plugin.
       escena.mostrarNotables(this.obtenerAjustes().puntosNotables);
       // Posición REAL del ratón para la cruz del cursor (en ambos modos).
+      // En táctil son SIEMPRE null (la cámara no sigue cursor): las guardas de
+      // `Escena.pintar` omiten por sí solas el crosshair y la cruz del cursor.
       const mx = camara.cursorPx();
       const my = camara.cursorPy();
-      if (navegacion.railOn) {
+      if (navegacion?.railOn) {
         // Crosshair matemático anclado en railX con railY explícito (mismo valor
         // que centró la cámara) → punto centrado, nunca sale del viewport. La cruz
         // del cursor, en cambio, sigue al ratón.
@@ -295,22 +533,36 @@ export class MotorExperimental {
       // (cada evento reinicia el debounce → la final se dispara al parar).
       onViewport: () => { programarRedibujo(); programarFinal(); },
       onCursor: () => programarPintado(),
+    }, {
+      // Con el dedo no hay hover: la cámara no registra posición de cursor y, por las
+      // guardas de `Escena.pintar`, se apagan de una vez el crosshair matemático y la
+      // cruz del cursor. Un solo interruptor, en el origen.
+      seguirCursor: !tactil,
     });
 
     // Carril (teclado): misma estrategia. Su bucle llama a este callback en cada
     // frame de movimiento (pasada interactiva) y una vez más al soltar las teclas;
     // como cada llamada reinicia programarFinal, la pasada final se dispara al parar.
-    navegacion = new Navegacion(canvas, camara, {
-      y: (x) => escena.yEnCurva(x),
-      avanzarArco: (x, y, deltaPx, vp, recortar) => escena.avanzarArcoEnCurva(x, y, deltaPx, vp, recortar),
-      hayVecina: (x, y, dir, vp) => escena.hayRamaVecinaCarril(x, y, dir, vp),
-      tieneAsintotasVerticales: () => escena.tieneAsintotasVerticales(),
-    }, () => {
-      escena.actualizar(camara.viewport(), "interactiva");
-      pintar();
-      programarFinal();
-    });
-    limpieza.register(() => navegacion.destruir());
+    //
+    // En TÁCTIL no se monta. `Navegacion` es TODO teclado (WASD/flechas para el paneo
+    // libre y para recorrer la curva), y además hace del canvas un elemento enfocable
+    // con contorno de foco. Nada de eso tiene sentido con el dedo. Se acepta a cambio
+    // que una tablet con teclado Bluetooth pierda la navegación por teclado: es la
+    // única pérdida real, y no hay forma de detectar ese teclado hasta que se pulsa.
+    if (!tactil) {
+      navegacion = new Navegacion(canvas, camara, {
+        y: (x) => escena.yEnCurva(x),
+        avanzarArco: (x, y, deltaPx, vp, recortar) => escena.avanzarArcoEnCurva(x, y, deltaPx, vp, recortar),
+        hayVecina: (x, y, dir, vp) => escena.hayRamaVecinaCarril(x, y, dir, vp),
+        tieneAsintotasVerticales: () => escena.tieneAsintotasVerticales(),
+      }, () => {
+        escena.actualizar(camara.viewport(), "interactiva");
+        pintar();
+        programarFinal();
+      });
+      const nav = navegacion;
+      limpieza.register(() => nav.destruir());
+    }
 
     // Ajuste de la resolución física del canvas al tamaño real en pantalla, y
     // primer render (calcular + pintar). Mismo patrón de ciclo de vida que el
@@ -377,6 +629,15 @@ export class MotorExperimental {
     const observador = new ResizeObserver(() => redimensionar());
     observador.observe(wrap);
     limpieza.register(() => observador.disconnect());
+
+    // Reparto: se revisa con el ancho del CONTENEDOR, que cambia al girar el teléfono, al
+    // arrastrar el divisor de un panel o al cambiar el ancho de nota del tema. Observa al
+    // contenedor y no a la ventana: un bloque puede estrecharse sin que la ventana se mueva.
+    // No se realimenta —lo único que `aplicarReparto` cambia es el alto, y aun así sale por
+    // la guarda de "mismo ancho, mismo reparto"—.
+    const observadorReparto = new ResizeObserver(() => aplicarReparto());
+    observadorReparto.observe(contenedor);
+    limpieza.register(() => observadorReparto.disconnect());
     // El zoom de la app puede cambiar SOLO el dpr (misma caja CSS): el ResizeObserver
     // no se entera, pero `resize` de la ventana sí llega. Sin esto, el búfer se queda a
     // la resolución vieja (gráfica borrosa) tras un Ctrl+rueda que no reflowe el bloque.
@@ -392,24 +653,33 @@ export class MotorExperimental {
     // lo hubo). Los tres animan la vista (rAF, perfil exponencial: rápido y frenando hasta clavar
     // el destino) y emiten onViewport por frame, así que el redibujo lo pide la cámara misma.
     // Apilados en la esquina superior derecha, empezando en `top:6px`.
+    // Lado del chip y del icono, y la escalera de la columna: el hueco entre chips es fijo
+    // (4px) y el paso lo pone el propio lado, así que la columna se recoloca sola al pasar de
+    // ratón (22) a dedo (30) sin tres constantes que mantener a mano.
+    const lado = reparto.ladoChip;
+    const iconoChip = ladoIcono(lado);
+    const escalonZoom = lado + 4;
     const estiloZoom = (arriba: number) =>
-      "position:absolute; right:8px; top:" + arriba + "px; width:22px; height:22px; " +
-      "display:flex; align-items:center; justify-content:center; font-size:15px; " +
+      `position:absolute; right:8px; top:${arriba}px; width:${lado}px; height:${lado}px; ` +
+      "display:flex; align-items:center; justify-content:center; " +
       "line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; " +
       "color:var(--lmath-texto-tenue); background:var(--lmath-chip); " +
       "border:1px solid var(--lmath-borde);";
     const btnInicio = wrap.createDiv();
     this.ponerTooltip(btnInicio, t().botones.vistaInicial);
     btnInicio.style.cssText = estiloZoom(6);
-    this.montarIcono(btnInicio, "inicio", 15);
+    this.montarIcono(btnInicio, "inicio", iconoChip);
     const btnMas = wrap.createDiv();
     this.ponerTooltip(btnMas, t().botones.acercar);
-    btnMas.style.cssText = estiloZoom(32);
-    this.montarIcono(btnMas, "acercar", 15);
+    btnMas.style.cssText = estiloZoom(6 + escalonZoom);
+    this.montarIcono(btnMas, "acercar", iconoChip);
     const btnMenos = wrap.createDiv();
     this.ponerTooltip(btnMenos, t().botones.alejar);
-    btnMenos.style.cssText = estiloZoom(58);
-    this.montarIcono(btnMenos, "alejar", 15);
+    btnMenos.style.cssText = estiloZoom(6 + 2 * escalonZoom);
+    this.montarIcono(btnMenos, "alejar", iconoChip);
+    // Los tres se retiran juntos mientras el panel flotante está abierto: la tarjeta llega
+    // hasta arriba y quedarían debajo de ella. Ver `sincronizarBotonFormula`.
+    const columnaZoom = [btnInicio, btnMas, btnMenos];
     btnInicio.addEventListener("click", () => camara.volverAVistaBase());
     // Zoom por PULSACIÓN o por MANTENER: un toque hace UNA muesca; mantener pulsado la repite a
     // cadencia fija (zoomCentrado ya las acumula y suaviza → zoom continuo) hasta soltar. El
@@ -441,28 +711,45 @@ export class MotorExperimental {
     // separable transpuesta tan y=x o paramétrica → no; el crosshair ya se auto-oculta
     // al no haber y). `redimensionar()` ya corrió una pasada, así que la recorribilidad
     // (propiedad del TIPO de curva, no del zoom) es estable aquí.
-    const btnCarril = wrap.createDiv();
-    this.ponerTooltip(btnCarril, t().botones.carril);
-    // Mismo formato EXACTO que el botón ⌖ (btnFijar) de obs-graph/GraphEngine.
-    const estiloBtn = (activo: boolean) => {
-      btnCarril.style.cssText =
-        "position:absolute; bottom:8px; left:8px; width:22px; height:22px; " +
-        "display:flex; align-items:center; justify-content:center; font-size:14px; " +
-        "line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; " +
-        (activo
-          ? "color:var(--lmath-acento-contraste); background:var(--lmath-acento); " +
-            "border:1px solid var(--lmath-acento);"
-          : "color:var(--lmath-acento-suave); background:var(--lmath-chip); " +
-            "border:1px solid var(--lmath-acento-borde);");
-    };
-    estiloBtn(false);
-    // El icono persiste como hijo <svg> aunque estiloBtn reescriba el cssText del div en
-    // cada toggle; hereda el color vía currentColor, así sigue el resaltado activo/inactivo.
-    this.montarIcono(btnCarril, "carril", 15);
-    btnCarril.addEventListener("click", () => {
-      navegacion.alternarCarril();
-      estiloBtn(navegacion.railOn);
-    });
+    //
+    // En TÁCTIL no se monta ninguno de los dos: el carril se conduce con A/D y W/S y su
+    // punto se lee con el crosshair, y ni el teclado ni el crosshair existen con el dedo,
+    // así que el ⌖ solo sería un botón que no lleva a ningún sitio. `sincronizarCarril`
+    // queda en no-op para que el resto de la sincronización de controles no se entere.
+    let sincronizarCarril: () => void = () => { /* sin carril en táctil */ };
+    if (!tactil) {
+      const btnCarril = wrap.createDiv();
+      this.ponerTooltip(btnCarril, t().botones.carril);
+      // Mismo formato EXACTO que el botón ⌖ (btnFijar) de obs-graph/GraphEngine.
+      const estiloBtn = (activo: boolean) => {
+        btnCarril.style.cssText =
+          `position:absolute; bottom:8px; left:8px; width:${lado}px; height:${lado}px; ` +
+          "display:flex; align-items:center; justify-content:center; " +
+          "line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; " +
+          (activo
+            ? "color:var(--lmath-acento-contraste); background:var(--lmath-acento); " +
+              "border:1px solid var(--lmath-acento);"
+            : "color:var(--lmath-acento-suave); background:var(--lmath-chip); " +
+              "border:1px solid var(--lmath-acento-borde);");
+      };
+      estiloBtn(false);
+      // El icono persiste como hijo <svg> aunque estiloBtn reescriba el cssText del div en
+      // cada toggle; hereda el color vía currentColor, así sigue el resaltado activo/inactivo.
+      this.montarIcono(btnCarril, "carril", iconoChip);
+      btnCarril.addEventListener("click", () => {
+        if (!navegacion) return;
+        navegacion.alternarCarril();
+        estiloBtn(navegacion.railOn);
+      });
+
+      // Muestra/oculta el ⌖ según la curva SELECCIONADA sea recorrible como y=f(x); si
+      // deja de serlo con el carril activo, lo apaga.
+      sincronizarCarril = () => {
+        const recorrible = escena.curvaRecorrible();
+        if (!recorrible && navegacion?.railOn) { navegacion.alternarCarril(); estiloBtn(false); }
+        btnCarril.style.display = recorrible ? "flex" : "none";
+      };
+    }
 
     // Selección de línea: un botón de color por ecuación (solo si hay ≥2). El botón
     // seleccionado lleva borde blanco; al pulsarlo, crosshair y carril pasan a seguir
@@ -470,13 +757,21 @@ export class MotorExperimental {
     const colores = escena.colores();
     const estilosSel: Array<(sel: boolean) => void> = [];
     if (colores.length >= 2) {
+      // Los puntos de color van en la misma fila que el ⌖ y comparten su densidad: algo más
+      // pequeños que un chip (son marcas de estado, no controles de navegación), centrados
+      // contra él, y arrancando DONDE ACABA el ⌖ —o pegados al borde cuando no hay ⌖, que es
+      // justo el caso táctil—.
+      const ladoSel = tactil ? 24 : 18;
+      const bajoSel = 8 + Math.round((lado - ladoSel) / 2);
+      const inicioSel = tactil ? 8 : 8 + lado + 8;
       colores.forEach((c, i) => {
         const b = wrap.createDiv();
         this.ponerTooltip(b, t().botones.seleccionarEcuacion(i + 1));
         const rgb = `rgb(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)})`;
         const estilo = (sel: boolean) => {
           b.style.cssText =
-            `position:absolute; bottom:10px; left:${38 + i * 24}px; width:18px; height:18px; ` +
+            `position:absolute; bottom:${bajoSel}px; left:${inicioSel + i * (ladoSel + 6)}px; ` +
+            `width:${ladoSel}px; height:${ladoSel}px; ` +
             "border-radius:50%; cursor:pointer; user-select:none; z-index:5; box-sizing:border-box; " +
             `background:${rgb}; ` +
             (sel ? "border:2px solid var(--lmath-texto);" : "border:2px solid var(--lmath-borde);");
@@ -491,14 +786,11 @@ export class MotorExperimental {
       });
     }
 
-    // Resalta la curva elegida y muestra/oculta el ⌖ según su recorribilidad; si deja
-    // de ser recorrible con el carril activo, lo apaga.
+    // Resalta la curva elegida y pone al día el ⌖ (que en táctil no existe: ver arriba).
     const sincronizarControles = () => {
       const sel = escena.seleccionActual();
       estilosSel.forEach((estilo, i) => estilo(i === sel));
-      const recorrible = escena.curvaRecorrible();
-      if (!recorrible && navegacion.railOn) { navegacion.alternarCarril(); estiloBtn(false); }
-      btnCarril.style.display = recorrible ? "flex" : "none";
+      sincronizarCarril();
     };
     sincronizarControles();
 
@@ -508,23 +800,15 @@ export class MotorExperimental {
     // intersecciones que la Escena calculó sobre las Ramas trazadas (las de la
     // vista actual, en la última pasada final). Mismos estilos que el original.
     if (this.sistema) {
+      hayChipInfo = true;
       const btnSolucion = wrap.createDiv();
       this.ponerTooltip(btnSolucion, t().botones.solucionesSistema);
-      btnSolucion.style.cssText =
-        "position:absolute; bottom:8px; right:8px; width:22px; height:22px; " +
-        "display:flex; align-items:center; justify-content:center; font-size:14px; " +
-        "line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); " +
-        "border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; " +
-        "user-select:none; z-index:5;";
-      this.montarIcono(btnSolucion, "info", 15);
+      btnSolucion.style.cssText = this.estiloChipInfo(lado);
+      this.montarIcono(btnSolucion, "info", iconoChip);
 
       const popSolucion = wrap.createDiv();
-      popSolucion.style.cssText =
-        "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; " +
-        "max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; " +
-        "background:var(--lmath-panel); border:1px solid var(--lmath-borde); " +
-        "border-radius:6px; font-size:11px; line-height:1.5; " +
-        "color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);";
+      popSolucion.style.cssText = this.estiloPopoverInfo(lado);
+      exclusion.registrar(() => popSolucion.setCssStyles({ display: "none" }));
 
       // ¿El sistema es PERIÓDICO? (alguna ecuación usa una función trig como sin/
       // cos/tan…). Un sistema periódico repite sus soluciones sin fin → si además
@@ -597,8 +881,8 @@ export class MotorExperimental {
       btnSolucion.addEventListener("click", (e) => {
         e.stopPropagation();
         const abierto = popSolucion.style.display !== "none";
-        if (!abierto) refrescarSolucion();
-        popSolucion.style.display = abierto ? "none" : "block";
+        if (!abierto) { exclusion.alAbrir(); refrescarSolucion(); }
+        popSolucion.setCssStyles({ display: abierto ? "none" : "block" });
       });
     }
 
@@ -610,6 +894,7 @@ export class MotorExperimental {
     // "infinitas"/"demasiadas" (estadoGrupo + presencia de trig en la ecuación).
     // Se recalcula al abrir el popover y en cada pasada final con él abierto.
     if (!this.sistema && !degenerada && graficadas.length > 0 && !exprGraph) {
+      hayChipInfo = true;
       // ¿La curva está ACOTADA por su período? Las paramétricas/polares se trazan
       // sobre UN período (dominio [0, 2π] por defecto): son un conjunto acotado, así
       // que sus puntos notables son FINITOS por construcción —la periodicidad en t/θ
@@ -629,21 +914,12 @@ export class MotorExperimental {
 
       const btnInfo = wrap.createDiv();
       this.ponerTooltip(btnInfo, t().botones.resumenNotables);
-      btnInfo.style.cssText =
-        "position:absolute; bottom:8px; right:8px; width:22px; height:22px; " +
-        "display:flex; align-items:center; justify-content:center; font-size:14px; " +
-        "line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); " +
-        "border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; " +
-        "user-select:none; z-index:5;";
-      this.montarIcono(btnInfo, "info", 15);
+      btnInfo.style.cssText = this.estiloChipInfo(lado);
+      this.montarIcono(btnInfo, "info", iconoChip);
 
       const pop = wrap.createDiv();
-      pop.style.cssText =
-        "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; " +
-        "max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; " +
-        "background:var(--lmath-panel); border:1px solid var(--lmath-borde); " +
-        "border-radius:6px; font-size:11px; line-height:1.5; " +
-        "color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);";
+      pop.style.cssText = this.estiloPopoverInfo(lado);
+      exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
 
       const refrescarInfo = () => {
         pop.empty();
@@ -686,9 +962,190 @@ export class MotorExperimental {
       btnInfo.addEventListener("click", (e) => {
         e.stopPropagation();
         const abierto = pop.style.display !== "none";
-        if (!abierto) refrescarInfo();
-        pop.style.display = abierto ? "none" : "block";
+        if (!abierto) { exclusion.alAbrir(); refrescarInfo(); }
+        pop.setCssStyles({ display: abierto ? "none" : "block" });
       });
+    }
+
+    // ── Botón f(x): despliega la fórmula SOBRE el plano (solo en bloque estrecho) ──────
+    // En el reparto flotante el bloque es el plano, así que la fórmula necesita una puerta.
+    // Va abajo a la derecha, a la izquierda del ⓘ cuando lo hay: son los dos controles que
+    // ABREN algo, frente a los de arriba, que mueven la vista. Y como el ⓘ, se queda fuera
+    // del área que tapa el panel, para que su propio cierre nunca quede debajo.
+    //
+    // Sigue la regla de 1.2.9 del menú ☰: el botón muestra lo que hace AHORA —f(x) cuando
+    // abrirá, ✕ cuando cerrará—, con el tooltip y el resaltado a juego.
+    const btnFormula = wrap.createDiv();
+    // Se aparta del ⓘ cuando lo hay, en vez de llevar su posición escrita.
+    const derechaFormula = MARGEN_FLOTANTE + (hayChipInfo ? lado + MARGEN_FLOTANTE : 0);
+    const estiloBotonFormula = () => {
+      btnFormula.style.cssText =
+        `position:absolute; bottom:${MARGEN_FLOTANTE}px; right:${derechaFormula}px; ` +
+        `height:${lado}px; min-width:${lado}px; padding:0 8px; box-sizing:border-box; ` +
+        // El `display` va aquí y no en una llamada aparte: esta función escribe TODO el
+        // estilo del botón de una vez, y una visibilidad puesta desde fuera se perdería en
+        // el siguiente repintado del estado.
+        `display:${reparto.estrecho ? "flex" : "none"}; ` +
+        "align-items:center; justify-content:center; font-size:11px; line-height:1; " +
+        "border-radius:8px; cursor:pointer; user-select:none; z-index:7; " +
+        (reparto.abierto
+          ? "color:var(--lmath-texto); background:var(--lmath-chip-activo); " +
+            "border:1px solid var(--lmath-borde-activo);"
+          : "color:var(--lmath-texto-tenue); background:var(--lmath-chip); " +
+            "border:1px solid var(--lmath-borde);");
+    };
+    // El glifo solo se repinta cuando CAMBIA (`dataset`): la etiqueta matemática pasa por
+    // MarkdownRenderer, que no es gratis, y esto se llama en cada sincronización.
+    const pintarGlifoFormula = () => {
+      const nombre = reparto.abierto ? "cerrar" : "formula";
+      if (btnFormula.dataset.glifo === nombre) return;
+      btnFormula.dataset.glifo = nombre;
+      btnFormula.empty();
+      if (reparto.abierto) this.montarIcono(btnFormula, "cerrar", iconoChip);
+      else this.montarEtiquetaMath(btnFormula, "f(x)", ctx);
+      this.ponerTooltip(
+        btnFormula, reparto.abierto ? t().botones.cerrarFormula : t().botones.verFormula
+      );
+    };
+    // Lo crea el bloque de más abajo (solo en táctil); hasta entonces, null.
+    let btnEditar: HTMLElement | null = null;
+    sincronizarBotonFormula = () => {
+      estiloBotonFormula();
+      pintarGlifoFormula();
+      // El ✎ se retira con la fórmula abierta: quien ha desplegado el panel ya está en el
+      // flujo de la fórmula, así que el botón no lleva a ningún sitio nuevo y solo compite por
+      // la atención con lo que se ha venido a leer. Vuelve solo al cerrar.
+      btnEditar?.setCssStyles({ display: reparto.abierto ? "none" : "flex" });
+      // La tarjeta llega casi hasta arriba: con ella abierta, la columna de zoom quedaría
+      // por debajo. Se retira mientras dura la lectura y vuelve al cerrar. Es el precio de
+      // un panel grande, y el correcto: con la fórmula delante no se está navegando.
+      for (const b of columnaZoom) b.setCssStyles({ display: reparto.abierto ? "none" : "flex" });
+    };
+    sincronizarBotonFormula();
+
+    const alternarFormula = (abrir: boolean) => {
+      if (reparto.abierto === abrir) return;
+      reparto.abierto = abrir;
+      // La fórmula y el popover del ⓘ se solapan casi por completo sobre un plano de móvil:
+      // abrir uno cierra el otro, en vez de dejar uno tapado detrás.
+      if (abrir) for (const cerrar of cierresInfo) cerrar();
+      aplicarCajaPanel(reparto);   // una sola función escribe caja Y visibilidad del panel
+      sincronizarBotonFormula();
+    };
+    cerrarFormula = () => alternarFormula(false);
+    btnFormula.addEventListener("click", (e) => {
+      e.stopPropagation();
+      alternarFormula(!reparto.abierto);
+    });
+
+    // Tocar el PLANO cierra la fórmula. Pero solo un toque LIMPIO: un arrastre para
+    // desplazar la vista acaba emitiendo `click` igual que un toque, y cerrar el panel cada
+    // vez que se mueve el plano lo haría inservible. El panel NO cuelga del plano (es
+    // hermano suyo), así que tocar dentro de la fórmula no llega hasta aquí.
+    const TOQUE_QUIETO_PX = 8;
+    const TOQUE_MAX_MS = 500;
+    let toqueX = 0, toqueY = 0, toqueMs = 0;
+    wrap.addEventListener("pointerdown", (e) => {
+      toqueX = e.clientX; toqueY = e.clientY; toqueMs = e.timeStamp;
+    });
+    wrap.addEventListener("click", (e) => {
+      if (!reparto.abierto) return;
+      const quieto = Math.hypot(e.clientX - toqueX, e.clientY - toqueY) <= TOQUE_QUIETO_PX;
+      if (quieto && e.timeStamp - toqueMs <= TOQUE_MAX_MS) alternarFormula(false);
+    });
+
+    // ── Chip de EDITAR (solo táctil) ──────────────────────────────────────────────────
+    // Obsidian ofrece su botón `</>` para ver el código de un bloque renderizado, pero
+    // aparece AL PASAR EL RATÓN: en el móvil no existe. Y nuestro lienzo se queda los toques
+    // (`touch-action:none`), así que el bloque se quedaba sin ninguna puerta a su fuente.
+    // Este chip la devuelve, y solo donde hace falta: con ratón el `</>` de Obsidian sigue
+    // siendo el camino, y no le añadimos un botón de más al plano.
+    //
+    // Va SOLO en la esquina superior izquierda, apartado de la fila de abajo. No es un control
+    // del plano como los demás: los de abajo a la derecha abren algo DENTRO del bloque y los de
+    // arriba a la derecha mueven la vista, mientras que este SALE del bloque, al código de la
+    // nota. Además es la única esquina que queda despejada con la fórmula abierta —el panel
+    // empieza justo por debajo—, y alinea con el 🏠 al otro lado.
+    if (tactil) {
+      btnEditar = wrap.createDiv();
+      this.ponerTooltip(btnEditar, t().botones.editarBloque);
+      btnEditar.style.cssText =
+        `position:absolute; top:6px; left:${MARGEN_FLOTANTE}px; ` +
+        `width:${lado}px; height:${lado}px; ` +
+        "display:flex; align-items:center; justify-content:center; line-height:1; " +
+        "border-radius:50%; cursor:pointer; user-select:none; z-index:7; " +
+        "color:var(--lmath-texto-tenue); background:var(--lmath-chip); " +
+        "border:1px solid var(--lmath-borde);";
+      this.montarIcono(btnEditar, "editar", iconoChip);
+      btnEditar.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.editarBloque(contenedor, ctx);
+      });
+    }
+
+    // Bloque terminado: reparto decidido, lienzo dimensionado, geometría trazada y pintada
+    // (`redimensionar` → `pintar`, más el autoencuadre), y los controles ya colocados. Desde
+    // la última espera hasta aquí no se ha cedido el hilo ni una vez, así que el navegador
+    // no ha tenido ocasión de pintar nada a medias: el primer fotograma que se ve del bloque
+    // es el definitivo, con la curva ya dentro.
+    revelar();
+  }
+
+  /**
+   * Lleva el cursor al CÓDIGO de este bloque, que es lo que hace el `</>` de Obsidian en
+   * escritorio. Tres pasos, y ninguno se puede dar por hecho:
+   *
+   *  1. QUÉ LÍNEAS ocupa el bloque en el fichero: `getSectionInfo`. Devuelve null cuando el
+   *     bloque no vive en un fichero editable (una vista previa, un embebido, un canvas);
+   *     ahí no hay nada que editar y se sale sin hacer ruido.
+   *  2. QUÉ VISTA lo contiene: la activa, comprobando que sea del MISMO fichero. Sin esa
+   *     comprobación, tocar el chip de un bloque embebido movería el cursor de otra nota.
+   *  3. En LECTURA no hay cursor donde ponerlo, así que primero se pasa la vista a edición.
+   *     El salto se hace después, cuando el editor ya existe.
+   *
+   * El cursor cae DENTRO del cuerpo —nunca en las vallas ```—, así que en Live Preview el
+   * bloque se abre mostrando su fuente, que es lo que se venía a hacer. Y cae al FINAL del
+   * contenido, no al principio: se pulsa "editar" para seguir escribiendo, no para insertar
+   * algo por delante de lo que ya hay.
+   */
+  private editarBloque(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
+    const seccion = ctx.getSectionInfo(el);
+    if (!seccion) return;
+
+    const vista = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!vista || vista.file?.path !== ctx.sourcePath) return;
+
+    /**
+     * Final del CUERPO del bloque. `lineEnd` es la valla de cierre, así que la última línea
+     * escribible es la anterior; se comprueba que de verdad sea una valla en vez de darlo por
+     * hecho. Con el bloque VACÍO no hay ninguna línea de cuerpo (la valla de cierre va pegada
+     * a la de apertura) y se cae al comienzo del hueco: es lo único que se puede hacer sin
+     * inventarse una línea que el usuario no ha escrito.
+     */
+    const finDelCuerpo = (): { line: number; ch: number } => {
+      const editor = vista.editor;
+      const esValla = (n: number) => editor.getLine(n)?.trimStart().startsWith("```") ?? false;
+      const ultima = esValla(seccion.lineEnd) ? seccion.lineEnd - 1 : seccion.lineEnd;
+      if (ultima <= seccion.lineStart) return { line: seccion.lineStart + 1, ch: 0 };
+      return { line: ultima, ch: editor.getLine(ultima).length };
+    };
+
+    const irAlBloque = () => {
+      const destino = finDelCuerpo();
+      vista.editor.setCursor(destino);
+      // Tras cambiar de modo el bloque puede haber quedado fuera de pantalla, y en el móvil
+      // además sube el teclado: sin esto, el cursor acaba donde no se ve.
+      vista.editor.scrollIntoView({ from: destino, to: destino }, true);
+      vista.editor.focus();
+    };
+
+    if (vista.getMode() === "preview") {
+      // `setState` con el modo de edición; el editor no está listo hasta que la vista se
+      // reconstruye, así que el salto va en el `then`, no a continuación.
+      void vista.setState({ ...vista.getState(), mode: "source" }, { history: false })
+        .then(irAlBloque);
+    } else {
+      irAlBloque();
     }
   }
 
@@ -713,11 +1170,11 @@ export class MotorExperimental {
   private crearScrollerLatex(
     contenedor: HTMLElement,
     ctx: MarkdownPostProcessorContext,
-    limpieza: MarkdownRenderChild
+    limpieza: MarkdownRenderChild,
+    reparto: Reparto
   ): { panelLatex: HTMLElement; renderLatex: (latex: string | readonly string[]) => Promise<void> } {
     // Constantes de layout del panel izquierdo. Se derivan entre sí para que el alto de
     // una tarjeta única case EXACTO con el de una ranura del par "ambas".
-    const ALTO_PANEL = 261;   // px, alto fijo del panel
     const PAD_SUP = 32;       // px reservados arriba (bajo la barra de toggle) en "ambas"
     const PAD_LADO = 8;       // px de hueco lateral e inferior
     const HUECO = 10;         // px entre tarjetas apiladas ("ambas")
@@ -732,8 +1189,8 @@ export class MotorExperimental {
     const ALTO_TARJETA_MAX = ALTO_PANEL - 2 * PAD_SUP;
 
     const panelLatex = contenedor.createDiv({ cls: "lmath-latex" });
-    panelLatex.style.cssText =
-      `position:relative; width:50%; height:${ALTO_PANEL}px; padding:0; overflow:hidden;`;
+    reparto.panel = panelLatex;
+    aplicarCajaPanel(reparto);
 
     // Zona persistente que aloja las áreas de scroll; `renderLatex` la reconstruye en
     // cada cambio de vista. Es HERMANA de la barra de toggle (que se cuelga después
@@ -749,6 +1206,36 @@ export class MotorExperimental {
     // KaTeX puede dejar 1–2px de desbordamiento sub-pixel aunque la fórmula quepa de
     // sobra; solo se considera que desborda (scroll + fades) por encima de esto.
     const TOLERANCIA_SCROLL = 3;
+
+    // ── Geometría de la zona y de las tarjetas según el REPARTO ──────────────────────
+    // En el panel FLOTANTE la tarjeta LLENA la columna en vez de quedarse en el alto de
+    // ranura: el panel es sitio dedicado a la fórmula y no hay razón para dejarlo medio
+    // vacío —al contrario que en columnas, donde el alto de ranura mantiene idéntica la
+    // presentación de una fórmula entre los cuatro bloques—. "Llenar" es exactamente lo que
+    // ya hace el reparto de la vista "ambas" (`flex:1 1 0`), así que el modo estrecho reusa
+    // ese mecanismo sin inventar otro: una sola tarjeta que reparte la columna se la queda
+    // entera. Y como es una FUNCIÓN y no un valor capturado, el giro del teléfono lo
+    // resuelve el siguiente refresco: no hay que reconstruir ninguna tarjeta.
+    let formulasVisibles = 1;
+    const tarjetasLlenan = () => formulasVisibles > 1 || reparto.estrecho;
+    // La zona reserva arriba para la barra de toggle siempre que las tarjetas llenan (si no,
+    // la primera correría por debajo de los botones); con una sola tarjeta en columnas, el
+    // alto de ranura ya la mantiene lejos de la barra y los márgenes quedan simétricos.
+    const aplicarGeometriaZona = () => {
+      const llenan = tarjetasLlenan();
+      zona.style.padding = llenan
+        ? `${PAD_SUP}px ${PAD_LADO}px ${PAD_LADO}px ${PAD_LADO}px`
+        : `${PAD_LADO}px`;
+      zona.style.gap = `${HUECO}px`;
+      zona.style.justifyContent = llenan ? "flex-start" : "center";
+    };
+    aplicarGeometriaZona();
+    // La zona está a `inset:0`, así que cambia de tamaño EXACTAMENTE cuando lo hace el panel:
+    // es la señal de que el reparto pudo cambiar. Su padding no altera su propia caja, así
+    // que reaplicarlo aquí no se realimenta.
+    const observadorZona = new ResizeObserver(() => aplicarGeometriaZona());
+    observadorZona.observe(zona);
+    limpieza.register(() => observadorZona.disconnect());
 
     // Construye un ÁREA de scroll horizontal AUTÓNOMA dentro de `padre`: su propio
     // desbordamiento, fades laterales, rueda y observador de tamaño. El `estilo` fija
@@ -770,11 +1257,16 @@ export class MotorExperimental {
       compartirAlto: boolean
     ): { area: HTMLElement; actualizarFade: () => void; soltar: () => void } => {
       const enmarcado = estilo === "enmarcado";
-      // Alto del marco. Varias ("ambas") reparten la columna a partes iguales (`flex:1 1 0` →
-      // cada una = ALTO_TARJETA, sin crecer; una fórmula alta gana su scroll propio). Una SOLA
-      // arranca en ese mínimo (`flex:0 0 auto; height:ALTO_TARJETA`) y `ajustarAlto` la CRECE
-      // si el contenido lo supera; la `zona` la centra en vertical (se ve como una del par).
-      const flexMarco = compartirAlto
+      // ¿Esta tarjeta REPARTE la columna (y por tanto la llena) o arranca en el alto de
+      // ranura y crece con su contenido? Lo primero cuando hay varias ("ambas") y SIEMPRE en
+      // el panel flotante. Es una función: se reevalúa en cada refresco, así que cruzar el
+      // umbral de ancho —girar el teléfono— cambia el comportamiento sin reconstruir nada.
+      const llenar = () => compartirAlto || reparto.estrecho;
+      // Alto del marco. Repartiendo (`flex:1 1 0`) cada una se queda con su parte, sin crecer;
+      // una fórmula alta gana su scroll propio. Si no reparte, arranca en el mínimo
+      // (`flex:0 0 auto; height:ALTO_TARJETA`) y `ajustarAlto` la CRECE si el contenido lo
+      // supera; la `zona` la centra en vertical (se ve como una del par).
+      const flexMarco = llenar()
         ? "flex:1 1 0;"
         : `flex:0 0 auto; height:${ALTO_TARJETA}px;`;
       const marco = padre.createDiv();
@@ -839,7 +1331,13 @@ export class MotorExperimental {
       // área gana su propio scroll vertical, con el contenido centrado (`safe center`). Las
       // tarjetas del par "ambas" NO crecen (reparten la columna): solo su scroll independiente.
       const ajustarAlto = () => {
-        if (!compartirAlto) {
+        if (llenar()) {
+          // Reparte la columna: el alto lo pone el flex, no nosotros. Se BORRA el alto en
+          // línea que hubiera puesto la rama de abajo, o al girar a flotante la tarjeta se
+          // quedaría clavada en el alto de ranura dentro de un panel de otra medida.
+          marco.setCssStyles({ flex: "1 1 0", height: "" });
+        } else {
+          marco.setCssStyles({ flex: "0 0 auto" });
           // Se mide el alto INTRÍNSECO del CONTENIDO (el hijo renderizado), NO `area.scrollHeight`.
           // `scrollHeight` nunca baja de `clientHeight`, así que al fijar el alto del marco —que
           // agranda el área— la siguiente medición salía mayor y realimentaba: el marco se disparaba
@@ -907,15 +1405,12 @@ export class MotorExperimental {
       zona.empty();
       const formulas = typeof latex === "string" ? [latex] : latex;
       const compartirAlto = formulas.length > 1;
-      // Varias tarjetas: reserva arriba (`PAD_SUP`) para que la primera no corra bajo la
-      // barra de toggle y se llena la columna desde arriba (`flex-start`). Una sola:
-      // márgenes SIMÉTRICOS (`PAD_LADO`) y `center` → queda centrada en el eje del panel
-      // (su alto de ranura la mantiene lejos de la barra), como una tarjeta del par.
-      zona.style.padding = compartirAlto
-        ? `${PAD_SUP}px ${PAD_LADO}px ${PAD_LADO}px ${PAD_LADO}px`
-        : `${PAD_LADO}px`;
-      zona.style.gap = `${HUECO}px`;
-      zona.style.justifyContent = compartirAlto ? "flex-start" : "center";
+      // La geometría de la zona (márgenes y alineación) depende de si las tarjetas llenan la
+      // columna, y eso lo deciden DOS cosas: cuántas fórmulas hay —que se sabe aquí— y el
+      // reparto vigente —que puede cambiar después, al girar—. Se anota lo primero y se
+      // delega en la función común, que es también la que vuelve a correr al cambiar el panel.
+      formulasVisibles = formulas.length;
+      aplicarGeometriaZona();
 
       const areas: Array<{ area: HTMLElement; actualizarFade: () => void }> = [];
       const disposers: Array<() => void> = [];
@@ -977,6 +1472,36 @@ export class MotorExperimental {
       "cursor:pointer; user-select:none; border-radius:7px; " +
       "transition:background 0.12s ease, color 0.12s ease; " +
       this.chromeBotonPanel(activo);
+  }
+
+  /**
+   * Chip ⓘ de la esquina inferior derecha del plano. Los tres bloques que lo tienen (resumen
+   * de una explícita, resumen geométrico y soluciones del sistema) son excluyentes entre sí y
+   * comparten sitio, tamaño y acento: un único estilo evita que se separen al retocar uno.
+   */
+  private estiloChipInfo(lado: number): string {
+    return `position:absolute; bottom:8px; right:8px; width:${lado}px; height:${lado}px; ` +
+      "display:flex; align-items:center; justify-content:center; line-height:1; " +
+      "color:var(--lmath-acento-suave); background:var(--lmath-chip); " +
+      "border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; " +
+      "user-select:none; z-index:5;";
+  }
+
+  /**
+   * Popover del ⓘ: se abre HACIA ARRIBA desde su chip, así que su borde inferior sube con la
+   * fila de chips. Los topes son relativos al PLANO (`min(...)` contra el 100%): en el móvil
+   * el plano mide ~321×263 y un cuadro de 260×200 anclado abajo se saldría por arriba en
+   * cuanto el chip creciera; en escritorio el plano es mayor y los topes fijos siguen mandando.
+   */
+  private estiloPopoverInfo(lado: number): string {
+    const bajo = 8 + lado + 6;
+    return `position:absolute; bottom:${bajo}px; right:8px; display:none; ` +
+      "max-width:min(260px, calc(100% - 16px)); " +
+      `max-height:min(200px, calc(100% - ${bajo + 8}px)); ` +
+      "overflow-y:auto; padding:8px 10px; box-sizing:border-box; " +
+      "background:var(--lmath-panel); border:1px solid var(--lmath-borde); " +
+      "border-radius:6px; font-size:11px; line-height:1.5; " +
+      "color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);";
   }
 
   /** Tooltip ÚNICO y consistente para los controles del motor: el de Obsidian (oscuro),
@@ -1066,9 +1591,10 @@ export class MotorExperimental {
     contenedor: HTMLElement,
     ecuaciones: readonly string[],
     ctx: MarkdownPostProcessorContext,
-    limpieza: MarkdownRenderChild
+    limpieza: MarkdownRenderChild,
+    reparto: Reparto
   ): Promise<void> {
-    const { panelLatex, renderLatex } = this.crearScrollerLatex(contenedor, ctx, limpieza);
+    const { panelLatex, renderLatex } = this.crearScrollerLatex(contenedor, ctx, limpieza, reparto);
 
     // ── Toggle de transformaciones del panel ────────────────────────────────────
     // Botones centrados arriba del panel para alternar la fórmula MOSTRADA (no cambia
@@ -1203,9 +1729,10 @@ export class MotorExperimental {
     contenedor: HTMLElement,
     ecuaciones: readonly string[],
     ctx: MarkdownPostProcessorContext,
-    limpieza: MarkdownRenderChild
+    limpieza: MarkdownRenderChild,
+    reparto: Reparto
   ): Promise<void> {
-    const { panelLatex, renderLatex } = this.crearScrollerLatex(contenedor, ctx, limpieza);
+    const { panelLatex, renderLatex } = this.crearScrollerLatex(contenedor, ctx, limpieza, reparto);
 
     // Las DOS representaciones que puede mostrar el panel: el OPERADOR sin evaluar YA con la
     // función SIMPLIFICADA (`d/dx(6x)`, la vista "Original"/por defecto, análoga a `f(x)` de
@@ -1343,9 +1870,10 @@ export class MotorExperimental {
     contenedor: HTMLElement,
     source: string,
     ctx: MarkdownPostProcessorContext,
-    limpieza: MarkdownRenderChild
+    limpieza: MarkdownRenderChild,
+    reparto: Reparto
   ): Promise<void> {
-    const { panelLatex, renderLatex } = this.crearScrollerLatex(contenedor, ctx, limpieza);
+    const { panelLatex, renderLatex } = this.crearScrollerLatex(contenedor, ctx, limpieza, reparto);
 
     const operador = integralOperadorLatex(source);
     // El VALOR del área, en su representación EXACTA cuando existe (`\frac{8}{3}`, `\frac{\pi}{2}`,
@@ -1619,7 +2147,8 @@ export class MotorExperimental {
    * de la vista actual), igual que en el motor original.
    */
   private montarBotonInfo(
-    wrap: HTMLElement, expr: string, ctx: MarkdownPostProcessorContext
+    wrap: HTMLElement, expr: string, ctx: MarkdownPostProcessorContext,
+    lado: number, exclusion: ExclusionPopover
   ): void {
     // Defensivo: si `expr` no compila como f(x) (p.ej. una tupla paramétrica que se
     // colara), NO lanzar —abortaría el render del plano—, simplemente no montar el ⓘ.
@@ -1681,21 +2210,12 @@ export class MotorExperimental {
 
     const btnInfo = wrap.createDiv();
     this.ponerTooltip(btnInfo, t().botones.resumenNotables);
-    btnInfo.style.cssText =
-      "position:absolute; bottom:8px; right:8px; width:22px; height:22px; " +
-      "display:flex; align-items:center; justify-content:center; font-size:14px; " +
-      "line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); " +
-      "border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; " +
-      "user-select:none; z-index:5;";
-    this.montarIcono(btnInfo, "info", 15);
+    btnInfo.style.cssText = this.estiloChipInfo(lado);
+    this.montarIcono(btnInfo, "info", ladoIcono(lado));
 
     const pop = wrap.createDiv();
-    pop.style.cssText =
-      "position:absolute; bottom:36px; right:8px; display:none; max-width:260px; " +
-      "max-height:200px; overflow-y:auto; padding:8px 10px; box-sizing:border-box; " +
-      "background:var(--lmath-panel); border:1px solid var(--lmath-borde); " +
-      "border-radius:6px; font-size:11px; line-height:1.5; " +
-      "color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);";
+    pop.style.cssText = this.estiloPopoverInfo(lado);
+    exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
     for (const l of lineas) {
       const div = pop.createDiv({ text: l.texto });
       // La parte matemática (p. ej. `x\in[0,1)`) va renderizada con KaTeX en línea,
@@ -1705,7 +2225,9 @@ export class MotorExperimental {
 
     btnInfo.addEventListener("click", (e) => {
       e.stopPropagation();
-      pop.style.display = pop.style.display === "none" ? "block" : "none";
+      const abierto = pop.style.display !== "none";
+      if (!abierto) exclusion.alAbrir();   // la fórmula flotante y este cuadro no conviven
+      pop.setCssStyles({ display: abierto ? "none" : "block" });
     });
   }
 }
