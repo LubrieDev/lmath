@@ -51,8 +51,12 @@ describe("Transformaciones del panel: Despejar y / Simplificar", () => {
     // Antes quedaba PARCIAL en `∛(y²)=1−∛(x²)`: el factor con y es ∛(y²) —raíz de una POTENCIA
     // de y—, que no encajaba en ninguna estrategia (`despejeRaiz` solo cubre ⁿ√y desnuda). Ahora
     // se eleva al índice (y²=(1−∛(x²))³) y se saca la raíz par → las dos ramas con el ± (`pm`).
-    igual(despLatex("x^{2/3}+y^{2/3}=1"), "y=\\pm \\sqrt{{\\left(1-\\sqrt[3]{x^{2}}\\right)}^{3}}",
-      "astroide → y=±√((1−∛(x²))³)");
+    // La potencia bajo el radical sale fuera, como en `(x+1)^{3/2}` → `(x+1)√(x+1)`: es la
+    // misma extracción euclídea, y con base compuesta también se aplica (√(u³)=u√u exige
+    // u ≥ 0, que es justo el dominio donde el radicando u³ es no negativo).
+    igual(despLatex("x^{2/3}+y^{2/3}=1"),
+      "y=\\pm \\left(1-\\sqrt[3]{x^{2}}\\right)\\sqrt{1-\\sqrt[3]{x^{2}}}",
+      "astroide → y=±(1−∛(x²))√(1−∛(x²))");
     // El despeje grafica REALMENTE el astroide: residual 0 en el dominio |x|≤1 (ambas ramas).
     const rama = crearFuncionReal("sqrt((1 - nthRoot(x^2,3))^3)");
     for (const x of [-0.9, -0.4, 0, 0.5, 0.9]) {
@@ -286,9 +290,209 @@ describe("Transformaciones del panel: Despejar y / Simplificar", () => {
     // Coeficiente IRRACIONAL: `rationalize`/`simplify` lo decimalizan (`√2`→`1.4142…`), pero
     // `resimbolizarConstantes` (el paso que ya cierra derivar/integrar) RECUPERA la forma exacta.
     igual(simpLatex("sqrt(2)*x"), "f(x)=\\sqrt{2}x", "√2·x: se conserva el radical, no el decimal");
-    igual(simpLatex("1/sqrt(2)"), "f(x)=\\frac{1}{\\sqrt{2}}", "1/√2: radical exacto, no 0.707…");
+    // Denominador RACIONALIZADO. Antes esto daba `1/√2`, y el precio no era solo tipográfico:
+    // escribir la forma correcta `√2/2` la convertía en `1/√2`, así que Simplificar movía la
+    // expresión hacia atrás y dejaba de ser un no-op sobre su propia salida.
+    igual(simpLatex("1/sqrt(2)"), "f(x)=\\frac{\\sqrt{2}}{2}", "1/√2 → √2/2 (racionalizado)");
+    igual(simpLatex("sqrt(2)/2"), "f(x)=\\frac{\\sqrt{2}}{2}", "√2/2 ya es la forma final: no empeora");
+    // Radicales REDUCIBLES: `√20 = 2√5` (identidad exacta, mismo dominio). Antes salía `√20`
+    // si k≤40 y decimalizado —`7.0710678…`— en cuanto se pasaba de ahí.
+    igual(simpLatex("sqrt(20)"), "f(x)=2\\sqrt{5}", "√20 → 2√5");
+    igual(simpLatex("sqrt(50)"), "f(x)=5\\sqrt{2}", "√50 → 5√2 (fuera de la tabla vieja)");
+    igual(simpLatex("sqrt(20*x)"), "f(x)=2\\sqrt{5x}", "√(20x) → 2√(5x): el factor sale con variable dentro");
+    igual(simpLatex("nthRoot(54,3)"), "f(x)=3\\sqrt[3]{2}", "∛54 → 3∛2 (índice ≠ 2)");
+    // Exponente decimal IRREDUCIBLE: se queda como se escribió. Antes `simplify` lo convertía
+    // en `5637/10000` y el emisor lo pintaba `\sqrt[10000]{x^{5637}}`.
+    igual(simpLatex("x^0.5637"), "f(x)=x^{0.5637}", "x^0.5637 sobrevive intacto");
     // La expansión (rationalize) sigue viva y ahora convive con las fracciones.
     igual(simpLatex("(x+1)^2"), "f(x)=x^{2}+2x+1", "expandir sigue funcionando");
+  });
+
+  test("Radicales: se extrae la parte entera (división euclídea m = q·n + r)", () => {
+    // Un radical no se deja en la primera forma equivalente: `√[n]{x^m}` con m = q·n + r se
+    // escribe `x^q·√[n]{x^r}`, que es como lo dejaría una persona. La identidad es exacta y
+    // NO mueve el dominio: una potencia de exponente fraccionario ya exige base ≥ 0 (el
+    // motor evalúa con Math.pow, NaN en negativos), y el factor entero existe en todo ℝ.
+    // Por eso no hace falta el |x| del caso general `√(x²)`: esa forma no llega por aquí,
+    // solo llegan potencias de exponente fraccionario.
+    igual(simpLatex("x^(3/2)"), "f(x)=x\\sqrt{x}", "3 = 1·2+1 → x√x");
+    igual(simpLatex("x^(7/2)"), "f(x)=x^{3}\\sqrt{x}", "7 = 3·2+1 → x³√x");
+    igual(simpLatex("x^(11/4)"), "f(x)=x^{2}\\sqrt[4]{x^{3}}", "11 = 2·4+3 → x²⁴√(x³)");
+    igual(simpLatex("x^(5/4)"), "f(x)=x\\sqrt[4]{x}", "5 = 1·4+1 → x⁴√x");
+    // Escrito como decimal da lo MISMO: la tipografía depende de la expresión, no de cómo
+    // se tecleó (que es la regla que esta familia de arreglos viene defendiendo).
+    igual(simpLatex("x^1.5"), "f(x)=x\\sqrt{x}", "1.5 y 3/2 son la misma función");
+    igual(simpLatex("x^2.75"), "f(x)=x^{2}\\sqrt[4]{x^{3}}", "2.75 y 11/4 también");
+    // Base compuesta: el factor extraído necesita paréntesis para no fundirse con el
+    // radical. Los pone mathjs por precedencia, así que salen con SU tipografía —que mete un
+    // espacio interior con unos contenidos y no con otros, `\left( x+1\right)` frente a
+    // `\left(x^{2}+1\right)`—. Es un tic de mathjs que se ve en todo el proyecto (`(x+1)^2`
+    // ya se pintaba así), no de esta construcción, y se fija aquí tal cual para que la
+    // extracción no invente una tipografía distinta de la del resto del panel.
+    igual(simpLatex("(x+1)^(3/2)"), "f(x)=\\left( x+1\\right)\\sqrt{x+1}", "base compuesta");
+    igual(simpLatex("(x^2+1)^(3/2)"), "f(x)=\\left(x^{2}+1\\right)\\sqrt{x^{2}+1}",
+      "y la misma construcción con otra base");
+  });
+
+  test("Radicales: la extracción también alcanza a lo escrito con LLAVES LaTeX", () => {
+    // Un exponente racional escrito `x^{3/2}` NO llega aquí como potencia: el parser lo
+    // convierte antes en `sqrt(x^3)`, y a propósito —la raíz da el valor real con base
+    // negativa donde existe (`x^{2/3}` en x<0) y la potencia daría NaN—. El efecto colateral
+    // era que las reglas de esta familia, que miran nodos `^`, no veían nunca esa forma: se
+    // pintaba `√(x³)` mientras `x^{1.5}`, la MISMA función, salía `x√x`. Estas son las dos
+    // escrituras enfrentadas, que es la regla que este bloque defiende.
+    igual(simpLatex("x^{3/2}"), "f(x)=x\\sqrt{x}", "llaves LaTeX → x√x, como x^1.5");
+    igual(simpLatex("x^{7/2}"), "f(x)=x^{3}\\sqrt{x}", "7/2");
+    igual(simpLatex("x^{11/4}"), "f(x)=x^{2}\\sqrt[4]{x^{3}}", "11/4");
+    igual(simpLatex("x^{5/4}"), "f(x)=x\\sqrt[4]{x}", "5/4");
+    igual(simpLatex("x^{3/2}"), simpLatex("x^(3/2)"), "las dos escrituras coinciden");
+    igual(simpLatex("x^{1.5}"), simpLatex("x^{3/2}"), "y el decimal con la fracción");
+    // Por encima de los topes de índice no hay radical que pintar y la potencia se lee
+    // mejor. Solo se cambia de forma con índice PAR, que es cuando raíz y potencia tienen el
+    // mismo dominio (u ≥ 0): con índice impar la raíz existe en los negativos y la potencia
+    // no, y anunciarla como potencia sería prometer una curva más corta que la dibujada.
+    igual(simpLatex("x^{5/64}"), "f(x)=x^{\\frac{5}{64}}", "índice 64: potencia, no radical");
+    igual(simpLatex("x^{7/32}"), "f(x)=x^{\\frac{7}{32}}", "índice 32: ídem");
+    igual(simpLatex("x^{5/9}"), "f(x)=\\sqrt[9]{x^{5}}", "índice IMPAR: se queda radical");
+    // Índice PAR con exponente PAR: `⁴√(x⁶)` vale |x|^{3/2} y es positiva en todo su dominio;
+    // sacar el factor daría `x·⁴√(x²)`, negativa en x<0. El valor absoluto que lleva dentro
+    // la raíz de índice par se perdería, así que no se toca.
+    igual(simpLatex("x^{6/4}"), "f(x)=\\sqrt[4]{x^{6}}", "índice par con exponente par: intacto");
+  });
+
+  test("Radicales: el exponente IRRACIONAL se queda como potencia", () => {
+    // `x^{π/2}` se pintaba `\sqrt{x^{π}}`. Es cierto y nadie lo escribe así: el radical es
+    // la notación canónica de un exponente RACIONAL —p/q significa "raíz q-ésima de la
+    // potencia p-ésima"—, y π/2 no lo es; ese `/2` es una división corriente, no un índice.
+    igual(simpLatex("x^(pi/2)"), "f(x)=x^{\\frac{\\pi}{2}}", "π/2 no es un índice de raíz");
+    igual(simpLatex("x^(phi/2)"), "f(x)=x^{\\frac{\\phi}{2}}", "φ/2 tampoco");
+    igual(simpLatex("x^(e/3)"), "f(x)=x^{\\frac{e}{3}}", "ni e/3");
+    igual(simpLatex("x^(tau/4)"), "f(x)=x^{\\frac{\\tau}{4}}", "ni τ/4");
+    // Y la consistencia que motivó la regla vieja se mantiene: escrito como decimal por
+    // una constante da la MISMA forma que escrito como cociente.
+    igual(simpLatex("x^(0.5*phi)"), "f(x)=x^{\\frac{\\phi}{2}}", "0.5φ y φ/2 se pintan igual");
+    // El exponente con variable nunca fue un radical y sigue sin serlo.
+    igual(simpLatex("e^(x/2)"), "f(x)=e^{\\frac{x}{2}}", "e^{x/2} conserva su forma exponencial");
+  });
+
+  test("Radicales: dos raíces del mismo índice se funden en una", () => {
+    // `simplify` reparte la potencia sobre el producto —`(2x)^{1/2}` → `2^{1/2}·x^{1/2}`— y
+    // el panel pintaba `√2·√x`, que contradice su propia convención: `√(20x)` se deja
+    // `2√(5x)`, con UN radical y lo que no sale dentro. Ahora coinciden.
+    igual(simpLatex("(2*x)^(1/2)"), "f(x)=\\sqrt{2x}", "√2·√x → √(2x)");
+    igual(simpLatex("(3*x)^(1/2)"), "f(x)=\\sqrt{3x}", "y con cualquier factor numérico");
+    // Lo que ya estaba bien no se toca: el factor perfecto sigue saliendo fuera.
+    igual(simpLatex("(4*x)^(1/2)"), "f(x)=2\\sqrt{x}", "√(4x) → 2√x, sin fusión que hacer");
+    igual(simpLatex("sqrt(20*x)"), "f(x)=2\\sqrt{5x}", "la convención de referencia, intacta");
+    // GUARDA DE DOMINIO: `√a·√b = √(ab)` es falsa con a y b ambos negativos (NaN·NaN frente
+    // a un real). Con una de las dos demostrablemente ≥0 es segura, y sin eso NO se funde.
+    igual(simpLatex("sqrt(x)*sqrt(x-1)"), "f(x)=\\sqrt{x}\\sqrt{x-1}",
+      "dos radicandos simbólicos: no se fusionan");
+  });
+
+  test("Radicales: la base compuesta sobrevive entera, sin repartirse en dos raíces", () => {
+    // `simplify` reparte `(2x)^{5/2}` en `4·2^{1/2}·x^{5/2}` y el panel pintaba
+    // `4√2·x²√x`: dos radicales sueltos donde a mano se escribe UNO. Sale de encadenar dos
+    // reescrituras sobre el ÁRBOL —extraer la parte entera deja `x^{1/2}` a la vista, y
+    // entonces la fusión ve dos `^{1/2}` y los junta—, que es justo lo que no se podía
+    // hacer cuando la extracción trabajaba sobre el LaTeX ya emitido.
+    igual(simpLatex("(2*x)^(5/2)"), "f(x)=4x^{2}\\sqrt{2x}", "(2x)^{5/2} → 4x²√(2x)");
+    igual(simpLatex("(2*x)^(3/2)"), "f(x)=2x\\sqrt{2x}", "(2x)^{3/2} → 2x√(2x)");
+    // 3^{7/2} = 27√3, y el √3 se va dentro del radical con la x: 27x³√(3x).
+    igual(simpLatex("(3*x)^(7/2)"), "f(x)=27x^{3}\\sqrt{3x}", "(3x)^{7/2} → 27x³√(3x)");
+    // Los radicales van al FINAL del producto: `4x²√(2x)`, no `4√(2x)x²`.
+    assert(!simpLatex("(2*x)^(5/2)").includes("}x^{2}"), "la raíz no se cuela antes de x²");
+  });
+
+  test("Radicales: el exponente NEGATIVO es el recíproco de la raíz", () => {
+    // `x^{-1/2}` salía `x^{\frac{-1}{2}}`, con el signo DENTRO de la fracción, que no lo
+    // escribe nadie. Es `1/√x`. Mismo dominio: la potencia negativa fraccionaria ya exigía
+    // base > 0 y el recíproco excluye el mismo 0.
+    igual(simpLatex("x^(-1/2)"), "f(x)=\\frac{1}{\\sqrt{x}}", "x^{-1/2} → 1/√x");
+    igual(simpLatex("x^-0.5"), "f(x)=\\frac{1}{\\sqrt{x}}", "escrito en decimal, igual");
+    igual(simpLatex("x^(-1/3)"), "f(x)=\\frac{1}{\\sqrt[3]{x}}", "índice 3");
+    // Con parte entera, el recíproco envuelve al producto ENTERO: 1/(x²√x).
+    igual(simpLatex("x^(-5/2)"), "f(x)=\\frac{1}{x^{2}\\sqrt{x}}", "x^{-5/2} → 1/(x²√x)");
+    // Un exponente entero negativo NO es un radical y se queda como potencia.
+    igual(simpLatex("x^(-2)"), "f(x)=x^{-2}", "x^{-2} sigue siendo una potencia");
+  });
+
+  test("Radicales: solo se pintan cuando se leen MEJOR que la potencia", () => {
+    // Que exista una fracción exacta no basta. `x^{5/64}` salía `\sqrt[64]{x^{5}}`:
+    // equivalente, ilegible y —lo peor— inestable, porque el aspecto pasaba a depender de
+    // si el racionalizador encontró fracción, que es un detalle interno.
+    igual(simpLatex("x^(5/64)"), "f(x)=x^{\\frac{5}{64}}", "índice 64: no se pinta radical");
+    igual(simpLatex("x^(7/32)"), "f(x)=x^{\\frac{7}{32}}", "índice 32 tampoco");
+    igual(simpLatex("x^(1/16)"), "f(x)=x^{\\frac{1}{16}}", "ni siquiera como raíz pura");
+    igual(simpLatex("x^(7/8)"), "f(x)=x^{\\frac{7}{8}}", "índice 8 CON potencia: se lee peor");
+    // Y los que sí: índice ≤5 con potencia, ≤8 si es raíz pura (sin exponente que leer).
+    igual(simpLatex("x^(2/3)"), "f(x)=\\sqrt[3]{x^{2}}", "índice 3 con potencia");
+    igual(simpLatex("x^(2/5)"), "f(x)=\\sqrt[5]{x^{2}}", "índice 5: el límite, y lo fija 1.3.1");
+    igual(simpLatex("x^(1/8)"), "f(x)=\\sqrt[8]{x}", "raíz pura de índice 8");
+    igual(simpLatex("x^(1/5)"), "f(x)=\\sqrt[5]{x}", "raíz pura de índice 5");
+  });
+
+  test("Simplificar: identidades trigonométricas válidas en TODO ℝ", () => {
+    // mathjs no trae ninguna de las cinco. Solo entran las que no mueven el dominio: la
+    // pitagórica no tiene excepciones y las paridades conservan los polos exactos.
+    igual(simpLatex("sin(x)^2 + cos(x)^2"), "f(x)=1", "sin²+cos² = 1");
+    igual(simpLatex("x^2 + sin(x)^2 + cos(x)^2"), "f(x)=x^{2}+1", "…también dentro de una suma");
+    igual(simpLatex("sin(-x)"), "f(x)=-\\sin x", "sin(−x) = −sin x");
+    igual(simpLatex("cos(-x)"), "f(x)=\\cos x", "cos(−x) = cos x");
+    igual(simpLatex("tan(-x)"), "f(x)=-\\tan x", "tan(−x) = −tan x (mismos polos)");
+    // Y la que NO debe casar: argumentos distintos.
+    igual(simpLatex("sin(x)^2 + cos(2*x)^2"), "f(x)=\\sin^{2} x+\\cos^{2}\\left(2x\\right)",
+      "argumentos distintos: NO es la pitagórica");
+  });
+
+  test("Simplificar: el logaritmo se conserva EXACTO, no decimalizado", () => {
+    // Mismo criterio que `\sqrt{2}`: el panel muestra la forma exacta, no `1.4142…`. mathjs
+    // PLIEGA `log(2, 10)` porque sus dos argumentos son constantes (a `log(u, e)` no lo toca,
+    // porque `e` es un símbolo), así que la forma se recupera del decimal por aritmética:
+    // elevar la base al valor y ver si sale entero.
+    igual(simpLatex("log(2)"), "f(x)=\\log_{10} 2", "log 2 → \\log_{10} 2, no 0.30102999…");
+    igual(simpLatex("log(3)"), "f(x)=\\log_{10} 3", "log 3 exacto");
+    igual(simpLatex("ln(2)"), "f(x)=\\ln 2", "el natural ya salía exacto: sigue igual");
+    igual(simpLatex("log(100)"), "f(x)=2", "cuando SÍ es entero, se resuelve: log 100 = 2");
+    // `log(2)+1 = log 20`: exacto, y sobre todo NO la fracción `423026/325147` que salía de
+    // racionalizar el decimal con un tope de denominador de 1e6.
+    igual(simpLatex("log(2)+1"), "f(x)=\\log_{10} 20", "log 2 + 1 → log 20 (no una fracción monstruosa)");
+    assert(!/\d{4,}/.test(simpLatex("log(2)+1")), "sin números de cuatro cifras inventados");
+  });
+
+  test("Simplificar: el recíproco de un logaritmo no deja un 1 suelto", () => {
+    // `1/ln 10` se recuperaba como nodo `1/log(10)` y al multiplicar dejaba el 1 a la vista:
+    // el cambio de base salía como `\frac{1\ln x}{\ln 10}`.
+    igual(simpLatex("ln(x)/ln(10)"), "f(x)=\\frac{\\ln x}{\\ln 10}", "cambio de base sin el 1");
+    igual(simpLatex("ln(x)/ln(2)"), "f(x)=\\frac{\\ln x}{\\ln 2}", "ídem en base 2");
+  });
+
+  test("Despejar: la fracción de la cuadrática sale REDUCIDA", () => {
+    // `(y−1)²=x` se expande a `y²−2y+1=x` antes de despejar, así que el caso de manual más
+    // común —una parábola desplazada— pasaba por la fórmula general y salía `(2±2√x)/2`.
+    // Ninguna pasada de formato lo reducía: todas tratan `pm(·)` como función opaca.
+    igual(despLatex("(y-1)^2 = x"), "y=1\\pm \\sqrt{x}", "(y−1)²=x → 1±√x (no (2±2√x)/2)");
+    igual(despLatex("(y-3)^2 = x"), "y=3\\pm \\sqrt{x}", "(y−3)²=x → 3±√x");
+    // Y lo que NO se debe tocar: sin factor común, la fracción se queda.
+    igual(despLatex("y + 1/y = x"), "y=\\frac{x \\pm \\sqrt{x^{2}-4}}{2}", "sin factor común: intacta");
+  });
+
+  test("Despejar: exponente NO ENTERO de y (la misma ecuación, escrita de dos formas)", () => {
+    // El despeje solo miraba exponentes enteros ≥2, así que el resultado dependía de cómo se
+    // hubiera escrito la ecuación: `√y=x−3` se despejaba y `y^{0.5}=x−3` se quedaba parcial.
+    // `y^e` con e no entero solo existe para y≥0, donde es inyectiva: inversa única, guarda R≥0.
+    const raiz = despLatex("sqrt(y) = x - 3");
+    igual(despLatex("y^0.5 = x - 3"), raiz, "y^{0.5}=x−3 despeja IGUAL que √y=x−3");
+    igual(raiz, "y={\\left( x-3\\right)}^{2},\\quad x \\ge 3", "…y esa forma es la de siempre");
+    igual(despLatex("y^(3/2) = x + 1"), "y=\\sqrt[3]{{\\left( x+1\\right)}^{2}},\\quad x \\ge -1",
+      "y^{3/2}=x+1 → y=∛((x+1)²) con x≥−1");
+    igual(despLatex("y^2.5 = x"), "y=\\sqrt[5]{x^{2}},\\quad x \\ge 0", "y^{2.5}=x → y=⁵√(x²)");
+    // Exponente decimal irreducible: se invierte tal cual, sin inventar una fracción.
+    igual(despLatex("y^0.5637 = x"), "y=x^{\\frac{1}{0.5637}},\\quad x \\ge 0",
+      "y^{0.5637}=x → y=x^{1/0.5637}");
+    // Coeficiente irracional: el panel del despeje era el único de los cuatro que no
+    // recuperaba la forma exacta y mostraba `y = 0.22360679774997896x`.
+    igual(despLatex("sqrt(20)*y = x"), "y=\\frac{\\sqrt{5}}{10}x", "√20·y=x → y=(√5/10)x, no 0.2236…");
   });
 
   test("Despejar: coeficiente FRACCIONARIO y reducción (y/2=x → y=2x, no y=x2)", () => {
@@ -354,7 +558,7 @@ describe("Transformaciones del panel: Despejar y / Simplificar", () => {
       "f'\\left(x\\right) = \\frac{\\operatorname{arccot}\\left(x^{2}\\right)}{2\\sqrt{x}}-\\frac{2x\\sqrt{x}}{x^{4}+1}",
       "arccot(x²)·√x → términos planos, no fracción de fracciones");
     // La regla del producto también compacta lo que se cancela: d/dx(x·ln x) = ln x + 1.
-    igual(derivarExpr("x*log(x)"), "log(x) + 1", "d/dx(x·ln x) = ln x + 1");
+    igual(derivarExpr("x*ln(x)"), "log(x, e) + 1", "d/dx(x·ln x) = ln x + 1");
     // Un cociente NO se reparte (sería la regla del cociente, que mathjs ya combina bien):
     // se conserva la fracción única del test anterior.
     igual(derivadaLatex(["x/(x^2+1)"]),
@@ -457,9 +661,12 @@ describe("Despejar y: raíz impar + cuadrática general (familia del corazón)",
   test("corazón (x²+y²−1)³=x²y³ → y = (∛(x²) ± √(∛(x⁴)+4−4x²))/2, COMPLETO", () => {
     const r = despejarY("\\left(x^{2}+y^{2}-1\\right)^{3}=x^{2}y^{3}");
     assert(r !== null && r.completo, "el despeje del corazón es COMPLETO (antes: parcial)");
+    // `∛(x⁴)` se pinta `x∛x` por la extracción euclídea, igual que `x^{4/3}` escrito como
+    // potencia: 4 = 1·3 + 1. Con índice IMPAR la identidad vale en todo ℝ (∛ conserva el
+    // signo), y las dos formas coinciden punto por punto.
     igual(
       r!.latex,
-      "y=\\frac{\\sqrt[3]{x^{2}} \\pm \\sqrt{\\sqrt[3]{x^{4}}+4-4x^{2}}}{2}",
+      "y=\\frac{\\sqrt[3]{x^{2}} \\pm \\sqrt{x\\sqrt[3]{x}+4-4x^{2}}}{2}",
       "forma de la fórmula cuadrática con ± en el numerador"
     );
     // Y es CORRECTO: ambas ramas cumplen la ecuación original allí donde son reales.
@@ -529,16 +736,16 @@ describe("Despejar y: raíz impar + cuadrática general (familia del corazón)",
     // y en UNA sola posición, anidada o en una función sin estrategia propia → se aísla pelando
     // la composición con inversas FIELES AL DOMINIO. Antes quedaban parciales.
     const completa = (ec: string) => /^y = /.test(despejarEcuaciones([ec])[0]);
-    for (const ec of ["log(y)=x", "e^y=x", "2^y+1=x", "sinh(y)=x", "atanh(y)=x",
+    for (const ec of ["ln(y)=x", "e^y=x", "2^y+1=x", "sinh(y)=x", "atanh(y)=x",
                       "sin(2y)=x", "tan(2y)+x=2", "(y+1)^3=x", "exp(y^3)=x"])
       assert(completa(ec), `se despeja del todo: ${ec}`);
     // Fidelidad NUMÉRICA: cada rama despejada cumple su ecuación original donde es real.
     const chequeos: Array<[string, string, (x: number, y: number) => number]> = [
-      ["log(y)=x", "exp(x)", (x, y) => Math.log(y) - x],
-      ["e^y=x", "log(x)", (x, y) => Math.exp(y) - x],
+      ["ln(y)=x", "exp(x)", (x, y) => Math.log(y) - x],
+      ["e^y=x", "ln(x)", (x, y) => Math.exp(y) - x],
       ["sinh(y)=x", "asinh(x)", (x, y) => Math.sinh(y) - x],
       ["(y+1)^3=x", "nthRoot(x,3)-1", (x, y) => (y + 1) ** 3 - x],
-      ["exp(y^3)=x", "cbrt(log(x))", (x, y) => Math.exp(y ** 3) - x],
+      ["exp(y^3)=x", "cbrt(ln(x))", (x, y) => Math.exp(y ** 3) - x],
     ];
     for (const [ec, rama, D] of chequeos) {
       const f = crearFuncionReal(rama);
@@ -564,7 +771,7 @@ describe("Despejar y: raíz impar + cuadrática general (familia del corazón)",
     // Potencia PAR de una base COMPUESTA (`(y+1)²=x` no: esa la coge antes la cuadrática).
     igual(despejarEcuaciones(["(y^3+1)^2=x"])[0], "y = cbrt((dom(pm(sqrt((x))), x)) - (1))",
       "(y³+1)²=x ⇒ y=∛(±√x−1), x≥0");
-    igual(tex("(log(y))^2=x"), "y=e^{\\pm \\sqrt{x}},\\quad x \\ge 0", "(ln y)²=x ⇒ y=e^{±√x}, x≥0");
+    igual(tex("(ln(y))^2=x"), "y=e^{\\pm \\sqrt{x}},\\quad x \\ge 0", "(ln y)²=x ⇒ y=e^{±√x}, x≥0");
     igual(despejarEcuaciones(["abs(2*y+1)=x"])[0], "y = ((dom(pm((x)), x)) - (1)) / (2)", "|2y+1|=x ⇒ y=(±x−1)/2, x≥0");
     igual(despejarEcuaciones(["nthRoot(y^3-2, 4)=x"])[0], "y = cbrt((dom(((x))^4, x)) + (2))", "⁴√(y³−2)=x ⇒ guarda x≥0");
     // Guarda TRIVIALMENTE cierta (t=x²≥0) → sin coletilla; guarda constante NEGATIVA → sin
@@ -574,7 +781,7 @@ describe("Despejar y: raíz impar + cuadrática general (familia del corazón)",
     // Fidelidad NUMÉRICA de las ramas nuevas contra la ecuación original.
     const chequeos: Array<[string, string, (x: number, y: number) => number]> = [
       [String.raw`\sqrt{\tan(y)+1}=x`, "atan(x^2-1)", (x, y) => Math.sqrt(Math.tan(y) + 1) - x],
-      ["e^(y^2)=x", "sqrt(log(x))", (x, y) => Math.exp(y * y) - x],
+      ["e^(y^2)=x", "sqrt(ln(x))", (x, y) => Math.exp(y * y) - x],
       ["(y+1)^2=x", "sqrt(x)-1", (x, y) => (y + 1) ** 2 - x],
       ["abs(2*y+1)=x", "(x-1)/2", (x, y) => Math.abs(2 * y + 1) - x],
     ];
@@ -852,7 +1059,7 @@ describe("Batería graduada del despejador: de trivial a imposible", () => {
   });
 
   test("nivel 2 — una capa invertible alrededor de y", () => {
-    resoluble("log(y) = x", (x, y) => Math.log(y) - x, "ln y = x");
+    resoluble("ln(y) = x", (x, y) => Math.log(y) - x, "ln y = x");
     resoluble("e^y = x", (x, y) => Math.exp(y) - x, "e^y = x");
     resoluble("2^y = x", (x, y) => 2 ** y - x, "2^y = x (base ≠ e)");
     resoluble("sinh(y) = x", (x, y) => Math.sinh(y) - x, "sinh y = x");
@@ -864,9 +1071,9 @@ describe("Batería graduada del despejador: de trivial a imposible", () => {
     resoluble("(y+1)^3 = x", (x, y) => (y + 1) ** 3 - x, "base compuesta impar");
     resoluble("exp(y^3) = x", (x, y) => Math.exp(y ** 3) - x, "e^{y³}");
     resoluble("e^(y^2) = x", (x, y) => Math.exp(y * y) - x, "e^{y²} (par ⇒ ± y guarda)");
-    resoluble("log(y^3 + 1) = x", (x, y) => Math.log(y ** 3 + 1) - x, "ln(y³+1)");
+    resoluble("ln(y^3 + 1) = x", (x, y) => Math.log(y ** 3 + 1) - x, "ln(y³+1)");
     resoluble("sqrt(tan(y) + 1) = x", (x, y) => Math.sqrt(Math.tan(y) + 1) - x, "√(tan y+1)");
-    resoluble("(log(y))^2 = x", (x, y) => Math.log(y) ** 2 - x, "(ln y)²");
+    resoluble("(ln(y))^2 = x", (x, y) => Math.log(y) ** 2 - x, "(ln y)²");
     resoluble("nthRoot(y^3 - 2, 4) = x", (x, y) => (y ** 3 - 2) ** 0.25 - x, "⁴√(y³−2)");
   });
 
@@ -915,7 +1122,7 @@ describe("Batería graduada del despejador: de trivial a imposible", () => {
       ["y^5 + y = x", "grado ≥5 general: Abel–Ruffini"],
       ["y^5 + x*y + 1 = 0", "quíntica con coeficiente en x"],
       ["sin(y) + cos(y) = x", "no es polinomio en cos y por sí solo"],
-      ["log(y) + y = x", "trascendente mixta (Lambert de nuevo)"],
+      ["ln(y) + y = x", "trascendente mixta (Lambert de nuevo)"],
       ["x^3 + y^3 = 3*x*y", "folium: cúbica en y (Cardano, fuera de alcance)"],
       ["abs(abs((y+1)^2 - 3) - 2) = x", "tres ± independientes: >4 ramas"],
       ["tan(y) + y = x", "trascendente mixta"],

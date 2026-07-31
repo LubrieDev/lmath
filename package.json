@@ -1,6 +1,6 @@
 {
   "name": "lmath",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Graph functions, systems, derivatives and integrals in interactive blocks.",
   "main": "main.js",
   "scripts": {
@@ -9,6 +9,10 @@
     "test:zoom": "esbuild tests/zoom.test.ts --bundle --platform=node --format=cjs --outfile=tests/.bundle.zoom.cjs && node tests/.bundle.zoom.cjs",
     "test:todo": "npm run test && npm run test:zoom",
     "trazar": "esbuild herramientas/trazar.ts --bundle --platform=node --format=cjs --outfile=herramientas/.trazar.cjs",
+    "huella": "esbuild herramientas/huellaTrazado.ts --bundle --platform=node --format=cjs --outfile=herramientas/.huella.cjs",
+    "medir": "esbuild herramientas/medirTrazado.ts --bundle --platform=node --format=cjs --outfile=herramientas/.medir.cjs",
+    "sonda": "esbuild herramientas/sondaCas.ts --bundle --platform=node --format=cjs --outfile=herramientas/.sonda.cjs",
+    "notacion": "esbuild herramientas/sondaNotacion.ts --bundle --platform=node --format=cjs --outfile=herramientas/.notacion.cjs",
     "bateria": "esbuild tests/bateria-cas.ts --bundle --platform=node --format=cjs --outfile=tests/.bundle.bateria.cjs && node tests/.bundle.bateria.cjs",
     "fuzz": "esbuild tests/fuzz-despeje.ts --bundle --platform=node --format=cjs --outfile=tests/.bundle.fuzz.cjs && node tests/.bundle.fuzz.cjs"
   },

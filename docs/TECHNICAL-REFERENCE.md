@@ -267,7 +267,11 @@ sequence of passes. The order is load-bearing; the main stages:
 7. Fractions `\frac{..}{..}` → `(..)/(..)` with balanced-brace recursion; fractional
    exponents `x^{m/n}` → `nthRoot(x^m, n)` (real root for negative bases where defined,
    and it renders back as a radical); `^{…}` → `^(…)` recursively.
-8. Logarithms (`\log_{b}`, `\ln`, bare `ln` → `log`), trig with LaTeX-style arguments,
+8. Logarithms — every spelling normalises to the single internal form `log(u, base)`:
+   `\log_{b}{u}` → `log(u, b)`, a **base-less** `log(u)` → `log(u, 10)` (decimal, as taught
+   and as on a calculator), and `\ln`/bare `ln` → `log(u, e)`. Writing the base is what makes
+   the form survive a second trip through the parser, which the project's strings do make —
+   trig with LaTeX-style arguments,
    and functions applied to **ungrouped** arguments (`\ln x`, `\cos 5t` — the coefficient
    run rule prevents `cos(5)*t`).
 9. `\sqrt[n]{…}` → `nthRoot`, `\cdot → *`, and finally the residual sweep `\cmd → cmd`.
@@ -340,9 +344,12 @@ equivalence check** so a formal simplification can never change the plotted func
   to avoid LaTeX gluing.
 
 **`src/simplificar.ts`** — `simplificarExpr` = `rationalizeSeguro` for polynomials, else
-`simplify` with two extra whole-ℝ rules (`log(e^n)→n`, `log(e)→1`; the converse
-`e^(log u)→u` is deliberately absent — it holds only for u>0 and would change the apparent
-domain). `simplificarLado` then applies the **fidelity guardian** `formasEquivalentes`: the
+`simplify` with extra whole-ℝ rules. Logarithms: `log(e^n)→n` and `log(e)→1`, each in **both**
+spellings — the one-argument form mathjs itself produces internally, and the explicit
+`log(u, e)` the plugin's own modules emit, which is required now that a base-less `log` reads
+as base 10. The converse `e^(log u)→u` is deliberately absent: it holds only for u>0 and would
+change the apparent domain. Plus five trigonometric identities (Pythagorean and three
+parities) held to the same bar — `tan(-x)` and `-tan(x)` have the same poles. `simplificarLado` then applies the **fidelity guardian** `formasEquivalentes`: the
 result must match the original over a "bland" sample (non-integer, both signs, near and far
 from 0; each free variable de-correlated by index offsetting), *including non-finiteness* —
 this is what stops `0/0 → 0` from ever reaching the panel. If the result is a nested

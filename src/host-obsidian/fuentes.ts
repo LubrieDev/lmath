@@ -34,6 +34,13 @@ const CARAS: ReadonlyArray<{ uri: string; estilo: "normal" | "italic" }> = [
  * El parámetro `plugin` ya no se usa (la fuente viaja embebida en el bundle); se
  * mantiene por compatibilidad con la API pública y llamadas existentes.
  */
+/** El `add` de `document.fonts` no resuelve en todas las combinaciones de `lib` y versión de
+ *  TypeScript con las que se analiza este plugin —el `forEach` de la misma propiedad sí—, y sin
+ *  tipo la llamada se audita como insegura. Se declara aquí la única operación que usamos, que
+ *  además documenta qué necesitamos del navegador. */
+const registroDeFuentes = (): { add(cara: FontFace): void } =>
+  document.fonts as { add(cara: FontFace): void };
+
 export async function registrarFuenteLora(_plugin?: Plugin): Promise<void> {
   // Ya registrada (recarga del plugin en la misma sesión de Obsidian) → nada que hacer.
   let yaEsta = false;
@@ -44,7 +51,7 @@ export async function registrarFuenteLora(_plugin?: Plugin): Promise<void> {
     try {
       const cara = new FontFace("Lora", `url("${uri}")`, { weight: "400 700", style: estilo });
       await cara.load();
-      document.fonts.add(cara);
+      registroDeFuentes().add(cara);
     } catch (e) {
       console.warn("LMath: no se pudo cargar la fuente Lora", estilo, e);
     }

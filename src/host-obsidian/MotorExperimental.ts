@@ -24,7 +24,17 @@ import { Camara } from "../motor/interaction/Camara";
 import { Navegacion } from "../motor/interaction/Navegacion";
 import { crearMotor, crearMotorSistema } from "../motor/app/composicion";
 import { dividirEcuaciones } from "../motor/parsing/dividirEcuaciones";
-import { construirObjeto } from "../motor/parsing/construirObjeto";
+import { construirObjeto, expresionPolar, expresionesParametricas } from "../motor/parsing/construirObjeto";
+import { analizarPolar, type AnalisisPolar, type PatronPolar } from "../motor/analysis/analisisPolar";
+import {
+  analizarParametrico, type AnalisisParametrico, type FamiliaParametrica,
+} from "../motor/analysis/analisisParametrico";
+import { analizarIntegral, type AnalisisIntegral } from "../motor/analysis/analisisIntegral";
+import {
+  analizarDerivada, type AnalisisDerivada, type TipoCritico,
+} from "../motor/analysis/analisisDerivada";
+import { numeroATexto, numeroALatex } from "../motor/analysis/formatoNumero";
+import { crearFuncionReal } from "../motor/fields/funcionRealMathjs";
 import { insertarProductoImplicito } from "../motor/parsing/productoImplicito";
 import { funcionDelParametro, renombrarParametroAX } from "../motor/parsing/componentesParametricas";
 import { aPantallaX } from "../motor/scene/viewport-utils";
@@ -94,6 +104,14 @@ const PROPORCION_PLANO_FLOTANTE = 0.82;
 const ALTO_PANEL_FLOTANTE = 180;
 /** Margen de la tarjeta flotante contra el borde del plano, y hueco entre chips. */
 const MARGEN_FLOTANTE = 8;
+
+/**
+ * Cuántos puntos críticos (o inflexiones) llega a enumerar el panel ⓘ de obs-derivate
+ * antes de resumirlos. Es un límite de LECTURA, no de análisis: `estadoGrupo` ya resume los
+ * grupos verdaderamente numerosos (>20) y los periódicos, pero seis líneas de "x = … (…)"
+ * son ya media altura del cuadro, y una lista que hay que desplazar no se lee de un vistazo.
+ */
+const MAX_LISTA_DERIVADA = 6;
 
 /**
  * Lado de los chips redondos del plano (🏠, +, −, ⌖, ⓘ).
@@ -444,8 +462,21 @@ export class MotorExperimental {
     // de esa lógica se desincronizaría en cuanto cambiara una de las tres.
     let hayChipInfo = false;
     if (exprGraph && !degenerada) {
-      this.montarBotonInfo(wrap, exprGraph, ctx, reparto.ladoChip, exclusion);
-      hayChipInfo = true;
+      // obs-integral grafica el INTEGRANDO, así que sin este desvío el ⓘ describía a f como
+      // una curva suelta —"corta el eje Y en 0", "raíces: 0", "sin vértices"— y no decía
+      // nada de la integral, que es lo único que ese bloque afirma. Su panel propio habla
+      // de la OPERACIÓN (intervalo, valor, qué mide ese número, valor medio).
+      if (this.integral) hayChipInfo = this.montarBotonInfoIntegral(wrap, source, ctx, reparto.ladoChip, exclusion);
+      // obs-derivate grafica f′, así que el resumen heredado describía f′ como una curva
+      // suelta. Los números eran los buenos con el nombre de otra función: sus raíces son
+      // los puntos CRÍTICOS de f y sus vértices, las INFLEXIONES. Su panel propio habla de
+      // f, que es de quien trata el bloque (ver `analisisDerivada`).
+      else if (this.derivada && funcionEscrita)
+        hayChipInfo = this.montarBotonInfoDerivada(wrap, funcionEscrita, exprGraph, reparto.ladoChip, exclusion);
+      else {
+        this.montarBotonInfo(wrap, exprGraph, ctx, reparto.ladoChip, exclusion);
+        hayChipInfo = true;
+      }
     }
 
     // La cámara emite dos eventos: onViewport (recomputar geometría + pintar) y
@@ -909,6 +940,41 @@ export class MotorExperimental {
       try { tipo = construirObjeto(graficadas[0], "info").tipo; } catch { tipo = ""; }
       const acotadaPorPeriodo = tipo === "parametrica" || tipo === "polar";
 
+      // Una POLAR no se resume con categorías cartesianas: "corta el eje Y en 1,1" no
+      // dice nada de una rosa. Se analiza r(θ) por su cuenta (periodo, simetrías, rango
+      // radial, extremos, paso por el polo, área) y ese resumen sustituye al clásico.
+      // No depende de la vista —es la curva entera, no lo que se ve—, así que se calcula
+      // UNA vez aquí y no en cada apertura del popover. Si el análisis falla, `null`
+      // deja caer el panel al resumen geométrico de siempre en vez de quedarse mudo.
+      const exprPolar = tipo === "polar" ? expresionPolar(graficadas[0]) : null;
+      const infoPolar = exprPolar ? analizarPolar(exprPolar) : null;
+
+      // Lo mismo para una PARAMÉTRICA, y por lo mismo: "intersección con Y" es ambiguo en
+      // una Lissajous que cruza el eje una docena de veces, "raíz" no dice si es x(t)=0 o
+      // y(t)=0, y "vértice" no está definido fuera de familias concretas. Ninguna de las
+      // tres es una propiedad intrínseca de la curva.
+      //
+      // A diferencia del polar, este análisis se calcula PEREZOSAMENTE al abrir el cuadro
+      // y se cachea: el conteo de autointersecciones recorre las parejas de segmentos y
+      // llega a los 100 ms, que da igual en un clic pero se notaría al montar el bloque.
+      const compsParam = tipo === "parametrica" ? expresionesParametricas(graficadas[0]) : null;
+      let infoParam: AnalisisParametrico | null = null;
+      let paramCalculado = false;
+      const analisisParametrico = (): AnalisisParametrico | null => {
+        if (paramCalculado || !compsParam) return infoParam;
+        paramCalculado = true;
+        // El intervalo del parámetro es el del OBJETO, no una constante repetida aquí: si
+        // algún día el bloque admite fijarlo, el panel lo sigue solo.
+        let dominio: readonly [number, number] = [0, 2 * Math.PI];
+        try {
+          const obj = construirObjeto(graficadas[0], "info");
+          if (obj.tipo === "parametrica") dominio = obj.p.dominio;
+        } catch { /* se queda el intervalo por defecto */ }
+        infoParam = analizarParametrico(
+          compsParam[0], compsParam[1], dominio[0], dominio[1]);
+        return infoParam;
+      };
+
       const esTrig = !acotadaPorPeriodo && graficadas[0].split("=").some((lado) =>
         tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado.trim()))));
 
@@ -923,6 +989,19 @@ export class MotorExperimental {
 
       const refrescarInfo = () => {
         pop.empty();
+
+        // Ramas propias (polar y paramétrica): resumen intrínseco de la curva, sin el pie
+        // "en la vista actual" —no lo está: describen la curva entera sobre su intervalo—.
+        if (infoPolar) {
+          for (const linea of this.lineasPolar(infoPolar)) pop.createDiv({ text: linea });
+          return;
+        }
+        const param = analisisParametrico();
+        if (param) {
+          for (const linea of this.lineasParametricas(param)) pop.createDiv({ text: linea });
+          return;
+        }
+
         const r = escena.resumenNotables(camara.viewport());
         const lineas: string[] = [];
 
@@ -932,14 +1011,14 @@ export class MotorExperimental {
         else if (estIY === "demasiadas") lineas.push(T.interseccionesYDemasiadas);
         else if (r.interseccionesY.length > 0)
           for (const p of r.interseccionesY)
-            lineas.push(T.interseccionY(p.punto.y.toFixed(4)));
+            lineas.push(T.interseccionY(numeroATexto(p.punto.y)));
         else lineas.push(T.noCortaY);
 
         const estR = estadoGrupo(r.raices.length, esTrig);
         if (estR === "infinitas") lineas.push(T.raicesInfinitas);
         else if (estR === "demasiadas") lineas.push(T.raicesDemasiadas);
         else if (r.raices.length > 0)
-          lineas.push(T.raicesPrefijo + r.raices.map((p) => p.punto.x.toFixed(4)).join(", "));
+          lineas.push(T.raicesPrefijo + r.raices.map((p) => numeroATexto(p.punto.x)).join(", "));
         else lineas.push(T.noRaices);
 
         const estV = estadoGrupo(r.vertices.length, esTrig);
@@ -947,7 +1026,7 @@ export class MotorExperimental {
         else if (estV === "demasiadas") lineas.push(T.verticesDemasiados);
         else if (r.vertices.length > 0)
           for (const v of r.vertices)
-            lineas.push(T.vertice(v.punto.x.toFixed(4), v.punto.y.toFixed(4)));
+            lineas.push(T.vertice(numeroATexto(v.punto.x), numeroATexto(v.punto.y)));
         else lineas.push(T.noVertices);
 
         for (const linea of lineas) pop.createDiv({ text: linea });
@@ -2139,6 +2218,441 @@ export class MotorExperimental {
     return norm === "" ? null : norm;
   }
 
+  /** Nombre traducido de la familia clásica reconocida. */
+  private nombrePatron(p: PatronPolar): string {
+    const P = t().polar.patron;
+    switch (p.tipo) {
+      case "circunferenciaCentrada": return P.circunferenciaCentrada;
+      case "circunferenciaPorPolo": return P.circunferenciaPorPolo;
+      case "rosa": return P.rosa(String(p.petalos));
+      case "cardioide": return P.cardioide;
+      case "limaconLazo": return P.limaconLazo;
+      case "limaconHoyuelo": return P.limaconHoyuelo;
+      case "limaconConvexo": return P.limaconConvexo;
+    }
+  }
+
+  /**
+   * Las líneas del panel ⓘ de una curva POLAR, en orden de prioridad: qué es, cada
+   * cuánto se repite, sus simetrías, hasta dónde llega el radio, dónde están sus
+   * extremos, si toca el origen y cuánta área barre.
+   *
+   * Cada línea aparece SOLO si hay algo que decir. Dos ausencias son deliberadas:
+   *   • Sin simetrías detectadas no se escribe nada. Los tests son condiciones
+   *     suficientes (ver `analisisPolar`), así que "no tiene simetrías" sería una
+   *     afirmación que el análisis no respalda.
+   *   • Con radio constante se omiten los extremos: en una circunferencia centrada el
+   *     máximo y el mínimo son el mismo número que ya se ha dicho, en todo θ.
+   *
+   * Los números pasan por `numeroATexto`, que devuelve π donde toca (θ = π/16) en vez
+   * del decimal, y quita el ruido del último dígito de los cálculos numéricos.
+   */
+  private lineasPolar(a: AnalisisPolar): string[] {
+    const T = t().polar;
+    const lineas: string[] = [];
+
+    const familia = a.patron ? this.nombrePatron(a.patron) : null;
+    lineas.push(familia ? `${T.titulo} · ${familia}` : T.titulo);
+
+    // Un periodo de exactamente 2π sin repetición interna no se anuncia: TODA polar se
+    // cierra al dar la vuelta, así que "se repite cada 2π" no distingue esta curva de
+    // ninguna otra y gasta una línea del cuadro. Solo se dice cuando la figura se repite
+    // VARIAS veces por vuelta (hay orden rotacional) o cuando tarda MÁS de una vuelta en
+    // cerrarse (r=sin(θ/10) necesita 20π), que son los dos casos que sorprenden.
+    const periodoInformativo = a.periodoR !== null &&
+      (a.ordenRotacional !== null || a.periodoR > 2 * Math.PI + 1e-6);
+    if (periodoInformativo && a.periodoR !== null) {
+      const trozos = [T.periodo(numeroATexto(a.periodoR))];
+      if (a.ordenRotacional !== null)
+        trozos.push(T.ordenRotacional(String(a.ordenRotacional)));
+      lineas.push(trozos.join(" · "));
+    }
+
+    if (a.simetrias.length > 0) {
+      const nombres = a.simetrias.map((s) =>
+        s === "polo" ? T.simetriaPolo :
+        s === "ejePolar" ? T.simetriaEjePolar : T.simetriaVertical);
+      lineas.push(T.simetriasPrefijo + nombres.join(", "));
+    }
+
+    const radioConstante = Math.abs(a.rMax - a.rMin) < 1e-9;
+    if (radioConstante) {
+      lineas.push(T.radioConstante(numeroATexto(a.rMax)));
+    } else {
+      lineas.push(T.rangoRadial(numeroATexto(a.rMin), numeroATexto(a.rMax)));
+      if (a.cambiaSigno) lineas.push(T.cambiaSigno);
+
+      // Los extremos van en UNA línea y solo con su ÁNGULO: el valor de r ya lo acaba de
+      // dar el rango, y en un cuadro de 260×200 repetirlo cuesta dos líneas que no
+      // añaden nada. Lo que el rango no dice es DÓNDE ocurren, y eso es esto.
+      //
+      // El "(+ k·P)" solo se añade cuando la figura se repite VARIAS veces por vuelta: en
+      // una cardioide (un único máximo por vuelta, en θ=0) escribir "+ k·2π" es ruido,
+      // porque no hay más extremos que señalar dentro del recorrido.
+      const extremos = T.extremosEn(
+        numeroATexto(a.thetaRMax), numeroATexto(a.thetaRMin));
+      lineas.push(
+        a.ordenRotacional !== null && a.periodoR !== null
+          ? T.masMultiplos(extremos, numeroATexto(a.periodoR))
+          : extremos);
+    }
+
+    if (a.angulosPolo === null) lineas.push(T.poloDemasiados);
+    else if (a.angulosPolo.length === 0) lineas.push(T.noPasaPorPolo);
+    else lineas.push(T.pasaPorPolo(a.angulosPolo.map(numeroATexto).join(", ")));
+
+    if (a.areaBarrida !== null)
+      lineas.push(T.areaBarrida(
+        numeroATexto(a.areaBarrida), numeroATexto(a.intervaloArea)));
+
+    return lineas;
+  }
+
+  /** Nombre traducido de la familia paramétrica reconocida. */
+  private nombreFamilia(f: FamiliaParametrica): string {
+    const F = t().parametrica.familia;
+    switch (f.tipo) {
+      case "circunferencia": return F.circunferencia;
+      case "elipse": return F.elipse;
+      case "lissajous":
+        return F.lissajous(String(f.a), String(f.b), numeroATexto(f.desfase));
+    }
+  }
+
+  /**
+   * Las líneas del panel ⓘ de una curva PARAMÉTRICA: qué es, sobre qué intervalo, dónde
+   * cabe, si toca el origen, sus simetrías, cuántas veces se cruza, cuánto mide y cuánta
+   * área barre. Mismas reglas que el polar —cada línea solo si hay algo que decir, y las
+   * simetrías se afirman pero nunca se niegan (ver `analisisParametrico`)—.
+   *
+   * El área se rotula ALGEBRAICA a propósito: es ½∮(x dy − y dx), que cuenta el sentido de
+   * giro. En una Lissajous los lóbulos recorridos en sentidos opuestos se cancelan y sale
+   * 0; eso no es un fallo, es lo que mide esa integral, y llamarla "área encerrada" sí
+   * sería un error. Solo aparece cuando la curva se cierra: en una abierta no significa nada.
+   */
+  private lineasParametricas(a: AnalisisParametrico): string[] {
+    const T = t().parametrica;
+    const lineas: string[] = [];
+
+    const familia = a.familia ? this.nombreFamilia(a.familia) : null;
+    lineas.push(familia ? `${T.titulo} · ${familia}` : T.titulo);
+
+    // Intervalo, cierre y periodo en una sola línea: son la misma pregunta —cuánta curva
+    // hay y cuándo se repite— y por separado gastan tres de las siete que caben.
+    const trozos = [T.intervalo(numeroATexto(a.tMin), numeroATexto(a.tMax))];
+    if (a.cerrada) trozos.push(T.cerrada);
+    if (a.periodo !== null) {
+      trozos.push(a.periodoExcedeDominio
+        ? T.periodoExcede(numeroATexto(a.periodo))
+        : T.periodo(numeroATexto(a.periodo)));
+    }
+    lineas.push(trozos.join(" · "));
+
+    lineas.push(T.caja(
+      numeroATexto(a.xMin), numeroATexto(a.xMax),
+      numeroATexto(a.yMin), numeroATexto(a.yMax)));
+
+    if (a.pasaPorOrigen) lineas.push(T.pasaPorOrigen);
+
+    if (a.simetrias.length > 0) {
+      const nombres = a.simetrias.map((s) =>
+        s === "origen" ? T.simetriaOrigen :
+        s === "ejeX" ? T.simetriaEjeX : T.simetriaEjeY);
+      lineas.push(T.simetriasPrefijo + nombres.join(", "));
+    }
+
+    // El conteo solo se enseña si es fiable; con demasiados cruces se calla, que es
+    // preferible a un número en el que no se puede confiar.
+    if (a.autointersecciones !== null) {
+      lineas.push(a.autointersecciones === 0
+        ? T.sinAutointersecciones
+        : T.autointersecciones(String(a.autointersecciones)));
+    }
+
+    const cierre: string[] = [];
+    if (a.longitud !== null) cierre.push(T.longitud(numeroATexto(a.longitud)));
+    if (a.areaAlgebraica !== null)
+      cierre.push(T.areaAlgebraica(numeroATexto(a.areaAlgebraica)));
+    if (cierre.length > 0) lineas.push(cierre.join(" · "));
+
+    return lineas;
+  }
+
+  /** Intervalo en texto plano, con ∞ donde toca: `(-∞, -1)`, `(0, ∞)`. */
+  private intervaloATexto(a: number, b: number): string {
+    const n = (v: number): string =>
+      v === Infinity ? "∞" : v === -Infinity ? "-∞" : numeroATexto(v);
+    return `(${n(a)}, ${n(b)})`;
+  }
+
+  /**
+   * Las líneas del panel ⓘ de una DERIVADA: qué hace f, leído en f′. Pendiente en el
+   * origen, puntos críticos clasificados, crecimiento, inflexiones y puntos angulosos.
+   *
+   * Nada de esto es nuevo en el fondo —la intersección Y, las raíces y los vértices de f′
+   * ya se calculaban— salvo la clasificación de cada crítico, los tramos y los puntos no
+   * derivables. Lo que cambia es que se dicen con el nombre que tienen para f, que es la
+   * función de la que trata el bloque.
+   *
+   * Los grupos numerosos se resumen con la MISMA política que el resumen cartesiano
+   * (`estadoGrupo`): una trigonométrica tiene infinitos críticos, y media lista de ellos no
+   * es información. Y si un tramo muere en el borde del muestreo sin poder llegar a ±∞, se
+   * anuncia el rango analizado: es la señal de que hay críticos ahí fuera sin listar.
+   */
+  private lineasDerivada(
+    A: AnalisisDerivada, esTrig: boolean
+  ): { texto: string; sangrado?: boolean }[] {
+    const T = t().derivada;
+    const lineas: { texto: string; sangrado?: boolean }[] = [{ texto: T.titulo }];
+    const push = (texto: string, sangrado?: boolean) => lineas.push({ texto, sangrado });
+
+    if (A.pendienteEn0 !== null)
+      push(T.pendienteEn0(numeroATexto(A.pendienteEn0)));
+
+    const nombreTipo = (tipo: TipoCritico): string => T.tipo[tipo];
+    const estCriticos = estadoGrupo(A.criticos.length, esTrig);
+    if (estCriticos === "infinitas") push(T.criticosInfinitos);
+    else if (estCriticos === "demasiadas" || A.criticos.length > MAX_LISTA_DERIVADA) {
+      if (A.criticos.length > 0) push(T.criticosDemasiados);
+    } else if (A.criticos.length === 1) {
+      push(T.criticoUno(
+        T.criticoItem(numeroATexto(A.criticos[0].x), nombreTipo(A.criticos[0].tipo))));
+    } else if (A.criticos.length > 1) {
+      push(T.criticosPrefijo);
+      for (const c of A.criticos)
+        push(T.criticoItem(numeroATexto(c.x), nombreTipo(c.tipo)), true);
+    }
+
+    if (A.monotonia !== null)
+      for (const tramo of A.monotonia)
+        push((tramo.creciente ? T.creciente : T.decreciente)(
+          this.intervaloATexto(tramo.a, tramo.b)));
+
+    const estInflex = estadoGrupo(A.inflexiones.length, esTrig);
+    if (estInflex === "infinitas") push(T.inflexionesInfinitas);
+    else if (estInflex === "demasiadas" || A.inflexiones.length > MAX_LISTA_DERIVADA) {
+      if (A.inflexiones.length > 0) push(T.inflexionesDemasiadas);
+    } else if (A.inflexiones.length === 1) {
+      push(T.inflexionUna(numeroATexto(A.inflexiones[0])));
+    } else if (A.inflexiones.length > 1) {
+      push(T.inflexionesPrefijo);
+      for (const x of A.inflexiones) push(T.punto(numeroATexto(x)), true);
+    }
+
+    // Los puntos no derivables ya aparecen arriba como críticos CON SU FORMA (esquina,
+    // cúspide). Repetirlos aquí no es redundante: allí se dice qué le pasa a f, aquí que f′
+    // no existe, y son dos hechos distintos que el lector puede querer por separado. Con la
+    // lista de críticos resumida ("infinitos"), esta es además la única que los nombra.
+    if (A.noDerivables !== null && A.noDerivables.length > 0) {
+      if (A.noDerivables.length === 1)
+        push(T.noDerivableUno(numeroATexto(A.noDerivables[0])));
+      else {
+        push(T.noDerivablesPrefijo);
+        for (const x of A.noDerivables) push(T.punto(numeroATexto(x)), true);
+      }
+    }
+
+    if (A.acotadoPorRango)
+      push(T.rangoAnalisis(numeroATexto(A.rango[0]), numeroATexto(A.rango[1])));
+
+    return lineas;
+  }
+
+  /**
+   * Botón ⓘ + popover del bloque obs-derivate. Devuelve si llegó a montarse.
+   *
+   * `fExpr` es la función ESCRITA (cruda) y `dfExpr` la derivada ya normalizada que grafica
+   * el motor: hacen falta las dos, porque todo se enmascara por el dominio de f (f′ = 1/x
+   * evalúa en x<0, donde ln x no existe) y porque los puntos angulosos se buscan donde f es
+   * continua pero f′ no. Perezoso y cacheado, como el de las integrales.
+   */
+  private montarBotonInfoDerivada(
+    wrap: HTMLElement, fExpr: string, dfExpr: string,
+    lado: number, exclusion: ExclusionPopover
+  ): boolean {
+    let f: (x: number) => number;
+    let df: (x: number) => number;
+    try {
+      // mathjs puede devolver Complex (√−1): fuera del dominio real = NaN, el mismo
+      // contrato que `crearFuncionReal` y que usa el resumen cartesiano.
+      const fc = compilarFuncion(insertarProductoImplicito(normalizarEntrada(fExpr)), "x");
+      const dc = compilarFuncion(dfExpr, "x");
+      f = (x) => { const v = fc(x); return typeof v === "number" ? v : NaN; };
+      df = (x) => { const v = dc(x); return typeof v === "number" ? v : NaN; };
+    } catch { return false; }
+
+    const btnInfo = wrap.createDiv();
+    this.ponerTooltip(btnInfo, t().botones.resumenDerivada);
+    btnInfo.style.cssText = this.estiloChipInfo(lado);
+    this.montarIcono(btnInfo, "info", ladoIcono(lado));
+
+    const pop = wrap.createDiv();
+    pop.style.cssText = this.estiloPopoverInfo(lado);
+    exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
+
+    const esTrig = tieneTrigonometria(dfExpr);
+    let montado = false;
+    const rellenar = () => {
+      if (montado) return;
+      montado = true;
+      let A: AnalisisDerivada | null = null;
+      try { A = analizarDerivada(f, df); } catch { /* sin panel, nunca una excepción */ }
+      if (!A) return;
+      for (const l of this.lineasDerivada(A, esTrig)) {
+        const div = pop.createDiv({ text: l.texto });
+        // Los ítems de una lista se sangran para que se lean como lo que son: el
+        // desglose de la línea de arriba, no cinco afirmaciones sueltas seguidas.
+        if (l.sangrado) div.setCssStyles({ paddingLeft: "10px" });
+      }
+    };
+
+    btnInfo.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const abierto = pop.style.display !== "none";
+      if (!abierto) { exclusion.alAbrir(); rellenar(); }
+      pop.setCssStyles({ display: abierto ? "none" : "block" });
+    });
+    return true;
+  }
+
+  /**
+   * Las líneas del panel ⓘ de una INTEGRAL definida: qué región se mide, cuánto vale ese
+   * número, QUÉ es ese número (un área, o una diferencia de áreas) y el valor medio.
+   *
+   * El criterio de las categorías es el mismo que en polar y paramétricas —solo se afirma
+   * lo que la operación define—, aplicado aquí a la diferencia entre el VALOR y el ÁREA:
+   *
+   *   • Si el integrando no cruza el eje, valor y área son el mismo número y decirlos por
+   *     separado sería llenar dos líneas con lo mismo. Se dice UNO, rotulado con lo que es.
+   *   • Si lo cruza, ya no coinciden: el valor es la SUMA CON SIGNO, y ahí sí aportan las
+   *     dos áreas por separado —son lo que el valor esconde—. Solo aparecen cuando los
+   *     trozos reconstruyen el total (ver `descomponer`); si no, se calla.
+   *
+   * El VALOR va en KaTeX, no en texto: es el único número del cuadro que puede tener forma
+   * cerrada (8/3, π/2, ln 3) y se toma del MISMO reconocedor que el panel de la fórmula
+   * (`cuerpoAreaLatexExacto`), para que los dos sitios donde el bloque enseña su resultado
+   * no puedan discrepar. El resto son números sueltos y van por `numeroATexto`, como en los
+   * otros paneles.
+   */
+  private lineasIntegral(
+    A: AnalisisIntegral, variable: string, source: string
+  ): { texto: string; tex?: string; cola?: string }[] {
+    const T = t().integral;
+    const lineas: { texto: string; tex?: string; cola?: string }[] = [];
+
+    // Cabecera: qué es, y si es IMPROPIA (singularidad en un extremo) también dónde y que
+    // converge —el valor de una impropia es aproximado, y quien lo lee merece saberlo—.
+    const cabecera = [T.titulo];
+    if (A.impropia && A.singularidades.length > 0)
+      cabecera.push(T.impropia(variable, A.singularidades.map(numeroATexto).join(", ")));
+    lineas.push({ texto: cabecera.join(" · ") });
+
+    // Intervalo NULO (a = b): la integral es 0 por definición y no hay región, ni signo, ni
+    // valor medio (sería 0/0) que describir. Se dice eso y se acaba el cuadro.
+    if (A.a === A.b) {
+      lineas.push({ texto: T.intervaloVacio });
+      return lineas;
+    }
+
+    lineas.push({
+      texto: T.intervalo(
+        numeroATexto(Math.min(A.a, A.b)), numeroATexto(Math.max(A.a, A.b)), variable),
+    });
+    // Límites al revés: el intervalo se enseña ordenado (es la región que se ve sombreada),
+    // así que hay que decir que el número lleva el signo cambiado respecto a esa región.
+    if (A.invertido) lineas.push({ texto: T.limitesInvertidos });
+
+    // El cuerpo puede ser null solo si el bloque no tiene valor, y entonces lleva velo y
+    // este panel no se monta; el `numeroALatex` es la red de seguridad, no un caso vivo.
+    const { cuerpo, conector } = cuerpoAreaLatexExacto(source);
+    const tex = cuerpo
+      ? (conector === "=" ? cuerpo : `\\approx ${cuerpo}`)
+      : numeroALatex(A.valor);
+    // La nota dice QUÉ es el número, y las tres formas de decirlo dan por hecho que el signo
+    // del valor es el del dibujo. Con los límites al revés eso deja de ser cierto —∫₂⁰x²dx es
+    // negativa con la curva ENTERA por encima del eje—, así que ahí no se rotula: la línea de
+    // límites invertidos ya explica el signo, y repetirlo mal sería peor que callarlo.
+    const nota = A.invertido ? null :
+      A.signo === 1 ? T.valorEsArea :
+      A.signo === -1 ? T.valorBajoEje :
+      A.signo === 0 ? T.integrandoNulo :
+      T.valorFirmado;   // cruza el eje (o lo cruza demasiadas veces para enumerarlo)
+    lineas.push({ texto: T.valorPrefijo, tex, cola: nota ? ` · ${nota}` : undefined });
+
+    if (A.signo === null) {
+      if (A.cruces === null) lineas.push({ texto: T.crucesMuchos });
+      else if (A.cruces.length > 0)
+        lineas.push({ texto: T.cruces(variable, A.cruces.map(numeroATexto).join(", ")) });
+    }
+
+    if (A.areaPositiva !== null && A.areaNegativa !== null) {
+      lineas.push({ texto: T.areaPositiva(numeroATexto(A.areaPositiva)) });
+      lineas.push({ texto: T.areaNegativa(numeroATexto(A.areaNegativa)) });
+    }
+
+    if (A.promedio !== null) lineas.push({ texto: T.promedio(numeroATexto(A.promedio)) });
+
+    return lineas;
+  }
+
+  /**
+   * Botón ⓘ + popover del bloque obs-integral. Devuelve si llegó a montarse (el llamador
+   * necesita saberlo para colocar el botón f(x): los chips comparten esquina).
+   *
+   * El análisis se calcula PEREZOSAMENTE al abrir el cuadro y se cachea, como el de las
+   * paramétricas: descomponer la integral son hasta siete cuadraturas más, y el bloque ya
+   * hace dos al montarse (la clasificación del velo y el valor del panel). En un clic no se
+   * nota; al montar una nota con varios bloques, sí. El contenido NO depende de la vista
+   * —una integral definida es propiedad de (f, a, b), no del encuadre—, así que una vez
+   * calculado no hay nada que refrescar al mover la cámara.
+   */
+  private montarBotonInfoIntegral(
+    wrap: HTMLElement, source: string, ctx: MarkdownPostProcessorContext,
+    lado: number, exclusion: ExclusionPopover
+  ): boolean {
+    const it = extraerIntegral(source);
+    if (!it) return false;
+    const a = evaluarLimite(it.a), b = evaluarLimite(it.b);
+    if (a === null || b === null) return false;   // límites simbólicos: el velo ya lo dice
+
+    const btnInfo = wrap.createDiv();
+    // Tooltip propio: este chip no resume "puntos notables" de ninguna curva.
+    this.ponerTooltip(btnInfo, t().botones.resumenIntegral);
+    btnInfo.style.cssText = this.estiloChipInfo(lado);
+    this.montarIcono(btnInfo, "info", ladoIcono(lado));
+
+    const pop = wrap.createDiv();
+    pop.style.cssText = this.estiloPopoverInfo(lado);
+    exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
+
+    let montado = false;
+    const rellenar = () => {
+      if (montado) return;
+      montado = true;
+      let A: AnalisisIntegral | null = null;
+      try {
+        A = analizarIntegral(
+          crearFuncionReal(insertarProductoImplicito(normalizarEntrada(it.integrando))), a, b);
+      } catch { /* integrando que no compila: sin panel, nunca una excepción al abrir */ }
+      if (!A) return;
+      for (const l of this.lineasIntegral(A, it.variable, source)) {
+        const div = pop.createDiv({ text: l.texto });
+        // La parte con forma cerrada (el valor) va en KaTeX dentro de la línea, por el
+        // mismo helper que el resumen cartesiano; la cola vuelve a texto plano detrás.
+        if (l.tex) this.montarEtiquetaMath(div.createSpan(), l.tex, ctx);
+        if (l.cola) div.createSpan({ text: l.cola });
+      }
+    };
+
+    btnInfo.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const abierto = pop.style.display !== "none";
+      if (!abierto) { exclusion.alAbrir(); rellenar(); }
+      pop.setCssStyles({ display: abierto ? "none" : "block" });
+    });
+    return true;
+  }
+
   /**
    * Botón ⓘ + popover con el resumen de puntos notables de la función (portado del
    * GraphEngine): intersección con Y, raíces y vértices. Los grupos periódicos
@@ -2185,7 +2699,7 @@ export class MotorExperimental {
     } else {
       lineas.push({
         texto: Number.isFinite(interseccionY)
-          ? T.interseccionY(interseccionY.toFixed(4))
+          ? T.interseccionY(numeroATexto(interseccionY))
           : T.interseccionYNoDefinida,
       });
       if (estadoRaices === "infinitas") lineas.push({ texto: T.raicesInfinitas });
@@ -2195,7 +2709,7 @@ export class MotorExperimental {
         // conjunto en notación de intervalos renderizado en KaTeX a continuación.
         lineas.push({ texto: T.raicesPrefijo, tex: raicesALatex(analisis.intervalosRaiz, analisis.raices) });
       else if (analisis.raices.length > 0)
-        lineas.push({ texto: T.raicesPrefijo + analisis.raices.map((r) => r.toFixed(4)).join(", ") });
+        lineas.push({ texto: T.raicesPrefijo + analisis.raices.map(numeroATexto).join(", ") });
       else lineas.push({ texto: T.noRaices });
 
       if (estadoVertices === "infinitas") lineas.push({ texto: T.verticesInfinitos });
@@ -2203,7 +2717,8 @@ export class MotorExperimental {
       else if (analisis.vertices.length > 0)
         for (const v of analisis.vertices)
           lineas.push({
-            texto: (v.tipo === "min" ? T.verticeMin : T.verticeMax)(v.x.toFixed(4), v.y.toFixed(4)),
+            texto: (v.tipo === "min" ? T.verticeMin : T.verticeMax)(
+              numeroATexto(v.x), numeroATexto(v.y)),
           });
       else lineas.push({ texto: T.noVertices });
     }

@@ -17,6 +17,57 @@ function encontrarParentesisCierre(texto: string, inicio: number): number {
   return -1;
 }
 
+/**
+ * Forma interna ÚNICA del logaritmo: `log(u, base)`, con la base SIEMPRE escrita. Convierte
+ * `nombre(u)` en `log(u, base)`. Tres motivos para que haya UNA sola forma:
+ *
+ *  1. **El valor.** Un logaritmo sin base escrita es DECIMAL en la notación que se enseña y la
+ *     que traen las calculadoras; que `log` sea el natural es un convenio de lenguajes de
+ *     programación, y mathjs lo hereda. Sin traducir, `log(100)` valía 4,605 en vez de 2: un
+ *     error de VALOR, no de tipografía, que dibujaba otra curva sin avisar.
+ *  2. **El viaje de vuelta.** Las cadenas del proyecto vuelven a pasar por aquí —`bloqueALatex`
+ *     re-normaliza lo que le dan Simplificar, Despejar e Integrar— y un `log` de un solo
+ *     argumento cambiaría de significado en la segunda pasada.
+ *  3. **La forma EXACTA en el panel.** mathjs PLIEGA `log10(2)` a `0.3010299956639812`, pero no
+ *     toca `log(2, 10)`. Con la base escrita el panel muestra `\log_{10} 2` en vez del decimal
+ *     —igual que `\sqrt{2}` o `\ln 2`—, y `log(2)+1` deja de salir como `423026/325147`, que es
+ *     lo que produce racionalizar un irracional ya decimalizado.
+ *
+ * NO se tocan los que ya llevan base (`log(u, b)`). Se recorre de DERECHA a IZQUIERDA: cada
+ * reescritura alarga la cadena, y así los índices pendientes —todos a la izquierda— siguen
+ * siendo válidos.
+ */
+function logConBaseExplicita(expr: string, nombre: string, base: string): string {
+  // Lookbehind y no un grupo que CONSUMA el carácter previo: con un grupo, el `log` interno
+  // de `log(log(2))` se perdía —el separador que necesitaba ya lo había comido la coincidencia
+  // anterior—. Se excluyen letras y `_` (para no partir un identificador que acabe en el
+  // nombre), pero NO los dígitos: un identificador no empieza por dígito, así que el `log` de
+  // `2log(3)` es un producto implícito y sí hay que traducirlo.
+  const encontrados: Array<{ ini: number; abre: number }> = [];
+  const re = new RegExp(`(?<![A-Za-z_])${nombre}\\s*\\(`, "g");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(expr)) !== null)
+    encontrados.push({ ini: m.index, abre: m.index + m[0].length - 1 });
+
+  let out = expr;
+  for (let k = encontrados.length - 1; k >= 0; k--) {
+    const { ini, abre } = encontrados[k];
+    const cierra = encontrarParentesisCierre(out, abre);
+    if (cierra === -1) continue;
+    // ¿Lleva base? Una coma al nivel superior de ESTE paréntesis: `log(8,2)` se respeta.
+    let prof = 0, conBase = false;
+    for (let i = abre; i < cierra; i++) {
+      if (out[i] === "(") prof++;
+      else if (out[i] === ")") prof--;
+      else if (out[i] === "," && prof === 1) { conBase = true; break; }
+    }
+    if (conBase) continue;
+    out = `${out.slice(0, cierra)}, ${base}${out.slice(cierra)}`;
+    out = `${out.slice(0, ini)}log${out.slice(ini + nombre.length)}`;
+  }
+  return out;
+}
+
 /** Como encontrarParentesisCierre pero para llaves `{` `}`. -1 si no cierra. */
 function encontrarLlaveCierre(texto: string, inicio: number): number {
   let profundidad = 0;
@@ -627,6 +678,11 @@ export function normalizarEntrada(raw: string): string {
   // θ Unicode → theta: la polar compila contra la variable `theta` (parametrizacionMathjs);
   // sin esta traducción, `r=sin(3θ)` dejaba una `θ` libre → NaN en todo θ → plano vacío.
   expr = expr.replace(/[θϑ]/g, "theta");
+  // τ y φ son las otras dos constantes con nombre que mathjs conoce (`tau` = 2π, `phi` = razón
+  // áurea). Sin esta línea quedaban como símbolos LIBRES: `τ` no valía 6,283 sino NaN, y el
+  // plano salía vacío en silencio —el mismo fallo que ya tenían π y θ antes de traducirse—.
+  expr = expr.replace(/τ/g, "tau");
+  expr = expr.replace(/[φϕ]/g, "phi");
   expr = convertirRaicesUnicode(expr); // √x/∛x/∜x → sqrt/nthRoot(...) (envuelve el factor)
   expr = expr.replace(/[·×]/g, "*");
   expr = expr.replace(/÷/g, "/");
@@ -724,13 +780,19 @@ export function normalizarEntrada(raw: string): string {
   expr = expr.replace(/\\log_([a-zA-Z0-9.]+)\s*\(([^()]+)\)/g, "log($2,$1)");
   // Llaves balanceadas: el argumento puede contener otro comando con llaves
   // (`\ln{\sqrt{…}}`); una regex `[^{}]+` se cortaría en la primera `}` interna.
-  expr = reemplazarComandoLlaves(expr, "ln", (a) => `log(${a})`);
-  expr = reemplazarComandoLlaves(expr, "log", (a) => `log(${a})`);
-  expr = expr.replace(/\\ln\s*\(([^()]+)\)/g, "log($1)");
-  // `ln` SIN backslash: mathjs llama `log` al logaritmo natural (no conoce `ln`).
-  // Va después de las reglas de `\ln` (que ya las convirtió) y como palabra
-  // completa para no tocar identificadores que contengan esas letras.
-  expr = expr.replace(/\bln\b/g, "log");
+  //
+  // EL LOGARITMO NATURAL VIAJA CON NOMBRE PROPIO (`logNat`) hasta el final del pipeline.
+  // mathjs llama `log` al natural, así que antes `ln(2)` y `log(2)` se normalizaban los dos
+  // a `log(2)` y quedaban INDISTINGUIBLES: no era solo que el panel pintara `\ln 2` para
+  // ambos, es que `log(100)` VALÍA 4,605 en vez de 2, y la curva dibujada era la del
+  // logaritmo equivocado. Con el natural aparte, el `log` del usuario queda libre para
+  // significar lo que significa fuera de un lenguaje de programación: base 10.
+  expr = reemplazarComandoLlaves(expr, "ln", (a) => `logNat(${a})`);
+  expr = reemplazarComandoLlaves(expr, "log", (a) => `log10(${a})`);
+  expr = expr.replace(/\\ln\s*\(([^()]+)\)/g, "logNat($1)");
+  // `ln` SIN backslash, como palabra completa para no tocar identificadores que contengan
+  // esas letras. Va después de las reglas de `\ln`, que ya las han convertido.
+  expr = expr.replace(/\bln\b/g, "logNat");
 
   // — Funciones trigonométricas con argumento LaTeX —
   const TRIG_PATRON = "sin|cos|tan|sec|csc|cot";
@@ -774,7 +836,7 @@ export function normalizarEntrada(raw: string): string {
   const FUNCIONES_ARG_SUELTO =
     "asinh|acosh|atanh|asech|acsch|acoth|arcsin|arccos|arctan|arcsec|arccsc|arccot|" +
     "sinh|cosh|tanh|sech|csch|coth|asin|acos|atan|asec|acsc|acot|" +
-    "sin|cos|tan|sec|csc|cot|log|ln|exp|abs|sqrt|cbrt";
+    "logNat|sin|cos|tan|sec|csc|cot|log|ln|exp|abs|sqrt|cbrt";
   //   El argumento puede llevar COEFICIENTE numérico (`\cos 5t`, `\cos 2x`, `\sin 3\theta`,
   //   `\sin 2\pi x`): número seguido de una corrida de símbolos —letra SUELTA (no corrida
   //   `xy`, que seguiría siendo producto de número) o comando griego de la lista blanca
@@ -813,6 +875,18 @@ export function normalizarEntrada(raw: string): string {
   // — Radianes para literales numéricos en trig —
   expr = normalizarTrigonometria(expr);
 
+  // — Base del logaritmo, ya al final —
+  // Aquí han desembocado TODAS las grafías: `log(u)` escrito a pelo, `\log{u}` (que ya salió
+  // como `log10`), `\log(u)` y `\log u`, que llegan como `log(u)` por el barrido de comandos
+  // residuales y por la regla de argumento sin agrupar. Traducir aquí, y no antes, es lo que
+  // hace que las cuatro acaben significando lo mismo.
+  // Los cuatro nombres convergen en la MISMA forma, `log(u, base)`. El natural va el último
+  // para que su `log(u, e)` no lo vuelva a mirar la conversión del `log` sin base.
+  expr = logConBaseExplicita(expr, "log", "10");
+  expr = logConBaseExplicita(expr, "log10", "10");
+  expr = logConBaseExplicita(expr, "log2", "2");
+  expr = logConBaseExplicita(expr, "logNat", "e");
+
   // Los símbolos y directivas borrados dejan espacios sueltos en los bordes (`\displaystyle
   // y=x^2` → ` y=x^2`); un espacio inicial hacía que la ecuación NO se reconociera como
   // `y=…` y cayera a implícita. El interior sí se respeta (mathjs lo ignora).
@@ -840,7 +914,12 @@ const COMANDOS_SOPORTADOS = new Set([
   "lvert", "rvert", "vert", "mid", "lfloor", "rfloor", "lceil", "rceil",
   "sin", "cos", "tan", "sec", "csc", "cot", "sinh", "cosh", "tanh", "sech", "csch", "coth",
   "arcsin", "arccos", "arctan", "arcsec", "arccsc", "arccot",
-  "ln", "log", "exp", "abs", "max", "min", "pi", "tau", "theta", "e",
+  // `phi` va con las otras constantes con nombre: el pipeline lo resuelve (`\phi` → `phi`,
+  // la razón áurea de mathjs) desde que se tradujeron τ y φ, pero se quedó fuera de esta
+  // lista, así que un bloque escrito `\phi` se velaba como "Símbolo no soportado" mientras
+  // el mismo símbolo en Unicode (`φ`) dibujaba sin problema. La lista es la que decide, y
+  // decía que no de algo que sí.
+  "ln", "log", "exp", "abs", "max", "min", "pi", "tau", "theta", "phi", "e",
   "begin", "end", "cases", "aligned", "array", "int", "to",
 ]);
 

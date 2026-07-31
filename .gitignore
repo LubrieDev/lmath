@@ -147,6 +147,10 @@ data.json
 
 # Generated bundles
 herramientas/.trazar.cjs
+herramientas/.huella.cjs
+herramientas/.medir.cjs
+herramientas/.sonda.cjs
+herramientas/.notacion.cjs
 tests/.bundle.cjs
 tests/.bundle.zoom.cjs
 tests/.bundle.fuzz.cjs

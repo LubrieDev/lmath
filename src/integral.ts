@@ -6,6 +6,7 @@ import { compilarExpresion, compilarFuncion } from "./evaluador";
 import { clasificarDegenerada, type FuncionDegenerada } from "./degeneradas";
 import { crearFuncionReal } from "./motor/fields/funcionRealMathjs";
 import { areaDefinida, type ResultadoArea } from "./motor/analysis/areaBajoRama";
+import { numeroALatex } from "./motor/analysis/formatoNumero";
 import { simplificarEcuaciones } from "./simplificar";
 import { integrarExpr } from "./integrar";
 
@@ -367,7 +368,10 @@ function valorExactoExpr(v: number): string | null {
   if (r) return racionalStr(r);
   const consts: [number, string][] = [[Math.PI, "pi"], [Math.E, "e"]];
   for (let k = 2; k <= 50; k++) { const s = Math.sqrt(k); if (!Number.isInteger(s)) consts.push([s, `sqrt(${k})`]); }
-  for (let k = 2; k <= 50; k++) consts.push([Math.log(k), `log(${k})`]);
+  // Base EXPLÍCITA: esta cadena vuelve a pasar por `normalizarEntrada`, y allí un `log` sin
+  // base es el decimal que escribe el usuario. Sin la `e`, `∫₁³dx/x` se anunciaba como
+  // `\log_{10} 3` —un número distinto del que vale la integral—. El panel lo pinta `\ln 3`.
+  for (let k = 2; k <= 50; k++) consts.push([Math.log(k), `log(${k}, e)`]);
   for (const [c, sym] of consts) {
     const rr = racionalDe(v / c);
     if (rr) return multSimbolo(rr, sym);
@@ -450,7 +454,15 @@ function cuerpoAreaExactoBase(source: string): { cuerpo: string; conector: strin
       const v = F.eval(b) - F.eval(a);
       // Consistencia con el área numérica: si NO coincide, Barrow no aplica (polo interior:
       // ∫₋₁¹1/x tiene F=ln|x| finita en los extremos pero diverge) → se respeta el numérico.
-      if (Number.isFinite(v) && Math.abs(v - area.valor) <= 1e-5 * (1 + Math.abs(area.valor))) {
+      //
+      // La tolerancia se afloja en las IMPROPIAS porque su valor numérico no se calcula, se
+      // aproxima: `areaBajoRama` encoge ε en el extremo singular y para cuando el cambio baja
+      // de 1e-4 (TOL_CONV), así que exigirle 1e-5 rechazaba SIEMPRE la primitiva buena y
+      // ∫₀¹dx/√x —que vale 2 exacto— se anunciaba como `≈ 1.9998`. Sigue siendo una guarda
+      // fuerte: lo que detecta (un polo interior) desvía el valor en órdenes de magnitud, no
+      // en la cuarta cifra.
+      const tol = area.impropia ? 1e-3 : 1e-5;
+      if (Number.isFinite(v) && Math.abs(v - area.valor) <= tol * (1 + Math.abs(area.valor))) {
         const exacto = valorExactoLatex(v);
         if (exacto) return { cuerpo: exacto, conector: "=" };
         return { cuerpo: formatearAprox(v), conector: "\\approx" };
@@ -463,5 +475,13 @@ function cuerpoAreaExactoBase(source: string): { cuerpo: string; conector: strin
   // sobre una aproximación.
   const ent = Math.round(area.valor);
   if (Math.abs(area.valor - ent) < 1e-9) return { cuerpo: String(ent), conector: "=" };
+  // Una IMPROPIA no se calcula, se aproxima: `areaBajoRama` para de encoger ε cuando el
+  // cambio baja de 1e-4, así que sus cuatro decimales son tres de número y uno de ruido, y
+  // `∫₀⁴dx/√x` —que vale 4— se leía "≈ 3.9996". Se redondea a la forma cerrada más simple
+  // que explique el valor DENTRO de esa precisión (`numeroALatex`: entero o múltiplo de π),
+  // con el `\approx` intacto: "≈ 4" no afirma más que "≈ 3.9996", y dice la verdad mejor.
+  // La cuadratura ordinaria NO pasa por aquí (su error es ~1e-11): ahí redondear a π un
+  // valor a 1e-4 de π sí sería inventar.
+  if (area.impropia) return { cuerpo: numeroALatex(area.valor), conector: "\\approx" };
   return { cuerpo: formatearAprox(area.valor), conector: "\\approx" };
 }

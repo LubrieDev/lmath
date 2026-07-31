@@ -11,6 +11,7 @@
 import { describe, test, assert, igual, aprox } from "../runner";
 import { crearViewport } from "../../src/motor/scene/viewport-utils";
 import { simplificarEcuaciones } from "../../src/simplificar";
+import { despejarEcuaciones } from "../../src/despejar";
 import { derivadaLatex, derivarExpr } from "../../src/derivar";
 import { extraerIntegral, cuerpoAreaLatexExacto, etiquetaIntegral } from "../../src/integral";
 import { trazar, parsearEntrada, normalizarTipo } from "../../src/herramientas/trazador";
@@ -63,12 +64,32 @@ describe("latex.ts: símbolo·variable y paréntesis escalables", () => {
     igual(exprALatex(s("pi*(2*x+4)")), "2\\pi{x}+4\\pi", "sin signo: intacto (regresión)");
   });
 
+  test("un `log` SIN base es DECIMAL: valor y tipografía, en las cuatro grafías", () => {
+    // Antes las cuatro acababan en el `log` de mathjs, que es el NATURAL: `log(100)` valía
+    // 4,605 en vez de 2 y se pintaba `\ln 100`. No era tipografía, era el valor —y la curva.
+    const val = (e: string) =>
+      compilarFuncion(insertarProductoImplicito(normalizarEntrada(e)), "x")(3) as number;
+    for (const e of ["log(100)", String.raw`\log{100}`, String.raw`\log(100)`, String.raw`\log 100`])
+      aprox(val(e), 2, 1e-12, `${e} = 2 (base 10)`);
+    aprox(val("ln(e)"), 1, 1e-12, "ln sigue siendo el natural");
+    aprox(val("log(8,2)"), 3, 1e-12, "con base escrita: intacto");
+    // Tipografía: base en subíndice —igual que ya se pintaba `log(u,b)`— y el criterio de
+    // paréntesis del resto del panel (átomo sin ellos, como `\ln 2` y `\sin x`).
+    igual(bloqueALatex(["log(2)"]), "f(x)=\\log_{10} 2", "log(2) → \\log_{10} 2");
+    igual(bloqueALatex([String.raw`\log{x}`]), "f(x)=\\log_{10} x", "argumento atómico: sin paréntesis");
+    igual(bloqueALatex(["log(x+1)"]), "f(x)=\\log_{10}\\left( x+1\\right)", "compuesto: con paréntesis");
+    igual(bloqueALatex(["ln(x)"]), "f(x)=\\ln x", "el natural se pinta \\ln, no \\log_{e}");
+    // Y el despeje conoce la inversa de cada base.
+    igual(despejarEcuaciones(["log(y)=x"])[0], "y = (10)^((x))", "log y = x ⇒ y = 10^x");
+    igual(despejarEcuaciones(["ln(y)=x"])[0], "y = (e)^((x))", "ln y = x ⇒ y = e^x");
+  });
+
   test("Simplificar: log(e^u) = u (identidad válida en TODO ℝ)", () => {
     const s = (ec: string) => simplificarEcuaciones([ec])[0];
-    igual(s("log(e^(3*x))"), "3 * x", "ln(e^{3x}) → 3x");
-    igual(s("sin(x) + log(e^(2*x))"), "sin(x) + 2 * x", "dentro de una suma");
+    igual(s("ln(e^(3*x))"), "3 * x", "ln(e^{3x}) → 3x");
+    igual(s("sin(x) + ln(e^(2*x))"), "sin(x) + 2 * x", "dentro de una suma");
     // La inversa e^(log u)=u NO se aplica (solo vale para u>0: cambiaría el dominio).
-    igual(s("e^(log(x))"), "e ^ log(x)", "e^{ln x} intacto (dominio x>0)");
+    igual(s("e^(ln(x))"), "e ^ log(x, e)", "e^{ln x} intacto (dominio x>0)");
   });
 
   test("Simplificar: aplana la FRACCIÓN DE FRACCIONES (mismo criterio que la derivada)", () => {
@@ -238,7 +259,10 @@ describe("Parser: potencia de función func^n(x) → pow(func(x), n)", () => {
     aprox(val(String.raw`tan^2(x)`, X), Math.tan(X) ** 2, 1e-9, "sin backslash: idéntico");
     aprox(val(String.raw`\sin^{2}(x)`, X), Math.sin(X) ** 2, 1e-9, "sin²(x)");
     aprox(val(String.raw`\sec^{2}(x)`, X), (1 / Math.cos(X)) ** 2, 1e-9, "sec²(x)");
-    aprox(val(String.raw`\log^{2}(x)`, X), Math.log(X) ** 2, 1e-9, "log²(x) = (ln x)²");
+    // Las DOS bases, porque la potencia de la función y la base del logaritmo son
+    // decisiones independientes: `\log` sin base es decimal y `\ln` es natural.
+    aprox(val(String.raw`\log^{2}(x)`, X), Math.log10(X) ** 2, 1e-9, "log²(x) = (log₁₀ x)²");
+    aprox(val(String.raw`\ln^{2}(x)`, X), Math.log(X) ** 2, 1e-9, "ln²(x) = (ln x)²");
     aprox(val(String.raw`\tan^{3}(x)`, X), Math.tan(X) ** 3, 1e-9, "tan³(x)");
   });
 
@@ -325,7 +349,9 @@ describe("Símbolos de entrada: ± y comandos LaTeX", () => {
   });
 
   test("función con argumento SIN agrupar (\\ln x, \\cos x, \\log_2 x)", () => {
-    igual(norm("\\ln x"), "log(x)", "\\ln x (antes: log*x → NaN)");
+    // El natural se normaliza con la base ESCRITA (`log(x, e)`): es la forma que sobrevive a
+    // volver a pasar por el parser, donde un `log` sin base es el decimal del usuario.
+    igual(norm("\\ln x"), "log(x, e)", "\\ln x (antes: log*x → NaN)");
     igual(norm("\\cos x"), "cos(x)", "\\cos x");
     igual(norm("\\arctan x"), "atan(x)", "\\arctan x");
     igual(norm("\\log_2 x"), "log(x,2)", "\\log_2 x");
@@ -420,6 +446,13 @@ describe("Símbolos de entrada: ± y comandos LaTeX", () => {
     igual(comandosNoSoportados("\\int_{0}^{\\pi}\\sin(x)\\,dx").length, 0, "la integral entera se entiende");
     // El `\\` de `cases` es un SALTO DE LÍNEA: leerlo como comando `\y` velaría todo obs-system.
     igual(comandosNoSoportados("\\begin{cases}y=x\\\\y=2\\end{cases}").length, 0, "el \\\\ de cases no es un comando");
+    // Las CUATRO constantes con nombre que el parser traduce tienen que estar en la lista: si
+    // una falta, el bloque se vela como no soportado mientras el mismo símbolo escrito en
+    // Unicode dibuja sin problema. Le pasaba a `\phi` (φ = razón áurea).
+    for (const c of ["\\pi", "\\tau", "\\theta", "\\phi"])
+      igual(comandosNoSoportados(`y=${c} x`).length, 0, `${c} es traducible y no se marca`);
+    // Y una que NO se traduce sigue avisando, que es la mitad útil de la lista blanca.
+    igual(comandosNoSoportados("y=\\varphi x").join(","), "\\varphi", "\\varphi no se traduce: se dice");
   });
 });
 

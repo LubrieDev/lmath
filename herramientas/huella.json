@@ -1,0 +1,308 @@
+{
+  "1/x ±8": {
+    "hash": "816dcc4a",
+    "pintados": 2217,
+    "ramas": 2,
+    "vertices": 2023,
+    "asintotas": 2,
+    "notables": 0,
+    "ms": 18
+  },
+  "1/x^2 ±8": {
+    "hash": "4081db43",
+    "pintados": 2202,
+    "ramas": 2,
+    "vertices": 2021,
+    "asintotas": 3,
+    "notables": 0,
+    "ms": 5
+  },
+  "x^2/8 ±8": {
+    "hash": "2b09ad6a",
+    "pintados": 2163,
+    "ramas": 1,
+    "vertices": 2001,
+    "asintotas": 0,
+    "notables": 3,
+    "ms": 1
+  },
+  "sin(x) ±10": {
+    "hash": "b4fbab14",
+    "pintados": 2173,
+    "ramas": 1,
+    "vertices": 2109,
+    "asintotas": 0,
+    "notables": 14,
+    "ms": 3
+  },
+  "sin(1/x) ±3": {
+    "hash": "3dd29777",
+    "pintados": 2744,
+    "ramas": 3,
+    "vertices": 4525,
+    "asintotas": 0,
+    "notables": 24,
+    "ms": 7
+  },
+  "sin(1/x) ±0.05": {
+    "hash": "1b7282cb",
+    "pintados": 10454,
+    "ramas": 3,
+    "vertices": 6563,
+    "asintotas": 0,
+    "notables": 1,
+    "ms": 9
+  },
+  "sqrt(x) ±8": {
+    "hash": "5995f9af",
+    "pintados": 878,
+    "ramas": 1,
+    "vertices": 1002,
+    "asintotas": 0,
+    "notables": 2,
+    "ms": 3
+  },
+  "x^(1/3) ±8": {
+    "hash": "8f4db62f",
+    "pintados": 832,
+    "ramas": 1,
+    "vertices": 1002,
+    "asintotas": 0,
+    "notables": 2,
+    "ms": 3
+  },
+  "ln(x) ±8": {
+    "hash": "1c05ae35",
+    "pintados": 0,
+    "ramas": 0,
+    "vertices": 0,
+    "asintotas": 0,
+    "notables": 0,
+    "ms": 88
+  },
+  "e^x ±8": {
+    "hash": "8e6e737d",
+    "pintados": 1300,
+    "ramas": 1,
+    "vertices": 2001,
+    "asintotas": 0,
+    "notables": 1,
+    "ms": 3
+  },
+  "abs(x) ±8": {
+    "hash": "1b3fd16e",
+    "pintados": 2071,
+    "ramas": 1,
+    "vertices": 2001,
+    "asintotas": 0,
+    "notables": 3,
+    "ms": 1
+  },
+  "floor(x) ±8": {
+    "hash": "c75b2d3d",
+    "pintados": 1354,
+    "ramas": 16,
+    "vertices": 2288,
+    "asintotas": 0,
+    "notables": 1,
+    "ms": 5
+  },
+  "floor(x)*100 ±8": {
+    "hash": "f4320695",
+    "pintados": 96,
+    "ramas": 3,
+    "vertices": 2037,
+    "asintotas": 0,
+    "notables": 1,
+    "ms": 2
+  },
+  "(1-x^4)^(1/4)": {
+    "hash": "ba0393df",
+    "pintados": 834,
+    "ramas": 1,
+    "vertices": 1004,
+    "asintotas": 0,
+    "notables": 4,
+    "ms": 2
+  },
+  "x^2*sin(1/x) ±2": {
+    "hash": "5ead9004",
+    "pintados": 1679,
+    "ramas": 2,
+    "vertices": 2837,
+    "asintotas": 0,
+    "notables": 24,
+    "ms": 4
+  },
+  "5*tanh(10^7*x)": {
+    "hash": "2251ea32",
+    "pintados": 2031,
+    "ramas": 1,
+    "vertices": 2043,
+    "asintotas": 0,
+    "notables": 2,
+    "ms": 2
+  },
+  "e^x*(cos x-sin x)": {
+    "hash": "7f39af73",
+    "pintados": 5692,
+    "ramas": 2,
+    "vertices": 2430,
+    "asintotas": 0,
+    "notables": 26,
+    "ms": 6
+  },
+  "tan(x) ±10": {
+    "hash": "2f2394b3",
+    "pintados": 6500,
+    "ramas": 7,
+    "vertices": 2265,
+    "asintotas": 6,
+    "notables": 8,
+    "ms": 4
+  },
+  "ln|tan(x)| ±10": {
+    "hash": "1c05ae35",
+    "pintados": 0,
+    "ramas": 0,
+    "vertices": 0,
+    "asintotas": 0,
+    "notables": 0,
+    "ms": 125
+  },
+  "tan(x) ±3000": {
+    "hash": "2c369f81",
+    "pintados": 136300,
+    "ramas": 1911,
+    "vertices": 181511,
+    "asintotas": 1910,
+    "notables": 1,
+    "ms": 147
+  },
+  "sin(x^2) ±40": {
+    "hash": "f6073884",
+    "pintados": 19739,
+    "ramas": 7,
+    "vertices": 25463,
+    "asintotas": 0,
+    "notables": 1,
+    "ms": 26
+  },
+  "tan(x^2) ±10": {
+    "hash": "ce426fdd",
+    "pintados": 56612,
+    "ramas": 65,
+    "vertices": 6969,
+    "asintotas": 64,
+    "notables": 2,
+    "ms": 5
+  },
+  "tan(x^2) ±40": {
+    "hash": "915acb64",
+    "pintados": 131181,
+    "ramas": 1019,
+    "vertices": 95571,
+    "asintotas": 1018,
+    "notables": 2,
+    "ms": 51
+  },
+  "tan(x^2) ±120": {
+    "hash": "6bee73ec",
+    "pintados": 135761,
+    "ramas": 7265,
+    "vertices": 650843,
+    "asintotas": 7266,
+    "notables": 1,
+    "ms": 293
+  },
+  "tan(x^2) ±300": {
+    "hash": "6ce2f096",
+    "pintados": 129861,
+    "ramas": 11914,
+    "vertices": 969162,
+    "asintotas": 11612,
+    "notables": 1,
+    "ms": 495
+  },
+  "tan(x^2) 66±4": {
+    "hash": "2c369f81",
+    "pintados": 136300,
+    "ramas": 337,
+    "vertices": 31945,
+    "asintotas": 336,
+    "notables": 0,
+    "ms": 33
+  },
+  "tan(x^2) 66±1": {
+    "hash": "6f11daef",
+    "pintados": 74246,
+    "ramas": 85,
+    "vertices": 8606,
+    "asintotas": 84,
+    "notables": 0,
+    "ms": 4
+  },
+  "tan(e^x) defecto": {
+    "hash": "557f6f60",
+    "pintados": 72313,
+    "ramas": 23740,
+    "vertices": 1573289,
+    "asintotas": 23734,
+    "notables": 1,
+    "ms": 939
+  },
+  "tan(e^x) ±8": {
+    "hash": "23c1d7f3",
+    "pintados": 48438,
+    "ramas": 787,
+    "vertices": 69992,
+    "asintotas": 790,
+    "notables": 1,
+    "ms": 63
+  },
+  "1/x ±8 [int]": {
+    "hash": "636d195c",
+    "pintados": 2219,
+    "ramas": 2,
+    "vertices": 1027,
+    "asintotas": 2,
+    "notables": 0,
+    "ms": 1
+  },
+  "tan(x) ±3000 [int]": {
+    "hash": "2c369f81",
+    "pintados": 136300,
+    "ramas": 833,
+    "vertices": 67771,
+    "asintotas": 832,
+    "notables": 1,
+    "ms": 26
+  },
+  "tan(x^2) ±120 [int]": {
+    "hash": "6bee73ec",
+    "pintados": 135761,
+    "ramas": 6395,
+    "vertices": 470723,
+    "asintotas": 6396,
+    "notables": 1,
+    "ms": 187
+  },
+  "tan(e^x) def [int]": {
+    "hash": "26518023",
+    "pintados": 91658,
+    "ramas": 22633,
+    "vertices": 445705,
+    "asintotas": 4206,
+    "notables": 1,
+    "ms": 349
+  },
+  "tan(x^2) ±120 [movil]": {
+    "hash": "0495b9fb",
+    "pintados": 84542,
+    "ramas": 7107,
+    "vertices": 603565,
+    "asintotas": 7108,
+    "notables": 1,
+    "ms": 264
+  }
+}

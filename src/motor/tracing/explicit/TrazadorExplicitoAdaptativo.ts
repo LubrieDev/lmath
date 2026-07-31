@@ -139,12 +139,28 @@ export class TrazadorExplicitoAdaptativo implements TrazadorExplicito {
     const syPx = (y: number): number =>
       H - ((y - domY[0]) / (domY[1] - domY[0])) * H;
 
-    // Cota dura de geometría de ESTE intervalo (ver VERTICES_POR_COLUMNA_MAX). Al ir ligada al
-    // ancho en píxeles del viewport recibido, los sub-viewports del régimen de alta frecuencia
-    // —cuyo `anchoPx` se escala con el tramo— reparten el presupuesto en proporción a lo que
-    // ocupan, así que la suma sigue acotada por el mismo listón.
-    const MAX_VERTICES = Math.max(1, Math.round(viewport.anchoPx)) * VERTICES_POR_COLUMNA_MAX;
-    let vertices = 0;
+    // Cota dura de geometría, POR COLUMNA DE PÍXEL (ver VERTICES_POR_COLUMNA_MAX).
+    //
+    // Antes era una bolsa GLOBAL —`anchoPx × 2048` para todo el trazado— y se gastaba en el
+    // orden del barrido, de izquierda a derecha. Eso hacía que una zona densa a la izquierda
+    // se comiera el presupuesto de la derecha, y que el punto donde se agota dependiera de
+    // cuántas muestras base tenga la pasada: la interactiva y la final lo agotaban en x
+    // distintas y truncaban tramos distintos. Medido, ese era el grueso del PARPADEO en las
+    // vistas donde el presupuesto muerde: `tan(x²)` a ±300 cambiaba el 14,2% del lienzo al
+    // soltar el ratón, a ±200 el 3,5%, y `tan(e^x)` en la vista por defecto el 9,9% —de hecho
+    // la pasada del gesto dibujaba MÁS que la final, y al soltar desaparecía—. Las vistas
+    // donde no muerde (todo el repertorio normal) nunca lo notaron.
+    //
+    // Repartido por columna, cada píxel de ancho tiene su propia cuota: la densidad de una
+    // zona ya no puede robarle geometría a otra, el resultado deja de depender de por dónde
+    // empezó el barrido y las dos pasadas convergen allí donde ambas saturan. El listón por
+    // columna es el mismo de siempre, así que el techo total no sube.
+    const Wpx = Math.max(1, Math.round(viewport.anchoPx));
+    const columnaDe = (x: number): number => {
+      const c = Math.floor(((x - domX[0]) / (domX[1] - domX[0])) * Wpx);
+      return c < 0 ? 0 : c >= Wpx ? Wpx - 1 : c;
+    };
+    const verticesEnColumna = new Int32Array(Wpx);
 
     const polilineas: number[][] = [];
     const asintotas: number[] = []; // detectadas para el refinado; no se exponen aún
@@ -159,12 +175,12 @@ export class TrazadorExplicitoAdaptativo implements TrazadorExplicito {
     // quede fuera de pantalla (el recorte visual lo hace el renderer). Un valor
     // no finito (polo) trepa al borde según el signo.
     const emit = (x: number, y: number) => {
-      vertices++;
+      verticesEnColumna[columnaDe(x)]++;
       segmento.push(x, Number.isFinite(y) ? y : y > 0 ? yTop : yBot);
     };
     // Fuerza el punto al borde según hacia dónde dispara la rama (signo de y).
     const emitPolo = (x: number, y: number) => {
-      vertices++;
+      verticesEnColumna[columnaDe(x)]++;
       segmento.push(x, y >= 0 ? yTop : yBot);
     };
     const registrarAsintota = (x: number) => {
@@ -316,7 +332,9 @@ export class TrazadorExplicitoAdaptativo implements TrazadorExplicito {
       // abajo— también pregunta "¿ya no se puede subdividir más?": si mirase solo `prof`, con el
       // presupuesto agotado dejaría de reconocer los cruces continuos y los partiría en dos ramas
       // con una asíntota fantasma en medio.
-      const agotado = prof >= PROF_MAX || vertices >= MAX_VERTICES;
+      const agotado =
+        prof >= PROF_MAX ||
+        verticesEnColumna[columnaDe((xa + xb) / 2)] >= VERTICES_POR_COLUMNA_MAX;
       const refinar =
         !agotado &&
         (poloEnTramo || cambioSigno || (saltoPx > SALTO_PX_MAX && !fueraMismoLado));

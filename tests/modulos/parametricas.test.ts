@@ -17,7 +17,13 @@ import { trazar } from "../../src/herramientas/trazador";
 import { bloqueALatex } from "../../src/latex";
 import { normalizarEntrada } from "../../src/parser";
 import { compilarFuncion } from "../../src/evaluador";
-import { construirObjeto } from "../../src/motor/parsing/construirObjeto";
+import {
+  construirObjeto, expresionPolar, expresionesParametricas,
+} from "../../src/motor/parsing/construirObjeto";
+import { analizarPolar } from "../../src/motor/analysis/analisisPolar";
+import { analizarParametrico } from "../../src/motor/analysis/analisisParametrico";
+import { numeroATexto, numeroALatex } from "../../src/motor/analysis/formatoNumero";
+import { dominioPolar, periodoDeR } from "../../src/motor/parsing/periodoPolar";
 import { dividirEcuaciones } from "../../src/motor/parsing/dividirEcuaciones";
 import { crearProveedor } from "../../src/motor/app/composicion";
 import { ProveedorExplicito } from "../../src/motor/providers/ProveedorExplicito";
@@ -431,5 +437,260 @@ describe("Paramétricas (X,Y): clasificación y geometría (regresión render)",
       "Simplificar mantiene la notación clara");
     igual(bloqueALatex(despejarEcuaciones([String.raw`\tan^{2}(x)=y`])), "y=\\tan^{2} x",
       "Despejar mantiene la notación clara");
+  });
+});
+
+describe("Panel ⓘ de curvas paramétricas", () => {
+  const DOS_PI = 2 * Math.PI;
+  const analizar = (bloque: string, muestras?: number) => {
+    const comp = expresionesParametricas(bloque);
+    assert(comp !== null, `${bloque} debe reconocerse como paramétrica`);
+    return comp === null ? null : analizarParametrico(comp[0], comp[1], 0, DOS_PI, muestras);
+  };
+
+  test("el ejemplo del usuario: (sin(3t+π/2), sin(4t))", () => {
+    const a = analizar("(sin(3t+pi/2), sin(4t))");
+    assert(a !== null, "analizable");
+    if (!a) return;
+    igual(a.familia?.tipo, "lissajous");
+    if (a.familia?.tipo === "lissajous") {
+      igual(a.familia.a, 3, "razón de frecuencias 3:…");
+      igual(a.familia.b, 4, "…:4");
+      aprox(a.familia.desfase, Math.PI / 2, 1e-6, "desfase π/2");
+    }
+    igual(a.cerrada, true, "el trazo se cierra");
+    aprox(a.periodo ?? NaN, DOS_PI, 1e-9, "periodo 2π (mcm de 2π/3 y π/2)");
+    aprox(a.xMin, -1, 1e-6); aprox(a.xMax, 1, 1e-6);
+    aprox(a.yMin, -1, 1e-6); aprox(a.yMax, 1, 1e-6);
+    igual(a.pasaPorOrigen, true, "pasa por el origen");
+    igual(a.simetrias.join(","), "origen,ejeX,ejeY", "las tres simetrías");
+    // El área ALGEBRAICA de una Lissajous simétrica es 0: los lóbulos se recorren en
+    // sentidos opuestos y se cancelan. No es un fallo, es lo que mide ½∮(x dy − y dx), y
+    // por eso NO se rotula "área encerrada".
+    aprox(a.areaAlgebraica ?? NaN, 0, 1e-6, "área algebraica nula por simetría");
+  });
+
+  test("autointersecciones: cuenta correcta, estable y contrastada con la fórmula", () => {
+    // Para una Lissajous de frecuencias coprimas a:b el número de autointersecciones es
+    // 2ab − a − b. Sirve de oráculo INDEPENDIENTE del algoritmo (que cuenta cortes de
+    // segmentos), que es lo que hace fiable el número que se enseña.
+    const formula = (a: number, b: number) => 2 * a * b - a - b;
+    igual(analizar("(sin(3t+pi/2), sin(4t))")?.autointersecciones, formula(3, 4), "3:4 → 17");
+    igual(analizar("(sin(2t), sin(3t))")?.autointersecciones, formula(2, 3), "2:3 → 7");
+    igual(analizar("(cos(t), sin(2t))")?.autointersecciones, formula(1, 2), "1:2 → 1");
+    igual(analizar("(cos(t), sin(t))")?.autointersecciones, formula(1, 1), "circunferencia → 0");
+
+    // REGRESIÓN: el cruce de la lemniscata de Gerono cae EXACTAMENTE sobre dos muestras
+    // (t=π/2 y t=3π/2). Con el corte exigido en el interior abierto de ambos segmentos
+    // salían CERO autointersecciones, y no es un caso raro: una curva simétrica pone sus
+    // cruces en valores redondos del parámetro, justo donde cae la rejilla.
+    igual(analizar("(cos(t), sin(2t))")?.autointersecciones, 1, "el cruce sobre la muestra se ve");
+
+    // Y el conteo no puede depender de la resolución: un número que cambia al refinar no
+    // es un número que se pueda enseñar.
+    for (const n of [500, 1000, 4000])
+      igual(analizar("(sin(3t+pi/2), sin(4t))", n)?.autointersecciones, 17,
+        `estable con ${n} muestras`);
+  });
+
+  test("longitudes y áreas contrastadas con sus valores exactos", () => {
+    const circ = analizar("(cos(t), sin(t))");
+    aprox(circ?.longitud ?? NaN, DOS_PI, 1e-4, "circunferencia: perímetro 2π");
+    aprox(circ?.areaAlgebraica ?? NaN, Math.PI, 1e-4, "…y área π");
+    igual(circ?.familia?.tipo, "circunferencia");
+
+    const elip = analizar("(2cos(t), sin(t))");
+    aprox(elip?.areaAlgebraica ?? NaN, DOS_PI, 1e-4, "elipse a=2,b=1: área πab = 2π");
+    aprox(elip?.longitud ?? NaN, 9.68845, 1e-3, "…y perímetro 9.68845 (valor conocido)");
+    igual(elip?.familia?.tipo, "elipse", "1:1 con amplitudes distintas es una elipse");
+
+    // Un arco de cicloide mide 8 y una cardioide también (8a con a=1); la cardioide
+    // encierra 3π/2. Son curvas SIN familia paramétrica reconocida, y está bien así.
+    aprox(analizar("(t-sin(t), 1-cos(t))")?.longitud ?? NaN, 8, 1e-3, "cicloide: longitud 8");
+    const card = analizar("(cos(t)*(1-cos(t)), sin(t)*(1-cos(t)))");
+    aprox(card?.longitud ?? NaN, 8, 1e-3, "cardioide: longitud 8");
+    aprox(card?.areaAlgebraica ?? NaN, (3 * Math.PI) / 2, 1e-3, "…y área 3π/2");
+    igual(card?.familia, null, "no es una Lissajous: sin familia");
+  });
+
+  test("una curva abierta no finge propiedades de una cerrada", () => {
+    // La parábola sobre [0,2π] no se cierra, no es periódica y —la parte que importa— NO
+    // es simétrica: la parábola COMPLETA sí lo es respecto al eje y, pero el bloque solo
+    // dibuja la rama derecha. Es la misma lección que dejó la espiral en el panel polar.
+    const par = analizar("(t, t^2)");
+    assert(par !== null, "analizable");
+    if (!par) return;
+    igual(par.cerrada, false, "no se cierra");
+    igual(par.periodo, null, "no es periódica");
+    igual(par.areaAlgebraica, null, "sin área: no encierra nada");
+    igual(par.simetrias.length, 0, "solo se dibuja media parábola");
+    igual(par.pasaPorOrigen, true, "pero sí pasa por el origen");
+  });
+
+  test("un periodo mayor que el intervalo trazado se declara", () => {
+    // (cos t, sin(t/3)) se cierra en 6π y el bloque dibuja [0,2π]: lo que se ve es un
+    // trozo. Decirlo es la diferencia entre describir la curva y describir el dibujo.
+    const a = analizar("(cos(t), sin(t/3))");
+    assert(a !== null, "analizable");
+    if (!a) return;
+    aprox(a.periodo ?? NaN, 6 * Math.PI, 1e-6, "periodo 6π");
+    igual(a.periodoExcedeDominio, true, "excede el intervalo dibujado");
+    igual(a.cerrada, false, "y por eso el trazo no se cierra");
+  });
+});
+
+describe("Formato de números del panel ⓘ (entero, π, decimal)", () => {
+  test("absorbe el ruido de los cálculos numéricos y no rellena con ceros", () => {
+    // El panel imprimía `toFixed(4)` a pelo: un valor exacto salía "1.0000" y uno con el
+    // error propio del estimador (bisección, ajuste parabólico) salía "2.9999".
+    igual(numeroATexto(1), "1", "entero exacto sin decimales muertos");
+    igual(numeroATexto(0.99999), "1", "ruido por debajo → entero");
+    igual(numeroATexto(2.99994), "3", "el vértice que aterrizaba en 2.9999");
+    igual(numeroATexto(-0), "0", "el cero negativo no se escribe -0");
+    igual(numeroATexto(1.5), "1.5", "decimal legítimo, sin relleno");
+  });
+
+  test("reconoce los múltiplos racionales de π", () => {
+    igual(numeroATexto(Math.PI), "π", "π, no 3.1416");
+    igual(numeroATexto(Math.PI / 2), "π/2", "el máximo de sin x");
+    igual(numeroATexto(Math.PI / 16), "π/16", "el ángulo del ejemplo polar");
+    igual(numeroATexto((-3 * Math.PI) / 4), "-3π/4", "signo fuera, numerador con múltiplo");
+    igual(numeroATexto(2 * Math.PI), "2π", "la vuelta completa");
+  });
+
+  test("NO inventa formas cerradas donde no las hay", () => {
+    // El riesgo de un reconocedor así es el falso positivo: si 1.1 saliera como una
+    // fracción de π el panel mentiría. La tolerancia (1e-4) es demasiado fina para eso.
+    igual(numeroATexto(1.1), "1.1", "radio del ejemplo: decimal tal cual");
+    igual(numeroATexto(0.9), "0.9", "el otro extremo del rizo");
+    igual(numeroATexto(1 / 3), "0.3333", "sin forma cerrada → 4 decimales");
+    igual(numeroATexto(3.2), "3.2", "cerca de π pero NO es π");
+  });
+
+  test("la variante LaTeX compone la fracción, no la escribe en línea", () => {
+    igual(numeroALatex(Math.PI), "\\pi");
+    igual(numeroALatex(Math.PI / 2), "\\frac{\\pi}{2}");
+    igual(numeroALatex((-3 * Math.PI) / 4), "-\\frac{3\\pi}{4}", "el signo va fuera");
+    igual(numeroALatex(3), "3", "un entero no se envuelve en nada");
+  });
+});
+
+describe("Panel ⓘ de curvas polares", () => {
+  test("el periodo de r NO es el periodo de la curva (son dos preguntas distintas)", () => {
+    // r=1+0,1·sin(8θ): el rizo se repite cada π/4, pero el trazo no se cierra hasta 2π.
+    // El trazador necesita el segundo; el panel enseña el primero. Confundirlos haría
+    // que el panel contradijera al dibujo.
+    aprox(periodoDeR("1+0.1*sin(8*theta)") ?? NaN, Math.PI / 4, 1e-9, "periodo de r");
+    aprox(dominioPolar("1+0.1*sin(8*theta)")[1], 2 * Math.PI, 1e-9, "periodo de la curva");
+    // Y donde el periodo de r SÍ es mayor que la vuelta, ambos coinciden.
+    aprox(periodoDeR("sin(theta/10)") ?? NaN, 20 * Math.PI, 1e-6, "sin(θ/10) tarda 20π");
+    igual(periodoDeR("2"), null, "una circunferencia no tiene periodo en θ");
+    igual(periodoDeR("theta"), null, "la espiral tampoco: no es periódica");
+  });
+
+  test("el ejemplo del usuario: r = 1 + 0.1·sin(8θ)", () => {
+    const a = analizarPolar("1+0.1*sin(8*theta)");
+    assert(a !== null, "debe analizarse");
+    if (!a) return;
+    aprox(a.rMin, 0.9, 1e-9, "radio mínimo");
+    aprox(a.rMax, 1.1, 1e-9, "radio máximo");
+    aprox(a.thetaRMax, Math.PI / 16, 1e-6, "el máximo cae en π/16, no en la rejilla");
+    igual(a.ordenRotacional, 8, "ocho rizos por vuelta");
+    igual(a.cambiaSigno, false, "r nunca cambia de signo: es un anillo");
+    igual(a.angulosPolo?.length, 0, "no toca el origen");
+    // ½∫(1+0,1 sin8θ)² dθ sobre [0,2π] = π(1+0,005) — el número del prompt.
+    aprox(a.areaBarrida ?? NaN, Math.PI * 1.005, 1e-6, "área barrida");
+    igual(a.patron, null, "una circunferencia rizada no es una familia clásica");
+  });
+
+  test("el área es BARRIDA, no encerrada: la rosa se traza dos veces", () => {
+    // Decisión documentada en analisisPolar.ts. r=cos(3θ) recorre sus tres pétalos DOS
+    // veces sobre [0,2π], así que ½∫r²dθ = π/2 es el doble del área real (π/4). Llamarla
+    // "encerrada" sería falso justo en la familia más típica del bloque.
+    const rosa = analizarPolar("cos(3*theta)");
+    assert(rosa !== null, "rosa analizable");
+    if (!rosa) return;
+    aprox(rosa.areaBarrida ?? NaN, Math.PI / 2, 1e-6, "el doble del área de los pétalos");
+    igual(rosa.patron?.tipo, "rosa");
+    igual(rosa.patron && "petalos" in rosa.patron ? rosa.patron.petalos : 0, 3,
+      "n impar → n pétalos");
+    // Donde la curva NO se re-recorre, el área barrida sí es la encerrada: la cardioide
+    // r=1+cos θ encierra 3π/2 y eso es exactamente lo que sale.
+    const card = analizarPolar("1+cos(theta)");
+    aprox(card?.areaBarrida ?? NaN, (3 * Math.PI) / 2, 1e-6, "cardioide: 3π/2 exacto");
+  });
+
+  test("clasifica las familias clásicas por sus armónicos, no por cómo se escriben", () => {
+    igual(analizarPolar("cos(2*theta)")?.patron?.tipo, "rosa");
+    const par = analizarPolar("cos(2*theta)")?.patron;
+    igual(par && "petalos" in par ? par.petalos : 0, 4, "n par → 2n pétalos");
+    igual(analizarPolar("1+cos(theta)")?.patron?.tipo, "cardioide");
+    igual(analizarPolar("1+2*cos(theta)")?.patron?.tipo, "limaconLazo");
+    igual(analizarPolar("3+cos(theta)")?.patron?.tipo, "limaconConvexo");
+    igual(analizarPolar("2")?.patron?.tipo, "circunferenciaCentrada");
+    igual(analizarPolar("2*cos(theta)")?.patron?.tipo, "circunferenciaPorPolo");
+    // La cardioide escrita de otra forma es la MISMA curva: el clasificador mira r, no
+    // el texto (por eso no se casa la expresión escrita).
+    igual(analizarPolar("cos(theta)+1")?.patron?.tipo, "cardioide", "orden de los términos");
+  });
+
+  test("el lazo interior del limaçon se delata por el cambio de signo de r", () => {
+    const a = analizarPolar("1+2*cos(theta)");
+    assert(a !== null, "analizable");
+    if (!a) return;
+    igual(a.cambiaSigno, true, "r pasa de negativo a positivo → cruza al otro lado del polo");
+    aprox(a.rMin, -1, 1e-9);
+    aprox(a.rMax, 3, 1e-9);
+    igual(a.angulosPolo?.length, 2, "toca el origen dos veces por vuelta");
+    aprox(a.angulosPolo?.[0] ?? NaN, (2 * Math.PI) / 3, 1e-6, "el primero en 2π/3");
+  });
+
+  test("las simetrías que se afirman son las que se verifican (regresión)", () => {
+    // r=sin(θ/10) NO es simétrica respecto al polo: r(θ+π)≠r(θ). Una versión anterior lo
+    // decía que sí porque su test "alternativo" era en realidad el de la recta θ=π/2
+    // duplicado. Los tests son condiciones SUFICIENTES: cuando ninguno pasa, el panel
+    // calla en vez de afirmar que no hay simetría.
+    const espiralito = analizarPolar("sin(theta/10)");
+    assert(!espiralito?.simetrias.includes("polo"), "sin(θ/10) no es simétrica al polo");
+    // La circunferencia centrada las tiene todas; la cardioide solo la del eje polar.
+    igual(analizarPolar("2")?.simetrias.length, 3, "la circunferencia, las tres");
+    igual(analizarPolar("1+cos(theta)")?.simetrias.join(","), "ejePolar",
+      "la cardioide solo respecto al eje polar");
+    // Y la del ejemplo sí tiene la del polo, porque π es múltiplo de su periodo π/4.
+    assert(analizarPolar("1+0.1*sin(8*theta)")?.simetrias.includes("polo") === true,
+      "1+0,1·sin(8θ): r(θ+π)=r(θ)");
+  });
+
+  test("la espiral de Arquímedes no hereda las simetrías de su prolongación (regresión)", () => {
+    // r=θ CUMPLE el test clásico de θ=π/2, porque r(−θ)=−r(θ), y la espiral completa
+    // sobre θ∈ℝ sí es simétrica respecto al eje y: el espejo del punto de θ=π/4 está en
+    // θ=−π/4, con radio negativo. Pero el bloque dibuja [0,2π], donde ese espejo NO
+    // existe, así que la curva que se ve no lo es. El test se hace sobre el dominio
+    // trazado justamente para no describir una curva distinta de la dibujada.
+    const esp = analizarPolar("theta");
+    assert(esp !== null, "analizable");
+    if (!esp) return;
+    igual(esp.simetrias.length, 0, "sobre [0,2π] no queda ninguna simetría");
+    // El resto de la espiral sigue siendo correcto y no debe moverse con este cambio.
+    aprox(esp.rMin, 0, 1e-9);
+    aprox(esp.rMax, 2 * Math.PI, 1e-3, "r llega hasta 2π");
+    aprox(esp.areaBarrida ?? NaN, (4 * Math.PI ** 3) / 3, 1e-4, "½∫θ²dθ = 4π³/3");
+    igual(esp.angulosPolo?.length, 1, "toca el polo solo en θ=0");
+
+    // La contrapartida: una r CONSTANTE tampoco tiene periodo simbólico, pero se repite
+    // trivialmente y conserva sus tres simetrías. Si el dominio se comprobara con
+    // `periodoDeR` en vez de numéricamente, la circunferencia las perdería.
+    igual(analizarPolar("2")?.simetrias.length, 3, "la circunferencia no es una espiral");
+  });
+
+  test("expresionPolar reconoce el bloque por cualquiera de sus lados", () => {
+    assert(expresionPolar("r = 1+cos(theta)") !== null, "r a la izquierda");
+    assert(expresionPolar("1+cos(theta) = r") !== null, "r a la derecha");
+    igual(expresionPolar("y = x^2"), null, "una explícita no es polar");
+    igual(expresionPolar("x^2+y^2=1"), null, "una implícita tampoco");
+    // Lo que devuelve tiene que ser analizable tal cual (θ Unicode y producto implícito
+    // ya resueltos): es el contrato del que depende el panel.
+    const expr = expresionPolar("r = 1+0.1sin(8θ)");
+    assert(expr !== null && analizarPolar(expr) !== null, "θ Unicode y 0.1sin(8θ) implícito");
   });
 });

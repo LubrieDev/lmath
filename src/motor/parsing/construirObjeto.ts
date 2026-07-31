@@ -135,9 +135,39 @@ function parametrica(id: string, source: string, exprX: string, exprY: string): 
   };
 }
 
+/** θ (Unicode) → theta; `\theta` lo resuelve normalizarEntrada (quita el backslash). */
+const normPolar = (ladoExpr: string): string =>
+  norm(ladoExpr.trim().replace(/θ/g, "theta"));
+
+/**
+ * La expresión r(θ) YA normalizada de un bloque polar, o `null` si `source` no lo es.
+ * La necesita el panel ⓘ, que analiza r como función escalar (periodo, extremos, área)
+ * y no puede sacarla del `ObjetoPolar`: ahí r ya viene envuelta en la parametrización
+ * cartesiana. Comparte el reconocimiento con `construirObjeto` para que no pueda haber
+ * dos ideas distintas de qué bloque es polar.
+ */
+export function expresionPolar(source: string): string | null {
+  const partes = source.split("=");
+  if (partes.length !== 2) return null;
+  const lhs = norm(partes[0].trim());
+  const rhs = norm(partes[1].trim());
+  if (lhs === "r") return normPolar(partes[1]);
+  if (rhs === "r") return normPolar(partes[0]);
+  return null;
+}
+
+/**
+ * Las componentes `[x(t), y(t)]` YA normalizadas de un bloque paramétrico, o `null` si
+ * `source` no lo es. Igual que `expresionPolar`, lo necesita el panel ⓘ: el
+ * `ObjetoParametrico` solo guarda la parametrización compilada, y el análisis (periodo de
+ * cada componente, familia, simetrías) trabaja sobre las expresiones.
+ */
+export function expresionesParametricas(source: string): [string, string] | null {
+  return intentarParametrica(source.trim());
+}
+
 function polar(id: string, source: string, ladoExpr: string): ObjetoMatematico {
-  // θ (Unicode) → theta; \theta lo resuelve normalizarEntrada (quita el backslash).
-  const expr = norm(ladoExpr.trim().replace(/θ/g, "theta"));
+  const expr = normPolar(ladoExpr);
   // Dominio por PERIODO real de la curva (`sin(θ/10)` necesita 20π, no 2π).
   return {
     id, tipo: "polar", fuente: source, variables: ["theta"],

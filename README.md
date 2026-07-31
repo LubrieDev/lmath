@@ -271,6 +271,8 @@ The plugin normalizes different formats before evaluating them with [mathjs](htt
 
 > ⚠️ **Trigonometry (degrees vs. radians):** if the argument is a literal number (e.g. `sin(30)`), it is interpreted in **degrees**; if the argument contains a variable (e.g. `sin(x)`), it is evaluated in **radians**.
 
+> ⚠️ **Logarithms (default base):** `log(x)` written without a base means **base 10**, as it does on a calculator — `log(100)` is `2`. For the natural logarithm write `ln(x)` or `\ln x`. An explicit base is always respected: `log(x, 2)`, `\log_{2}{x}` and `log2(x)` all mean base 2.
+
 **Roots of any index:** the `\sqrt[n]{x}` notation is supported for cube, fourth, fifth roots, and so on. Odd-index roots with a negative radicand return the real value (e.g. `\sqrt[3]{-8} = -2`).
 
 **Absolute value:** `|x|`, `\left|x\right|` and `abs(x)` are all accepted.

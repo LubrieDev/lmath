@@ -19,6 +19,9 @@ import { integrarExpr } from "../../src/integrar";
 import {
   areaDefinida, recortarRegion, ETIQUETA_DIVERGENTE, ETIQUETA_FUERA_DOMINIO, ETIQUETA_LIMITES,
 } from "../../src/motor/analysis/areaBajoRama";
+import { analizarIntegral } from "../../src/motor/analysis/analisisIntegral";
+import { analizarDerivada } from "../../src/motor/analysis/analisisDerivada";
+import { compilarFuncion } from "../../src/evaluador";
 import {
   RELLENO_POSITIVO, RELLENO_NEGATIVO, TRAMA_POSITIVA, BORDE_REGION,
 } from "../../src/motor/rendering/RendererCanvas2D";
@@ -476,7 +479,7 @@ describe("Integral definida: primitiva simbólica (integrarExpr + Barrow)", () =
 describe("Derivada de exponencial base≠e: \\ln k simbólico, no decimal (regresión 3^x)", () => {
   test("d/dx 3^x = 3^x·ln 3 (grafica y LaTeX), sin decimal que rompa el render", () => {
     const g = derivarExpr("3^x");
-    assert(g !== null && /log\(3\)/.test(g), `el string graficado usa log(3): ${g}`);
+    assert(g !== null && /log\(3, ?e\)/.test(g), `el string graficado usa log(3, e): ${g}`);
     assert(!/1\.0986/.test(g!), `sin el decimal de ln 3: ${g}`);
     const tex = derivadaLatex(["3^x"]);
     // La función desnuda `\ln 3` acompaña una POTENCIA (`3^x`): se parentiza para acotar el
@@ -492,6 +495,299 @@ describe("Derivada de exponencial base≠e: \\ln k simbólico, no decimal (regre
 
   test("un coeficiente numérico normal NO se re-simboliza: d/dx 2·sin x = 2 cos x", () => {
     assert(/2\\cos x/.test(derivadaLatex(["2*sin(x)"])), "2 cos x intacto (2 no es ln k)");
+  });
+});
+
+// ─────────────────────────────────────────────
+// Panel ⓘ de obs-derivate (analisisDerivada)
+// ─────────────────────────────────────────────
+//
+// El cuadro describe a f leída en f′: pendiente en el origen, críticos CLASIFICADOS,
+// crecimiento, inflexiones y puntos angulosos. Los tres primeros grupos son los que el
+// panel viejo daba como "intersección Y / raíces / vértices" DE f′.
+describe("Panel ⓘ de derivadas (analisisDerivada)", () => {
+  const ev = (expr: string) => {
+    const c = compilarFuncion(insertarProductoImplicito(normalizarEntrada(expr)), "x");
+    return (x: number) => { const v = c(x); return typeof v === "number" ? v : NaN; };
+  };
+  // Analiza la f ESCRITA con la derivada que produce el propio bloque: la misma pareja
+  // (f, f′) que vería el panel, no una derivada escrita a mano en el test.
+  const an = (fExpr: string) => {
+    const d = derivarExpr(insertarProductoImplicito(normalizarEntrada(fExpr)));
+    assert(d !== null, `hay derivada de ${fExpr}`);
+    return analizarDerivada(ev(fExpr), ev(d!));
+  };
+  const tramo = (A: ReturnType<typeof an>, i: number) => A.monotonia![i];
+
+  test("ejemplo del cubo: x³−3x da máximo, mínimo, tres tramos e inflexión", () => {
+    const A = an("x^3-3x");
+    aprox(A.pendienteEn0!, -3, 1e-9, "f′(0) = −3");
+    igual(A.criticos.length, 2, "dos críticos");
+    aprox(A.criticos[0].x, -1, 1e-6, "en −1");
+    igual(A.criticos[0].tipo, "maximo", "máximo local (f′ pasa de + a −)");
+    aprox(A.criticos[1].x, 1, 1e-6, "en 1");
+    igual(A.criticos[1].tipo, "minimo", "mínimo local");
+    igual(A.monotonia!.length, 3, "tres tramos");
+    igual(tramo(A, 0).a, -Infinity, "el primero llega desde −∞");
+    igual(tramo(A, 0).creciente, true, "creciente");
+    igual(tramo(A, 1).creciente, false, "decreciente en medio");
+    igual(tramo(A, 2).b, Infinity, "el último llega a ∞");
+    igual(A.inflexiones.length, 1, "una inflexión");
+    aprox(A.inflexiones[0], 0, 1e-6, "en 0");
+    igual(A.acotadoPorRango, false, "nada queda fuera del muestreo");
+  });
+
+  test("x³: punto estacionario que NO es extremo, y crecimiento en todo ℝ", () => {
+    const A = an("x^3");
+    igual(A.criticos.length, 1, "un crítico");
+    igual(A.criticos[0].tipo, "estacionario", "f′ no cambia de signo: no es extremo");
+    igual(A.monotonia!.length, 1, "un solo tramo");
+    igual(tramo(A, 0).a, -Infinity, "desde −∞");
+    igual(tramo(A, 0).b, Infinity, "hasta ∞ (los dos extremos, no uno)");
+    aprox(A.inflexiones[0], 0, 1e-6, "inflexión en 0");
+  });
+
+  test("|x|: esquina, no un mínimo suave, y f′ que no existe ahí", () => {
+    const A = an("abs(x)");
+    igual(A.criticos.length, 1, "un crítico");
+    aprox(A.criticos[0].x, 0, 1e-6, "en 0");
+    igual(A.criticos[0].tipo, "esquina", "manda la FORMA, no el cambio de signo");
+    igual(A.noDerivables!.length, 1, "un punto no derivable");
+    aprox(A.noDerivables![0], 0, 1e-6, "en 0");
+    igual(A.pendienteEn0, null, "en 0 no hay pendiente que dar");
+    igual(A.monotonia!.length, 2, "decrece y crece");
+  });
+
+  test("√|x|: cúspide (los laterales DIVERGEN), no una esquina", () => {
+    const A = an("sqrt(abs(x))");
+    igual(A.criticos.length, 1, "un crítico");
+    igual(A.criticos[0].tipo, "cuspide", "pendientes ±∞ de signos opuestos");
+    igual(A.noDerivables!.length, 1, "y no es derivable ahí");
+  });
+
+  test("|x²−1|: dos esquinas y un máximo entre ellas", () => {
+    const A = an("abs(x^2-1)");
+    igual(A.criticos.length, 3, "−1, 0, 1");
+    igual(A.criticos[0].tipo, "esquina", "−1 es esquina");
+    igual(A.criticos[1].tipo, "maximo", "0 es máximo local");
+    igual(A.criticos[2].tipo, "esquina", "1 es esquina");
+    igual(A.noDerivables!.length, 2, "solo las esquinas son no derivables");
+  });
+
+  test("todo se enmascara por el DOMINIO de f: ln x no decrece en x<0", () => {
+    // f′ = 1/x evalúa en x = −2, donde ln x no existe. Sin la máscara, el panel
+    // anunciaba "decreciente en (−∞,0)" de una función que ahí no está.
+    const A = an("ln(x)");
+    igual(A.monotonia!.length, 1, "un único tramo");
+    aprox(tramo(A, 0).a, 0, 1e-6, "empieza en 0 (borde del dominio, refinado)");
+    igual(tramo(A, 0).b, Infinity, "y sigue hasta ∞");
+    igual(tramo(A, 0).creciente, true, "creciente");
+    igual(A.pendienteEn0, null, "0 no está en el dominio: sin pendiente");
+    igual(A.criticos.length, 0, "sin críticos");
+  });
+
+  test("e^x: el sondeo no confunde el subdesbordamiento con un cambio de signo", () => {
+    // f′ = e^x vale 0 en coma flotante mucho antes de 1e16; tomarlo por contraejemplo
+    // dejaba a la exponencial "creciente en (−10, 10)".
+    const A = an("e^{x}");
+    igual(A.monotonia!.length, 1, "un tramo");
+    igual(tramo(A, 0).a, -Infinity, "desde −∞");
+    igual(tramo(A, 0).b, Infinity, "hasta ∞");
+  });
+
+  // ── Lo que el panel NO debe decir ─────────────────────────────────────────────
+  test("1/x NO tiene esquinas: junto al polo f′ es empinada, no discontinua", () => {
+    // La pendiente pasa de −2500 a −2497 entre muestras vecinas y el filtro barato se
+    // dispara; el veredicto por límites laterales a dos escalas es quien lo descarta.
+    const A = an("1/x");
+    igual(A.noDerivables!.length, 0, "ninguna esquina inventada alrededor del polo");
+    igual(A.criticos.length, 0, "y ningún crítico");
+    igual(A.monotonia!.length, 2, "dos ramas, las dos decrecientes");
+    igual(tramo(A, 0).creciente, false, "decreciente");
+    igual(tramo(A, 1).creciente, false, "decreciente");
+    igual(A.pendienteEn0, null, "en el polo no hay pendiente");
+  });
+
+  test("una oscilante no produce puntos angulosos ni tramos ilegibles", () => {
+    const A = an("sin(x)");
+    igual(A.noDerivables!.length, 0, "f′ salta entre muestras, pero es derivable");
+    igual(A.monotonia, null, "siete tramos no son un párrafo que se lea");
+    assert(A.criticos.length >= 3, "los críticos existen (el panel los resume como infinitos)");
+  });
+
+  test("f′ que no evalúa a un lado NO es una cúspide detectada (x^{2/3})", () => {
+    // f′ = (2/3)x^(−1/3) es NaN para x<0 en este motor: no hay con qué mirar ese lado,
+    // así que no se afirma nada de x = 0 en vez de inventarse un punto por muestra.
+    const A = an("x^{2/3}");
+    igual(A.noDerivables!.length, 0, "sin puntos inventados");
+    igual(A.criticos.length, 0, "sin críticos inventados");
+  });
+
+  test("lo que pasa fuera del muestreo se anuncia, no se da por inexistente", () => {
+    // x³−1000x tiene sus extremos en ±18,3: fuera de [−10,10]. El tramo muere en el
+    // borde sin poder llegar a ∞ y eso es justo la señal de que falta información.
+    const A = an("x^3-1000x");
+    igual(A.acotadoPorRango, true, "se avisa del rango analizado");
+    igual(A.criticos.length, 0, "no se listan los que no se han visto");
+    const B = an("x^2");
+    igual(B.acotadoPorRango, false, "y no se avisa cuando no hace falta");
+  });
+
+  test("función constante: sin críticos, sin tramos, sin nada que inventar", () => {
+    const A = an("5");
+    igual(A.criticos.length, 0, "f′ ≡ 0 no son puntos críticos, es un tramo entero");
+    igual(A.monotonia!.length, 0, "ni crece ni decrece");
+    igual(A.inflexiones.length, 0, "sin inflexiones");
+    igual(A.pendienteEn0, 0, "la pendiente sí existe y vale 0");
+  });
+
+  test("campana 1/(x²+1): máximo en 0 e inflexiones en ±1/√3", () => {
+    const A = an("1/(x^2+1)");
+    igual(A.criticos.length, 1, "un crítico");
+    igual(A.criticos[0].tipo, "maximo", "máximo en 0");
+    igual(A.inflexiones.length, 2, "dos inflexiones");
+    aprox(A.inflexiones[0], -1 / Math.sqrt(3), 1e-3, "−1/√3");
+    aprox(A.inflexiones[1], 1 / Math.sqrt(3), 1e-3, "1/√3");
+  });
+});
+
+// ─────────────────────────────────────────────
+// Panel ⓘ de obs-integral (analisisIntegral)
+// ─────────────────────────────────────────────
+//
+// El cuadro describe la OPERACIÓN, no la curva del integrando: intervalo, valor, qué es
+// ese valor (área o diferencia de áreas) y valor medio. Se prueba el análisis, que es
+// donde vive todo lo que se puede afirmar de más; el ensamblado de líneas es del host.
+//
+// El último bloque de tests es el importante: comprueba lo que el panel NO debe decir.
+describe("Panel ⓘ de integrales definidas (analisisIntegral)", () => {
+  const integrando = (expr: string) => crearFuncionReal(insertarProductoImplicito(normalizarEntrada(expr)));
+  const an = (expr: string, a: number, b: number) => analizarIntegral(integrando(expr), a, b);
+
+  test("integral positiva: el valor ES el área, sin descomponer nada", () => {
+    const A = an("2x", 0, 2)!;
+    assert(A !== null, "hay análisis");
+    aprox(A.valor, 4, 1e-9, "∫₀² 2x dx = 4");
+    igual(A.signo, 1, "el integrando no baja del eje");
+    igual(A.cruces!.length, 0, "no cruza");
+    igual(A.areaPositiva, null, "sin cruces no se descompone: sería repetir el valor");
+    igual(A.areaNegativa, null, "ídem");
+    igual(A.impropia, false, "propia");
+    igual(A.invertido, false, "límites en orden");
+  });
+
+  test("valor medio: ∫ₐᵇf/(b−a), y solo con intervalo no degenerado", () => {
+    aprox(an("2x", 0, 2)!.promedio!, 2, 1e-9, "media de 2x en [0,2] = 2");
+    aprox(an("x^2", 0, 2)!.promedio!, 4 / 3, 1e-6, "media de x² en [0,2] = 4/3");
+    igual(an("x^2", 3, 3)!.promedio, null, "intervalo nulo: no hay media (sería 0/0)");
+  });
+
+  test("cambio de signo: cruces localizados y áreas que SUMAN el valor", () => {
+    const A = an("x", -1, 1)!;
+    aprox(A.valor, 0, 1e-9, "∫₋₁¹ x dx = 0");
+    igual(A.signo, null, "cruza: no hay signo constante");
+    igual(A.cruces!.length, 1, "un cruce");
+    aprox(A.cruces![0], 0, 1e-9, "en x = 0");
+    aprox(A.areaPositiva!, 0.5, 1e-6, "área positiva 1/2");
+    aprox(A.areaNegativa!, -0.5, 1e-6, "área negativa −1/2");
+    aprox(A.areaPositiva! + A.areaNegativa!, A.valor, 1e-6, "las dos suman el valor");
+  });
+
+  test("varios cruces: x³−x en [−2,2] parte en cuatro trozos", () => {
+    const A = an("x^3-x", -2, 2)!;
+    igual(A.cruces!.length, 3, "cruza en −1, 0, 1");
+    aprox(A.cruces![0], -1, 1e-6, "−1");
+    aprox(A.cruces![1], 0, 1e-6, "0");
+    aprox(A.cruces![2], 1, 1e-6, "1");
+    aprox(A.areaPositiva!, 2.5, 1e-5, "área sobre el eje 5/2");
+    aprox(A.areaNegativa!, -2.5, 1e-5, "área bajo el eje −5/2");
+  });
+
+  test("integrando siempre negativo: signo −1 (el valor NO es el área)", () => {
+    const A = an("-x^2", -1, 1)!;
+    igual(A.signo, -1, "la curva se queda bajo el eje");
+    aprox(A.valor, -2 / 3, 1e-6, "−2/3");
+    igual(A.areaPositiva, null, "sin cruces, sin descomposición");
+  });
+
+  test("impropia convergente: se marca y se dice en qué extremo", () => {
+    const A = an("1/sqrt(x)", 0, 1)!;
+    igual(A.impropia, true, "singularidad en un extremo");
+    igual(A.singularidades.length, 1, "una");
+    aprox(A.singularidades[0], 0, 1e-12, "en x = 0");
+    aprox(A.valor, 2, 1e-3, "≈ 2 (valor aproximado por encogimiento de ε)");
+  });
+
+  test("impropia sin primitiva: el panel redondea a la precisión que tiene, con ≈", () => {
+    // ∫₀⁴dx/√x = 4, pero el método converge a 1e-4 y se leía "≈ 3.9996": cuatro decimales
+    // de los que el último es ruido. Ver `cuerpoAreaExactoBase`.
+    const r = cuerpoAreaLatexExacto("\\int_{0}^{4} \\frac{1}{\\sqrt{x}} \\, dx");
+    igual(r.cuerpo, "4", "se redondea a 4");
+    igual(r.conector, "\\approx", "sin dejar de ser aproximado");
+    // Con primitiva (x^{-0.5} sí la tiene) Barrow da el valor EXACTO: la tolerancia de
+    // consistencia se afloja en las impropias, que si no rechazaban siempre la primitiva.
+    const exacto = cuerpoAreaLatexExacto("\\int_{0}^{1} x^{-0.5} \\, dx");
+    igual(exacto.cuerpo, "2", "= 2 exacto");
+    igual(exacto.conector, "=", "por Barrow, no aproximado");
+  });
+
+  test("límites al revés: se marca, y las áreas siguen siendo las del DIBUJO", () => {
+    const A = an("x^2", 2, 0)!;
+    igual(A.invertido, true, "a > b");
+    aprox(A.valor, -8 / 3, 1e-6, "∫₂⁰x²dx = −8/3");
+    aprox(A.promedio!, 4 / 3, 1e-6, "la media no cambia de signo (numerador y denominador sí)");
+  });
+
+  test("intervalo degenerado (a = b): la integral es 0 y no hay región que describir", () => {
+    const A = an("x^2", 3, 3)!;
+    igual(A.valor, 0, "0 por definición");
+    igual(A.signo, null, "sin signo que afirmar");
+    igual(A.areaPositiva, null, "sin áreas");
+    igual(A.promedio, null, "sin media");
+  });
+
+  // ── Lo que el panel NO debe decir ─────────────────────────────────────────────
+  test("tocar el eje sin cruzarlo NO es un cambio de signo (x² en [−1,1])", () => {
+    const A = an("x^2", -1, 1)!;
+    igual(A.cruces!.length, 0, "x² toca el 0 pero no cambia de signo");
+    igual(A.signo, 1, "sigue siendo positiva");
+    igual(A.areaPositiva, null, "y no se descompone nada");
+  });
+
+  test("demasiados cruces: se calla el conteo en vez de dar un número que no cabe", () => {
+    const A = an("sin(x)", 0, 10 * Math.PI)!;
+    igual(A.cruces, null, "9 cruces: más de los que el cuadro enumera");
+    igual(A.signo, null, "tampoco se afirma un signo constante");
+    igual(A.areaPositiva, null, "sin partición fiable, sin áreas");
+  });
+
+  test("integrando idénticamente nulo: signo 0, no un signo inventado", () => {
+    const A = an("0", 0, 1)!;
+    igual(A.signo, 0, "ni positivo ni negativo");
+    igual(A.valor, 0, "valor 0");
+  });
+
+  test("sin número honesto no hay análisis: divergente y límites no finitos → null", () => {
+    igual(an("1/x", -1, 1), null, "∫₋₁¹dx/x diverge (ya lo etiqueta el velo)");
+    igual(an("sqrt(x-1)", 0, 4), null, "hueco del dominio dentro del intervalo");
+    igual(an("x^2", NaN, 2), null, "límite no numérico");
+  });
+
+  test("la descomposición solo se publica si los trozos reconstruyen el total", () => {
+    // Batería de integrandos con cruces: cuando hay áreas, tienen que cuadrar. Es la
+    // invariante que impide publicar dos números plausibles de una partición equivocada.
+    const casos: [string, number, number][] = [
+      ["x", -1, 1], ["sin(x)", 0, 2 * Math.PI], ["x^3-x", -2, 2],
+      ["x^2-1", -2, 2], ["cos(x)", 0, Math.PI], ["x-0.5", 0, 1],
+    ];
+    for (const [expr, a, b] of casos) {
+      const A = an(expr, a, b)!;
+      assert(A !== null, `hay análisis de ${expr}`);
+      if (A.areaPositiva === null) continue;
+      aprox(A.areaPositiva + A.areaNegativa!, A.valor, 1e-5, `${expr}: las áreas suman el valor`);
+      assert(A.areaPositiva >= 0, `${expr}: el área positiva no es negativa`);
+      assert(A.areaNegativa! <= 0, `${expr}: el área negativa no es positiva`);
+    }
   });
 });
 

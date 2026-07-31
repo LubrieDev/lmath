@@ -97,7 +97,7 @@ function integrarPotencia(base: Nodo, n: number): string | null {
   const a = coefLineal(base);
   if (a === null) return null;
   const u = base.toString();
-  if (Math.abs(n + 1) < 1e-12) return `log(abs(${u}))/(${a})`; // ∫u⁻¹ = ln|u|/a
+  if (Math.abs(n + 1) < 1e-12) return `log(abs(${u}), e)/(${a})`; // ∫u⁻¹ = ln|u|/a
   const np1 = n + 1;
   return `((${u})^(${np1}))/(${np1 * a})`;
 }
@@ -114,7 +114,7 @@ function integrarReciproco(q: Nodo): string | null {
     return integrarPotencia(q.args[0], -k);
   }
   const a = coefLineal(q);
-  if (a !== null) return `log(abs(${q.toString()}))/(${a})`;
+  if (a !== null) return `log(abs(${q.toString()}), e)/(${a})`;
   return integrarArcotangente(q);
 }
 
@@ -188,7 +188,7 @@ function integrarDerivadaLogaritmica(p: Nodo, q: Nodo): string | null {
     comparables++;
   }
   if (c === null || comparables < 3) return null;
-  return `(${constanteLegible(c)})*log(abs(${q.toString()}))`;
+  return `(${constanteLegible(c)})*log(abs(${q.toString()}), e)`;
 }
 
 /** `∫ b^u dx` con base `b` constante y exponente `u` AFÍN: `b^u/(a·ln b)` (b=e ⇒ ln b=1). */
@@ -196,7 +196,7 @@ function integrarExponencial(base: Nodo, exp: Nodo): string | null {
   const a = coefLineal(exp);
   if (a === null) return null;
   const b = base.toString();
-  return `((${b})^(${exp.toString()}))/((${a})*log(${b}))`;
+  return `((${b})^(${exp.toString()}))/((${a})*log(${b}, e))`;
 }
 
 /** Tabla de antiderivadas de `f(u)` con `u` AFÍN (`a = du/dx`): trig, exp, √. null si no está. */
@@ -208,10 +208,10 @@ function integrarFuncion(nombre: string, arg: Nodo): string | null {
     case "sin": return `-cos(${u})/(${a})`;
     case "cos": return `sin(${u})/(${a})`;
     case "exp": return `exp(${u})/(${a})`;
-    case "tan": return `-log(abs(cos(${u})))/(${a})`; // ∫tan = −ln|cos|
-    case "cot": return `log(abs(sin(${u})))/(${a})`; // ∫cot = ln|sin|
-    case "sec": return `log(abs(sec(${u})+tan(${u})))/(${a})`;
-    case "csc": return `-log(abs(csc(${u})+cot(${u})))/(${a})`;
+    case "tan": return `-log(abs(cos(${u})), e)/(${a})`; // ∫tan = −ln|cos|
+    case "cot": return `log(abs(sin(${u})), e)/(${a})`; // ∫cot = ln|sin|
+    case "sec": return `log(abs(sec(${u})+tan(${u})), e)/(${a})`;
+    case "csc": return `-log(abs(csc(${u})+cot(${u})), e)/(${a})`;
     case "sinh": return `cosh(${u})/(${a})`;
     case "cosh": return `sinh(${u})/(${a})`;
     case "sqrt": return `(2*(${u})^(3/2))/(3*(${a}))`; // ∫√u = (2/3)u^{3/2}/a

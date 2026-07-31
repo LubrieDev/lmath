@@ -1,6 +1,6 @@
 import { parse } from "mathjs";
 
-import { opNodo, simboloNodo, funcNodo, esNoNegativo, type Nodo } from "./formatoExpr";
+import { opNodo, constNodo, simboloNodo, funcNodo, esNoNegativo, type Nodo } from "./formatoExpr";
 import { normalizarEntrada, contieneYLibre } from "./parser";
 import { parametrosDeFamilia } from "./despejeInverso";
 import { simplificarCondiciones, type ExtremoCond, type ResultadoCond } from "./condiciones";
@@ -71,11 +71,15 @@ const NOMBRE_FUNCION_TEX: Record<string, string> = {
 // pinta como `\left(<u>\right)`: un nodo de función SIEMPRE se renderiza, mathjs no lo poda.
 const PAREN_DESNUDA = "parenDesnuda";
 
-// Constantes con NOMBRE: no son variables libres, así que un exponente hecho de ellas
-// (`φ/2`, `π/3`, `2e/5`) es un NÚMERO, aunque no se escriba con dígitos. Es lo que separa
-// `x^{φ/2}` —una potencia fraccionaria, o sea un radical— de `e^{x/2}`, donde el exponente
-// depende de x y la forma exponencial es la legible.
-const CONSTANTES_TEX = new Set(["pi", "e", "tau", "phi", "Infinity", "NaN"]);
+// Topes de legibilidad del radical (ver `radicalDeExponente`). Con potencia dentro se
+// admiten los índices que aún se nombran y se leen de corrido —cuadrada, cúbica, cuarta,
+// quinta—; una raíz PURA aguanta algo más porque no tiene exponente que leer encima.
+//
+// El 5 no es arbitrario ni el 4 era peor: es que `y^{2.5}=x` ⇒ `⁵√(x²)` lo añadió la 1.3.1
+// a propósito, y con el tope en 4 esa forma se perdía. El criterio de legibilidad no
+// llegaba a distinguirlas, así que manda no regresar lo que ya se decidió.
+const INDICE_MAX_CON_POTENCIA = 5;
+const INDICE_MAX_RAIZ_PURA = 8;
 
 /** Quita los paréntesis explícitos que envuelven a un nodo (`((u))` → `u`). */
 function pelar(n: Nodo): Nodo {
@@ -100,35 +104,206 @@ function pelar(n: Nodo): Nodo {
  *
  * Condiciones (conservadoras, para no reescribir lo que ya se lee mejor tal cual):
  *   • denominador entero ≥2 (el índice del radical);
- *   • numerador SIN variables libres (`e^{x/2}` conserva su forma exponencial);
- *   • numerador no negativo (`x^{-1/2}` seguiría leyéndose como potencia; pintarlo
- *     `\sqrt{x^{-1}}` no aclara nada y el recíproco pide otra decisión, la de `\frac`).
+ *   • numerador ENTERO no negativo — o sea, exponente RACIONAL. Ver abajo;
+ *   • y el radical tiene que SER MÁS LEGIBLE que la potencia — ver más abajo.
+ *
+ * Lo de exigir numerador entero merece explicación porque antes no se exigía: `x^{π/2}` se
+ * pintaba `\sqrt{x^{π}}`. Es cierto, pero nadie lo escribe así. El radical es la notación
+ * canónica de un exponente RACIONAL —`p/q` significa literalmente "raíz q-ésima de la
+ * potencia p-ésima"—, y π/2 no es un racional: el `/2` de ahí es una división corriente,
+ * no un índice. `x^{π/2}` ya es corto, familiar y se reconoce de un vistazo; convertirlo
+ * en raíz lo vuelve más mecánico, no más claro. Mismo trato para `φ/2`, `e/3` y `τ/4`.
  * El cuerpo se compone reconstruyendo `base^numerador` y dejando que mathjs lo pinte, así
  * hereda su política de paréntesis: `(x+1)^{φ/2}` → `\sqrt{\left(x+1\right)^{\phi}}`.
+ *
+ * Que exista una fracción exacta NO es razón suficiente para pintar un radical, y esta es
+ * la condición que faltaba. `x^{5/64}` salía `\sqrt[64]{x^{5}}`: equivalente, ilegible, y
+ * —lo peor— INESTABLE, porque el aspecto de la expresión pasaba a depender de si el
+ * racionalizador encontró o no una fracción, que es un detalle interno. Dos topes lo
+ * cierran, y por debajo de ellos nada cambia:
+ *
+ *   • índice ≤ 4 con cualquier numerador. Son los radicales que se leen de un vistazo
+ *     porque tienen glifo propio en la notación que se enseña: √, ∛ y ⁴√.
+ *   • índice ≤ 8 solo si el numerador es 1, es decir una raíz PURA (`\sqrt[8]{x}`). Con
+ *     numerador el mismo índice ya no compensa: `\sqrt[8]{x^{7}}` se lee peor que
+ *     `x^{7/8}`, que es exactamente el trato que se quiere evitar.
+ *
+ * Además se EXTRAE la parte entera, que es como se escribe a mano: `x^{3/2}` es `x√x` y no
+ * `\sqrt{x^{3}}`, y `x^{11/4}` es `x^{2}\sqrt[4]{x^{3}}`. La identidad
+ * `x^{k+p/q} = x^{k}·x^{p/q}` es exacta y no mueve el dominio —una potencia no entera ya
+ * exige base ≥0 (el motor evalúa con `Math.pow`, que da NaN en negativos), y el factor
+ * entero está definido en todas partes—, así que la curva no se toca. Y el tope se aplica
+ * DESPUÉS de extraer: lo que se juzga es el radical que se va a pintar de verdad.
+ */
+/** Exponente `±p/q` con p y q enteros y q≥2, o `null` si no lo es. `p` es el valor
+ *  ABSOLUTO; el signo va aparte porque decide la forma (radical o su recíproco). */
+interface ExponenteRacional { p: number; q: number; negativo: boolean }
+
+function fraccionDelExponente(exp: Nodo): ExponenteRacional | null {
+  const e = pelar(exp);
+  if (e.type !== "OperatorNode" || e.op !== "/" || e.args?.length !== 2) return null;
+  const den = pelar(e.args[1]);
+  if (den.type !== "ConstantNode" || typeof den.value !== "number") return null;
+  if (!Number.isInteger(den.value) || den.value < 2) return null;
+
+  // El numerador llega como constante (posiblemente negativa) o como menos unario.
+  let num = pelar(e.args[0]);
+  let negativo = false;
+  if (num.type === "OperatorNode" && num.op === "-" && num.args?.length === 1) {
+    negativo = true;
+    num = pelar(num.args[0]);
+  }
+  // Numerador ENTERO: es lo que hace del exponente un racional y del radical su notación
+  // canónica. Deja fuera `x^{π/2}` (ver la cabecera) y `e^{x/2}`, que no es un número.
+  if (num.type !== "ConstantNode" || typeof num.value !== "number") return null;
+  if (!Number.isInteger(num.value) || num.value === 0) return null;
+  if (num.value < 0) negativo = !negativo;
+  return { p: Math.abs(num.value), q: den.value, negativo };
+}
+
+/** ¿Merece la pena pintar `\sqrt[q]{u^p}` en vez de la potencia? (los dos topes). */
+function radicalDibujable(p: number, q: number): boolean {
+  return q <= (p === 1 ? INDICE_MAX_RAIZ_PURA : INDICE_MAX_CON_POTENCIA);
+}
+
+/**
+ * Pinta `base^(p/q)` con 0<p<q como radical. La parte entera y el signo ya no llegan aquí:
+ * los resuelve `normalizarPotenciasRacionales` ANTES, sobre el árbol, para que el resultado
+ * sean nodos que las demás pasadas puedan seguir tratando (que es lo que permite fundir
+ * `√2·√x` en `√(2x)`; ver `fusionarRadicalesEnProducto`).
  */
 function radicalDeExponente(base: Nodo, exp: Nodo, options: object): string | undefined {
-  const e = pelar(exp);
-  if (e.type !== "OperatorNode" || e.op !== "/" || e.args?.length !== 2) return undefined;
-  const num = pelar(e.args[0]);
-  const den = pelar(e.args[1]);
-  if (den.type !== "ConstantNode") return undefined;
-  const indice = den.value;
-  if (typeof indice !== "number" || !Number.isInteger(indice) || indice < 2) return undefined;
-  // Numerador negativo: se deja como potencia (ver la cabecera).
-  if (num.type === "ConstantNode" && typeof num.value === "number" && num.value < 0) return undefined;
-  if (num.type === "OperatorNode" && num.op === "-" && num.args?.length === 1) return undefined;
-  // Variables libres en el exponente → no es un número: `e^{x/2}` no es una raíz.
-  const libres = num.filter(
-    (nn: Nodo, camino: string, padre: Nodo | null) =>
-      nn.type === "SymbolNode" && !CONSTANTES_TEX.has(nn.name) &&
-      !(padre !== null && padre.type === "FunctionNode" && camino === "fn")
-  );
-  if (libres.length > 0) return undefined;
-  const unitario = num.type === "ConstantNode" && num.value === 1;
-  const cuerpo = unitario
+  const f = fraccionDelExponente(exp);
+  if (f === null || f.negativo) return undefined;
+  const { p, q } = f;
+  if (p >= q) return undefined;          // sin extraer: no es asunto del emisor
+  if (!radicalDibujable(p, q)) return undefined;
+
+  const cuerpo = p === 1
     ? pelar(base).toTex(options)
-    : opNodo("^", "pow", [base, num]).toTex(options);
-  return indice === 2 ? `\\sqrt{${cuerpo}}` : `\\sqrt[${indice}]{${cuerpo}}`;
+    : opNodo("^", "pow", [base, constNodo(p)]).toTex(options);
+  return q === 2 ? `\\sqrt{${cuerpo}}` : `\\sqrt[${q}]{${cuerpo}}`;
+}
+
+/** Nodo de la raíz q-ésima de `u` (`sqrt` cuando q=2, que es como lo escribe el emisor). */
+const raizNodo = (u: Nodo, q: number): Nodo =>
+  q === 2 ? funcNodo(simboloNodo("sqrt"), [u]) : funcNodo(simboloNodo("nthRoot"), [u, constNodo(q)]);
+
+/**
+ * Un radical que YA llega escrito como raíz de una potencia (`sqrt(u^m)`, `nthRoot(u^m,q)`),
+ * leído como el exponente racional m/q que representa. Null si no lo es.
+ *
+ * Hace falta porque el parser convierte `x^{3/2}` en `sqrt(x^3)` ANTES de llegar aquí, y a
+ * propósito: la raíz da el valor REAL con base negativa donde existe (`x^{2/3}` en x<0) y la
+ * potencia daría NaN (ver parser.ts §exponentes fraccionarios). El efecto colateral era que
+ * las reglas de tipografía de abajo —que miran nodos `^`— no veían nunca esa forma, así que
+ * `x^{3/2}` se pintaba `√(x³)` y `x^{1.5}`, la misma función, `x√x`.
+ */
+function raizDePotencia(n: Nodo): { base: Nodo; m: number; q: number } | null {
+  if (n.type !== "FunctionNode" || !n.args) return null;
+  let q: number;
+  if (n.fn?.name === "sqrt" && n.args.length === 1) q = 2;
+  else if (n.fn?.name === "nthRoot" && n.args.length === 2) {
+    const idx = pelar(n.args[1]);
+    if (idx.type !== "ConstantNode" || typeof idx.value !== "number") return null;
+    q = idx.value;
+  } else return null;
+  if (!Number.isInteger(q) || q < 2) return null;
+
+  const radicando = pelar(n.args[0]);
+  if (!(radicando.type === "OperatorNode" && radicando.op === "^" && radicando.args?.length === 2))
+    return null;
+  const m = pelar(radicando.args[1]);
+  if (m.type !== "ConstantNode" || typeof m.value !== "number") return null;
+  if (!Number.isInteger(m.value) || m.value < 1) return null;
+  return { base: pelar(radicando.args[0]), m: m.value, q };
+}
+
+/**
+ * La misma división euclídea de `normalizarPotenciasRacionales`, aplicada a la forma de RAÍZ:
+ * `√(x³)` → `x√x`, `⁴√(x¹¹)` → `x²·⁴√(x³)`. El resultado se queda en nodos de raíz, no se pasa
+ * a potencia, para no tocar el dominio.
+ *
+ * Dos guardas que son exactamente donde la identidad deja de valer:
+ *
+ *  • ÍNDICE PAR CON EXPONENTE PAR se deja intacto. `⁴√(x⁶)` está definida en todo ℝ y es
+ *    positiva; el factor extraído, `x·⁴√(x²)`, es negativo en x<0. El valor absoluto que la
+ *    raíz de índice par lleva dentro se perdería al sacar el factor. Con exponente IMPAR no
+ *    hay caso: el radicando ya obliga a u ≥ 0. Con índice IMPAR tampoco: la raíz conserva el
+ *    signo y los dos lados coinciden en todo ℝ.
+ *  • SIN RADICAL QUE PINTAR (`⁶⁴√(x⁵)`, por encima de los topes) se pasa a potencia, pero
+ *    SOLO con índice par, que es cuando raíz y potencia tienen el mismo dominio (u ≥ 0). Con
+ *    índice impar la raíz vive en los negativos y la potencia no: pintarla `x^{5/9}` sería
+ *    anunciar una curva más corta que la dibujada.
+ */
+function normalizarRaizDePotencia(n: Nodo): Nodo {
+  const r = raizDePotencia(n);
+  if (r === null) return n;
+  const { base, m, q } = r;
+  if (q % 2 === 0 && m % 2 === 0) return n;
+
+  const k = Math.floor(m / q);
+  const resto = m - k * q;
+  if (resto === 0) return n;             // potencia entera disfrazada: no es asunto de aquí
+  if (!radicalDibujable(resto, q)) {
+    return q % 2 === 0
+      ? opNodo("^", "pow", [base, opNodo("/", "divide", [constNodo(m), constNodo(q)])])
+      : n;
+  }
+  if (k === 0) return n;                 // no hay parte entera que sacar
+
+  const radical = raizNodo(resto === 1 ? base : opNodo("^", "pow", [base, constNodo(resto)]), q);
+  return opNodo("*", "multiply",
+    [k === 1 ? base : opNodo("^", "pow", [base, constNodo(k)]), radical]);
+}
+
+/**
+ * `x^{11/4}` → `x^{2}·x^{3/4}`, y `x^{-1/2}` → `1/x^{1/2}`. Reescritura sobre el ÁRBOL, no
+ * sobre el LaTeX, y ahí está toda la gracia:
+ *
+ *  • La división euclídea `m = q·k + r` es lo que escribe una persona (`x^{3/2}` es `x√x`),
+ *    y hacerla en nodos deja `x^{1/2}` a la vista de la pasada que funde radicales. Por eso
+ *    `(2x)^{5/2}` —que `simplify` reparte en `4·2^{1/2}·x^{5/2}`— acaba en `4x²√(2x)`: se
+ *    parte en `4·2^{1/2}·x²·x^{1/2}` y entonces los dos `^{1/2}` se ven y se juntan. Hecha
+ *    sobre el texto ya emitido, ese `√x` era una cadena y no se podía tocar.
+ *  • El exponente NEGATIVO pasa a ser el recíproco del radical: `x^{-1/2}` es `1/√x`, que es
+ *    como se escribe. Antes se dejaba como potencia y salía `x^{\frac{-1}{2}}`, con el signo
+ *    dentro de la fracción, que no lo escribe nadie.
+ *
+ * Ambas identidades son exactas y NO mueven el dominio: una potencia de exponente
+ * fraccionario ya exige base ≥0 (`Math.pow` da NaN en negativos) y el factor entero existe
+ * en todas partes; el recíproco excluye además el 0, que la potencia negativa ya excluía.
+ *
+ * Solo se reescribe si el radical resultante se va a PINTAR: si no, `x^{15/8}` se partiría
+ * en `x·x^{7/8}` —dos trozos y ninguna raíz— que es peor que dejarlo entero.
+ */
+function normalizarPotenciasRacionales(node: Nodo): Nodo {
+  const n = node.map(normalizarPotenciasRacionales);
+  // La MISMA regla sobre la forma de raíz, que es como llega lo escrito con llaves LaTeX.
+  const comoRaiz = normalizarRaizDePotencia(n);
+  if (comoRaiz !== n) return comoRaiz;
+  if (!(n.type === "OperatorNode" && n.op === "^" && n.args?.length === 2)) return n;
+
+  const f = fraccionDelExponente(n.args[1]);
+  if (f === null) return n;
+  const { p, q, negativo } = f;
+  const k = Math.floor(p / q);
+  const r = p - k * q;
+  if (r === 0) return n;                 // potencia entera disfrazada: no es un radical
+  if (!radicalDibujable(r, q)) return n;
+
+  // Base PELADA: si se deja el `ParenthesisNode` del usuario, mathjs lo pinta con su propio
+  // espacio interior (`\left( x+1\right)`) y la misma construcción salía de dos formas según
+  // la base. Pelado, los paréntesis los pone mathjs por PRECEDENCIA, iguales para todas.
+  const base = pelar(n.args[0]);
+  const radical = opNodo("^", "pow", [base, opNodo("/", "divide", [constNodo(r), constNodo(q)])]);
+  // `base^1` se pintaría `x^{1}`: con k=1 el factor entero es la base tal cual.
+  const conEntero = k === 0
+    ? radical
+    : opNodo("*", "multiply",
+        [k === 1 ? base : opNodo("^", "pow", [base, constNodo(k)]), radical]);
+
+  return negativo ? opNodo("/", "divide", [constNodo(1), conEntero]) : conEntero;
 }
 
 function manejadorFuncionesTex(node: Nodo, options: object): string | undefined {
@@ -148,6 +323,26 @@ function manejadorFuncionesTex(node: Nodo, options: object): string | undefined 
     const argTex = (atomico ? raiz : arg).toTex(options);
     return atomico ? `${nombreTex} ${argTex.trim()}` : `${nombreTex}\\left(${argTex}\\right)`;
   };
+
+  // Logaritmos con base: `log10(u)`, `log2(u)` y `log(u, b)` → `\log_{b} u`, con el MISMO
+  // criterio de paréntesis que el resto del panel (átomo sin ellos, compuesto con ellos).
+  // mathjs los parentiza siempre y encima deja un espacio dentro —`\log_{10}\left( x\right)`—,
+  // que no es la tipografía con la que se pintan `\ln 2` ni `\sin x`.
+  //
+  // Y base `e` → `\ln`. Los módulos que PRODUCEN un logaritmo natural (el despeje de `e^y=x`,
+  // la integral de `1/x`, la re-simbolización de `0.693…`) escriben la base explícita, porque
+  // sus cadenas vuelven a pasar por `normalizarEntrada` y ahí un `log` sin base significa base
+  // 10 —lo que escribe el usuario—. Esa `e` es un detalle interno, no algo que deba leerse.
+  if (node.type === "FunctionNode") {
+    const nombre = node.fn?.name;
+    const base =
+      nombre === "log10" && node.args.length === 1 ? "10"
+      : nombre === "log2" && node.args.length === 1 ? "2"
+      : nombre === "log" && node.args.length === 2 ? node.args[1].toTex(options).trim()
+      : undefined;
+    if (base !== undefined)
+      return argFuncion(node.args[0], base === "e" ? "\\ln" : `\\log_{${base}}`);
+  }
 
   // Centinela del ± del despeje (despejar.ts): `pm(u)` → `\pm <u>`. Una raíz o una
   // fracción se leen solas → sin paréntesis (NO se enruta por NOMBRE_FUNCION_TEX/argFuncion,
@@ -429,6 +624,13 @@ function ordenarPolinomioDescendente(node: Nodo): Nodo {
 /** Nombre mathjs de un factor que se pinta como `\nombre <átomo>` sin paréntesis (una
  *  función de NOMBRE_FUNCION_TEX con un único argumento atómico), o undefined. */
 function nombreFuncionDesnuda(n: Nodo): string | undefined {
+  // `log(u, e)` es la forma interna del logaritmo natural y se pinta `\ln u`: a efectos de
+  // parentización es una función desnuda igual que las de un solo argumento. Sin esta rama,
+  // `x²·ln x` volvía a salir `x^{2}\ln x`, donde la potencia parece tragarse el logaritmo.
+  if (n.type === "FunctionNode" && n.fn?.name === "log" && n.args?.length === 2) {
+    const arg = n.args[0];
+    if (arg.type === "SymbolNode" || arg.type === "ConstantNode") return "log";
+  }
   if (n.type === "FunctionNode" && n.args?.length === 1 && NOMBRE_FUNCION_TEX[n.fn?.name]) {
     const a = n.args[0];
     if (a.type === "SymbolNode" || a.type === "ConstantNode") return n.fn.name;
@@ -505,6 +707,114 @@ function agruparFuncionesDesnudasEnProducto(node: Nodo): Nodo {
 // → limpiarTex. Así la tipografía (exponentes, paréntesis mínimos, raíces, trig e
 // inversas, logaritmos, funciones especiales) es IDÉNTICA a la de obs-graph. Si el
 // lado no se puede parsear, cae al texto normalizado (KaTeX suele renderizarlo).
+/**
+ * Un factor que es una potencia de exponente racional, en cualquiera de sus TRES formas
+ * (`u^(p/q)`, `sqrt(u)`, `nthRoot(u,q)`), reducido a base + exponente. `null` si no lo es.
+ *
+ * Las tres tienen que reconocerse porque el panel las recibe mezcladas: lo que escribe el
+ * usuario llega como potencia, y lo que devuelve `simplify` llega como `sqrt(...)`. Sin la
+ * forma de función, la fusión no veía nada que fusionar justo en el caso que la motivó.
+ */
+function factorRadical(n: Nodo): { clave: string; base: Nodo; exp: Nodo } | null {
+  const conIndice = (base: Nodo, p: number, q: number) => {
+    if (!Number.isInteger(p) || !Number.isInteger(q) || q < 2 || p < 1) return null;
+    // Solo se fusiona si el resultado se va a PINTAR como radical: si no, dos raíces se
+    // convertirían en una potencia fraccionaria, que es peor que de lo que se venía.
+    if (q > (p === 1 ? INDICE_MAX_RAIZ_PURA : INDICE_MAX_CON_POTENCIA)) return null;
+    return {
+      clave: `${p}/${q}`,
+      base,
+      exp: opNodo("/", "divide", [constNodo(p), constNodo(q)]),
+    };
+  };
+
+  if (n.type === "FunctionNode" && n.args?.length === 1 && n.fn?.name === "sqrt")
+    return conIndice(pelar(n.args[0]), 1, 2);
+
+  if (n.type === "FunctionNode" && n.args?.length === 2 && n.fn?.name === "nthRoot") {
+    const q = pelar(n.args[1]);
+    if (q.type !== "ConstantNode" || typeof q.value !== "number") return null;
+    return conIndice(pelar(n.args[0]), 1, q.value);
+  }
+
+  if (n.type === "OperatorNode" && n.op === "^" && n.args?.length === 2) {
+    const e = pelar(n.args[1]);
+    if (e.type !== "OperatorNode" || e.op !== "/" || e.args?.length !== 2) return null;
+    const num = pelar(e.args[0]);
+    const den = pelar(e.args[1]);
+    if (num.type !== "ConstantNode" || den.type !== "ConstantNode") return null;
+    if (typeof num.value !== "number" || typeof den.value !== "number") return null;
+    return conIndice(pelar(n.args[0]), num.value, den.value);
+  }
+
+  return null;
+}
+
+/**
+ * `2^{1/2}·x^{1/2}` → `(2x)^{1/2}`, es decir `√2·√x` → `√(2x)`.
+ *
+ * `simplify` reparte una potencia sobre el producto de su base —`(2x)^{5/2}` se convierte
+ * en `2^{5/2}·x^{5/2}`— y el panel acababa pintando `4√2·x²√x`, con DOS radicales sueltos,
+ * cuando la forma que se escribe a mano es `4x²√(2x)`: un solo radical con dentro lo que no
+ * sale. No es solo gusto, es coherencia interna: el proyecto ya extrae el factor perfecto y
+ * deja el resto DENTRO (`√(20x)` → `2√(5x)`), y `√2·√x` contradecía esa misma convención
+ * según cómo se hubiera escrito la expresión (`sqrt(20x)` no se repartía y `(2x)^{1/2}` sí).
+ *
+ * DOMINIO. `a^{1/n}·b^{1/n} = (ab)^{1/n}` NO es una identidad libre: con a y b ambos
+ * negativos el lado izquierdo es NaN·NaN y el derecho puede ser real (`√(−1)·√(−1)` es NaN,
+ * `√1` es 1). Basta con que UNO de los dos sea demostrablemente no negativo para que sea
+ * segura: entonces `ab < 0` solo puede venir del otro, que ya hacía NaN por su cuenta, y
+ * ambos lados coinciden. Esa es la guarda —`esNoNegativo`—, y por eso `√x·√y` con las dos
+ * simbólicas se queda como está.
+ */
+function fusionarRadicalesEnProducto(node: Nodo): Nodo {
+  if (!(node.type === "OperatorNode" && node.op === "*" && node.args.length === 2))
+    return node.map(fusionarRadicalesEnProducto);
+
+  // Se aplana la cadena entera del `*` más externo, igual que la agrupación de funciones
+  // desnudas: la fusión se decide mirando todos los factores a la vez.
+  const factores: Nodo[] = [];
+  const aplanar = (n: Nodo): void => {
+    if (n.type === "OperatorNode" && n.op === "*" && n.args.length === 2) {
+      aplanar(n.args[0]); aplanar(n.args[1]);
+    } else factores.push(fusionarRadicalesEnProducto(n));
+  };
+  aplanar(node);
+
+  const salida: Nodo[] = [];
+  const bases = new Map<string, { indice: number; base: Nodo; exp: Nodo }>();
+  let fusionado = false;
+  for (const f of factores) {
+    const rad = factorRadical(f);
+    const previo = rad === null ? undefined : bases.get(rad.clave);
+    if (rad === null) { salida.push(f); continue; }
+    if (previo === undefined) {
+      bases.set(rad.clave, { indice: salida.length, base: rad.base, exp: rad.exp });
+      salida.push(f);
+      continue;
+    }
+    // Hay otro factor con el mismo exponente: se fusionan las bases si el dominio lo
+    // permite (ver la cabecera). Si no, este factor sigue su camino sin tocar.
+    if (!esNoNegativo(previo.base) && !esNoNegativo(rad.base)) { salida.push(f); continue; }
+    const base = opNodo("*", "multiply", [previo.base, rad.base]);
+    salida[previo.indice] = opNodo("^", "pow", [base, previo.exp]);
+    bases.set(rad.clave, { ...previo, base });
+    fusionado = true;
+  }
+
+  // Sin fusión no se reconstruye nada: rehacer el producto perdería los flags de
+  // multiplicación implícita de los que depende el espaciado (misma cautela que la
+  // agrupación de funciones desnudas de más abajo).
+  if (!fusionado) return node.map(fusionarRadicalesEnProducto);
+
+  // Al reconstruir, los radicales van al FINAL: `4x²√(2x)` y no `4√(2x)x²`. Es el orden en
+  // que se escribe —coeficiente, parte polinómica, raíz— y el único momento en que se puede
+  // imponer sin tocar productos que nadie ha fusionado.
+  const raices = salida.filter((f) => factorRadical(f) !== null);
+  const llanos = salida.filter((f) => factorRadical(f) === null);
+  return [...llanos, ...raices].reduce((acc, f) => opNodo("*", "multiply", [acc, f]));
+}
+
 function ladoALatex(lado: string): string {
   // MISMO preprocesado que grafica el motor: normalizar + INSERTAR el producto implícito.
   // Sin este último, un factor pegado a una función (`2x\sqrt{x}` → `2xsqrt(x)`, `x\sin x`
@@ -522,7 +832,13 @@ function ladoALatex(lado: string): string {
     // (`cos(x)·e^x` → `e^x\left(\cos x\right)`, evita que `\cos x` parezca tragarse el factor
     // siguiente) y luego la suma polinómica de nivel superior a grado descendente
     // (`2x + x^2` → `x^2 + 2x`).
-    const arbol = ordenarPolinomioDescendente(agruparFuncionesDesnudasEnProducto(parse(norm) as unknown as Nodo));
+    // El orden importa: primero se saca la parte entera de cada potencia racional (deja los
+    // `^{1/q}` sueltos y a la vista), luego se funden los radicales del mismo índice, y solo
+    // entonces se agrupan las funciones desnudas y se ordena el polinomio.
+    const arbol = ordenarPolinomioDescendente(
+      agruparFuncionesDesnudasEnProducto(
+        fusionarRadicalesEnProducto(
+          normalizarPotenciasRacionales(parse(norm) as unknown as Nodo))));
     return limpiarTex(arbol.toTex(OPCIONES_TEX));
   } catch {
     return norm;

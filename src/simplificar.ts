@@ -37,7 +37,37 @@ import { compilarExpresion } from "./evaluador";
 // aparente respecto de la curva dibujada). Mismo criterio por el que (x²−1)/(x−1)
 // NO se cancela a x+1 (difieren en x=1).
 const REGLAS_SIMPLIFY: unknown[] = (simplify as unknown as { rules: unknown[] }).rules
-  .concat(["log(e^n1) -> n1", "log(e) -> 1"]);
+  .concat([
+    // `log(e^u) = u` vale en TODO ℝ (`e^u > 0` siempre). Se cubren las DOS escrituras del
+    // logaritmo natural: la de mathjs (`log` de un argumento) y la que emiten nuestros
+    // módulos con la base explícita (`log(u, e)`), necesaria desde que un `log` sin base
+    // significa base 10 al releerse. La inversa `e^(log u) = u` NO se añade: solo vale para
+    // u > 0 y cambiaría el dominio aparente respecto de la curva dibujada.
+    "log(e^n1) -> n1", "log(e) -> 1",
+    "log(e^n1, e) -> n1", "log(e, e) -> 1",
+    // Identidades trigonométricas que mathjs tampoco trae. Las cinco valen en TODO ℝ, que es
+    // el listón de esta lista: la pitagórica no tiene excepciones, y las tres paridades
+    // conservan el dominio exacto (`tan(-x)` y `-tan(x)` tienen los mismos polos). Se dejan
+    // FUERA las que mueven el dominio o solo valen en un intervalo (`asin(sin x) = x` no es
+    // cierta fuera de [−π/2, π/2]) y las que no simplifican nada (`2 sin x cos x = sin 2x`
+    // es un cambio de forma, no una reducción).
+    "sin(n1)^2 + cos(n1)^2 -> 1",
+    "cos(n1)^2 + sin(n1)^2 -> 1",
+    "sin(-n1) -> -sin(n1)",
+    "cos(-n1) -> cos(n1)",
+    "tan(-n1) -> -tan(n1)",
+  ]);
+
+// `simplify` convierte TODO decimal a fracción exacta, y su tope de fábrica es un denominador
+// de 10.000. Eso es más de lo que un lector puede leer como fracción: `x^{0.5637}` salía
+// `x^{5637/10000}`, y el emisor de LaTeX —que pinta como radical cualquier exponente
+// racional— lo remataba en `\sqrt[10000]{x^{5637}}`. Un denominador de cuatro cifras no es
+// una fracción que nadie haya escrito: es la expansión decimal del número, disfrazada.
+//
+// Con el tope en 64 sobrevive todo lo que SÍ se escribe a mano —`0.5`→`1/2`, `2.5`→`5/2`,
+// `0.125`→`1/8`, `1.75`→`7/4`, `0.0625`→`1/16`— y `0.5637` se queda como está, que es como
+// se escribió. La regla queda del lado del que lee, no del de la aritmética exacta.
+const OPCIONES_SIMPLIFY = { fractionsLimit: 64 };
 
 /** Simplifica y expande una expresión YA NORMALIZADA (mathjs). Nodo equivalente, o null.
  *  La expansión pasa por `rationalizeSeguro`: si el polinomio desbordaría el presupuesto
@@ -49,7 +79,11 @@ export function simplificarExpr(exprNorm: string): Nodo | null {
   try { base = parse(exprNorm) as unknown as Nodo; } catch { return null; }
   const r = rationalizeSeguro(base);
   if (r) return r;
-  try { return simplify(base as unknown as MathNode, REGLAS_SIMPLIFY as never) as unknown as Nodo; } catch { return base; }
+  try {
+    return simplify(
+      base as unknown as MathNode, REGLAS_SIMPLIFY as never, {}, OPCIONES_SIMPLIFY
+    ) as unknown as Nodo;
+  } catch { return base; }
 }
 
 // Constantes con NOMBRE que NO son variables libres (no se muestrean en la equivalencia).

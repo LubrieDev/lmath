@@ -15,7 +15,6 @@
 import {
   App,
   PluginSettingTab,
-  Setting,
   type Plugin,
   type SettingDefinitionItem,
 } from "obsidian";
@@ -64,17 +63,14 @@ export interface PluginConAjustes extends Plugin {
  * transformaciones / plano; cada cambio escribe en `plugin.ajustes` y persiste con
  * `plugin.guardarAjustes()` (loadData/saveData por debajo).
  *
- * Se declara DOS veces la misma pestaña, según la versión de Obsidian:
- *  - `getSettingDefinitions()` (API declarativa, Obsidian ≥1.13): la fuente en 1.13+.
- *    Obsidian pinta la pestaña a partir de estas definiciones e indexa sus ajustes en el
- *    buscador de configuración; lee/escribe vía `getControlValue`/`setControlValue`.
- *  - `display()` (imperativo, deprecado en 1.13 pero necesario como FALLBACK para
- *    Obsidian 1.5.0–1.12.x, que no conoce la API declarativa). En 1.13+ NO se llama
- *    (getSettingDefinitions devuelve una lista no vacía). Mantener ambas mientras
- *    `minAppVersion` sea <1.13.0.
+ * La pestaña se declara SOLO de forma declarativa: `getSettingDefinitions()` describe las
+ * secciones y sus controles, Obsidian las pinta e indexa sus ajustes en el buscador de
+ * configuración, y lee/escribe vía `getControlValue`/`setControlValue`.
  *
- * Las dos vías deben quedar equivalentes: cualquier ajuste que se añada aquí hay que
- * reflejarlo en las dos.
+ * Hasta la 1.3.1 convivía con un `display()` imperativo, el fallback obligado para Obsidian
+ * 1.5–1.12, que no conoce esta API. Con `minAppVersion` en 1.13.0 ese camino ya no lo puede
+ * recorrer nadie, así que se ha ido con él el único uso de un método deprecado que quedaba
+ * en el plugin (la advertencia de la review de Obsidian).
  */
 export class PestanaAjustesLMath extends PluginSettingTab {
   constructor(app: App, private readonly plugin: PluginConAjustes) {
@@ -82,9 +78,9 @@ export class PestanaAjustesLMath extends PluginSettingTab {
   }
 
   /**
-   * Definición declarativa de la pestaña (Obsidian ≥1.13). Espeja `display()`: mismas
-   * secciones y controles. Los `key` son las propias claves de `AjustesTransformaciones`,
-   * que `getControlValue`/`setControlValue` resuelven contra `plugin.ajustes`.
+   * Definición declarativa de la pestaña. Los `key` son las propias claves de
+   * `AjustesTransformaciones`, que `getControlValue`/`setControlValue` resuelven contra
+   * `plugin.ajustes`.
    */
   getSettingDefinitions(): SettingDefinitionItem[] {
     const txt = t();
@@ -138,7 +134,7 @@ export class PestanaAjustesLMath extends PluginSettingTab {
     ];
   }
 
-  /** Lee el valor actual de un control declarativo desde `plugin.ajustes` (API ≥1.13). */
+  /** Lee el valor actual de un control declarativo desde `plugin.ajustes`. */
   getControlValue(key: string): unknown {
     switch (key) {
       case "idioma":
@@ -155,15 +151,11 @@ export class PestanaAjustesLMath extends PluginSettingTab {
   }
 
   /**
-   * Persiste el cambio de un control declarativo (API ≥1.13). Espeja los `onChange` de
-   * `display()`: escribe en `plugin.ajustes` y guarda. Para el idioma, además fija el
-   * idioma activo.
-   *
-   * (No se repinta la pestaña al vuelo al cambiar de idioma: `update()`/`refreshDomState()`
-   * son API de 1.13.0 y `minAppVersion` es 1.12.7, así que referenciarlas sería
-   * `no-unsupported-api`. En 1.13+ las etiquetas se muestran en el idioma nuevo al reabrir
-   * Ajustes; el motor declarativo controla el ciclo de render. El fallback `display()` sí
-   * repinta en el acto, que es donde ocurre en la versión soportada hoy.)
+   * Persiste el cambio de un control declarativo: escribe en `plugin.ajustes` y guarda.
+   * Para el idioma, además fija el idioma activo y REHACE las definiciones, que llevan los
+   * textos ya traducidos dentro: sin esa llamada la pestaña se queda escrita en el idioma
+   * anterior hasta que se cierra y se vuelve a abrir. `update()` es API de 1.13.0, así que
+   * hasta esta versión (`minAppVersion` 1.12.7) referenciarla era `no-unsupported-api`.
    */
   async setControlValue(key: string, value: unknown): Promise<void> {
     switch (key) {
@@ -172,6 +164,7 @@ export class PestanaAjustesLMath extends PluginSettingTab {
         this.plugin.ajustes.idioma = idioma;
         fijarIdioma(idioma);
         await this.plugin.guardarAjustes();
+        this.update();
         return;
       }
       case "despejarAuto":
@@ -189,67 +182,4 @@ export class PestanaAjustesLMath extends PluginSettingTab {
     await this.plugin.guardarAjustes();
   }
 
-  /**
-   * Fallback imperativo para Obsidian 1.5.0–1.12.x (deprecado en 1.13; en 1.13+ NO se
-   * llama, se usa `getSettingDefinitions()`). Mantener espejado con la vía declarativa.
-   */
-  display(): void {
-    const { containerEl } = this;
-    containerEl.empty();
-
-    const txt = t();
-
-    // Idioma PRIMERO: cambiarlo re-renderiza esta misma pestaña en el nuevo idioma.
-    new Setting(containerEl).setName(txt.ajustes.idioma.seccion).setHeading();
-
-    new Setting(containerEl)
-      .setName(txt.ajustes.idioma.nombre)
-      .setDesc(txt.ajustes.idioma.desc)
-      .addDropdown((d) =>
-        d
-          .addOption("en", txt.ajustes.idioma.opcionEn)
-          .addOption("es", txt.ajustes.idioma.opcionEs)
-          .setValue(this.plugin.ajustes.idioma)
-          .onChange(async (v) => {
-            this.plugin.ajustes.idioma = v as Idioma;
-            fijarIdioma(v);
-            await this.plugin.guardarAjustes();
-            this.display(); // repinta la pestaña con los textos del nuevo idioma
-          })
-      );
-
-    new Setting(containerEl).setName(txt.ajustes.transformaciones).setHeading();
-
-    new Setting(containerEl)
-      .setName(txt.ajustes.despejarAuto.etiqueta)
-      .setDesc(txt.ajustes.despejarAuto.detalle)
-      .addToggle((tg) =>
-        tg.setValue(this.plugin.ajustes.despejarAuto).onChange(async (v) => {
-          this.plugin.ajustes.despejarAuto = v;
-          await this.plugin.guardarAjustes();
-        })
-      );
-
-    new Setting(containerEl).setName(txt.ajustes.plano).setHeading();
-
-    new Setting(containerEl)
-      .setName(txt.ajustes.puntosNotables.etiqueta)
-      .setDesc(txt.ajustes.puntosNotables.detalle)
-      .addToggle((tg) =>
-        tg.setValue(this.plugin.ajustes.puntosNotables).onChange(async (v) => {
-          this.plugin.ajustes.puntosNotables = v;
-          await this.plugin.guardarAjustes();
-        })
-      );
-
-    new Setting(containerEl)
-      .setName(txt.ajustes.encuadreAuto.etiqueta)
-      .setDesc(txt.ajustes.encuadreAuto.detalle)
-      .addToggle((tg) =>
-        tg.setValue(this.plugin.ajustes.encuadreAuto).onChange(async (v) => {
-          this.plugin.ajustes.encuadreAuto = v;
-          await this.plugin.guardarAjustes();
-        })
-      );
-  }
 }

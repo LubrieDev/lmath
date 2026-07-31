@@ -46,6 +46,10 @@ export interface Textos {
     seleccionarEcuacion: (n: number) => string;
     solucionesSistema: string;
     resumenNotables: string;
+    /** Chip ⓘ de obs-integral: su cuadro describe la OPERACIÓN, no puntos notables. */
+    resumenIntegral: string;
+    /** Chip ⓘ de obs-derivate: su cuadro describe a f, no la curva f′ que se dibuja. */
+    resumenDerivada: string;
     original: string;
     /** Botón flotante del plano que despliega el panel de la fórmula (bloque estrecho). */
     verFormula: string;
@@ -95,6 +99,109 @@ export interface Textos {
     verticeMin: (x: string, y: string) => string;
     verticeMax: (x: string, y: string) => string;
     enVista: string;
+  };
+  /** Panel ⓘ de una curva POLAR. No comparte cadenas con `resumen` a propósito: son
+   *  otras categorías (nada de intersecciones ni vértices), no otra traducción. */
+  polar: {
+    titulo: string;
+    periodo: (p: string) => string;
+    ordenRotacional: (n: string) => string;
+    simetriasPrefijo: string;
+    simetriaPolo: string;
+    simetriaEjePolar: string;
+    simetriaVertical: string;
+    rangoRadial: (min: string, max: string) => string;
+    radioConstante: (r: string) => string;
+    cambiaSigno: string;
+    extremosEn: (thetaMax: string, thetaMin: string) => string;
+    masMultiplos: (texto: string, periodo: string) => string;
+    pasaPorPolo: (angulos: string) => string;
+    noPasaPorPolo: string;
+    poloDemasiados: string;
+    areaBarrida: (area: string, intervalo: string) => string;
+    patron: {
+      circunferenciaCentrada: string;
+      circunferenciaPorPolo: string;
+      rosa: (petalos: string) => string;
+      cardioide: string;
+      limaconLazo: string;
+      limaconHoyuelo: string;
+      limaconConvexo: string;
+    };
+  };
+  /** Panel ⓘ de una curva PARAMÉTRICA. Mismo criterio que `polar`: categorías propias de
+   *  la representación, nada heredado de y=f(x). */
+  parametrica: {
+    titulo: string;
+    intervalo: (a: string, b: string) => string;
+    cerrada: string;
+    periodo: (p: string) => string;
+    periodoExcede: (p: string) => string;
+    caja: (xMin: string, xMax: string, yMin: string, yMax: string) => string;
+    pasaPorOrigen: string;
+    simetriasPrefijo: string;
+    simetriaOrigen: string;
+    simetriaEjeX: string;
+    simetriaEjeY: string;
+    autointersecciones: (n: string) => string;
+    sinAutointersecciones: string;
+    longitud: (l: string) => string;
+    areaAlgebraica: (a: string) => string;
+    familia: {
+      lissajous: (a: string, b: string, desfase: string) => string;
+      elipse: string;
+      circunferencia: string;
+    };
+  };
+  /** Panel ⓘ de una INTEGRAL definida (obs-integral). Describe la operación —qué región se
+   *  mide, cuánto vale, si el número es un área o una diferencia de áreas—, no la curva del
+   *  integrando: para eso está `resumen`, y aplicado aquí no dice nada de la integral. */
+  integral: {
+    titulo: string;
+    impropia: (variable: string, x: string) => string;
+    intervalo: (a: string, b: string, variable: string) => string;
+    intervaloVacio: string;
+    limitesInvertidos: string;
+    valorPrefijo: string;
+    valorEsArea: string;
+    valorBajoEje: string;
+    valorFirmado: string;
+    integrandoNulo: string;
+    cruces: (variable: string, lista: string) => string;
+    crucesMuchos: string;
+    areaPositiva: (area: string) => string;
+    areaNegativa: (area: string) => string;
+    promedio: (v: string) => string;
+  };
+  /** Panel ⓘ de una DERIVADA (obs-derivate). Describe el comportamiento de f —dónde crece,
+   *  dónde tiene extremos, dónde no es derivable—, no la curva de f′ que se dibuja: los
+   *  números son los mismos que daba `resumen`, pero con el nombre que les corresponde. */
+  derivada: {
+    titulo: string;
+    pendienteEn0: (m: string) => string;
+    criticoUno: (item: string) => string;
+    criticosPrefijo: string;
+    criticoItem: (x: string, tipo: string) => string;
+    tipo: {
+      maximo: string;
+      minimo: string;
+      estacionario: string;
+      esquina: string;
+      cuspide: string;
+      tangenteVertical: string;
+    };
+    criticosInfinitos: string;
+    criticosDemasiados: string;
+    creciente: (intervalo: string) => string;
+    decreciente: (intervalo: string) => string;
+    inflexionUna: (x: string) => string;
+    inflexionesPrefijo: string;
+    inflexionesInfinitas: string;
+    inflexionesDemasiadas: string;
+    noDerivableUno: (x: string) => string;
+    noDerivablesPrefijo: string;
+    punto: (x: string) => string;
+    rangoAnalisis: (a: string, b: string) => string;
   };
   velo: {
     simboloNoSoportado: string;
@@ -155,6 +262,8 @@ const EN: Textos = {
     seleccionarEcuacion: (n) => `Select equation ${n}`,
     solucionesSistema: "System solutions",
     resumenNotables: "Notable points summary",
+    resumenIntegral: "About this integral",
+    resumenDerivada: "What the derivative says about f",
     original: "Original",
     verFormula: "Show the formula",
     cerrarFormula: "Hide the formula",
@@ -205,6 +314,99 @@ const EN: Textos = {
     verticeMin: (x, y) => `Minimum vertex: (${x}, ${y})`,
     verticeMax: (x, y) => `Maximum vertex: (${x}, ${y})`,
     enVista: "In the current view.",
+  },
+  polar: {
+    titulo: "Polar curve",
+    periodo: (p) => `Repeats every ${p}`,
+    ordenRotacional: (n) => `${n}-fold rotational symmetry`,
+    simetriasPrefijo: "Symmetry: ",
+    simetriaPolo: "about the pole",
+    simetriaEjePolar: "about the polar axis",
+    simetriaVertical: "about θ = π/2",
+    rangoRadial: (min, max) => `Radius: ${min} ≤ r ≤ ${max}`,
+    radioConstante: (r) => `Constant radius r = ${r}`,
+    cambiaSigno: "r changes sign: the curve crosses to the opposite side of the pole",
+    extremosEn: (thetaMax, thetaMin) => `Max at θ = ${thetaMax}, min at θ = ${thetaMin}`,
+    masMultiplos: (texto, periodo) => `${texto} (+ k·${periodo})`,
+    pasaPorPolo: (angulos) => `Passes through the pole at θ = ${angulos}`,
+    noPasaPorPolo: "Does not pass through the pole",
+    poloDemasiados: "Passes through the pole many times",
+    areaBarrida: (area, intervalo) => `Swept area over ${intervalo}: ${area}`,
+    patron: {
+      circunferenciaCentrada: "circle centred on the pole",
+      circunferenciaPorPolo: "circle through the pole",
+      rosa: (petalos) => `rose, ${petalos} petals`,
+      cardioide: "cardioid",
+      limaconLazo: "limaçon with an inner loop",
+      limaconHoyuelo: "dimpled limaçon",
+      limaconConvexo: "convex limaçon",
+    },
+  },
+  parametrica: {
+    titulo: "Parametric curve",
+    intervalo: (a, b) => `${a} ≤ t ≤ ${b}`,
+    cerrada: "closed",
+    periodo: (p) => `period ${p}`,
+    periodoExcede: (p) => `period ${p}: only part of the curve is drawn`,
+    caja: (xMin, xMax, yMin, yMax) => `${xMin} ≤ x ≤ ${xMax},  ${yMin} ≤ y ≤ ${yMax}`,
+    pasaPorOrigen: "Passes through the origin",
+    simetriasPrefijo: "Symmetry: ",
+    simetriaOrigen: "about the origin",
+    simetriaEjeX: "about the x axis",
+    simetriaEjeY: "about the y axis",
+    autointersecciones: (n) => `Self-intersections: ${n}`,
+    sinAutointersecciones: "Does not cross itself",
+    longitud: (l) => `Length: ${l}`,
+    areaAlgebraica: (a) => `Algebraic area: ${a}`,
+    familia: {
+      lissajous: (a, b, desfase) => `Lissajous ${a}:${b}, phase ${desfase}`,
+      elipse: "ellipse",
+      circunferencia: "circle",
+    },
+  },
+  integral: {
+    titulo: "Definite integral",
+    impropia: (variable, x) => `improper at ${variable} = ${x}, converges`,
+    intervalo: (a, b, variable) => `${a} ≤ ${variable} ≤ ${b}`,
+    intervaloVacio: "Empty interval: the integral is 0 by definition",
+    limitesInvertidos: "Limits are written in reverse order: the value changes sign",
+    valorPrefijo: "Value: ",
+    valorEsArea: "the area under the curve",
+    valorBajoEje: "the curve stays below the axis, so the value is negative",
+    valorFirmado: "signed area: the parts below the axis subtract",
+    integrandoNulo: "The integrand is zero throughout the interval",
+    cruces: (variable, lista) => `Crosses the axis at ${variable} = ${lista}`,
+    crucesMuchos: "Crosses the axis many times",
+    areaPositiva: (area) => `Positive area: ${area}`,
+    areaNegativa: (area) => `Negative area: ${area}`,
+    promedio: (v) => `Average value: ${v}`,
+  },
+  derivada: {
+    titulo: "Derivative",
+    pendienteEn0: (m) => `Slope at x = 0: ${m}`,
+    criticoUno: (item) => `Critical point: ${item}`,
+    criticosPrefijo: "Critical points:",
+    criticoItem: (x, tipo) => `x = ${x} (${tipo})`,
+    tipo: {
+      maximo: "local maximum",
+      minimo: "local minimum",
+      estacionario: "stationary point",
+      esquina: "corner",
+      cuspide: "cusp",
+      tangenteVertical: "vertical tangent",
+    },
+    criticosInfinitos: "Infinitely many critical points (periodic)",
+    criticosDemasiados: "Too many critical points to list",
+    creciente: (intervalo) => `Increasing on ${intervalo}`,
+    decreciente: (intervalo) => `Decreasing on ${intervalo}`,
+    inflexionUna: (x) => `Inflection point: x = ${x}`,
+    inflexionesPrefijo: "Inflection points:",
+    inflexionesInfinitas: "Infinitely many inflection points (periodic)",
+    inflexionesDemasiadas: "Too many inflection points to list",
+    noDerivableUno: (x) => `Not differentiable at x = ${x}`,
+    noDerivablesPrefijo: "Not differentiable at:",
+    punto: (x) => `x = ${x}`,
+    rangoAnalisis: (a, b) => `Analysed on ${a} ≤ x ≤ ${b}`,
   },
   velo: {
     simboloNoSoportado: "Unsupported symbol",
@@ -286,6 +488,8 @@ const ES: Textos = {
     seleccionarEcuacion: (n) => `Seleccionar ecuación ${n}`,
     solucionesSistema: "Soluciones del sistema",
     resumenNotables: "Resumen de puntos notables",
+    resumenIntegral: "Sobre esta integral",
+    resumenDerivada: "Qué dice la derivada de f",
     original: "Original",
     verFormula: "Ver la fórmula",
     cerrarFormula: "Ocultar la fórmula",
@@ -336,6 +540,99 @@ const ES: Textos = {
     verticeMin: (x, y) => `Vértice mínimo: (${x}, ${y})`,
     verticeMax: (x, y) => `Vértice máximo: (${x}, ${y})`,
     enVista: "En la vista actual.",
+  },
+  polar: {
+    titulo: "Curva polar",
+    periodo: (p) => `Se repite cada ${p}`,
+    ordenRotacional: (n) => `Simetría rotacional de orden ${n}`,
+    simetriasPrefijo: "Simetría: ",
+    simetriaPolo: "respecto al polo",
+    simetriaEjePolar: "respecto al eje polar",
+    simetriaVertical: "respecto a θ = π/2",
+    rangoRadial: (min, max) => `Radio: ${min} ≤ r ≤ ${max}`,
+    radioConstante: (r) => `Radio constante r = ${r}`,
+    cambiaSigno: "r cambia de signo: la curva pasa al lado opuesto del polo",
+    extremosEn: (thetaMax, thetaMin) => `Máximo en θ = ${thetaMax}, mínimo en θ = ${thetaMin}`,
+    masMultiplos: (texto, periodo) => `${texto} (+ k·${periodo})`,
+    pasaPorPolo: (angulos) => `Pasa por el polo en θ = ${angulos}`,
+    noPasaPorPolo: "No pasa por el polo",
+    poloDemasiados: "Pasa por el polo muchas veces",
+    areaBarrida: (area, intervalo) => `Área barrida en ${intervalo}: ${area}`,
+    patron: {
+      circunferenciaCentrada: "circunferencia centrada en el polo",
+      circunferenciaPorPolo: "circunferencia que pasa por el polo",
+      rosa: (petalos) => `rosa de ${petalos} pétalos`,
+      cardioide: "cardioide",
+      limaconLazo: "limaçon con lazo interior",
+      limaconHoyuelo: "limaçon con hoyuelo",
+      limaconConvexo: "limaçon convexo",
+    },
+  },
+  parametrica: {
+    titulo: "Curva paramétrica",
+    intervalo: (a, b) => `${a} ≤ t ≤ ${b}`,
+    cerrada: "cerrada",
+    periodo: (p) => `periodo ${p}`,
+    periodoExcede: (p) => `periodo ${p}: solo se dibuja una parte de la curva`,
+    caja: (xMin, xMax, yMin, yMax) => `${xMin} ≤ x ≤ ${xMax},  ${yMin} ≤ y ≤ ${yMax}`,
+    pasaPorOrigen: "Pasa por el origen",
+    simetriasPrefijo: "Simetría: ",
+    simetriaOrigen: "respecto al origen",
+    simetriaEjeX: "respecto al eje x",
+    simetriaEjeY: "respecto al eje y",
+    autointersecciones: (n) => `Autointersecciones: ${n}`,
+    sinAutointersecciones: "No se corta a sí misma",
+    longitud: (l) => `Longitud: ${l}`,
+    areaAlgebraica: (a) => `Área algebraica: ${a}`,
+    familia: {
+      lissajous: (a, b, desfase) => `Lissajous ${a}:${b}, desfase ${desfase}`,
+      elipse: "elipse",
+      circunferencia: "circunferencia",
+    },
+  },
+  integral: {
+    titulo: "Integral definida",
+    impropia: (variable, x) => `impropia en ${variable} = ${x}, converge`,
+    intervalo: (a, b, variable) => `${a} ≤ ${variable} ≤ ${b}`,
+    intervaloVacio: "Intervalo vacío: la integral es 0 por definición",
+    limitesInvertidos: "Los límites están escritos al revés: el valor cambia de signo",
+    valorPrefijo: "Valor: ",
+    valorEsArea: "el área bajo la curva",
+    valorBajoEje: "la curva se queda bajo el eje, así que el valor es negativo",
+    valorFirmado: "área con signo: lo que queda bajo el eje resta",
+    integrandoNulo: "El integrando es nulo en todo el intervalo",
+    cruces: (variable, lista) => `Cruza el eje en ${variable} = ${lista}`,
+    crucesMuchos: "Cruza el eje muchas veces",
+    areaPositiva: (area) => `Área positiva: ${area}`,
+    areaNegativa: (area) => `Área negativa: ${area}`,
+    promedio: (v) => `Valor medio: ${v}`,
+  },
+  derivada: {
+    titulo: "Derivada",
+    pendienteEn0: (m) => `Pendiente en x = 0: ${m}`,
+    criticoUno: (item) => `Punto crítico: ${item}`,
+    criticosPrefijo: "Puntos críticos:",
+    criticoItem: (x, tipo) => `x = ${x} (${tipo})`,
+    tipo: {
+      maximo: "máximo local",
+      minimo: "mínimo local",
+      estacionario: "punto estacionario",
+      esquina: "esquina",
+      cuspide: "cúspide",
+      tangenteVertical: "tangente vertical",
+    },
+    criticosInfinitos: "Infinitos puntos críticos (periódica)",
+    criticosDemasiados: "Demasiados puntos críticos para listarlos",
+    creciente: (intervalo) => `Creciente en ${intervalo}`,
+    decreciente: (intervalo) => `Decreciente en ${intervalo}`,
+    inflexionUna: (x) => `Punto de inflexión: x = ${x}`,
+    inflexionesPrefijo: "Puntos de inflexión:",
+    inflexionesInfinitas: "Infinitos puntos de inflexión (periódica)",
+    inflexionesDemasiadas: "Demasiados puntos de inflexión para listarlos",
+    noDerivableUno: (x) => `No derivable en x = ${x}`,
+    noDerivablesPrefijo: "No derivable en:",
+    punto: (x) => `x = ${x}`,
+    rangoAnalisis: (a, b) => `Analizado en ${a} ≤ x ≤ ${b}`,
   },
   velo: {
     simboloNoSoportado: "Símbolo no soportado",

@@ -13,6 +13,7 @@ import {
   contieneVariable, terminos, factores, flip, renderTerminos, renderCanonico,
   racionalizarFracciones, formatearCanonico, combinarFracciones, valorConstanteFactor,
   profundidadFraccion, esNoNegativo, esSiempreNegativo, sinFactoresConstantes,
+  resimbolizarConstantes,
   type Termino, type Factor, type Nodo,
 } from "./formatoExpr";
 
@@ -134,6 +135,46 @@ function exponenteY(n: Nodo): number | null {
   return null;
 }
 
+/** Exponente INVERSO ya escrito, si el nodo es `y^e` con `e` constante NO entera y positiva:
+ *  `y^{1/2}`→`"2"`, `y^{3/2}`→`"2/3"`, `y^{0.5637}`→`"1/0.5637"`. null en cualquier otro caso
+ *  (el entero es asunto de `exponenteY`).
+ *
+ *  Se conserva el exponente TAL COMO SE ESCRIBIÓ en el caso decimal (`1/0.5637`, no su
+ *  expansión racional) porque es exacto en coma flotante y no inventa una fracción que el
+ *  usuario no puso. */
+function inversoExponenteFraccionarioY(n: Nodo): string | null {
+  const nodo = desParen(n);
+  if (nodo.type !== "OperatorNode" || nodo.op !== "^" || nodo.args.length !== 2) return null;
+  const base = desParen(nodo.args[0]);
+  if (base.type !== "SymbolNode" || base.name !== "y") return null;
+  const exp = desParen(nodo.args[1]);
+  const r = racionalConstante(exp);
+  if (r !== null) {
+    if (r.den === 1 || r.num <= 0) return null;
+    return r.num === 1 ? `${r.den}` : `${r.den}/${r.num}`;
+  }
+  const v = valorConstanteFactor(exp);
+  if (v === null || !Number.isFinite(v) || Number.isInteger(v) || v <= 0) return null;
+  // Un decimal que ES una fracción sencilla se invierte COMO fracción: así `y^{0.5}=R` y
+  // `√y=R` —la misma ecuación escrita de dos formas— dan la misma despejada `R²`, en vez de
+  // `R^{1/0.5}`. Por encima del listón (`0.5637`) se conserva el decimal tal cual se escribió.
+  const f = fraccionSencilla(v);
+  if (f !== null) return f.num === 1 ? `${f.den}` : `${f.den}/${f.num}`;
+  return `1/${v}`;
+}
+
+/** Fracción exacta `num/den` de un decimal positivo, con den ≤ 64 — el mismo listón que usa
+ *  el simplificador para decidir qué decimal es una fracción que alguien escribió y cuál es
+ *  la expansión de un decimal. null si no cae en ninguna. */
+function fraccionSencilla(v: number): { num: number; den: number } | null {
+  for (let den = 2; den <= 64; den++) {
+    const num = v * den;
+    if (Math.abs(num - Math.round(num)) <= 1e-9 * Math.max(1, Math.abs(num)))
+      return normalizarFraccion(Math.round(num), den);
+  }
+  return null;
+}
+
 /** Único término-y de la forma (libres)·yⁿ (n entero ≥2): divide los libres y saca la
  *  raíz n-ésima. IMPAR → `y = ∛(rhs)` (raíz real única). PAR → `y = ±ⁿ√(rhs)`: las DOS
  *  ramas, con el centinela `pm(·)` para el ± (ver abajo). Ambos completos. null si la
@@ -144,7 +185,22 @@ function despejePotencia(t: Termino, derecha: Termino[]): { ecuacion: string; co
   const libres = fs.filter((f) => !contieneY(f.nodo));
   if (conYf.length !== 1 || conYf[0].exp !== 1) return null;
   const n = exponenteY(conYf[0].nodo);
-  if (n === null) return null;
+  if (n === null) {
+    // Exponente NO ENTERO (`y^{0.5}`, `y^{3/2}`, `y^{0.5637}`). Antes ni se intentaba, y el
+    // resultado dependía de cómo se hubiera ESCRITO la misma ecuación: `√y = x−3` se despejaba
+    // y `y^{0.5} = x−3` se quedaba parcial.
+    //
+    // `y^e` con e no entero solo está definida para y≥0 —el motor evalúa con `Math.pow`, y
+    // `Math.pow(-8, 1/3)` es NaN—, y ahí la potencia es estrictamente creciente: es INYECTIVA,
+    // así que la inversa `y = R^{1/e}` es única y no hay rama doble que añadir. Como `y^e ≥ 0`
+    // en todo ese dominio, la igualdad exige R≥0, que es la misma guarda que ya lleva `√y = R`
+    // (por eso ambas escrituras dan ahora exactamente la misma despejada).
+    const inv = inversoExponenteFraccionarioY(conYf[0].nodo);
+    if (inv === null) return null;
+    const Rf = ladoDerecho(t, derecha, libres, renderCanonico);
+    const cuerpo = conDominio(`(${Rf})^(${inv})`, Rf);
+    return cuerpo === null ? null : { ecuacion: `y = ${cuerpo}`, completo: true };
+  }
 
   // El radicando va con POSITIVOS primero (renderTerminos, el render por defecto de
   // `ladoDerecho`) → `16 - x²`, no `-x² + 16`. Igual para impar y par.
@@ -1218,8 +1274,10 @@ function despejarAnidado(ecuacion: string): { ecuacion: string; completo: boolea
  *  función, el string al que iguala su argumento. Solo funciones cuya inversa es fiel al
  *  dominio y sobrevive el pipeline (registradas en productoImplicito.FUNCIONES). */
 const INVERSA_INYECTIVA: Record<string, (t: string) => string> = {
-  exp: (t) => `log(${t})`,               // e^u = t ⇒ u = ln t
+  exp: (t) => `log(${t}, e)`,               // e^u = t ⇒ u = ln t
   log: (t) => `e^(${t})`,                // ln u = t ⇒ u = e^t (se emite `e^…` → LaTeX `e^{…}`, no `\exp`)
+  log10: (t) => `10^(${t})`,             // log u = t ⇒ u = 10^t (el `log` del usuario es decimal)
+  log2: (t) => `2^(${t})`,               // log₂ u = t ⇒ u = 2^t
   sinh: (t) => `asinh(${t})`,            // biyección en ℝ
   tanh: (t) => `atanh(${t})`,            // atanh NaN fuera de (−1,1) → sin fantasma
   asinh: (t) => `sinh(${t})`,
@@ -1291,7 +1349,7 @@ function pelarCapa(n: Nodo, target: string, ctx?: ContextoPelado): string | null
             return aislar(a, raiz);
           }
           // y en el EXPONENTE (base libre de y): a^y = t ⇒ y = ln t / ln a (e^y ⇒ y = ln t).
-          const div = sa === "e" ? `log(${target})` : `log(${target}) / log(${sa})`;
+          const div = `log(${target}, ${sa})`;
           return aislar(b, div);
         }
         default: return null;
@@ -1302,6 +1360,14 @@ function pelarCapa(n: Nodo, target: string, ctx?: ContextoPelado): string | null
 
   if (n.type === "FunctionNode") {
     const fn = n.fn?.name ?? "";
+    // `log(u, b) = t ⇒ u = b^t`, con la base CONSTANTE (si la base llevara y, invertir así
+    // dejaría una y a los dos lados). Es la forma interna del logaritmo —el natural es
+    // `log(u, e)`— así que sin esta rama el despeje perdía `ln(y)=x`, que antes sí resolvía
+    // por la tabla de un argumento.
+    if (fn === "log" && n.args.length === 2 && !contieneY(n.args[1])) {
+      const base = desParen(n.args[1]).toString();
+      return aislar(n.args[0], `(${base})^(${target})`);
+    }
     if (n.args.length === 1) {
       if (INVERSA_INYECTIVA[fn]) return aislar(n.args[0], INVERSA_INYECTIVA[fn](target));
       if (TRIG_PERIODICA.has(fn)) {
@@ -1495,7 +1561,97 @@ function despejar(ecuacion: string): { ecuacion: string; completo: boolean } | n
 /** Despeja y en cada ecuación de un bloque; las que no se pueden se dejan igual.
  *  Devuelve strings re-parseables (para encadenar/comparar transformaciones). */
 export function despejarEcuaciones(ecuaciones: readonly string[]): string[] {
-  return ecuaciones.map((ec) => despejar(ec)?.ecuacion ?? ec);
+  return ecuaciones.map((ec) => embellecerConstantes(despejar(ec)?.ecuacion ?? ec));
+}
+
+/** Centinelas de doble signo: al reducir hay que entrar DENTRO de ellos (`pm(2√x)/2` es
+ *  `pm(√x)`), no tratarlos como un factor opaco. */
+const SENTINELAS_SIGNO = new Set(["pm", "mp"]);
+
+/** Coeficiente entero y resto simbólico de un término: `2*sqrt(x)` → `{coef:2, resto:"sqrt(x)"}`,
+ *  `6` → `{coef:6, resto:""}`, `x` → `{coef:1, resto:"x"}`. null si algún factor no es entero o
+ *  hay un denominador dentro (ahí reducir dejaría de ser una división limpia). */
+function coefYresto(n: Nodo): { coef: number; resto: string } | null {
+  let coef = 1;
+  const resto: string[] = [];
+  for (const f of factores(n)) {
+    if (f.exp !== 1) return null;
+    if (f.nodo.type === "ConstantNode") {
+      const v = Number(f.nodo.value);
+      if (!Number.isInteger(v)) return null;
+      coef *= v;
+    } else resto.push(f.nodo.toString());
+  }
+  return { coef, resto: resto.join(" * ") };
+}
+
+/** Divide numerador y denominador por su mayor factor entero común: `(2 ± 2√x)/2` → `1 ± √x`,
+ *  `(6 ± 2√x)/2` → `3 ± √x`.
+ *
+ *  La fórmula cuadrática las produce sin reducir, y como `(y−1)²=x` se EXPANDE a `y²−2y+1=x`
+ *  antes de despejar, el caso de manual más común del mundo —una parábola desplazada— salía del
+ *  panel como `(2 ± 2√x)/2`. Ninguna pasada de formato lo tocaba: todas tratan `pm(·)` como una
+ *  función opaca y no se atreven a entrar. Aquí sí se entra, porque sabemos qué es.
+ *
+ *  Solo factores POSITIVOS: dividir por uno negativo intercambiaría `pm` y `mp` y rompería el
+ *  emparejamiento de los signos cuando aparecen los dos en la misma expresión. */
+function reducirFraccionEntera(rhs: string): string {
+  let n: Nodo;
+  try { n = parse(rhs) as unknown as Nodo; } catch { return rhs; }
+  const raiz = desParen(n);
+  if (raiz.type !== "OperatorNode" || raiz.op !== "/" || raiz.args.length !== 2) return rhs;
+  const den = desParen(raiz.args[1]);
+  if (den.type !== "ConstantNode") return rhs;
+  const d = Number(den.value);
+  if (!Number.isInteger(d) || d < 2) return rhs;
+
+  const ts = terminos(desParen(raiz.args[0]));
+  if (ts.length === 0) return rhs;
+  const partes: Array<{ signo: number; coef: number; resto: string; envoltura: string | null }> = [];
+  for (const t of ts) {
+    const nodo = desParen(t.nodo);
+    const sentinela = nodo.type === "FunctionNode" && nodo.args.length === 1 &&
+      nodo.fn?.name !== undefined && SENTINELAS_SIGNO.has(nodo.fn.name) ? nodo.fn.name : null;
+    const cr = coefYresto(sentinela === null ? nodo : nodo.args[0]);
+    if (cr === null) return rhs;
+    partes.push({ signo: t.signo, ...cr, envoltura: sentinela });
+  }
+  let g = d;
+  for (const p of partes) g = mcdEnteros(g, Math.abs(p.coef));
+  if (g < 2) return rhs;
+
+  let out = "";
+  partes.forEach((p, i) => {
+    const c = p.coef / g;
+    const nucleo = p.resto === "" ? String(c) : c === 1 ? p.resto : `${c} * ${p.resto}`;
+    const cuerpo = p.envoltura ? `${p.envoltura}(${nucleo})` : nucleo;
+    if (i === 0) out = p.signo === 1 ? cuerpo : `-${cuerpo}`;
+    else out += p.signo === 1 ? ` + ${cuerpo}` : ` - ${cuerpo}`;
+  });
+  return d / g === 1 ? out : `(${out}) / (${d / g})`;
+}
+
+/** Recupera la forma EXACTA de las constantes irracionales que el despeje decimalizó al
+ *  dividir: `√20·y = x` daba `y = 0.22360679774997896·x`, que es correcto y a la vez ilegible.
+ *  Es el mismo paso que ya cerraba Simplificar, Derivar e Integrar; el despeje era el único
+ *  de los cuatro paneles que no lo hacía.
+ *
+ *  Va SOLO en esta vía —la del panel—. `despejeExplicito`, que es la que alimenta al trazador,
+ *  llama a `despejar` directamente y no pasa por aquí: lo que se dibuja no cambia ni un píxel
+ *  por un cambio de tipografía. Ante cualquier fallo se devuelve la cadena intacta. */
+function embellecerConstantes(ec: string): string {
+  try {
+    const partes = ec.split("=");
+    if (partes.length !== 2) return ec;
+    const original = parse(partes[1]) as unknown as Nodo;
+    const rhs = reducirFraccionEntera(resimbolizarConstantes(original).toString());
+    // Si no había ninguna constante que recuperar, se devuelve la cadena TAL CUAL. Re-serializar
+    // por mathjs cambia el espaciado (`^2`→`^ 2`, `2*pi`→`2 * pi`) y esta salida es el string
+    // canónico que el resto del proyecto encadena y compara: sin esta guarda, todo despeje
+    // ajeno al cambio se reescribía por un motivo puramente tipográfico.
+    if (rhs === original.toString()) return ec;
+    return `${partes[0].trim()} = ${rhs}`;
+  } catch { return ec; }
 }
 
 /** LaTeX del bloque con la y despejada (deriva del string por el pipeline del panel). */
