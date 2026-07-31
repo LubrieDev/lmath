@@ -61429,7 +61429,6 @@ var CARAS = [
   { uri: Lora_VariableFont_wght_default, estilo: "normal" },
   { uri: Lora_Italic_VariableFont_wght_default, estilo: "italic" }
 ];
-var registroDeFuentes = () => document.fonts;
 async function registrarFuenteLora(_plugin) {
   let yaEsta = false;
   document.fonts.forEach((f) => {
@@ -61442,7 +61441,7 @@ async function registrarFuenteLora(_plugin) {
     try {
       const cara = new FontFace("Lora", `url("${uri}")`, { weight: "400 700", style: estilo });
       await cara.load();
-      registroDeFuentes().add(cara);
+      document.fonts.add(cara);
     } catch (e3) {
       console.warn("LMath: no se pudo cargar la fuente Lora", estilo, e3);
     }
