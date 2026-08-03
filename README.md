@@ -1,6 +1,6 @@
 # LMath
 
-LMath is an [Obsidian](https://obsidian.md) plugin for graphing functions, systems of equations, derivatives and integrals directly inside your notes: each block shows the formula rendered in LaTeX (KaTeX) on the left, and an interactive Cartesian plane (pan, zoom, crosshair, rail mode) on the right.
+LMath is an [Obsidian](https://obsidian.md) plugin for graphing functions, systems of equations, derivatives and integrals directly inside your notes: each graphing block shows the formula rendered in LaTeX (KaTeX) on the left, and an interactive Cartesian plane (pan, zoom, crosshair, rail mode) on the right. The `obs-trig` block shares that frame but not the plane: it draws the unit circle in a fixed view, with no camera, and puts its controls where the formula would be.
 
 ---
 
@@ -29,6 +29,7 @@ LMath is an [Obsidian](https://obsidian.md) plugin for graphing functions, syste
 | ` ```obs-system ` | Several equations (one per line, or LaTeX `\begin{cases}…\end{cases}`), each with its own color, plus the **solutions of the system** (intersections between curves). |
 | ` ```obs-derivate ` | Differentiates `f(x)` symbolically and graphs **only the derivative** `f'(x)`. |
 | ` ```obs-integral ` | Definite integral `\int_a^b f\,dx`: graphs the integrand, **shades the region** between `a` and `b` and shows the signed area (and the antiderivative, when the built-in integrator covers it). |
+| ` ```obs-trig ` | The **unit circle**: you write one or more angles and see where they fall, with their sine, cosine and tangent as segments and their **exact** values (`P(30°) = (√3/2, 1/2)`). |
 
 ## Features
 
@@ -45,6 +46,7 @@ LMath is an [Obsidian](https://obsidian.md) plugin for graphing functions, syste
 - Input in LaTeX, Unicode (`π`, `√`, `×`, `÷`, `²`, `³`, `θ`, `∞`) and standard mathematical notation.
 - Support for absolute value (`|x|`, `\left|…\right|`, `abs(x)`), the six inverse trigonometric functions and step functions (`⌊x⌋`, `⌈x⌉`).
 - Automatic simplification of every displayed expression, and solving for `y` either manually or optionally automatically (see [Settings](#settings)).
+- A unit circle block (`obs-trig`) with **exact** values on the 24 notable angles, a draggable point with snapping, and sine, cosine and tangent drawn as the segments they are — in degrees, radians or gradians. A block written `sin(30)` opens with that ratio already traced.
 
 ---
 
@@ -193,6 +195,75 @@ LaTeX input with the limits of integration.
 ```
 ````
 
+### obs-trig
+
+The unit circle. An empty block already draws a working figure at 30°, because here the circle
+**is** the content.
+
+One line, one angle. The `=` only puts a name on it — it is not an equation — and the name is
+optional, so the shortest block that says anything is a bare angle:
+
+````markdown
+```obs-trig
+30°
+```
+````
+
+Naming it is just as valid, and several angles is the same thing repeated:
+
+````markdown
+```obs-trig
+α = 30°
+β = 150°
+γ = 210°
+δ = 330°
+```
+````
+
+You can write the angle any way the rest of the plugin accepts: `30°`, `-45°`, `750°`,
+`\frac{\pi}{6}`, `pi/6`, `2\pi`. A line that is not a readable angle is reported in the panel
+instead of being dropped; if none of them is readable, the block falls back to 30° and says so.
+
+**Watch the units — there are two rules, not one.** The angle a block *declares* is read in
+**radians** when it is a bare number, so `θ = 30` is 30 radians (it lands at 1718.9°, not at 30°)
+and degrees need the `°`. Inside a **trigonometric function**, though, the plugin keeps its usual
+convention, which is the opposite one: a literal argument is read in degrees, so `sin(30)` is `0.5`
+here exactly as in `obs-graph` (see [Input syntax](#input-syntax)). Writing the `°` removes the
+ambiguity from the first rule entirely.
+
+Drag the point — the grabbable part is the rim of the circle, not the middle — or use the slider,
+the arrow keys (the plane has to be focused) or the ▶ button. Dragging snaps to the notable angles
+by default; hold **`Alt`** to place the point anywhere without going to the settings to turn
+snapping off.
+
+Turn on sine, cosine or tangent from the panel to see each one drawn as the segment it is. None of
+the three is ever hidden: the ones that are off show as dotted lines, and the toggles promote them
+to solid and add their construction. Everything the panel says refers to the **active** angle: the
+one you last grabbed, or the first one, cycled with `Tab`.
+
+**Naming a ratio turns its trace on.** If the expression is *exactly* a call to `sin`, `cos` or
+`tan` on a constant angle, the block opens with that component already drawn:
+
+````markdown
+```obs-trig
+sin(30)
+```
+````
+
+It chooses a trace, it does not change the angle: `sin(30)` still evaluates to `0.5`, so the block
+draws 0.5 radians with the sine lit. The call has to be the whole expression — `2sin(30)` and
+`sin(30)+cos(30)` light nothing — and `asin`, `sinh`, `cot` and `sec` do not count, because they
+have no trace on the figure. It is only the starting state: once you touch a toggle, the selection
+is yours.
+
+On a notable angle — any multiple of 15° — the coordinates and the ratios are given in **exact**
+form rather than as decimals, but only if the angle earned it: either the block wrote it in degrees
+or in terms of π, or you reached it with the block's own controls. A decimal typed by hand stays a
+decimal, so `θ = 0.5236` never claims to be π/6.
+
+The angle unit is on the block's own chip and in [Settings](#settings); the drag magnet has no chip
+and is set only in [Settings](#settings), though `Alt` suspends it for a single drag.
+
 ### More input examples (obs-graph, obs-derivate, obs-integral)
 
 Vertical asymptote:
@@ -237,6 +308,10 @@ x^{3^{2}}
 
 ### Interacting with the graph
 
+This table is for the four graphing blocks. `obs-trig` has a fixed view and none of these: dragging
+moves the angle instead of the view, and there is no zoom, no pan and no crosshair — see
+[obs-trig](#obs-trig) for its own controls.
+
 | Action | Effect |
 |---|---|
 | Move the cursor | Shows a crosshair with `x` and `f(x)` in real time |
@@ -254,13 +329,13 @@ In periodic functions such as `sin(x)` or `tan(x)`, the roots and vertices are i
 
 If the function does not produce any real value (for example `sqrt(-1)` or `log(x)/log(1)`), the plane is dimmed with a label indicating the cause: *Not defined over ℝ*, *Undefined*, *Indeterminate*, among others. Zoom and pan remain active.
 
-An empty block shows the message *No function* instead of an error.
+An empty block shows the message *No function* instead of an error. This does not apply to `obs-trig`, where an empty block is a complete figure at 30°.
 
 ---
 
 ## Input syntax
 
-The plugin normalizes different formats before evaluating them with [mathjs](https://mathjs.org/). This applies to all four blocks, which share the same parser.
+The plugin normalizes different formats before evaluating them with [mathjs](https://mathjs.org/). This applies to all five blocks, which share the same parser — `obs-trig` included: it reads the angle you write with exactly this machinery.
 
 | Type | Examples |
 |---|---|
@@ -270,6 +345,8 @@ The plugin normalizes different formats before evaluating them with [mathjs](htt
 | Inverse | `arcsin(x)`, `sin⁻¹(x)`, `asin(x)` (and their analogues for cos, tan, csc, sec, cot) |
 
 > ⚠️ **Trigonometry (degrees vs. radians):** if the argument is a literal number (e.g. `sin(30)`), it is interpreted in **degrees**; if the argument contains a variable (e.g. `sin(x)`), it is evaluated in **radians**.
+>
+> This is about the **argument of a function**. The angle that an `obs-trig` block declares follows the opposite rule: a bare number there is **radians** (`θ = 30` is 30 radians), and degrees need the `°`. Both rules can meet in one line — `θ = sin(30)` is 0.5 radians, because `sin(30)` is the sine of 30 degrees.
 
 > ⚠️ **Logarithms (default base):** `log(x)` written without a base means **base 10**, as it does on a calculator — `log(100)` is `2`. For the natural logarithm write `ln(x)` or `\ln x`. An explicit base is always respected: `log(x, 2)`, `\log_{2}{x}` and `log2(x)` all mean base 2.
 
@@ -296,6 +373,11 @@ The plugin adds a settings tab (**Settings → LMath**):
 - **Show notable points** — draws the markers for roots, vertices, Y intercepts and system solutions on the plane. Turning it off leaves the plane clean; the ⓘ summary still lists them, and the crosshair and rail mode are unaffected.
 - **Automatic framing** — zooms the initial view in when the curve is bounded and leaves a lot of empty plane (heart, lemniscate, astroid…); it only zooms in, never out.
 
+Under **Trigonometric circle**, for `obs-trig`:
+
+- **Angle unit** — degrees, radians or gradians (degrees by default). Presentation only: it changes how angles are *written*, never how a block is read, so a bare number is still radians whatever you pick. Each block also has a **DEG / RAD / GRAD** chip that overrides it for that block until the note is re-rendered.
+- **Snap to notable angles** — whether dragging the point snaps to the multiples of 15° (on by default). Hold **`Alt`** while dragging to suspend it for that gesture, without coming back here to turn it off. There is no chip for this one; it is set here or not at all.
+
 ---
 
 ## Known limitations
@@ -307,6 +389,10 @@ The plugin adds a settings tab (**Settings → LMath**):
 - The symbolic integrator has textbook-level scope: when it cannot find an antiderivative, the panel falls back to the numeric value. Improper integrals (limits at `±∞`) are labeled, not evaluated.
 - The crosshair and rail mode follow a single curve at a time and require it to be walkable as `y=f(x)`.
 - The visual behavior of functions with dense asymptotes (such as `sec(10x)`) at extreme zoom-out is inherent to the periodic nature of those functions.
+- In `obs-trig`, exact values exist only for the multiples of 15°, and only for angles that earned the right to them (written in degrees or in terms of π, or reached with the block's own controls). Everything else is shown as a decimal.
+- `obs-trig` shows the angle you are *looking at*, not the one the note declares: dragging, animating and switching units never rewrite the block, and re-rendering the note goes back to what is written.
+- The ⓘ panel of `obs-trig` does not follow the unit chip: it lists degrees and radians as separate rows, and every other angle in it is given in degrees. The rim labels only follow the chip when the plane is too small for two lines; with room for two they always show degrees over the fraction of π, whatever the chip says.
+- Holding `Alt` frees the drag from the magnet, but nothing in the block's own interface hints at it: inside the app the modifier is only described in the settings tab.
 
 ---
 

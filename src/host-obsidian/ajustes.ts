@@ -35,6 +35,12 @@ export interface AjustesTransformaciones {
   /** Idioma de la INTERFAZ del plugin ("en"|"es"). No es una transformación; se guarda en
    *  este mismo objeto porque comparte la maquinaria de persistencia (loadData/saveData). El
    *  idioma ACTIVO lo lleva el módulo i18n (`fijarIdioma`); esta clave es su copia persistida. */
+  /** Unidad en la que obs-trig ROTULA los ángulos. Es presentación pura: la entrada de un
+   *  bloque son radianes siempre (como en todo LMath) y cambiar esto NO reinterpreta nada de lo
+   *  escrito. Era el último objetivo pendiente de la hoja de ruta original del README. */
+  unidadAngulo: "degrees" | "radians" | "gradians";
+  /** ¿El arrastre del círculo trigonométrico se pega a los ángulos notables (múltiplos de 15°)? */
+  imanTrig: boolean;
   idioma: Idioma;
 }
 
@@ -45,6 +51,8 @@ export const AJUSTES_POR_DEFECTO: AjustesTransformaciones = {
   despejarAuto: false,
   puntosNotables: false,
   encuadreAuto: true,
+  unidadAngulo: "degrees",
+  imanTrig: true,
   idioma: IDIOMA_POR_DEFECTO,
 };
 
@@ -131,6 +139,32 @@ export class PestanaAjustesLMath extends PluginSettingTab {
           },
         ],
       },
+      {
+        type: "group",
+        heading: txt.ajustes.trig.seccion,
+        items: [
+          {
+            name: txt.ajustes.trig.unidad.etiqueta,
+            desc: txt.ajustes.trig.unidad.detalle,
+            control: {
+              type: "dropdown",
+              key: "unidadAngulo",
+              // Las CLAVES son lo que se guarda en data.json, así que van en inglés como el resto
+              // de la superficie pública. Lo que se ve en el desplegable es el texto traducido.
+              options: {
+                degrees: txt.ajustes.trig.opcionGrados,
+                radians: txt.ajustes.trig.opcionRadianes,
+                gradians: txt.ajustes.trig.opcionGradianes,
+              },
+            },
+          },
+          {
+            name: txt.ajustes.trig.iman.etiqueta,
+            desc: txt.ajustes.trig.iman.detalle,
+            control: { type: "toggle", key: "imanTrig" },
+          },
+        ],
+      },
     ];
   }
 
@@ -145,6 +179,10 @@ export class PestanaAjustesLMath extends PluginSettingTab {
         return this.plugin.ajustes.puntosNotables;
       case "encuadreAuto":
         return this.plugin.ajustes.encuadreAuto;
+      case "unidadAngulo":
+        return this.plugin.ajustes.unidadAngulo;
+      case "imanTrig":
+        return this.plugin.ajustes.imanTrig;
       default:
         return undefined;
     }
@@ -175,6 +213,13 @@ export class PestanaAjustesLMath extends PluginSettingTab {
         break;
       case "encuadreAuto":
         this.plugin.ajustes.encuadreAuto = value === true;
+        break;
+      case "unidadAngulo":
+        this.plugin.ajustes.unidadAngulo =
+          value === "radians" ? "radians" : value === "gradians" ? "gradians" : "degrees";
+        break;
+      case "imanTrig":
+        this.plugin.ajustes.imanTrig = value === true;
         break;
       default:
         return;

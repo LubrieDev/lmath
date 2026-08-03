@@ -46,7 +46,7 @@ export default class LMathPlugin extends Plugin implements PluginConAjustes {
     // ── Bloque obs-graph (UNA función) ─────────
     // La bandera decide el motor; GraphEngine permanece intacto como fallback.
     const graphEngine = new GraphEngine(this);
-    const motorGraph = new MotorExperimental(this, false, false, ajustes);
+    const motorGraph = new MotorExperimental(this, "graph", ajustes);
     this.registerMarkdownCodeBlockProcessor(
       "obs-graph",
       (source, el, ctx) =>
@@ -58,7 +58,7 @@ export default class LMathPlugin extends Plugin implements PluginConAjustes {
     // ── Bloque obs-system (SISTEMA de ecuaciones) ──
     // Motor nuevo: cada ecuación con su mejor proveedor (continuación/separable/…),
     // sin marching squares. (Panel de solución/intersecciones: trabajo futuro.)
-    const motorSistema = new MotorExperimental(this, true, false, ajustes);
+    const motorSistema = new MotorExperimental(this, "system", ajustes);
     this.registerMarkdownCodeBlockProcessor(
       "obs-system",
       (source, el, ctx) => motorSistema.process(source, el, ctx)
@@ -68,7 +68,7 @@ export default class LMathPlugin extends Plugin implements PluginConAjustes {
     // Como obs-graph (una función, motor nuevo) pero el plano grafica la DERIVADA
     // f'(x) de lo escrito; el panel alterna [Original] (operador d/dx sin evaluar) y
     // [Derivada] (f'(x) = …). Deriva simbólicamente con mathjs (src/derivar.ts).
-    const motorDerivada = new MotorExperimental(this, false, true, ajustes);
+    const motorDerivada = new MotorExperimental(this, "derivate", ajustes);
     this.registerMarkdownCodeBlockProcessor(
       "obs-derivate",
       (source, el, ctx) => motorDerivada.process(source, el, ctx)
@@ -80,10 +80,21 @@ export default class LMathPlugin extends Plugin implements PluginConAjustes {
     // sin evaluar, con el integrando simplificado) y [Valor] (`∫ₐᵇ f dx = <área con signo>`,
     // o una etiqueta si diverge / sale de dominio / los límites no son numéricos). El área se
     // calcula numéricamente (mathjs no integra simbólicamente): src/integral.ts + areaBajoRama.
-    const motorIntegral = new MotorExperimental(this, false, false, ajustes, true);
+    const motorIntegral = new MotorExperimental(this, "integral", ajustes);
     this.registerMarkdownCodeBlockProcessor(
       "obs-integral",
       (source, el, ctx) => motorIntegral.process(source, el, ctx)
+    );
+
+    // ── Bloque obs-trig (CÍRCULO TRIGONOMÉTRICO) ──
+    // El único bloque que no usa el motor de curvas: su geometría es analítica cerrada y la
+    // pinta un renderizador propio (src/trig/), con el encuadre FIJO en el círculo unidad. Un
+    // bloque vacío ya rinde un círculo funcional a 30°: aquí no falta contenido, el círculo
+    // unidad ES el contenido.
+    const motorTrig = new MotorExperimental(this, "trig", ajustes);
+    this.registerMarkdownCodeBlockProcessor(
+      "obs-trig",
+      (source, el, ctx) => motorTrig.process(source, el, ctx)
     );
   }
 

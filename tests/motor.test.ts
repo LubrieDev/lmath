@@ -27,5 +27,6 @@ import "./modulos/implicitas.test";     // separación, polos, periodicidad y te
 import "./modulos/parametricas.test";   // paramétricas y polares
 import "./modulos/escena.test";         // sistemas, intersecciones, autoencuadre, estrés
 import "./modulos/calculo.test";        // integral definida y derivadas
+import "./modulos/trig.test";           // obs-trig: parser del bloque y modelo del ángulo
 
 resumen();

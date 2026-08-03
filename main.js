@@ -4507,7 +4507,7 @@ P.inverseSine = P.asin = function() {
   return x.times(2);
 };
 P.inverseTangent = P.atan = function() {
-  var i2, j, k, n, px, t2, r, wpr, x2, x = this, Ctor = x.constructor, pr = Ctor.precision, rm = Ctor.rounding;
+  var i2, j, k, n, px2, t2, r, wpr, x2, x = this, Ctor = x.constructor, pr = Ctor.precision, rm = Ctor.rounding;
   if (!x.isFinite()) {
     if (!x.s)
       return new Ctor(NaN);
@@ -4533,12 +4533,12 @@ P.inverseTangent = P.atan = function() {
   n = 1;
   x2 = x.times(x);
   r = new Ctor(x);
-  px = x;
+  px2 = x;
   for (; i2 !== -1; ) {
-    px = px.times(x2);
-    t2 = r.minus(px.div(n += 2));
-    px = px.times(x2);
-    r = t2.plus(px.div(n += 2));
+    px2 = px2.times(x2);
+    t2 = r.minus(px2.div(n += 2));
+    px2 = px2.times(x2);
+    r = t2.plus(px2.div(n += 2));
     if (r.d[j] !== void 0)
       for (i2 = j; r.d[i2] === t2.d[i2] && i2--; )
         ;
@@ -17359,13 +17359,13 @@ var createPow = /* @__PURE__ */ factory(name126, dependencies126, (_ref) => {
       }
     }
     var res = identity2(s[0]).valueOf();
-    var px = x;
+    var px2 = x;
     while (y >= 1) {
       if ((y & 1) === 1) {
-        res = multiply2(px, res);
+        res = multiply2(px2, res);
       }
       y >>= 1;
-      px = multiply2(px, px);
+      px2 = multiply2(px2, px2);
     }
     return res;
   }
@@ -31917,8 +31917,8 @@ var createCsSpsolve = /* @__PURE__ */ factory(name232, dependencies232, (_ref) =
     for (p0 = bptr[k], p1 = bptr[k + 1], p = p0; p < p1; p++) {
       x[bindex[p]] = bvalues[p];
     }
-    for (var px = top; px < n; px++) {
-      var j = xi[px];
+    for (var px2 = top; px2 < n; px2++) {
+      var j = xi[px2];
       var J = pinv2 ? pinv2[j] : j;
       if (J < 0) {
         continue;
@@ -36898,8 +36898,8 @@ var createSylvester = /* @__PURE__ */ factory(name247, dependencies247, (_ref) =
     var U = sA.U;
     var sB = schur2(multiply2(-1, B));
     var G = sB.T;
-    var V = sB.U;
-    var D = multiply2(multiply2(transpose2(U), C), V);
+    var V2 = sB.U;
+    var D = multiply2(multiply2(transpose2(U), C), V2);
     var all = range2(0, m);
     var y = [];
     var hc = (a, b) => concat3(a, b, 1);
@@ -36930,7 +36930,7 @@ var createSylvester = /* @__PURE__ */ factory(name247, dependencies247, (_ref) =
       }
     }
     var Y = matrix2(matrixFromColumns2(...y));
-    var X = multiply2(U, multiply2(Y, transpose2(V)));
+    var X = multiply2(U, multiply2(Y, transpose2(V2)));
     return X;
   }
 });
@@ -37453,10 +37453,10 @@ var createIntersect = /* @__PURE__ */ factory(name252, dependencies252, (_ref) =
     var numerator = subtract2(subtract2(subtract2(c, x1x), y1y), z1z);
     var denominator = subtract2(subtract2(subtract2(addScalar2(addScalar2(x2x, y2y), z2z), x1x), y1y), z1z);
     var t2 = divideScalar2(numerator, denominator);
-    var px = addScalar2(x1, multiplyScalar2(t2, subtract2(x2, x1)));
-    var py = addScalar2(y1, multiplyScalar2(t2, subtract2(y2, y1)));
+    var px2 = addScalar2(x1, multiplyScalar2(t2, subtract2(x2, x1)));
+    var py2 = addScalar2(y1, multiplyScalar2(t2, subtract2(y2, y1)));
     var pz = addScalar2(z1, multiplyScalar2(t2, subtract2(z2, z1)));
-    return [px, py, pz];
+    return [px2, py2, pz];
   }
 });
 
@@ -49816,14 +49816,14 @@ var GraphEngine = class {
             return "neg";
           return "indef";
         };
-        const dibujarPuntoMarcador = (ctx2, px, py, color) => {
+        const dibujarPuntoMarcador = (ctx2, px2, py2, color) => {
           ctx2.save();
           ctx2.beginPath();
-          ctx2.arc(px, py, 4.5, 0, Math.PI * 2);
+          ctx2.arc(px2, py2, 4.5, 0, Math.PI * 2);
           ctx2.fillStyle = "rgba(255, 255, 255, 0.3)";
           ctx2.fill();
           ctx2.beginPath();
-          ctx2.arc(px, py, 3, 0, Math.PI * 2);
+          ctx2.arc(px2, py2, 3, 0, Math.PI * 2);
           ctx2.fillStyle = color;
           ctx2.fill();
           ctx2.restore();
@@ -49846,8 +49846,8 @@ var GraphEngine = class {
           }
           const yMath = evalXNum(xMath);
           const finita = Number.isFinite(yMath);
-          const py = finita ? sy(yMath) : null;
-          const yVisible = py !== null && py >= 0 && py <= H;
+          const py2 = finita ? sy(yMath) : null;
+          const yVisible = py2 !== null && py2 >= 0 && py2 <= H;
           ctxCross.save();
           ctxCross.setLineDash([4, 6]);
           ctxCross.strokeStyle = "rgba(100, 150, 255, 0.4)";
@@ -49858,19 +49858,19 @@ var GraphEngine = class {
           ctxCross.stroke();
           if (yVisible) {
             ctxCross.beginPath();
-            ctxCross.moveTo(0, py);
-            ctxCross.lineTo(W, py);
+            ctxCross.moveTo(0, py2);
+            ctxCross.lineTo(W, py2);
             ctxCross.stroke();
           }
           ctxCross.setLineDash([]);
           if (yVisible) {
-            dibujarPuntoMarcador(ctxCross, xPix, py, "rgba(80, 160, 255, 1.0)");
+            dibujarPuntoMarcador(ctxCross, xPix, py2, "rgba(80, 160, 255, 1.0)");
             if (modoCarril) {
               ctxCross.save();
               ctxCross.strokeStyle = "rgba(255, 160, 40, 0.9)";
               ctxCross.lineWidth = 1.5;
               ctxCross.beginPath();
-              ctxCross.arc(xPix, py, 7, 0, Math.PI * 2);
+              ctxCross.arc(xPix, py2, 7, 0, Math.PI * 2);
               ctxCross.stroke();
               ctxCross.restore();
             }
@@ -49900,15 +49900,15 @@ var GraphEngine = class {
             const RADIO_HOVER = 16;
             const colocadas = [];
             for (const p of puntosNotables) {
-              const px = sx(p.x);
+              const px2 = sx(p.x);
               const pyN = sy(p.y);
-              if (px < 0 || px > W || pyN < 0 || pyN > H)
+              if (px2 < 0 || px2 > W || pyN < 0 || pyN > H)
                 continue;
-              if (Math.hypot(px - xPix, pyN - cursorPy) > RADIO_HOVER)
+              if (Math.hypot(px2 - xPix, pyN - cursorPy) > RADIO_HOVER)
                 continue;
               dibujarEtiquetaPunto(
                 ctxCross,
-                px,
+                px2,
                 pyN,
                 `(${formatearNumero2(p.x)}, ${formatearNumero2(p.y)})`,
                 colocadas
@@ -49919,7 +49919,7 @@ var GraphEngine = class {
         };
         const COLOR_PUNTO_NOTABLE = "rgba(255, 160, 40, 1.0)";
         const solapanRect = (a, b) => !(a.x1 < b.x0 || a.x0 > b.x1 || a.y1 < b.y0 || a.y0 > b.y1);
-        const dibujarEtiquetaPunto = (ctx2, px, py, texto, colocadas) => {
+        const dibujarEtiquetaPunto = (ctx2, px2, py2, texto, colocadas) => {
           ctx2.save();
           ctx2.font = "11px monospace";
           ctx2.textBaseline = "middle";
@@ -49932,8 +49932,8 @@ var GraphEngine = class {
             { dx: -9, dy: 11, align: "right" }
           ];
           for (const c of candidatos) {
-            const tx = px + c.dx;
-            const ty = py + c.dy;
+            const tx = px2 + c.dx;
+            const ty = py2 + c.dy;
             const x0 = (c.align === "left" ? tx : tx - ancho) - PAD;
             const rect = { x0, y0: ty - 8, x1: x0 + ancho + 2 * PAD, y1: ty + 8 };
             if (rect.x0 < 0 || rect.x1 > W || rect.y0 < 0 || rect.y1 > H)
@@ -49954,11 +49954,11 @@ var GraphEngine = class {
           if (degenerada || puntosNotables.length === 0)
             return;
           for (const p of puntosNotables) {
-            const px = sx(p.x);
-            const py = sy(p.y);
-            if (px < 0 || px > W || py < 0 || py > H)
+            const px2 = sx(p.x);
+            const py2 = sy(p.y);
+            if (px2 < 0 || px2 > W || py2 < 0 || py2 > H)
               continue;
-            dibujarPuntoMarcador(ctx2d, px, py, COLOR_PUNTO_NOTABLE);
+            dibujarPuntoMarcador(ctx2d, px2, py2, COLOR_PUNTO_NOTABLE);
           }
         };
         const dibujarOverlay = () => {
@@ -50002,32 +50002,32 @@ var GraphEngine = class {
           for (const x of ticksX) {
             if (Math.abs(x) < 1e-9)
               continue;
-            const px = sx(x);
-            if (px < 10 || px > W - 10)
+            const px2 = sx(x);
+            if (px2 < 10 || px2 > W - 10)
               continue;
             ctx2d.strokeStyle = "rgba(160,160,170,0.5)";
             ctx2d.lineWidth = 0.75;
             ctx2d.beginPath();
-            ctx2d.moveTo(px, ceroY - 3);
-            ctx2d.lineTo(px, ceroY + 3);
+            ctx2d.moveTo(px2, ceroY - 3);
+            ctx2d.lineTo(px2, ceroY + 3);
             ctx2d.stroke();
-            ctx2d.fillText(formatearNumero2(x), px, ceroY + 5);
+            ctx2d.fillText(formatearNumero2(x), px2, ceroY + 5);
           }
           ctx2d.textAlign = "right";
           ctx2d.textBaseline = "middle";
           for (const y of ticksY) {
             if (Math.abs(y) < 1e-9)
               continue;
-            const py = sy(y);
-            if (py < 10 || py > H - 10)
+            const py2 = sy(y);
+            if (py2 < 10 || py2 > H - 10)
               continue;
             ctx2d.strokeStyle = "rgba(160,160,170,0.5)";
             ctx2d.lineWidth = 0.75;
             ctx2d.beginPath();
-            ctx2d.moveTo(ceroX - 3, py);
-            ctx2d.lineTo(ceroX + 3, py);
+            ctx2d.moveTo(ceroX - 3, py2);
+            ctx2d.lineTo(ceroX + 3, py2);
             ctx2d.stroke();
-            ctx2d.fillText(formatearNumero2(y), ceroX - 6, py);
+            ctx2d.fillText(formatearNumero2(y), ceroX - 6, py2);
           }
           dibujarPuntosNotables();
           dibujarCrosshair(cursorPx);
@@ -50052,16 +50052,16 @@ var GraphEngine = class {
           const interactivo = motivo === "pan" || motivo === "zoom";
           const GROSOR_CLIP = 4e-3;
           const dibujarAsintota = (xa) => {
-            const px = sx(xa);
-            if (px < 0 || px > W)
+            const px2 = sx(xa);
+            if (px2 < 0 || px2 > W)
               return;
             ctx2d.save();
             ctx2d.setLineDash([4, 6]);
             ctx2d.strokeStyle = "rgba(100, 150, 255, 0.3)";
             ctx2d.lineWidth = 1;
             ctx2d.beginPath();
-            ctx2d.moveTo(px, 0);
-            ctx2d.lineTo(px, H);
+            ctx2d.moveTo(px2, 0);
+            ctx2d.lineTo(px2, H);
             ctx2d.stroke();
             ctx2d.restore();
           };
@@ -50419,8 +50419,8 @@ function aPantallaX(vp, x) {
 function aPantallaY(vp, y) {
   return vp.altoPx - (y - vp.domY[0]) / (vp.domY[1] - vp.domY[0]) * vp.altoPx;
 }
-function aMundoX(vp, px) {
-  return vp.domX[0] + px / vp.anchoPx * (vp.domX[1] - vp.domX[0]);
+function aMundoX(vp, px2) {
+  return vp.domX[0] + px2 / vp.anchoPx * (vp.domX[1] - vp.domX[0]);
 }
 
 // src/motor/interaction/Camara.ts
@@ -50558,9 +50558,9 @@ var Camara = class {
    * Es la misma aritmética que usaba la rueda anclada al cursor, ahora compartida con el
    * pellizco: una sola invariante que mantener, y una sola que probar.
    */
-  escalarEn(px, py, factor) {
-    const mx = this.domX[0] + px / this.anchoPx * (this.domX[1] - this.domX[0]);
-    const my = this.domY[1] - py / this.altoPx * (this.domY[1] - this.domY[0]);
+  escalarEn(px2, py2, factor) {
+    const mx = this.domX[0] + px2 / this.anchoPx * (this.domX[1] - this.domX[0]);
+    const my = this.domY[1] - py2 / this.altoPx * (this.domY[1] - this.domY[0]);
     this.domX = [mx + (this.domX[0] - mx) * factor, mx + (this.domX[1] - mx) * factor];
     this.domY = [my + (this.domY[0] - my) * factor, my + (this.domY[1] - my) * factor];
   }
@@ -50810,7 +50810,7 @@ function ramaVecina(ramas, rActual, xBorde, dir) {
   return mejor ? { r: mejor.r, k: mejor.k, u: mejor.u } : null;
 }
 function localizarSegmento(ramas, x, y, vp) {
-  const px = aPantallaX(vp, x), py = aPantallaY(vp, y);
+  const px2 = aPantallaX(vp, x), py2 = aPantallaY(vp, y);
   let loc = null;
   for (let r = 0; r < ramas.length; r++) {
     const p = ramas[r].puntos;
@@ -50820,10 +50820,10 @@ function localizarSegmento(ramas, x, y, vp) {
       const bx = aPantallaX(vp, p[2 * k + 2]), by = aPantallaY(vp, p[2 * k + 3]);
       const dx = bx - ax, dy = by - ay;
       const len2 = dx * dx + dy * dy;
-      let u = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+      let u = len2 > 0 ? ((px2 - ax) * dx + (py2 - ay) * dy) / len2 : 0;
       u = u < 0 ? 0 : u > 1 ? 1 : u;
       const fx = ax + u * dx, fy = ay + u * dy;
-      const d2 = (px - fx) * (px - fx) + (py - fy) * (py - fy);
+      const d2 = (px2 - fx) * (px2 - fx) + (py2 - fy) * (py2 - fy);
       if (loc === null || d2 < loc.d2)
         loc = { r, k, u, d2 };
     }
@@ -51947,14 +51947,14 @@ var TrazadorContinuacion = class {
     const celda = Math.max(paso, umbral) * 1.5;
     const clave = (cx, cy) => cx + "," + cy;
     const hash = /* @__PURE__ */ new Map();
-    const distSeg2 = (p, i2, px, py) => {
+    const distSeg2 = (p, i2, px2, py2) => {
       const ax = p[i2 * 2], ay = p[i2 * 2 + 1];
       const bx = p[(i2 + 1) * 2], by = p[(i2 + 1) * 2 + 1];
       const vx = bx - ax, vy = by - ay;
       const L2 = vx * vx + vy * vy;
-      let t2 = L2 > 0 ? ((px - ax) * vx + (py - ay) * vy) / L2 : 0;
+      let t2 = L2 > 0 ? ((px2 - ax) * vx + (py2 - ay) * vy) / L2 : 0;
       t2 = t2 < 0 ? 0 : t2 > 1 ? 1 : t2;
-      const dx = px - (ax + t2 * vx), dy = py - (ay + t2 * vy);
+      const dx = px2 - (ax + t2 * vx), dy = py2 - (ay + t2 * vy);
       return dx * dx + dy * dy;
     };
     const cubierto = (x, y) => {
@@ -52279,14 +52279,14 @@ var TrazadorContinuacion = class {
       }
       arr.push(i2);
     }
-    const distSeg2 = (i2, px, py) => {
+    const distSeg2 = (i2, px2, py2) => {
       const ax = pts[i2 * 2], ay = pts[i2 * 2 + 1];
       const bx = pts[(i2 + 1) * 2], by = pts[(i2 + 1) * 2 + 1];
       const vx = bx - ax, vy = by - ay;
       const L2 = vx * vx + vy * vy;
-      let t2 = L2 > 0 ? ((px - ax) * vx + (py - ay) * vy) / L2 : 0;
+      let t2 = L2 > 0 ? ((px2 - ax) * vx + (py2 - ay) * vy) / L2 : 0;
       t2 = t2 < 0 ? 0 : t2 > 1 ? 1 : t2;
-      const dx = px - (ax + t2 * vx), dy = py - (ay + t2 * vy);
+      const dx = px2 - (ax + t2 * vx), dy = py2 - (ay + t2 * vy);
       return dx * dx + dy * dy;
     };
     for (let s = 0; s < proyectadas.length; s++) {
@@ -53458,9 +53458,9 @@ function localizarPolos(F, x0, x1) {
   const todos = dedupOrdenado([...centrales, ...enVista], 1e-7);
   return extenderPolosPeriodicos(F, todos, x0, x1).filter((p) => p >= x0 && p <= x1 && esPoloVerificado(F, p));
 }
-function esPoloVerificado(F, px) {
-  const eps = Math.max(1e-9, Math.abs(px) * 1e-11);
-  const a = F.eval(px - eps, 0), b = F.eval(px + eps, 0);
+function esPoloVerificado(F, px2) {
+  const eps = Math.max(1e-9, Math.abs(px2) * 1e-11);
+  const a = F.eval(px2 - eps, 0), b = F.eval(px2 + eps, 0);
   return Number.isFinite(a) && Number.isFinite(b) && a * b < 0 && Math.min(Math.abs(a), Math.abs(b)) > 1e3;
 }
 function extenderPolosPeriodicos(F, polos, x0, x1) {
@@ -53558,26 +53558,26 @@ function ramasJuntoAPolos(f, objetoId, polos, vp, yaTrazadas) {
   const out = [];
   const xCubiertas = xVisiblesOrdenadas(yaTrazadas, bandaAbs);
   for (let i2 = 0; i2 < polos.length; i2++) {
-    const px = polos[i2];
+    const px2 = polos[i2];
     const alcance = Math.min(
-      i2 > 0 ? px - polos[i2 - 1] : Infinity,
-      i2 < polos.length - 1 ? polos[i2 + 1] - px : Infinity,
+      i2 > 0 ? px2 - polos[i2 - 1] : Infinity,
+      i2 < polos.length - 1 ? polos[i2 + 1] - px2 : Infinity,
       (vp.domX[1] - vp.domX[0]) / 4
     ) / 2;
-    const dMin = 1e-9 * Math.max(1, Math.abs(px));
+    const dMin = 1e-9 * Math.max(1, Math.abs(px2));
     if (!(alcance > dMin * 8))
       continue;
     for (const s of [1, -1]) {
-      const v0 = f.eval(px + s * dMin);
+      const v0 = f.eval(px2 + s * dMin);
       if (!Number.isFinite(v0) || Math.abs(v0) <= bandaAbs)
         continue;
-      if (hayCobertura(xCubiertas, s === 1 ? px : px - alcance, s === 1 ? px + alcance : px))
+      if (hayCobertura(xCubiertas, s === 1 ? px2 : px2 - alcance, s === 1 ? px2 + alcance : px2))
         continue;
       const pts = [];
-      let prevX = px + s * dMin, prevY = v0;
+      let prevX = px2 + s * dMin, prevY = v0;
       let dentro = false;
       for (let d = dMin * 2; d <= alcance; d *= 2) {
-        const x = px + s * d;
+        const x = px2 + s * d;
         const y = f.eval(x);
         if (!Number.isFinite(y)) {
           let lo = prevX, hi = x;
@@ -53656,9 +53656,9 @@ function partirEnPolos(rama, polos, yTop, yBot) {
   const cortes = [];
   for (let k = 0; k < n - 1; k++) {
     const lo = Math.min(t2[k], t2[k + 1]), hi = Math.max(t2[k], t2[k + 1]);
-    const px = polos.find((q) => q > lo && q < hi);
-    if (px !== void 0)
-      cortes.push({ k, px });
+    const px2 = polos.find((q) => q > lo && q < hi);
+    if (px2 !== void 0)
+      cortes.push({ k, px: px2 });
   }
   if (cortes.length === 0)
     return [rama];
@@ -53695,10 +53695,10 @@ function partirEnPolos(rama, polos, yTop, yBot) {
   };
   let ini = 0;
   let prePx = null;
-  for (const { k, px } of cortes) {
-    empuja(ini, k, prePx, px);
+  for (const { k, px: px2 } of cortes) {
+    empuja(ini, k, prePx, px2);
     ini = k + 1;
-    prePx = px;
+    prePx = px2;
   }
   empuja(ini, n - 1, prePx, null);
   return out;
@@ -55915,7 +55915,14 @@ var PLANO_OSCURO = {
     // rojo
     [0.35, 0.8, 0.85, 1]
     // cian
-  ]
+  ],
+  trigCircunferencia: "rgba(175,180,195,0.85)",
+  trigNotable: "rgba(160,160,170,0.45)",
+  trigRadio: "rgba(235,238,245,0.95)",
+  // Contraste sobre el fondo oscuro de Obsidian: 5,8:1 · 6,0:1 · 9,1:1.
+  trigSeno: "rgba(217,115,230,1.0)",
+  trigCoseno: "rgba(79,158,255,1.0)",
+  trigTangente: "rgba(102,217,115,1.0)"
 };
 var PLANO_CLARO = {
   rejilla: "rgba(16,24,40,0.10)",
@@ -55948,7 +55955,18 @@ var PLANO_CLARO = {
     // rojo   #cf2f45
     [0.051, 0.498, 0.588, 1]
     // cian   #0d7f96
-  ]
+  ],
+  // Sobre blanco, los mismos roles con el peso invertido: la circunferencia y el radio ganan
+  // opacidad (un gris tenue sobre blanco desaparece) y los tonos de las componentes bajan de
+  // luminosidad hasta contrastar, sin cambiar de familia — son exactamente los de `curvas`
+  // claras, así que un seno morado lo es igual en los dos temas.
+  trigCircunferencia: "rgba(30,38,55,0.60)",
+  trigNotable: "rgba(30,38,55,0.38)",
+  trigRadio: "rgba(24,30,44,0.92)",
+  // Contraste sobre blanco: 5,8:1 · 4,5:1 · 4,4:1.
+  trigSeno: "rgba(139,63,199,1.0)",
+  trigCoseno: "rgba(47,109,246,1.0)",
+  trigTangente: "rgba(31,138,76,1.0)"
 };
 var activa = PLANO_OSCURO;
 function fijarTemaPlano(oscuro) {
@@ -56046,13 +56064,13 @@ var RendererCanvas2D = class {
         run = [];
         signo2 = 0;
       };
-      let px = 0, py = 0, hay = false;
+      let px2 = 0, py2 = 0, hay = false;
       for (let k = 0; k < poly.length; k += 2) {
         const x = poly[k], y = poly[k + 1];
         const s = y > 0 ? 1 : y < 0 ? -1 : 0;
         if (hay && s !== 0 && signo2 !== 0 && s !== signo2) {
-          const t2 = py / (py - y);
-          const cortePx = clampPx(aPantallaX(vp, px + (x - px) * t2));
+          const t2 = py2 / (py2 - y);
+          const cortePx = clampPx(aPantallaX(vp, px2 + (x - px2) * t2));
           run.push(cortePx, ejeY);
           rellenar();
           run.push(cortePx, ejeY);
@@ -56061,8 +56079,8 @@ var RendererCanvas2D = class {
         if (s !== 0 && signo2 === 0)
           signo2 = s;
         run.push(clampPx(aPantallaX(vp, x)), clampPx(aPantallaY(vp, y)));
-        px = x;
-        py = y;
+        px2 = x;
+        py2 = y;
         hay = true;
       }
       rellenar();
@@ -56094,20 +56112,20 @@ var RendererCanvas2D = class {
         if (typeof a.valor !== "number")
           continue;
         if (a.tipo === "vertical") {
-          const px = aPantallaX(vp, a.valor);
-          if (px < 0 || px > vp.anchoPx)
+          const px2 = aPantallaX(vp, a.valor);
+          if (px2 < 0 || px2 > vp.anchoPx)
             continue;
           ctx.beginPath();
-          ctx.moveTo(px, 0);
-          ctx.lineTo(px, vp.altoPx);
+          ctx.moveTo(px2, 0);
+          ctx.lineTo(px2, vp.altoPx);
           ctx.stroke();
         } else if (a.tipo === "horizontal") {
-          const py = aPantallaY(vp, a.valor);
-          if (py < 0 || py > vp.altoPx)
+          const py2 = aPantallaY(vp, a.valor);
+          if (py2 < 0 || py2 > vp.altoPx)
             continue;
           ctx.beginPath();
-          ctx.moveTo(0, py);
-          ctx.lineTo(vp.anchoPx, py);
+          ctx.moveTo(0, py2);
+          ctx.lineTo(vp.anchoPx, py2);
           ctx.stroke();
         }
       }
@@ -56120,16 +56138,16 @@ var RendererCanvas2D = class {
     const ctx = this.ctx;
     for (const { geometria } of items) {
       for (const pn of geometria.puntosNotables) {
-        const px = aPantallaX(vp, pn.punto.x);
-        const py = aPantallaY(vp, pn.punto.y);
-        if (px < 0 || px > vp.anchoPx || py < 0 || py > vp.altoPx)
+        const px2 = aPantallaX(vp, pn.punto.x);
+        const py2 = aPantallaY(vp, pn.punto.y);
+        if (px2 < 0 || px2 > vp.anchoPx || py2 < 0 || py2 > vp.altoPx)
           continue;
         ctx.beginPath();
-        ctx.arc(px, py, 4.5, 0, Math.PI * 2);
+        ctx.arc(px2, py2, 4.5, 0, Math.PI * 2);
         ctx.fillStyle = paletaPlano().halo;
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(px, py, 3, 0, Math.PI * 2);
+        ctx.arc(px2, py2, 3, 0, Math.PI * 2);
         ctx.fillStyle = paletaPlano().puntoNotable;
         ctx.fill();
       }
@@ -56140,16 +56158,16 @@ var RendererCanvas2D = class {
   dibujarIntersecciones(puntos, vp) {
     const ctx = this.ctx;
     for (const p of puntos) {
-      const px = aPantallaX(vp, p.x);
-      const py = aPantallaY(vp, p.y);
-      if (px < 0 || px > vp.anchoPx || py < 0 || py > vp.altoPx)
+      const px2 = aPantallaX(vp, p.x);
+      const py2 = aPantallaY(vp, p.y);
+      if (px2 < 0 || px2 > vp.anchoPx || py2 < 0 || py2 > vp.altoPx)
         continue;
       ctx.beginPath();
-      ctx.arc(px, py, 4.5, 0, Math.PI * 2);
+      ctx.arc(px2, py2, 4.5, 0, Math.PI * 2);
       ctx.fillStyle = paletaPlano().halo;
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(px, py, 3, 0, Math.PI * 2);
+      ctx.arc(px2, py2, 3, 0, Math.PI * 2);
       ctx.fillStyle = paletaPlano().interseccion;
       ctx.fill();
     }
@@ -56211,17 +56229,17 @@ var Overlay = class {
     ctx.strokeStyle = pal.rejilla;
     ctx.lineWidth = 0.5;
     for (const x of ticksX) {
-      const px = aPantallaX(vp, x);
+      const px2 = aPantallaX(vp, x);
       ctx.beginPath();
-      ctx.moveTo(px, 0);
-      ctx.lineTo(px, H);
+      ctx.moveTo(px2, 0);
+      ctx.lineTo(px2, H);
       ctx.stroke();
     }
     for (const y of ticksY) {
-      const py = aPantallaY(vp, y);
+      const py2 = aPantallaY(vp, y);
       ctx.beginPath();
-      ctx.moveTo(0, py);
-      ctx.lineTo(W, py);
+      ctx.moveTo(0, py2);
+      ctx.lineTo(W, py2);
       ctx.stroke();
     }
     ctx.strokeStyle = pal.eje;
@@ -56248,34 +56266,34 @@ var Overlay = class {
     for (const x of ticksX) {
       if (Math.abs(x) < 1e-9)
         continue;
-      const px = aPantallaX(vp, x);
-      if (px < 10 || px > W - 10)
+      const px2 = aPantallaX(vp, x);
+      if (px2 < 10 || px2 > W - 10)
         continue;
       ctx.strokeStyle = pal.marca;
       ctx.lineWidth = 0.75;
       ctx.beginPath();
-      ctx.moveTo(px, ceroY - 3);
-      ctx.lineTo(px, ceroY + 3);
+      ctx.moveTo(px2, ceroY - 3);
+      ctx.lineTo(px2, ceroY + 3);
       ctx.stroke();
       ctx.fillStyle = pal.etiqueta;
-      ctx.fillText(formatearNumero(x), px, ceroY + 5);
+      ctx.fillText(formatearNumero(x), px2, ceroY + 5);
     }
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
     for (const y of ticksY) {
       if (Math.abs(y) < 1e-9)
         continue;
-      const py = aPantallaY(vp, y);
-      if (py < 10 || py > H - 10)
+      const py2 = aPantallaY(vp, y);
+      if (py2 < 10 || py2 > H - 10)
         continue;
       ctx.strokeStyle = pal.marca;
       ctx.lineWidth = 0.75;
       ctx.beginPath();
-      ctx.moveTo(ceroX - 3, py);
-      ctx.lineTo(ceroX + 3, py);
+      ctx.moveTo(ceroX - 3, py2);
+      ctx.lineTo(ceroX + 3, py2);
       ctx.stroke();
       ctx.fillStyle = pal.etiqueta;
-      ctx.fillText(formatearNumero(y), ceroX - 6, py);
+      ctx.fillText(formatearNumero(y), ceroX - 6, py2);
     }
   }
 };
@@ -56292,14 +56310,14 @@ var Crosshair = class {
    * Blanco (~20px), independiente del crosshair matemático: se muestra siempre que el
    * puntero esté sobre el plano.
    */
-  dibujarCursorCruz(px, py) {
+  dibujarCursorCruz(px2, py2) {
     const ctx = this.ctx;
     if (!this.cursorPath)
       this.cursorPath = new Path2D(CURSOR_ICONO);
     const S = 20;
     const escala = S / 960;
     ctx.save();
-    ctx.translate(px, py);
+    ctx.translate(px2, py2);
     ctx.scale(escala, escala);
     ctx.translate(-480, 480);
     ctx.fillStyle = paletaPlano().cursor;
@@ -56320,8 +56338,8 @@ var Crosshair = class {
     const y = yMundo !== void 0 ? yMundo : item ? yEnRamas(item.geometria.ramas, worldX) : null;
     if (y === null || !Number.isFinite(y))
       return;
-    const py = aPantallaY(vp, y);
-    const yVisible = py >= 0 && py <= H;
+    const py2 = aPantallaY(vp, y);
+    const yVisible = py2 >= 0 && py2 <= H;
     ctx.save();
     ctx.lineCap = "round";
     ctx.setLineDash([1.5, 5]);
@@ -56333,19 +56351,19 @@ var Crosshair = class {
     ctx.stroke();
     if (yVisible) {
       ctx.beginPath();
-      ctx.moveTo(0, py);
-      ctx.lineTo(W, py);
+      ctx.moveTo(0, py2);
+      ctx.lineTo(W, py2);
       ctx.stroke();
     }
     ctx.setLineDash([]);
     ctx.lineCap = "butt";
     if (yVisible) {
       ctx.beginPath();
-      ctx.arc(cursorPx, py, 4.5, 0, Math.PI * 2);
+      ctx.arc(cursorPx, py2, 4.5, 0, Math.PI * 2);
       ctx.fillStyle = paletaPlano().halo;
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(cursorPx, py, 3, 0, Math.PI * 2);
+      ctx.arc(cursorPx, py2, 3, 0, Math.PI * 2);
       const e3 = item == null ? void 0 : item.estilo;
       const c = e3 ? e3.rol !== void 0 ? colorCurva(e3.rol) : e3.color : colorCurva(0);
       ctx.fillStyle = `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)}, 1)`;
@@ -56354,7 +56372,7 @@ var Crosshair = class {
         ctx.strokeStyle = paletaPlano().anilloCarril;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(cursorPx, py, 7, 0, Math.PI * 2);
+        ctx.arc(cursorPx, py2, 7, 0, Math.PI * 2);
         ctx.stroke();
       }
     }
@@ -57575,14 +57593,14 @@ function analizarParametrico(exprX, exprY, tMin, tMax, muestras = MUESTRAS2) {
   const escala = Math.max(xMax - xMin, yMax - yMin, 1e-9);
   const pIni = pts[0], pFin = pts[MUESTRAS5];
   const cerrada = Number.isFinite(pIni.x) && Number.isFinite(pFin.x) && Math.hypot(pFin.x - pIni.x, pFin.y - pIni.y) < TOL_REL3 * escala;
-  const px = periodoDeExpresion(exprX, "t");
-  const py = periodoDeExpresion(exprY, "t");
+  const px2 = periodoDeExpresion(exprX, "t");
+  const py2 = periodoDeExpresion(exprY, "t");
   let periodo = null;
-  if (px !== null && py !== null)
-    periodo = periodoComun(px, py);
-  else if (px !== null && py === null)
+  if (px2 !== null && py2 !== null)
+    periodo = periodoComun(px2, py2);
+  else if (px2 !== null && py2 === null)
     periodo = null;
-  else if (px === null && py !== null)
+  else if (px2 === null && py2 !== null)
     periodo = null;
   const periodoExcedeDominio = periodo !== null && periodo > largo * (1 + 1e-9);
   let distMin = Infinity;
@@ -58416,16 +58434,16 @@ function derivarExpr(expr) {
       return null;
   } catch (e3) {
   }
-  let conSigno = false;
+  let conSigno2 = false;
   try {
     const s = sustituirSignos(norm3);
     norm3 = s.expr;
-    conSigno = s.hay;
+    conSigno2 = s.hay;
   } catch (e3) {
     return null;
   }
   try {
-    if (conSigno) {
+    if (conSigno2) {
       return resimbolizarConstantes(
         racionalizarFracciones(restaurarSignos(simplificarDerivada(derivarConEscalones(norm3), norm3)))
       ).toString();
@@ -59053,6 +59071,20 @@ var EN = {
       etiqueta: "Automatic framing",
       detalle: "Zooms the initial view in when the curve is bounded and leaves a lot of empty plane (heart, lemniscate, astroid\u2026). It only zooms in, never out: if the curve reaches the edge of the view the usual framing is kept. The view stays centered on the origin and is the one the restore key returns to. Applies when the block is re-rendered."
     },
+    trig: {
+      seccion: "Trigonometric circle",
+      unidad: {
+        etiqueta: "Angle unit",
+        detalle: "Unit used to LABEL angles in obs-trig blocks (marks, readout and panel). It is presentation only: what you write in a block is always read the same way \u2014 a bare number is radians and \xB0 is explicit \u2014 so switching this never changes the meaning of an expression you already wrote."
+      },
+      opcionGrados: "Degrees",
+      opcionRadianes: "Radians",
+      opcionGradianes: "Gradians",
+      iman: {
+        etiqueta: "Snap to notable angles",
+        detalle: "While dragging the point around the circle, snap to notable angles (multiples of 15\xB0). Hold Alt to drag freely without turning it off."
+      }
+    },
     idioma: {
       seccion: "Language",
       nombre: "Language",
@@ -59078,6 +59110,8 @@ var EN = {
     editarBloque: "Edit the block",
     transformaciones: "Transformations",
     cerrarMenu: "Close menu",
+    reproducir: "Play (sweep the circle)",
+    pausar: "Pause",
     despejarY: "Solve for y",
     operador: "Operator",
     derivadaEvaluada: "Evaluated derivative",
@@ -59236,6 +59270,51 @@ var EN = {
       etiqueta: "No function",
       detalle: "Write a math expression to graph."
     }
+  },
+  trig: {
+    anguloNoValido: (expr) => `Not a valid angle: \u201C${expr}\u201D`,
+    // Abreviadas, y en minúscula: son las mismas tres palabras que encabezan la tabla de la
+    // lectura, justo encima. Escritas distinto (`Sine` arriba, `sin` abajo) parecerían dos cosas.
+    // El eje entre paréntesis es lo único que la casilla añade sobre el nombre: dice DÓNDE se lee
+    // esa razón en el plano, que es la mitad de lo que el dibujo enseña.
+    componentes: {
+      chip: "Components",
+      seno: "sin (y)",
+      coseno: "cos (x)",
+      tangente: "tan"
+    },
+    info: {
+      chip: "Angle details",
+      seccionRazones: "The six ratios",
+      seccionMedida: "Angle measure",
+      seccionPosicion: "Position on the circle",
+      seccionRelacionados: "Related angles",
+      grados: "Degrees",
+      radianes: "Radians",
+      ladoTerminal: "Terminal side",
+      posicion: {
+        "I": "Quadrant I",
+        "II": "Quadrant II",
+        "III": "Quadrant III",
+        "IV": "Quadrant IV",
+        "ejeX+": "Positive x-axis",
+        "ejeX-": "Negative x-axis",
+        "ejeY+": "Positive y-axis",
+        "ejeY-": "Negative y-axis"
+      },
+      referencia: "Reference angle",
+      vueltas: "Complete turns",
+      coterminal: "Principal coterminal",
+      arco: "Arc length",
+      sector: "Sector area",
+      complementario: "Complementary",
+      suplementario: "Supplementary",
+      opuesto: "Opposite",
+      antipoda: "Antipodal",
+      pitagorica: "sin\xB2\u03B8 + cos\xB2\u03B8",
+      pitagoricaNota: "checked numerically",
+      noDefinida: "undefined"
+    }
   }
 };
 var ES = {
@@ -59254,6 +59333,20 @@ var ES = {
     encuadreAuto: {
       etiqueta: "Encuadre autom\xE1tico",
       detalle: "Acerca la vista inicial cuando la curva es acotada y deja mucho plano vac\xEDo (coraz\xF3n, lemniscata, astroide\u2026). Solo acerca, nunca aleja: si la curva llega al borde de la vista se deja el encuadre de siempre. La vista queda centrada en el origen y es a la que vuelve la tecla de restaurar. Se aplica al volver a renderizar el bloque."
+    },
+    trig: {
+      seccion: "C\xEDrculo trigonom\xE9trico",
+      unidad: {
+        etiqueta: "Unidad de los \xE1ngulos",
+        detalle: "Unidad con la que se ROTULAN los \xE1ngulos en los bloques obs-trig (marcas, lectura y panel). Es solo presentaci\xF3n: lo que escribes en un bloque se lee siempre igual \u2014un n\xFAmero desnudo son radianes y el \xB0 es expl\xEDcito\u2014, as\xED que cambiar esto nunca altera el significado de una expresi\xF3n ya escrita."
+      },
+      opcionGrados: "Grados",
+      opcionRadianes: "Radianes",
+      opcionGradianes: "Gradianes",
+      iman: {
+        etiqueta: "Im\xE1n a los \xE1ngulos notables",
+        detalle: "Al arrastrar el punto por la circunferencia, se pega a los \xE1ngulos notables (m\xFAltiplos de 15\xB0). Manteniendo Alt se arrastra libre sin tener que desactivarlo."
+      }
     },
     idioma: {
       seccion: "Idioma",
@@ -59280,6 +59373,8 @@ var ES = {
     editarBloque: "Editar el bloque",
     transformaciones: "Transformaciones",
     cerrarMenu: "Cerrar men\xFA",
+    reproducir: "Reproducir (recorrer el c\xEDrculo)",
+    pausar: "Pausar",
     despejarY: "Despejar y",
     operador: "Operador",
     derivadaEvaluada: "Derivada evaluada",
@@ -59438,6 +59533,49 @@ var ES = {
       etiqueta: "Sin funci\xF3n",
       detalle: "Escribe una expresi\xF3n matem\xE1tica para graficar."
     }
+  },
+  trig: {
+    anguloNoValido: (expr) => `No es un \xE1ngulo v\xE1lido: \xAB${expr}\xBB`,
+    // Las abreviaturas NO se traducen: `sin`, `cos` y `tan` son las mismas en los dos idiomas y
+    // son las que aparecen en la tabla, en el panel ⓘ y en cualquier libro.
+    componentes: {
+      chip: "Componentes",
+      seno: "sin (y)",
+      coseno: "cos (x)",
+      tangente: "tan"
+    },
+    info: {
+      chip: "Detalles del \xE1ngulo",
+      seccionRazones: "Las seis razones",
+      seccionMedida: "Medida del \xE1ngulo",
+      seccionPosicion: "Posici\xF3n en la circunferencia",
+      seccionRelacionados: "\xC1ngulos relacionados",
+      grados: "Grados",
+      radianes: "Radianes",
+      ladoTerminal: "Lado terminal",
+      posicion: {
+        "I": "Cuadrante I",
+        "II": "Cuadrante II",
+        "III": "Cuadrante III",
+        "IV": "Cuadrante IV",
+        "ejeX+": "Eje X positivo",
+        "ejeX-": "Eje X negativo",
+        "ejeY+": "Eje Y positivo",
+        "ejeY-": "Eje Y negativo"
+      },
+      referencia: "\xC1ngulo de referencia",
+      vueltas: "Vueltas completas",
+      coterminal: "Coterminal principal",
+      arco: "Longitud de arco",
+      sector: "\xC1rea del sector",
+      complementario: "Complementario",
+      suplementario: "Suplementario",
+      opuesto: "Opuesto",
+      antipoda: "Ant\xEDpoda",
+      pitagorica: "sin\xB2\u03B8 + cos\xB2\u03B8",
+      pitagoricaNota: "comprobaci\xF3n num\xE9rica",
+      noDefinida: "no definida"
+    }
   }
 };
 var RECURSOS = { en: EN, es: ES };
@@ -59486,6 +59624,8 @@ var AJUSTES_POR_DEFECTO = {
   despejarAuto: false,
   puntosNotables: false,
   encuadreAuto: true,
+  unidadAngulo: "degrees",
+  imanTrig: true,
   idioma: IDIOMA_POR_DEFECTO
 };
 var PestanaAjustesLMath = class extends import_obsidian2.PluginSettingTab {
@@ -59546,6 +59686,32 @@ var PestanaAjustesLMath = class extends import_obsidian2.PluginSettingTab {
             control: { type: "toggle", key: "encuadreAuto" }
           }
         ]
+      },
+      {
+        type: "group",
+        heading: txt.ajustes.trig.seccion,
+        items: [
+          {
+            name: txt.ajustes.trig.unidad.etiqueta,
+            desc: txt.ajustes.trig.unidad.detalle,
+            control: {
+              type: "dropdown",
+              key: "unidadAngulo",
+              // Las CLAVES son lo que se guarda en data.json, así que van en inglés como el resto
+              // de la superficie pública. Lo que se ve en el desplegable es el texto traducido.
+              options: {
+                degrees: txt.ajustes.trig.opcionGrados,
+                radians: txt.ajustes.trig.opcionRadianes,
+                gradians: txt.ajustes.trig.opcionGradianes
+              }
+            }
+          },
+          {
+            name: txt.ajustes.trig.iman.etiqueta,
+            desc: txt.ajustes.trig.iman.detalle,
+            control: { type: "toggle", key: "imanTrig" }
+          }
+        ]
       }
     ];
   }
@@ -59560,6 +59726,10 @@ var PestanaAjustesLMath = class extends import_obsidian2.PluginSettingTab {
         return this.plugin.ajustes.puntosNotables;
       case "encuadreAuto":
         return this.plugin.ajustes.encuadreAuto;
+      case "unidadAngulo":
+        return this.plugin.ajustes.unidadAngulo;
+      case "imanTrig":
+        return this.plugin.ajustes.imanTrig;
       default:
         return void 0;
     }
@@ -59590,6 +59760,12 @@ var PestanaAjustesLMath = class extends import_obsidian2.PluginSettingTab {
       case "encuadreAuto":
         this.plugin.ajustes.encuadreAuto = value === true;
         break;
+      case "unidadAngulo":
+        this.plugin.ajustes.unidadAngulo = value === "radians" ? "radians" : value === "gradians" ? "gradians" : "degrees";
+        break;
+      case "imanTrig":
+        this.plugin.ajustes.imanTrig = value === true;
+        break;
       default:
         return;
     }
@@ -59603,7 +59779,645 @@ function esTactil() {
   return import_obsidian3.Platform.isMobile;
 }
 
+// src/trig/modeloTrig.ts
+var DOS_PI4 = Math.PI * 2;
+var EPS_EJE = 1e-12;
+var aGrados = (rad) => rad * 180 / Math.PI;
+var aRadianes = (grados) => grados * Math.PI / 180;
+function coterminalPrincipal(rad) {
+  const c = (rad % DOS_PI4 + DOS_PI4) % DOS_PI4;
+  if (c < EPS_EJE || DOS_PI4 - c < EPS_EJE)
+    return 0;
+  return c;
+}
+function posicionDe(coterminal) {
+  const cuarto = Math.round(coterminal / (Math.PI / 2));
+  if (Math.abs(coterminal - cuarto * (Math.PI / 2)) < EPS_EJE) {
+    return ["ejeX+", "ejeY+", "ejeX-", "ejeY-"][cuarto % 4];
+  }
+  if (coterminal < Math.PI / 2)
+    return "I";
+  if (coterminal < Math.PI)
+    return "II";
+  if (coterminal < 3 * (Math.PI / 2))
+    return "III";
+  return "IV";
+}
+function referenciaDe(coterminal) {
+  if (coterminal <= Math.PI / 2)
+    return coterminal;
+  if (coterminal <= Math.PI)
+    return Math.PI - coterminal;
+  if (coterminal <= 3 * (Math.PI / 2))
+    return coterminal - Math.PI;
+  return DOS_PI4 - coterminal;
+}
+function razonesDe(coterminal, posicion) {
+  const exacto = {
+    "ejeX+": { sin: 0, cos: 1 },
+    "ejeY+": { sin: 1, cos: 0 },
+    "ejeX-": { sin: 0, cos: -1 },
+    "ejeY-": { sin: -1, cos: 0 }
+  };
+  const eje = exacto[posicion];
+  const sin3 = eje ? eje.sin : Math.sin(coterminal);
+  const cos3 = eje ? eje.cos : Math.cos(coterminal);
+  const senoNulo = posicion === "ejeX+" || posicion === "ejeX-";
+  const cosenoNulo = posicion === "ejeY+" || posicion === "ejeY-";
+  return {
+    sin: sin3,
+    cos: cos3,
+    tan: cosenoNulo ? null : sin3 / cos3,
+    sec: cosenoNulo ? null : 1 / cos3,
+    csc: senoNulo ? null : 1 / sin3,
+    cot: senoNulo ? null : cos3 / sin3
+  };
+}
+function modeloDeAngulo(radianes) {
+  const coterminal = coterminalPrincipal(radianes);
+  const posicion = posicionDe(coterminal);
+  const razones = razonesDe(coterminal, posicion);
+  return {
+    radianes,
+    grados: aGrados(radianes),
+    punto: { x: razones.cos, y: razones.sin },
+    posicion,
+    enEje: posicion.startsWith("eje"),
+    referencia: referenciaDe(coterminal),
+    // `trunc` y no `floor`: las vueltas de un ángulo negativo se cuentan hacia atrás (−400° es
+    // UNA vuelta en sentido horario, no dos), y `floor` daría −2 al redondear hacia abajo.
+    vueltas: Math.trunc(radianes / DOS_PI4),
+    coterminal,
+    arco: Math.abs(radianes),
+    sector: Math.abs(radianes) / 2,
+    razones
+  };
+}
+
+// src/trig/exactosTrig.ts
+var V = {
+  cero: { tex: "0", txt: "0" },
+  uno: { tex: "1", txt: "1" },
+  dos: { tex: "2", txt: "2" },
+  medio: { tex: "\\frac{1}{2}", txt: "1/2" },
+  r2_2: { tex: "\\frac{\\sqrt{2}}{2}", txt: "\u221A2/2" },
+  r3_2: { tex: "\\frac{\\sqrt{3}}{2}", txt: "\u221A3/2" },
+  r3_3: { tex: "\\frac{\\sqrt{3}}{3}", txt: "\u221A3/3" },
+  r2: { tex: "\\sqrt{2}", txt: "\u221A2" },
+  r3: { tex: "\\sqrt{3}", txt: "\u221A3" },
+  dosR3_3: { tex: "\\frac{2\\sqrt{3}}{3}", txt: "2\u221A3/3" },
+  // Los de 15° y 75°, que son los que dan prestigio a la tabla.
+  r6menosR2_4: { tex: "\\frac{\\sqrt{6}-\\sqrt{2}}{4}", txt: "(\u221A6\u2212\u221A2)/4" },
+  r6masR2_4: { tex: "\\frac{\\sqrt{6}+\\sqrt{2}}{4}", txt: "(\u221A6+\u221A2)/4" },
+  r6menosR2: { tex: "\\sqrt{6}-\\sqrt{2}", txt: "\u221A6\u2212\u221A2", compuesto: true },
+  r6masR2: { tex: "\\sqrt{6}+\\sqrt{2}", txt: "\u221A6+\u221A2", compuesto: true },
+  dosMenosR3: { tex: "2-\\sqrt{3}", txt: "2\u2212\u221A3", compuesto: true },
+  dosMasR3: { tex: "2+\\sqrt{3}", txt: "2+\u221A3", compuesto: true }
+};
+var PRIMER_CUADRANTE = [
+  // 0°
+  { sin: V.cero, cos: V.uno, tan: V.cero, csc: null, sec: V.uno, cot: null },
+  // 15°
+  {
+    sin: V.r6menosR2_4,
+    cos: V.r6masR2_4,
+    tan: V.dosMenosR3,
+    csc: V.r6masR2,
+    sec: V.r6menosR2,
+    cot: V.dosMasR3
+  },
+  // 30°
+  { sin: V.medio, cos: V.r3_2, tan: V.r3_3, csc: V.dos, sec: V.dosR3_3, cot: V.r3 },
+  // 45°
+  { sin: V.r2_2, cos: V.r2_2, tan: V.uno, csc: V.r2, sec: V.r2, cot: V.uno },
+  // 60°
+  { sin: V.r3_2, cos: V.medio, tan: V.r3, csc: V.dosR3_3, sec: V.dos, cot: V.r3_3 },
+  // 75°
+  {
+    sin: V.r6masR2_4,
+    cos: V.r6menosR2_4,
+    tan: V.dosMasR3,
+    csc: V.r6menosR2,
+    sec: V.r6masR2,
+    cot: V.dosMenosR3
+  },
+  // 90°
+  { sin: V.uno, cos: V.cero, tan: null, csc: V.uno, sec: null, cot: V.cero }
+];
+var PASO_NOTABLE = Math.PI / 12;
+function indiceNotable(rad) {
+  const k = Math.round(rad / PASO_NOTABLE);
+  return Math.abs(rad - k * PASO_NOTABLE) < 1e-9 ? k : null;
+}
+function conSigno(v, signo2) {
+  if (v === null)
+    return null;
+  if (signo2 > 0 || v.txt === "0")
+    return v;
+  return v.compuesto ? { tex: `-\\left(${v.tex}\\right)`, txt: `\u2212(${v.txt})` } : { tex: `-${v.tex}`, txt: `\u2212${v.txt}` };
+}
+function razonesExactas(rad) {
+  const k = indiceNotable(rad);
+  if (k === null)
+    return null;
+  const kc = (k % 24 + 24) % 24;
+  const kr = kc <= 6 ? kc : kc <= 12 ? 12 - kc : kc <= 18 ? kc - 12 : 24 - kc;
+  const base = PRIMER_CUADRANTE[kr];
+  const sSin = kc < 12 ? 1 : -1;
+  const sCos = kc < 6 || kc > 18 ? 1 : -1;
+  return {
+    // Seno y coseno nunca son `null`, así que la aserción es segura: `conSigno` solo devuelve
+    // `null` cuando recibe `null`, y en la tabla ambos están siempre presentes.
+    sin: conSigno(base.sin, sSin),
+    cos: conSigno(base.cos, sCos),
+    tan: conSigno(base.tan, sSin * sCos),
+    csc: conSigno(base.csc, sSin),
+    sec: conSigno(base.sec, sCos),
+    cot: conSigno(base.cot, sSin * sCos)
+  };
+}
+function puntoExactoTexto(rad) {
+  const r = razonesExactas(rad);
+  return r ? `(${r.cos.txt}, ${r.sin.txt})` : null;
+}
+function radianesExactoTexto(rad) {
+  const f = fraccionDePi(rad);
+  if (f === null)
+    return null;
+  if (f.num === 0)
+    return "0";
+  const signo2 = f.signo === "-" ? "\u2212" : "";
+  const cuerpo = f.num === 1 ? "\u03C0" : `${f.num}\u03C0`;
+  return f.den === 1 ? `${signo2}${cuerpo}` : `${signo2}${cuerpo}/${f.den}`;
+}
+function fraccionDePi(rad) {
+  const k = indiceNotable(rad);
+  if (k === null)
+    return null;
+  if (k === 0)
+    return { signo: "", num: 0, den: 1 };
+  let num = Math.abs(k);
+  let den = 12;
+  const mcd6 = (a, b) => b === 0 ? a : mcd6(b, a % b);
+  const g = mcd6(num, den);
+  num /= g;
+  den /= g;
+  return { signo: k < 0 ? "-" : "", num, den };
+}
+function fuenteSimbolica(expr) {
+  return /°|\\degree|\\deg|\\pi|(^|[^a-z])pi([^a-z]|$)/i.test(expr);
+}
+
+// src/trig/bloqueTrig.ts
+var ANGULO_POR_DEFECTO = aRadianes(30);
+var ETIQUETA_POR_DEFECTO = "\u03B8";
+function evaluarAngulo(expr) {
+  const limpio = expr.trim();
+  if (!limpio)
+    return null;
+  try {
+    const valor = compilarExpresion(insertarProductoImplicito(normalizarEntrada(limpio)))({});
+    return typeof valor === "number" && Number.isFinite(valor) ? valor : null;
+  } catch (e3) {
+    return null;
+  }
+}
+var FUNCION_COMPONENTE = [
+  ["sin", "seno"],
+  ["cos", "coseno"],
+  ["tan", "tangente"]
+];
+function argumentoConstante(arg2) {
+  try {
+    const v = compilarExpresion(arg2)({});
+    return typeof v === "number" && Number.isFinite(v);
+  } catch (e3) {
+    return false;
+  }
+}
+function componenteNombrada(expr) {
+  const limpio = expr.trim();
+  if (!limpio)
+    return null;
+  let norma;
+  try {
+    norma = insertarProductoImplicito(normalizarEntrada(limpio));
+  } catch (e3) {
+    return null;
+  }
+  for (const [fn, componente] of FUNCION_COMPONENTE) {
+    if (!norma.startsWith(`${fn}(`))
+      continue;
+    let nivel = 0;
+    for (let i2 = fn.length; i2 < norma.length; i2++) {
+      if (norma[i2] === "(")
+        nivel++;
+      else if (norma[i2] === ")" && --nivel === 0) {
+        return i2 === norma.length - 1 && argumentoConstante(norma.slice(fn.length + 1, i2)) ? componente : null;
+      }
+    }
+    return null;
+  }
+  return null;
+}
+function parsearBloqueTrig(source) {
+  const angulos = [];
+  const avisos = [];
+  for (const cruda of source.split(/\r?\n/)) {
+    const linea = cruda.trim();
+    if (!linea)
+      continue;
+    const corte = linea.indexOf("=");
+    const etiqueta = corte >= 0 ? linea.slice(0, corte).trim() : "";
+    const expr = corte >= 0 ? linea.slice(corte + 1).trim() : linea;
+    const radianes = evaluarAngulo(expr);
+    if (radianes === null) {
+      avisos.push({ tipo: "anguloNoValido", texto: expr });
+      continue;
+    }
+    angulos.push({
+      etiqueta: etiqueta || ETIQUETA_POR_DEFECTO,
+      radianes,
+      fuente: expr,
+      simbolico: fuenteSimbolica(expr),
+      componente: componenteNombrada(expr)
+    });
+  }
+  if (angulos.length === 0) {
+    angulos.push({
+      etiqueta: ETIQUETA_POR_DEFECTO,
+      radianes: ANGULO_POR_DEFECTO,
+      fuente: "30\xB0",
+      simbolico: true,
+      componente: null
+    });
+  }
+  return { angulos, avisos };
+}
+
+// src/trig/renderTrig.ts
+var FUENTE = "sans-serif";
+var FRACCION_RADIO = 0.7;
+var PASO_RADIO_GRADOS = 15;
+var RADIO_PARA_ROTULOS = 64;
+var RADIO_PARA_LOS_DIECISEIS = 84;
+var RADIO_PARA_DOBLE_UNIDAD = 96;
+function encuadreTrig(anchoPx, altoPx) {
+  return {
+    cx: anchoPx / 2,
+    cy: altoPx / 2,
+    // El menor de los dos semilados: así el círculo entra entero sea cual sea la forma de la
+    // caja, y sigue siendo REDONDO (mismo factor en los dos ejes, sin aspecto que corregir).
+    R: Math.max(8, Math.min(anchoPx, altoPx) / 2 * FRACCION_RADIO)
+  };
+}
+var px = (e3, x) => e3.cx + x * e3.R;
+var py = (e3, y) => e3.cy - y * e3.R;
+var COMPONENTES = ["seno", "coseno", "tangente"];
+function colorComponente(c) {
+  const p = paletaPlano();
+  return c === "seno" ? p.trigSeno : c === "coseno" ? p.trigCoseno : p.trigTangente;
+}
+function textoAngulo(m, unidad) {
+  if (unidad === "degrees")
+    return textoGrados(m);
+  if (unidad === "gradians")
+    return `${textoGradianes(aGrados(m.radianes))} gon`;
+  const exacto = radianesExactoTexto(m.radianes);
+  return exacto !== null ? `${exacto} rad` : `${m.radianes.toFixed(4)} rad`;
+}
+function textoGradianes(grados) {
+  const g = grados * 10 / 9;
+  if (Math.abs(g - Math.round(g)) < 1e-9)
+    return String(Math.round(g));
+  return g.toFixed(2).replace(/\.?0+$/, "");
+}
+function dibujarTrig(ctx, e3, modelos, anchoPx, altoPx, opciones) {
+  const { activo } = opciones;
+  ctx.clearRect(0, 0, anchoPx, altoPx);
+  dibujarRejilla(ctx, e3, anchoPx, altoPx);
+  dibujarRadios(ctx, e3);
+  dibujarEjes(ctx, e3, anchoPx, altoPx);
+  dibujarCircunferencia(ctx, e3);
+  const m = modelos[activo];
+  dibujarNotables(ctx, e3, opciones.unidad, m ? m.radianes : null);
+  modelos.forEach((mi, i2) => {
+    if (i2 !== activo)
+      dibujarAngulo(ctx, e3, mi, opciones.colorDe(i2), false);
+  });
+  if (m) {
+    dibujarComponentes(ctx, e3, m, opciones.componentes);
+    dibujarAngulo(ctx, e3, m, paletaPlano().trigRadio, true);
+    if (opciones.puedeExacto)
+      dibujarPuntoExacto(ctx, e3, m);
+  }
+}
+function dibujarComponentes(ctx, e3, m, encendidas) {
+  const p = paletaPlano();
+  const X = px(e3, m.punto.x), Y = py(e3, m.punto.y);
+  const pluma = (color, encendida) => {
+    ctx.strokeStyle = color;
+    ctx.setLineDash(encendida ? [] : [3, 3]);
+    ctx.lineWidth = encendida ? 3 : 1.5;
+    ctx.globalAlpha = encendida ? 1 : 0.55;
+  };
+  const tan3 = m.razones.tan;
+  if (tan3 !== null) {
+    const encendida = encendidas.has("tangente");
+    const xT = px(e3, 1);
+    const yT = Math.max(-1e5, Math.min(1e5, py(e3, tan3)));
+    ctx.save();
+    if (encendida) {
+      ctx.setLineDash([2, 4]);
+      ctx.strokeStyle = p.trigNotable;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(xT, 0);
+      ctx.lineTo(xT, 1e4);
+      ctx.stroke();
+    }
+    const haciaP = m.punto.x > 0;
+    pluma(p.trigTangente, encendida);
+    if (encendida)
+      ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(haciaP ? X : e3.cx, haciaP ? Y : e3.cy);
+    ctx.lineTo(xT, yT);
+    ctx.stroke();
+    pluma(p.trigTangente, encendida);
+    ctx.beginPath();
+    ctx.moveTo(xT, e3.cy);
+    ctx.lineTo(xT, yT);
+    ctx.stroke();
+    if (encendida) {
+      ctx.beginPath();
+      ctx.arc(xT, yT, 3.5, 0, DOS_PI4);
+      ctx.fillStyle = p.trigTangente;
+      ctx.fill();
+    }
+    ctx.restore();
+  } else {
+    const LEJOS = 1e4;
+    ctx.save();
+    pluma(p.trigTangente, encendidas.has("tangente"));
+    if (encendidas.has("tangente"))
+      ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(X, Y);
+    ctx.lineTo(X + m.punto.x * LEJOS, Y - m.punto.y * LEJOS);
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.save();
+  pluma(p.trigCoseno, encendidas.has("coseno"));
+  ctx.beginPath();
+  ctx.moveTo(e3.cx, e3.cy);
+  ctx.lineTo(X, e3.cy);
+  ctx.stroke();
+  ctx.restore();
+  const senoEncendido = encendidas.has("seno");
+  ctx.save();
+  pluma(p.trigSeno, senoEncendido);
+  ctx.beginPath();
+  ctx.moveTo(X, e3.cy);
+  ctx.lineTo(X, Y);
+  ctx.stroke();
+  if (senoEncendido) {
+    ctx.setLineDash([3, 3]);
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(X, Y);
+    ctx.lineTo(e3.cx, Y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+function dibujarPuntoExacto(ctx, e3, m) {
+  const texto = puntoExactoTexto(m.radianes);
+  if (texto === null)
+    return;
+  const X = px(e3, m.punto.x), Y = py(e3, m.punto.y);
+  const haciaDerecha = m.punto.x >= 0;
+  ctx.save();
+  ctx.fillStyle = paletaPlano().trigRadio;
+  ctx.font = `11px ${FUENTE}`;
+  ctx.textAlign = haciaDerecha ? "left" : "right";
+  ctx.textBaseline = m.punto.y >= 0 ? "bottom" : "top";
+  ctx.fillText(texto, X + (haciaDerecha ? 9 : -9), Y + (m.punto.y >= 0 ? -6 : 6));
+  ctx.restore();
+}
+function dibujarRejilla(ctx, e3, anchoPx, altoPx) {
+  const paso = e3.R * 0.25 >= 14 ? 0.25 : 0.5;
+  const celda = e3.R * paso;
+  ctx.save();
+  ctx.strokeStyle = paletaPlano().rejilla;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  const nx = Math.ceil(anchoPx / 2 / celda);
+  for (let i2 = -nx; i2 <= nx; i2++) {
+    const x = Math.round(e3.cx + i2 * celda) + 0.5;
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, altoPx);
+  }
+  const ny = Math.ceil(altoPx / 2 / celda);
+  for (let j = -ny; j <= ny; j++) {
+    const y = Math.round(e3.cy + j * celda) + 0.5;
+    ctx.moveTo(0, y);
+    ctx.lineTo(anchoPx, y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+function dibujarRadios(ctx, e3) {
+  const p = paletaPlano();
+  ctx.save();
+  ctx.strokeStyle = p.rejilla;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2, 4]);
+  ctx.beginPath();
+  for (let g = 0; g < 360; g += PASO_RADIO_GRADOS) {
+    if (g % 90 === 0)
+      continue;
+    const a = g * Math.PI / 180;
+    ctx.moveTo(e3.cx, e3.cy);
+    ctx.lineTo(e3.cx + e3.R * Math.cos(a), e3.cy - e3.R * Math.sin(a));
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = p.trigNotable;
+  for (let g = 0; g < 360; g += PASO_RADIO_GRADOS) {
+    const a = g * Math.PI / 180;
+    ctx.beginPath();
+    ctx.arc(e3.cx + e3.R * Math.cos(a), e3.cy - e3.R * Math.sin(a), esClasico(g) ? 2.2 : 1.5, 0, DOS_PI4);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+var esClasico = (grados) => grados % 30 === 0 || grados % 45 === 0;
+function dibujarNotables(ctx, e3, unidad, anguloActivo) {
+  var _a;
+  if (e3.R < RADIO_PARA_ROTULOS)
+    return;
+  const dieciseis = e3.R >= RADIO_PARA_LOS_DIECISEIS;
+  const doble = e3.R >= RADIO_PARA_DOBLE_UNIDAD;
+  const activoGrados = anguloActivo === null ? null : (aGrados(anguloActivo) % 360 + 360) % 360;
+  ctx.save();
+  ctx.fillStyle = paletaPlano().etiqueta;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (let g = 0; g < 360; g += PASO_RADIO_GRADOS) {
+    if (!(dieciseis ? esClasico(g) : g % 90 === 0))
+      continue;
+    if (activoGrados !== null && Math.min(
+      Math.abs(g - activoGrados),
+      360 - Math.abs(g - activoGrados)
+    ) < 0.5)
+      continue;
+    const a = g * Math.PI / 180;
+    const x = e3.cx + (e3.R + 15) * Math.cos(a);
+    const y = e3.cy - (e3.R + 15) * Math.sin(a);
+    const rad = (_a = radianesExactoTexto(a)) != null ? _a : "";
+    if (doble) {
+      ctx.font = `10px ${FUENTE}`;
+      ctx.fillText(`${g}\xB0`, x, y - 6);
+      ctx.font = `9px ${FUENTE}`;
+      ctx.fillText(rad, x, y + 6);
+    } else {
+      ctx.font = `10px ${FUENTE}`;
+      const uno = unidad === "degrees" ? `${g}\xB0` : unidad === "gradians" ? textoGradianes(g) : rad;
+      ctx.fillText(uno, x, y);
+    }
+  }
+  ctx.restore();
+}
+function dibujarEjes(ctx, e3, anchoPx, altoPx) {
+  ctx.save();
+  ctx.strokeStyle = paletaPlano().eje;
+  ctx.fillStyle = paletaPlano().eje;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, e3.cy);
+  ctx.lineTo(anchoPx, e3.cy);
+  ctx.moveTo(e3.cx, 0);
+  ctx.lineTo(e3.cx, altoPx);
+  ctx.stroke();
+  const L = 7, A = 3.5;
+  const puntas = [
+    [anchoPx - 1, e3.cy, -1, 0],
+    // →
+    [1, e3.cy, 1, 0],
+    // ←
+    [e3.cx, 1, 0, 1],
+    // ↑
+    [e3.cx, altoPx - 1, 0, -1]
+    // ↓
+  ];
+  for (const [x, y, dx, dy] of puntas) {
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + dx * L + dy * A, y + dy * L + dx * A);
+    ctx.lineTo(x + dx * L - dy * A, y + dy * L - dx * A);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+function dibujarCircunferencia(ctx, e3) {
+  ctx.save();
+  ctx.strokeStyle = paletaPlano().trigCircunferencia;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(e3.cx, e3.cy, e3.R, 0, DOS_PI4);
+  ctx.stroke();
+  ctx.restore();
+}
+function dibujarAngulo(ctx, e3, m, color, activo) {
+  const X = px(e3, m.punto.x), Y = py(e3, m.punto.y);
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = activo ? 2 : 1.5;
+  if (!activo)
+    ctx.globalAlpha = 0.75;
+  ctx.beginPath();
+  ctx.moveTo(e3.cx, e3.cy);
+  ctx.lineTo(X, Y);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  if (activo) {
+    ctx.beginPath();
+    ctx.arc(X, Y, 5.5, 0, DOS_PI4);
+    ctx.fillStyle = paletaPlano().halo;
+    ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.arc(X, Y, activo ? 3.5 : 3, 0, DOS_PI4);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
+}
+function textoGradosDe(radianes) {
+  const g = aGrados(radianes);
+  return Math.abs(g - Math.round(g)) < 1e-9 ? `${Math.round(g)}\xB0` : `${g.toFixed(1)}\xB0`;
+}
+function textoGrados(m) {
+  return textoGradosDe(m.radianes);
+}
+
+// src/trig/interaccionTrig.ts
+var PASO_IMAN = aRadianes(15);
+var TOLERANCIA_IMAN = aRadianes(4);
+var AGARRE_PX = 20;
+var AGARRE_PX_TACTIL = 30;
+function anguloDePuntero(e3, x, y) {
+  return Math.atan2(e3.cy - y, x - e3.cx);
+}
+function deltaAngular(desde, hasta) {
+  let d = (hasta - desde) % DOS_PI4;
+  if (d > Math.PI)
+    d -= DOS_PI4;
+  if (d <= -Math.PI)
+    d += DOS_PI4;
+  return d;
+}
+function imantar(rad) {
+  const cerca2 = Math.round(rad / PASO_IMAN) * PASO_IMAN;
+  return Math.abs(rad - cerca2) <= TOLERANCIA_IMAN ? cerca2 : rad;
+}
+function imanVigente(ajuste, altPulsado) {
+  return ajuste && !altPulsado;
+}
+function agarraCircunferencia(e3, x, y, tolPx) {
+  const d = Math.hypot(x - e3.cx, y - e3.cy);
+  return Math.abs(d - e3.R) <= tolPx;
+}
+function pasoAnimacion(actual, velocidadRad, dt) {
+  return coterminalPrincipal(actual + velocidadRad * dt);
+}
+function rangoDeslizador(gradosEscritos) {
+  let vueltas = 1;
+  for (const g of gradosEscritos)
+    vueltas = Math.max(vueltas, Math.ceil(Math.abs(g) / 360));
+  return { min: -360 * vueltas, max: 360 * vueltas };
+}
+function acotarARecorrido(radianes, recorrido) {
+  return Math.min(aRadianes(recorrido.max), Math.max(aRadianes(recorrido.min), radianes));
+}
+function indiceMasCercano(angulos, anguloPuntero) {
+  let mejor = 0;
+  let mejorDist = Infinity;
+  angulos.forEach((a, i2) => {
+    const d = Math.abs(deltaAngular(a, anguloPuntero));
+    if (d < mejorDist) {
+      mejorDist = d;
+      mejor = i2;
+    }
+  });
+  return mejor;
+}
+
 // src/host-obsidian/MotorExperimental.ts
+var ALTO_CONTROLES_TRIG = 78;
 var ALTO_PANEL = 261;
 var ANCHO_MINIMO_COLUMNAS = 520;
 var PROPORCION_PLANO_FLOTANTE = 0.82;
@@ -59620,10 +60434,12 @@ function huecoChips(lado) {
   return MARGEN_FLOTANTE + lado + MARGEN_FLOTANTE;
 }
 function aplicarCajaPanel(reparto) {
+  var _a;
   const panel = reparto.panel;
   if (!panel)
     return;
-  panel.style.cssText = reparto.estrecho ? `position:absolute; z-index:6; box-sizing:border-box; display:${reparto.abierto ? "flex" : "none"}; left:${MARGEN_FLOTANTE}px; right:${MARGEN_FLOTANTE}px; bottom:${huecoChips(reparto.ladoChip)}px; width:auto; height:${ALTO_PANEL_FLOTANTE}px; padding:0; overflow:hidden; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:12px; box-shadow:var(--lmath-sombra-flotante);` : `position:relative; width:50%; height:${ALTO_PANEL}px; padding:0; overflow:hidden;`;
+  const suelo = huecoChips(reparto.ladoChip) + ((_a = reparto.huecoInferior) != null ? _a : 0);
+  panel.style.cssText = reparto.estrecho ? `position:absolute; z-index:6; box-sizing:border-box; display:${reparto.abierto ? "flex" : "none"}; left:${MARGEN_FLOTANTE}px; right:${MARGEN_FLOTANTE}px; bottom:${suelo}px; width:auto; height:${ALTO_PANEL_FLOTANTE}px; padding:0; overflow:hidden; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:12px; box-shadow:var(--lmath-sombra-flotante);` : `position:relative; width:50%; height:${ALTO_PANEL}px; padding:0; overflow:hidden;`;
 }
 function esTemaOscuro(el) {
   return el.doc.body.classList.contains("theme-dark");
@@ -59635,31 +60451,53 @@ var ICONO = {
   carril: "M450-42v-75q-137-14-228-105T117-450H42v-60h75q14-137 105-228t228-105v-75h60v75q137 14 228 105t105 228h75v60h-75q-14 137-105 228T510-117v75h-60Zm244.5-223.5Q784-355 784-480t-89.5-214.5Q605-784 480-784t-214.5 89.5Q176-605 176-480t89.5 214.5Q355-176 480-176t214.5-89.5Zm-321-108Q330-417 330-480t43.5-106.5Q417-630 480-630t106.5 43.5Q630-543 630-480t-43.5 106.5Q543-330 480-330t-106.5-43.5ZM544-416q26-26 26-64t-26-64q-26-26-64-26t-64 26q-26 26-26 64t26 64q26 26 64 26t64-26Zm-64-64Z",
   info: "M453-280h60v-240h-60v240Zm50.5-323.2q9.5-9.2 9.5-22.8 0-14.45-9.48-24.22-9.48-9.78-23.5-9.78t-23.52 9.78Q447-640.45 447-626q0 13.6 9.48 22.8 9.48 9.2 23.5 9.2t23.52-9.2ZM480.27-80q-82.74 0-155.5-31.5Q252-143 197.5-197.5t-86-127.34Q80-397.68 80-480.5t31.5-155.66Q143-709 197.5-763t127.34-85.5Q397.68-880 480.5-880t155.66 31.5Q709-817 763-763t85.5 127Q880-563 880-480.27q0 82.74-31.5 155.5Q817-252 763-197.68q-54 54.31-127 86Q563-80 480.27-80Zm.23-60Q622-140 721-239.5t99-241Q820-622 721.19-721T480-820q-141 0-240.5 98.81T140-480q0 141 99.5 240.5t241 99.5Zm-.5-340Z",
   menu: "M120-240v-60h720v60H120Zm0-210v-60h720v60H120Zm0-210v-60h720v60H120Z",
+  reproducir: "M320-200v-560l440 280-440 280Z",
+  pausar: "M520-200v-560h240v560H520Zm-320 0v-560h240v560H200Z",
   cerrar: "m249-207-42-42 231-231-231-231 42-42 231 231 231-231 42 42-231 231 231 231-42 42-231-231-231 231Z",
   // Editar el bloque: en móvil no existe el botón `</>` de Obsidian —aparece al pasar el
   // ratón, y no hay ratón—, así que el bloque se queda sin puerta a su propio código.
   editar: "M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h405l-60 60H180v600h600v-348l60-60v408q0 24-18 42t-42 18H180Zm300-360ZM360-360v-170l382-382q9-9 20-13t22-4q11 0 22.32 4.5Q817.63-920 827-911l83 84q8.61 8.96 13.3 19.78 4.7 10.83 4.7 22.02 0 11.2-4.5 22.7T910-742L530-360H360Zm508-425-84-84 84 84ZM420-420h85l253-253-43-42-43-42-252 251v86Zm295-295-43-42 43 42 43 42-43-42Z"
 };
+var GLIFO_UNIDAD = {
+  degrees: {
+    caja: "30 -648 900 336",
+    d: "M94-342V-618H246Q274-618 294-598T315-549V-411Q315-382 294-362T246-342H94ZM163-393H246V-567H163V-393ZM372-342V-618H579V-567H441V-505H556V-455H441V-393H579V-342ZM866-618H705A69 69 0 0 0 636-549V-411A69 69 0 0 0 705-342H797A69 69 0 0 0 866-411V-505H751V-455H797V-393H705V-567H866Z"
+  },
+  radians: {
+    caja: "30 -648 900 336",
+    d: "M60-342V-618H214Q242-618 258-602T274-558V-495Q274-462 244-446L279-342H217L186-434H129V-342H60ZM129-485H214V-567H129V-485ZM337-342L443-618H516L622-342H555L535-397H424L404-342H337ZM443-448H516L481-551H478L443-448ZM679-342V-618H831Q860-618 880-598T900-549V-411Q900-382 880-362T831-342H679ZM748-393H831V-567H748V-393Z"
+  },
+  gradians: {
+    caja: "30 -613 900 266",
+    d: "M231-583H111A51 51 0 0 0 60-531V-429A51 51 0 0 0 111-377H180A51 51 0 0 0 231-429V-499H146V-461H180V-415H111V-545H231ZM274-377V-583H389Q409-583 421-571T433-538V-491Q433-466 411-454L438-377H391L368-446H325V-377H274ZM325-483H389V-545H325V-483ZM480-377L559-583H614L693-377H643L628-418H546L530-377H480ZM559-456H614L587-533H586L559-456ZM736-377V-583H849Q870-583 885-568T900-531V-429Q900-407 885-392T849-377H736ZM787-415H849V-545H787V-415Z"
+  }
+};
+var CICLO_UNIDAD = ["degrees", "radians", "gradians"];
 var MotorExperimental = class {
-  // `sistema=false` → bloque obs-graph (una función). `sistema=true` → bloque
-  // obs-system (varias ecuaciones, cada una con su color). `derivada=true` → bloque
-  // obs-derivate: como obs-graph (una función, sistema=false) pero el plano grafica la
-  // DERIVADA f'(x) de lo escrito y el panel alterna operador/derivada (ver `process`).
   // `obtenerAjustes`: getter de las preferencias VIVAS del plugin (no una foto), para que
   // un cambio en la pestaña de configuración afecte a los bloques que se re-rendericen.
   // Por defecto, sin transformaciones automáticas (comportamiento clásico).
-  // `integral=true` → bloque obs-integral: como obs-graph (una función, sistema=false) pero
-  // el plano grafica el INTEGRANDO f(x) y SOMBREA ∫ₐᵇ f dx; el panel alterna operador/valor.
-  // Se añade como ÚLTIMO parámetro (opcional) para no desplazar las llamadas existentes.
-  constructor(plugin, sistema = false, derivada = false, obtenerAjustes = () => AJUSTES_POR_DEFECTO, integral = false) {
+  constructor(plugin, modo, obtenerAjustes = () => AJUSTES_POR_DEFECTO) {
     this.plugin = plugin;
-    this.sistema = sistema;
-    this.derivada = derivada;
+    this.modo = modo;
     this.obtenerAjustes = obtenerAjustes;
-    this.integral = integral;
+  }
+  // Los tres rasgos que el cuerpo del adaptador consulta, DERIVADOS del modo en lugar de
+  // almacenados: son preguntas sobre el bloque ("¿es un sistema?"), no estado, y como getters
+  // no pueden desincronizarse del modo ni depender del orden de inicialización.
+  get sistema() {
+    return this.modo === "system";
+  }
+  get derivada() {
+    return this.modo === "derivate";
+  }
+  get integral() {
+    return this.modo === "integral";
   }
   async process(source, el, ctx) {
     var _a;
+    if (this.modo === "trig")
+      return this.procesarTrig(source, el, ctx);
     const contenedor = el.createDiv({ cls: "lmath-container" });
     const limpieza = new import_obsidian4.MarkdownRenderChild(contenedor);
     ctx.addChild(limpieza);
@@ -60474,6 +61312,106 @@ var MotorExperimental = class {
     const bajo = 8 + lado + 6;
     return `position:absolute; bottom:${bajo}px; right:8px; display:none; max-width:min(260px, calc(100% - 16px)); max-height:min(200px, calc(100% - ${bajo + 8}px)); overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:6px; font-size:11px; line-height:1.5; color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);`;
   }
+  /**
+   * Deslizador propio, hecho con dos `div` en vez de un `<input type="range">`.
+   *
+   * Se intentó dos veces con el control nativo y las dos se quedó la manija descolocada. El
+   * motivo es estructural, no un descuido: la manija y la pista de un `range` son
+   * PSEUDOELEMENTOS (`::-webkit-slider-thumb`), no nodos del DOM, así que no se pueden estilar en
+   * línea y hay que ganarle la especificidad a `app.css` de Obsidian desde una hoja que además
+   * solo se relee al recargar el plugin. Y encima WebKit alinea la manija con el borde SUPERIOR
+   * de la pista, de modo que centrarla exige un `margin-top` calculado a partir de un alto de
+   * pista que cualquiera puede cambiar por debajo.
+   *
+   * Con dos divs no hay nada que negociar: `top:50%` + `translateY(-50%)` centra por definición,
+   * el estilo va en línea y gana siempre, y de paso el control queda a la misma altura que el
+   * resto del cromo de este motor, que también se estila así.
+   *
+   * Lo que el control nativo daba gratis y aquí hay que poner a mano —y se pone— es el teclado y
+   * la semántica: `role="slider"`, `aria-valuemin/max/now`, foco visible y las flechas. Un mando
+   * que solo responde al ratón no es un mando, es un adorno.
+   */
+  montarDeslizador(padre, op) {
+    const LADO = 14;
+    const raiz = padre.createDiv();
+    raiz.tabIndex = 0;
+    raiz.setAttribute("role", "slider");
+    raiz.setAttribute("aria-label", op.etiqueta);
+    raiz.setAttribute("aria-valuemin", String(op.min));
+    raiz.setAttribute("aria-valuemax", String(op.max));
+    raiz.style.cssText = `position:relative; width:100%; height:${LADO}px; flex:0 0 auto; touch-action:none; cursor:pointer; outline:none; user-select:none;`;
+    const linea = raiz.createDiv();
+    linea.style.cssText = "position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); height:4px; border-radius:3px; background:var(--lmath-borde); pointer-events:none;";
+    const manija = raiz.createDiv();
+    manija.style.cssText = `position:absolute; top:50%; transform:translateY(-50%); width:${LADO}px; height:${LADO}px; border-radius:50%; background:var(--lmath-acento); pointer-events:none;`;
+    let valor = op.valor;
+    const acotar = (v) => Math.max(op.min, Math.min(op.max, v));
+    const fijarValor = (v) => {
+      valor = acotar(v);
+      const u = op.max === op.min ? 0 : (valor - op.min) / (op.max - op.min);
+      manija.style.left = `calc(${u * 100}% - ${u * LADO}px)`;
+      raiz.setAttribute("aria-valuenow", String(Math.round(valor)));
+    };
+    fijarValor(op.valor);
+    const emitir = (v) => {
+      const redondeado = Math.round(acotar(v) / op.paso) * op.paso;
+      fijarValor(redondeado);
+      op.alCambiar(redondeado);
+    };
+    const valorEn = (clientX) => {
+      const caja = raiz.getBoundingClientRect();
+      const util = Math.max(1, caja.width - LADO);
+      const u = (clientX - caja.left - LADO / 2) / util;
+      return op.min + Math.max(0, Math.min(1, u)) * (op.max - op.min);
+    };
+    let arrastrando = false;
+    raiz.addEventListener("pointerdown", (ev) => {
+      if (ev.button !== 0)
+        return;
+      arrastrando = true;
+      raiz.setPointerCapture(ev.pointerId);
+      raiz.focus();
+      emitir(valorEn(ev.clientX));
+    });
+    raiz.addEventListener("pointermove", (ev) => {
+      if (arrastrando)
+        emitir(valorEn(ev.clientX));
+    });
+    const soltar = (ev) => {
+      var _a;
+      if (!arrastrando)
+        return;
+      arrastrando = false;
+      if ((_a = raiz.hasPointerCapture) == null ? void 0 : _a.call(raiz, ev.pointerId))
+        raiz.releasePointerCapture(ev.pointerId);
+    };
+    raiz.addEventListener("pointerup", soltar);
+    raiz.addEventListener("pointercancel", soltar);
+    raiz.addEventListener("keydown", (ev) => {
+      const salto = ev.shiftKey ? op.pasoGrande : op.paso;
+      let nuevo = null;
+      if (ev.key === "ArrowRight" || ev.key === "ArrowUp")
+        nuevo = valor + salto;
+      else if (ev.key === "ArrowLeft" || ev.key === "ArrowDown")
+        nuevo = valor - salto;
+      else if (ev.key === "Home")
+        nuevo = op.min;
+      else if (ev.key === "End")
+        nuevo = op.max;
+      if (nuevo === null)
+        return;
+      ev.preventDefault();
+      emitir(nuevo);
+    });
+    raiz.addEventListener("focus", () => {
+      raiz.style.outline = "2px solid var(--lmath-acento)";
+      raiz.style.outlineOffset = "3px";
+    });
+    raiz.addEventListener("blur", () => {
+      raiz.style.outline = "none";
+    });
+    return { fijarValor };
+  }
   /** Tooltip ÚNICO y consistente para los controles del motor: el de Obsidian (oscuro),
    *  anclado ARRIBA para que el cursor no lo tape. Usa `setTooltip` (API de Obsidian), que NO
    *  pone `title` → sin el tooltip NATIVO del navegador que antes lo duplicaba. */
@@ -60504,11 +61442,32 @@ var MotorExperimental = class {
   }
   /** Pinta un icono de `ICONO` (lado `px`) como <svg> hijo de `el`, heredando el color vía
    *  `fill:currentColor`. Sin `innerHTML`: usa la API DOM de Obsidian (createSvg). */
-  montarIcono(el, nombre, px) {
+  montarIcono(el, nombre, px2) {
     const svg = el.createSvg("svg", {
-      attr: { viewBox: "0 -960 960 960", width: px, height: px, fill: "currentColor" }
+      attr: { viewBox: "0 -960 960 960", width: px2, height: px2, fill: "currentColor" }
     });
     svg.createSvg("path", { attr: { d: ICONO[nombre] } });
+  }
+  /**
+   * Pinta el glifo de una unidad (DEG / RAD / GRAD) ajustado A LO ANCHO de `px`.
+   *
+   * No pasa por `montarIcono` porque estos glifos no son cuadrados: se les da el ancho y el alto
+   * sale de su propia caja, así que la palabra ocupa todo el diámetro del chip en vez de dos
+   * tercios. Es lo que la deja del mismo cuerpo que el texto que había antes en ese botón; con el
+   * factor 0,66 del resto de iconos se quedaría en cuatro píxeles de alto.
+   */
+  montarGlifoUnidad(el, unidad, px2) {
+    const { caja, d } = GLIFO_UNIDAD[unidad];
+    const [, , ancho, alto] = caja.split(" ").map(Number);
+    const svg = el.createSvg("svg", {
+      attr: {
+        viewBox: caja,
+        width: px2,
+        height: Math.round(px2 * alto / ancho),
+        fill: "currentColor"
+      }
+    });
+    svg.createSvg("path", { attr: { d } });
   }
   /** Renderiza LaTeX INLINE como ETIQUETA de un botón/opción del toggle (glifo matemático
    *  en vez de texto): limpia `el`, pinta `$tex$` con KaTeX (mismo pipeline que el panel) y
@@ -60549,6 +61508,742 @@ var MotorExperimental = class {
     return base;
   }
   /**
+   * Bloque obs-trig: el círculo trigonométrico. Camino propio y completo, sin `Camara`, sin
+   * `Escena` y sin proveedores de geometría: aquí no hay curva que muestrear, sino una figura
+   * analítica que se redibuja entera en cada cambio de caja (unas decenas de puntos: el bloque
+   * más barato del plugin). Lo que sí comparte con los demás es el marco —contenedor, panel de
+   * la fórmula con KaTeX, reparto en columnas o flotante, paleta y ciclo de vida—, que es
+   * justamente lo que hace que se vea como parte de LMath y no como un widget aparte.
+   */
+  async procesarTrig(source, el, ctx) {
+    const contenedor = el.createDiv({ cls: "lmath-container" });
+    const limpieza = new import_obsidian4.MarkdownRenderChild(contenedor);
+    ctx.addChild(limpieza);
+    const revelar = () => contenedor.setCssStyles({ visibility: "visible" });
+    contenedor.setCssStyles({ visibility: "hidden" });
+    const redDeSeguridad = window.setTimeout(revelar, 2e3);
+    limpieza.register(() => window.clearTimeout(redDeSeguridad));
+    const bloque = parsearBloqueTrig(source);
+    const crudos = bloque.angulos.map((a) => a.radianes);
+    const mostrados = [...crudos];
+    const modelos = mostrados.map((r) => modeloDeAngulo(r));
+    let activo = 0;
+    const ajustesTrig = this.obtenerAjustes();
+    const imanActivo = ajustesTrig.imanTrig;
+    let unidad = ajustesTrig.unidadAngulo;
+    const derechoExacto = bloque.angulos.map((a) => a.simbolico);
+    const gradosEscritos = bloque.angulos.map((a) => aGrados(a.radianes));
+    const recorrido = rangoDeslizador(gradosEscritos);
+    const fijarAngulo = (crudo, conIman) => {
+      const acotado = acotarARecorrido(crudo, recorrido);
+      crudos[activo] = acotado;
+      mostrados[activo] = conIman ? imantar(acotado) : acotado;
+      modelos[activo] = modeloDeAngulo(mostrados[activo]);
+      derechoExacto[activo] = true;
+    };
+    const tactil = esTactil();
+    const reparto = {
+      estrecho: false,
+      abierto: false,
+      panel: null,
+      ladoChip: ladoChip(tactil)
+    };
+    const panelTrig = contenedor.createDiv({ cls: "lmath-latex" });
+    reparto.panel = panelTrig;
+    reparto.huecoInferior = ALTO_CONTROLES_TRIG;
+    aplicarCajaPanel(reparto);
+    const columna = panelTrig.createDiv();
+    columna.style.cssText = "position:absolute; inset:0; display:flex; flex-direction:column; gap:9px; padding:13px 14px; box-sizing:border-box; overflow:hidden; font-size:12px; line-height:1.45; color:var(--lmath-texto);";
+    const tarjeta = columna.createDiv();
+    tarjeta.style.cssText = "flex:0 0 auto; border:1px solid var(--lmath-borde); border-radius:12px; background:var(--lmath-superficie); padding:9px 10px; text-align:center;";
+    this.montarEtiquetaMath(tarjeta.createDiv(), "x^2 + y^2 = 1", ctx);
+    const puntoVivo = tarjeta.createDiv();
+    puntoVivo.style.cssText = "margin-top:7px; padding-top:7px; border-top:1px solid var(--lmath-borde); font-size:11.5px; line-height:1.35; color:var(--lmath-texto-tenue);";
+    const lectura = columna.createDiv();
+    lectura.style.cssText = "flex:1 1 auto; min-height:0; overflow:hidden;";
+    const controles = columna.createDiv();
+    if (bloque.avisos.length > 0) {
+      const tira = columna.createDiv();
+      columna.insertBefore(tira, lectura);
+      tira.style.cssText = "flex:0 0 auto; display:flex; flex-direction:column; gap:2px; font-size:10px; line-height:1.3; text-align:center; color:var(--lmath-aviso);";
+      const redactar = (a) => t().trig.anguloNoValido(a.texto);
+      const MAX = 3;
+      for (const a of bloque.avisos.slice(0, MAX))
+        tira.createDiv({ text: redactar(a) });
+      if (bloque.avisos.length > MAX) {
+        tira.createDiv({ text: `+${bloque.avisos.length - MAX}` });
+      }
+    }
+    const wrap = contenedor.createDiv({ cls: "lmath-grafica" });
+    wrap.style.cssText = `position:relative; width:100%; height:${ALTO_PANEL}px;`;
+    let anchoAplicado = -1;
+    const aplicarReparto = () => {
+      const ancho = contenedor.clientWidth;
+      if (ancho <= 0)
+        return;
+      const estrecho = ancho < ANCHO_MINIMO_COLUMNAS;
+      if (estrecho === reparto.estrecho && ancho === anchoAplicado)
+        return;
+      anchoAplicado = ancho;
+      reparto.estrecho = estrecho;
+      if (!estrecho)
+        reparto.abierto = false;
+      contenedor.toggleClass("lmath-estrecho", estrecho);
+      aplicarCajaPanel(reparto);
+      sincronizarBotonFormula();
+      wrap.style.height = estrecho ? `${ancho}px` : `${ALTO_PANEL}px`;
+      if (estrecho) {
+        wrap.append(controles);
+        controles.style.cssText = `position:absolute; left:0; right:0; bottom:0; height:${ALTO_CONTROLES_TRIG}px; box-sizing:border-box; padding:9px 12px; z-index:5; display:flex; flex-direction:column; gap:7px; border-top:1px solid var(--lmath-borde); background:var(--lmath-superficie);`;
+      } else {
+        columna.append(controles);
+        controles.style.cssText = "margin-top:auto; flex:0 0 auto; display:flex; flex-direction:column; gap:7px;";
+      }
+      if (lienzoColocado)
+        lienzoColocado(estrecho);
+    };
+    let sincronizarBotonFormula = () => {
+    };
+    let lienzoColocado = null;
+    aplicarReparto();
+    const canvas = wrap.createEl("canvas");
+    canvas.setCssStyles({
+      position: "absolute",
+      top: "0",
+      left: "0",
+      width: "100%",
+      height: "100%",
+      // El dedo sobre el lienzo mueve el ÁNGULO, así que el navegador no se queda ningún gesto
+      // que empiece aquí. Igual que en los demás bloques: lo que empieza fuera del lienzo sigue
+      // desplazando la nota con normalidad.
+      touchAction: "none"
+    });
+    const anclajesAbajo = [];
+    const chipsAbajo = {
+      push: (el2) => anclajesAbajo.push({ el: el2, base: 8 })
+    };
+    const sueloChips = () => 8 + (reparto.estrecho ? ALTO_CONTROLES_TRIG : 0);
+    lienzoColocado = (estrecho) => {
+      canvas.style.height = estrecho ? `calc(100% - ${ALTO_CONTROLES_TRIG}px)` : "100%";
+      const extra = estrecho ? ALTO_CONTROLES_TRIG : 0;
+      for (const { el: el2, base } of anclajesAbajo)
+        el2.style.bottom = `${base + extra}px`;
+    };
+    lienzoColocado(reparto.estrecho);
+    canvas.tabIndex = 0;
+    const ctx2d = canvas.getContext("2d");
+    if (!ctx2d) {
+      wrap.createEl("p", { text: t().canvasNoDisponible });
+      revelar();
+      return;
+    }
+    const colorDe2 = (i2) => {
+      const c = colorCurva(i2);
+      return `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)}, ${c[3]})`;
+    };
+    const componentes = /* @__PURE__ */ new Set();
+    const nombrada = bloque.angulos[activo].componente;
+    if (nombrada)
+      componentes.add(nombrada);
+    let W = 0, Hcss = 0, dprPrev = 0;
+    const disposicion = () => encuadreTrig(W, Hcss);
+    const pintar = () => {
+      fijarTemaPlano(esTemaOscuro(wrap));
+      dibujarTrig(ctx2d, disposicion(), modelos, W, Hcss, {
+        activo,
+        colorDe: colorDe2,
+        puedeExacto: derechoExacto[activo],
+        unidad,
+        componentes
+      });
+      refrescarInfo();
+      actualizarPanel();
+    };
+    let actualizarPanel = () => {
+    };
+    let refrescarInfo = () => {
+    };
+    let animando = false;
+    let detenerAnimacion = () => {
+    };
+    const redimensionar = () => {
+      const caja = canvas.getBoundingClientRect();
+      const ancho = Math.max(1, Math.round(caja.width || wrap.clientWidth || 320));
+      const alto = Math.max(1, Math.round(caja.height || ALTO_PANEL));
+      const dpr = Math.ceil(window.devicePixelRatio || 1);
+      if (ancho === W && alto === Hcss && dpr === dprPrev)
+        return;
+      W = ancho;
+      Hcss = alto;
+      dprPrev = dpr;
+      canvas.width = ancho * dpr;
+      canvas.height = alto * dpr;
+      ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+      pintar();
+    };
+    redimensionar();
+    const observador = new ResizeObserver(() => redimensionar());
+    observador.observe(wrap);
+    limpieza.register(() => observador.disconnect());
+    const observadorReparto = new ResizeObserver(() => aplicarReparto());
+    observadorReparto.observe(contenedor);
+    limpieza.register(() => observadorReparto.disconnect());
+    window.addEventListener("resize", redimensionar);
+    limpieza.register(() => window.removeEventListener("resize", redimensionar));
+    const refTema = this.plugin.app.workspace.on("css-change", () => pintar());
+    limpieza.register(() => this.plugin.app.workspace.offref(refTema));
+    const agarrePx = tactil ? AGARRE_PX_TACTIL : AGARRE_PX;
+    let arrastrando = false;
+    let anguloPrevio = 0;
+    const repintar = () => window.requestAnimationFrame(pintar);
+    canvas.addEventListener("pointerdown", (ev) => {
+      if (ev.button !== 0)
+        return;
+      const e3 = disposicion();
+      if (!agarraCircunferencia(e3, ev.offsetX, ev.offsetY, agarrePx))
+        return;
+      detenerAnimacion();
+      const ap = anguloDePuntero(e3, ev.offsetX, ev.offsetY);
+      activo = indiceMasCercano(mostrados, ap);
+      arrastrando = true;
+      anguloPrevio = ap;
+      canvas.setPointerCapture(ev.pointerId);
+      canvas.setCssStyles({ cursor: "pointer" });
+      canvas.focus();
+      repintar();
+    });
+    canvas.addEventListener("pointermove", (ev) => {
+      const e3 = disposicion();
+      if (!arrastrando) {
+        canvas.setCssStyles({
+          cursor: agarraCircunferencia(e3, ev.offsetX, ev.offsetY, agarrePx) ? "pointer" : "default"
+        });
+        return;
+      }
+      const ap = anguloDePuntero(e3, ev.offsetX, ev.offsetY);
+      fijarAngulo(
+        crudos[activo] + deltaAngular(anguloPrevio, ap),
+        imanVigente(imanActivo, ev.altKey)
+      );
+      anguloPrevio = ap;
+      repintar();
+    });
+    const soltar = (ev) => {
+      var _a;
+      if (!arrastrando)
+        return;
+      arrastrando = false;
+      if ((_a = canvas.hasPointerCapture) == null ? void 0 : _a.call(canvas, ev.pointerId))
+        canvas.releasePointerCapture(ev.pointerId);
+      canvas.setCssStyles({ cursor: "pointer" });
+    };
+    canvas.addEventListener("pointerup", soltar);
+    canvas.addEventListener("pointercancel", soltar);
+    canvas.addEventListener("keydown", (ev) => {
+      const paso = ev.shiftKey ? PASO_IMAN : PASO_IMAN / 15;
+      let nuevo = null;
+      if (ev.key === "ArrowRight")
+        nuevo = crudos[activo] + paso;
+      else if (ev.key === "ArrowLeft")
+        nuevo = crudos[activo] - paso;
+      else if (ev.key === "PageUp")
+        nuevo = (Math.floor(crudos[activo] / PASO_IMAN) + 1) * PASO_IMAN;
+      else if (ev.key === "PageDown")
+        nuevo = (Math.ceil(crudos[activo] / PASO_IMAN) - 1) * PASO_IMAN;
+      else if (ev.key === "Home")
+        nuevo = 0;
+      else if (ev.key === "Tab" && mostrados.length > 1) {
+        activo = (activo + 1) % mostrados.length;
+        ev.preventDefault();
+        repintar();
+        return;
+      }
+      if (nuevo === null)
+        return;
+      ev.preventDefault();
+      fijarAngulo(nuevo, false);
+      repintar();
+    });
+    {
+      const fila = controles.createDiv();
+      fila.style.cssText = "display:flex; gap:5px;";
+      fila.setAttribute("role", "group");
+      fila.setAttribute("aria-label", t().trig.componentes.chip);
+      const botones = /* @__PURE__ */ new Map();
+      const sincronizarBotones = () => {
+        for (const [c, b] of botones) {
+          const activo2 = componentes.has(c);
+          b.setAttribute("aria-pressed", String(activo2));
+          const color = colorComponente(c);
+          b.style.cssText = "flex:1 1 0; display:flex; align-items:center; justify-content:center; gap:5px; padding:5px 4px; font-size:11px; line-height:1.1; border-radius:7px; cursor:pointer; user-select:none; white-space:nowrap; transition:color 0.12s ease, background 0.12s ease, border-color 0.12s ease; " + (activo2 ? `color:var(--lmath-texto); background:var(--lmath-panel); border:1px solid ${color};` : "color:var(--lmath-texto-apagado); background:transparent; border:1px solid var(--lmath-borde);");
+          const muestra = b.firstElementChild;
+          if (muestra instanceof HTMLElement) {
+            muestra.style.cssText = `width:11px; height:3px; border-radius:2px; flex:0 0 auto; background:${color}; opacity:${activo2 ? "1" : "0.45"};`;
+          }
+        }
+      };
+      for (const c of COMPONENTES) {
+        const b = fila.createDiv();
+        b.createDiv();
+        b.createSpan({ text: t().trig.componentes[c] });
+        botones.set(c, b);
+        b.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          if (!componentes.delete(c))
+            componentes.add(c);
+          sincronizarBotones();
+          pintar();
+        });
+      }
+      const filaValor = controles.createDiv();
+      filaValor.style.cssText = "display:flex; align-items:baseline; justify-content:space-between; gap:8px; font-size:11px; line-height:1.1; color:var(--lmath-texto-tenue);";
+      filaValor.createDiv({ text: ETIQUETA_POR_DEFECTO });
+      const valorVivo = filaValor.createDiv();
+      valorVivo.style.cssText = "font-size:14px; font-weight:600; color:var(--lmath-texto); font-variant-numeric:tabular-nums;";
+      const { fijarValor } = this.montarDeslizador(controles, {
+        min: recorrido.min,
+        max: recorrido.max,
+        valor: gradosEscritos[activo],
+        etiqueta: ETIQUETA_POR_DEFECTO,
+        paso: 1,
+        pasoGrande: 15,
+        alCambiar: (grados) => {
+          detenerAnimacion();
+          fijarAngulo(aRadianes(grados), false);
+          pintar();
+        }
+      });
+      const tabla = lectura.createDiv();
+      const celdas = [];
+      const nombresRazon = [];
+      for (const nombre of ["sin", "cos", "tan"]) {
+        const f = tabla.createDiv();
+        f.style.cssText = "display:flex; align-items:baseline; gap:8px; padding:2px 0; font-size:11.5px;";
+        nombresRazon.push(f.createDiv({ text: nombre }));
+        nombresRazon[nombresRazon.length - 1].setCssStyles({
+          width: "26px",
+          flex: "0 0 auto"
+        });
+        const exacto = f.createDiv();
+        exacto.setCssStyles({ flex: "1 1 auto", textAlign: "right" });
+        const aprox = f.createDiv();
+        aprox.setCssStyles({
+          color: "var(--lmath-texto-apagado)",
+          width: "62px",
+          flex: "0 0 auto",
+          textAlign: "right"
+        });
+        celdas.push({ exacto, aprox });
+      }
+      const grande = lectura.createDiv();
+      const grandeTitulo = grande.createDiv();
+      grandeTitulo.setCssStyles({ color: "var(--lmath-texto-tenue)", fontSize: "11px" });
+      const grandeValor = grande.createDiv();
+      grandeValor.setCssStyles({
+        fontSize: "21px",
+        lineHeight: "1.35",
+        color: "var(--lmath-texto)"
+      });
+      const grandeAprox = grande.createDiv();
+      grandeAprox.setCssStyles({ color: "var(--lmath-texto-apagado)", fontSize: "11px" });
+      const decimal = (v) => Math.abs(v - Math.round(v)) < 1e-12 ? String(Math.round(v)) : Math.abs(v) >= 1e4 ? v.toExponential(2) : v.toFixed(4);
+      actualizarPanel = () => {
+        var _a, _b, _c;
+        const m = modelos[activo];
+        const ex = derechoExacto[activo] ? razonesExactas(mostrados[activo]) : null;
+        const grados = aGrados(mostrados[activo]);
+        const textoAng = textoAngulo(m, unidad);
+        const noDefinida = t().trig.info.noDefinida;
+        fijarValor(grados);
+        valorVivo.setText(textoAng);
+        const punto = derechoExacto[activo] ? puntoExactoTexto(mostrados[activo]) : null;
+        puntoVivo.setText(
+          `P(${textoAng}) = ${punto != null ? punto : `(${decimal(m.punto.x)}, ${decimal(m.punto.y)})`}`
+        );
+        const unica = componentes.size === 1 ? [...componentes][0] : null;
+        tabla.setCssStyles({ display: unica === null ? "block" : "none" });
+        grande.setCssStyles({ display: unica === null ? "none" : "block" });
+        if (unica === null) {
+          const valores = [
+            [m.razones.sin, (_a = ex == null ? void 0 : ex.sin) != null ? _a : null],
+            [m.razones.cos, (_b = ex == null ? void 0 : ex.cos) != null ? _b : null],
+            [m.razones.tan, (_c = ex == null ? void 0 : ex.tan) != null ? _c : null]
+          ];
+          valores.forEach(([valor, exacto], i2) => {
+            celdas[i2].exacto.setText(
+              valor === null ? noDefinida : exacto ? exacto.txt : decimal(valor)
+            );
+            celdas[i2].aprox.setText(valor !== null && exacto ? `\u2248 ${decimal(valor)}` : "");
+          });
+        } else {
+          const nombre = unica === "seno" ? "sin" : unica === "coseno" ? "cos" : "tan";
+          const valor = unica === "seno" ? m.razones.sin : unica === "coseno" ? m.razones.cos : m.razones.tan;
+          const exacto = ex === null ? null : unica === "seno" ? ex.sin : unica === "coseno" ? ex.cos : ex.tan;
+          grandeTitulo.setText(`${nombre} ${textoAng}`);
+          grandeTitulo.setCssStyles({ color: colorComponente(unica) });
+          grandeValor.setText(valor === null ? noDefinida : exacto ? exacto.txt : decimal(valor));
+          grandeAprox.setText(valor !== null && exacto ? `\u2248 ${decimal(valor)}` : "");
+        }
+      };
+      const sincronizarColores = () => {
+        sincronizarBotones();
+        COMPONENTES.forEach((c, i2) => nombresRazon[i2].setCssStyles({ color: colorComponente(c) }));
+      };
+      sincronizarColores();
+      const refTemaBotones = this.plugin.app.workspace.on("css-change", () => sincronizarColores());
+      limpieza.register(() => this.plugin.app.workspace.offref(refTemaBotones));
+    }
+    {
+      const altoU = reparto.ladoChip;
+      const anchoU = Math.round(altoU * 1.7);
+      const btnUnidad = wrap.createDiv();
+      btnUnidad.style.cssText = `position:absolute; top:6px; right:8px; width:${anchoU}px; height:${altoU}px; display:flex; align-items:center; justify-content:center; line-height:1; border-radius:${altoU / 2}px; cursor:pointer; user-select:none; z-index:5; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde);`;
+      const sincronizarUnidad = () => {
+        btnUnidad.empty();
+        this.montarGlifoUnidad(btnUnidad, unidad, anchoU - 8);
+        const nombre = unidad === "degrees" ? t().ajustes.trig.opcionGrados : unidad === "radians" ? t().ajustes.trig.opcionRadianes : t().ajustes.trig.opcionGradianes;
+        this.ponerTooltip(btnUnidad, `${t().ajustes.trig.unidad.etiqueta}: ${nombre}`);
+      };
+      sincronizarUnidad();
+      btnUnidad.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        unidad = CICLO_UNIDAD[(CICLO_UNIDAD.indexOf(unidad) + 1) % CICLO_UNIDAD.length];
+        sincronizarUnidad();
+        pintar();
+      });
+      const refIdioma = this.plugin.app.workspace.on("css-change", () => sincronizarUnidad());
+      limpieza.register(() => this.plugin.app.workspace.offref(refIdioma));
+    }
+    {
+      const ladoP = reparto.ladoChip;
+      const velocidad = aRadianes(60);
+      const btnPlay = wrap.createDiv();
+      chipsAbajo.push(btnPlay);
+      btnPlay.style.cssText = `position:absolute; bottom:8px; left:${8 + ladoP + 6}px; width:${ladoP}px; height:${ladoP}px; display:flex; align-items:center; justify-content:center; line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; user-select:none; z-index:5;`;
+      const sincronizarPlay = () => {
+        btnPlay.empty();
+        this.montarIcono(btnPlay, animando ? "pausar" : "reproducir", ladoIcono(ladoP));
+        this.ponerTooltip(btnPlay, animando ? t().botones.pausar : t().botones.reproducir);
+      };
+      sincronizarPlay();
+      let rafAnim = null;
+      let tPrev = 0;
+      let enPantalla = true;
+      const marco = (t2) => {
+        rafAnim = null;
+        if (!animando || !enPantalla)
+          return;
+        const dt = tPrev === 0 ? 0 : (t2 - tPrev) / 1e3;
+        tPrev = t2;
+        fijarAngulo(pasoAnimacion(crudos[activo], velocidad, dt), false);
+        pintar();
+        rafAnim = window.requestAnimationFrame(marco);
+      };
+      const arrancarBucle = () => {
+        if (rafAnim !== null)
+          return;
+        tPrev = 0;
+        rafAnim = window.requestAnimationFrame(marco);
+      };
+      const pararBucle = () => {
+        if (rafAnim !== null)
+          window.cancelAnimationFrame(rafAnim);
+        rafAnim = null;
+      };
+      detenerAnimacion = () => {
+        if (!animando)
+          return;
+        animando = false;
+        pararBucle();
+        sincronizarPlay();
+      };
+      btnPlay.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        animando = !animando;
+        if (animando)
+          arrancarBucle();
+        else
+          pararBucle();
+        sincronizarPlay();
+        pintar();
+      });
+      const observadorVista = new IntersectionObserver((entradas) => {
+        enPantalla = entradas.some((e3) => e3.isIntersecting);
+        if (animando && enPantalla)
+          arrancarBucle();
+        else if (!enPantalla)
+          pararBucle();
+      });
+      observadorVista.observe(wrap);
+      limpieza.register(() => observadorVista.disconnect());
+      limpieza.register(pararBucle);
+    }
+    {
+      const ladoF = reparto.ladoChip;
+      const btnFormula = wrap.createDiv({ text: "f(x)" });
+      this.ponerTooltip(btnFormula, t().botones.verFormula);
+      const estiloFormula = () => {
+        btnFormula.style.cssText = `position:absolute; bottom:${sueloChips()}px; left:8px; width:${ladoF}px; height:${ladoF}px; display:flex; align-items:center; justify-content:center; font-size:10px; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; font-family:"Lora", var(--font-interface); ` + (reparto.abierto ? "color:var(--lmath-acento-contraste); background:var(--lmath-acento); border:1px solid var(--lmath-acento);" : "color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde);") + (reparto.estrecho ? "" : "display:none;");
+      };
+      estiloFormula();
+      sincronizarBotonFormula = estiloFormula;
+      btnFormula.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        reparto.abierto = !reparto.abierto;
+        aplicarCajaPanel(reparto);
+        estiloFormula();
+        pintar();
+      });
+    }
+    {
+      const ladoI = reparto.ladoChip;
+      const btnInfo = wrap.createDiv();
+      chipsAbajo.push(btnInfo);
+      this.ponerTooltip(btnInfo, t().trig.info.chip);
+      btnInfo.style.cssText = this.estiloChipInfo(ladoI);
+      this.montarIcono(btnInfo, "info", ladoIcono(ladoI));
+      const pop = wrap.createDiv();
+      pop.style.cssText = this.estiloPopoverInfo(ladoI);
+      anclajesAbajo.push({ el: pop, base: 8 + ladoI + 6 });
+      let visible = false;
+      const abiertas = /* @__PURE__ */ new Set([0]);
+      const dec = (v, n = 6) => {
+        return Math.abs(v - Math.round(v)) < 1e-12 ? String(Math.round(v)) : v.toFixed(n);
+      };
+      const grados = (rad) => textoGradosDe(rad);
+      const construir = () => {
+        pop.empty();
+        const m = modelos[activo];
+        const T = t().trig.info;
+        const ex = derechoExacto[activo] ? razonesExactas(mostrados[activo]) : null;
+        const radExacto = derechoExacto[activo] ? radianesExactoTexto(mostrados[activo]) : null;
+        const razon = (valor, exacto) => {
+          if (valor === null)
+            return T.noDefinida;
+          return exacto ? `${exacto.txt}  \u2248 ${dec(valor)}` : dec(valor);
+        };
+        const secciones = [
+          {
+            // Primera, y por tanto la ABIERTA por defecto: es la única sección cuya mayoría
+            // (csc, sec, cot) no aparece en ningún otro sitio de la interfaz.
+            titulo: T.seccionRazones,
+            filas: [
+              // El orden empareja recíprocas por posición (1↔4, 2↔5, 3↔6) y es el mismo de la
+              // tarjeta y del chip de componentes: el ojo aprende un orden, no dos.
+              ["sin", razon(m.razones.sin, ex == null ? void 0 : ex.sin)],
+              ["cos", razon(m.razones.cos, ex == null ? void 0 : ex.cos)],
+              ["tan", razon(m.razones.tan, ex == null ? void 0 : ex.tan)],
+              ["csc", razon(m.razones.csc, ex == null ? void 0 : ex.csc)],
+              ["sec", razon(m.razones.sec, ex == null ? void 0 : ex.sec)],
+              ["cot", razon(m.razones.cot, ex == null ? void 0 : ex.cot)],
+              // Cierre de la sección, despegado del resto: no es una razón más, es la invariante
+              // que las liga —y la ecuación de la propia circunferencia unidad—, así que vive con
+              // sus operandos. Comprobación NUMÉRICA, y se dice que lo es: no hay álgebra detrás.
+              [
+                T.pitagorica,
+                `${dec(m.razones.sin ** 2 + m.razones.cos ** 2)} (${T.pitagoricaNota})`,
+                true
+              ]
+            ]
+          },
+          {
+            // Cadena de derivación: cada fila se calcula de la anterior. Que `Radianes` y
+            // `Longitud de arco` salgan con el mismo número no es un descuido — es el hecho que
+            // DEFINE el radián (r = 1 ⇒ s = θ), y solo se lee como tal si van seguidas. Separadas
+            // por dos secciones, como estaban, la coincidencia parecía un error.
+            titulo: T.seccionMedida,
+            filas: [
+              [T.grados, grados(m.radianes)],
+              [T.radianes, radExacto ? `${radExacto}  \u2248 ${dec(m.radianes)}` : dec(m.radianes)],
+              [T.arco, dec(m.arco)],
+              [T.sector, dec(m.sector)]
+            ]
+          },
+          {
+            // De grueso a fino: dónde cae el lado terminal da el SIGNO de las razones, el
+            // coterminal y las vueltas reconstruyen θ = coterminal + n·2π leídos seguidos, y el
+            // ángulo de referencia cierra dando su MAGNITUD. Es el método del ángulo de
+            // referencia, en orden.
+            titulo: T.seccionPosicion,
+            filas: [
+              // Con etiqueta, y esa: los ocho valores son cuadrantes Y semiejes, así que
+              // «cuadrante» mentiría en la mitad de los casos.
+              [T.ladoTerminal, T.posicion[m.posicion]],
+              [T.coterminal, grados(m.coterminal)],
+              [T.vueltas, String(m.vueltas)],
+              [T.referencia, grados(m.referencia)]
+            ]
+          },
+          {
+            // Todas las filas son OTRO ángulo, ordenadas por la constante de la que salen
+            // (0−θ, 90−θ, 180−θ, 180+θ): así cada par contiguo comparte estructura.
+            titulo: T.seccionRelacionados,
+            filas: [
+              [T.opuesto, grados(-m.radianes)],
+              [T.complementario, grados(Math.PI / 2 - m.radianes)],
+              [T.suplementario, grados(Math.PI - m.radianes)],
+              [T.antipoda, grados(m.radianes + Math.PI)]
+            ]
+          }
+        ];
+        secciones.forEach((s, i2) => {
+          const cab = pop.createDiv({ text: `${abiertas.has(i2) ? "\u25BE" : "\u25B8"} ${s.titulo}` });
+          cab.style.cssText = "cursor:pointer; user-select:none; font-weight:600; padding:3px 0; " + (i2 > 0 ? "border-top:1px solid var(--lmath-borde); margin-top:3px;" : "");
+          cab.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            if (abiertas.has(i2))
+              abiertas.delete(i2);
+            else
+              abiertas.add(i2);
+            construir();
+          });
+          if (!abiertas.has(i2))
+            return;
+          for (const [etiqueta, valor, separada] of s.filas) {
+            const fila = pop.createDiv();
+            fila.style.cssText = "display:flex; justify-content:space-between; gap:10px; padding:1px 0;" + // El mismo filete que separa secciones, pero sin cabecera detrás y con el aire
+            // repartido a los dos lados: se lee como un cierre DENTRO de la sección abierta,
+            // no como el principio de otra.
+            (separada ? " border-top:1px solid var(--lmath-borde); margin-top:5px; padding-top:5px;" : "");
+            fila.createDiv({ text: etiqueta }).setCssStyles({ color: "var(--lmath-texto-tenue)" });
+            fila.createDiv({ text: valor }).setCssStyles({ textAlign: "right" });
+          }
+        });
+      };
+      refrescarInfo = () => {
+        if (visible)
+          construir();
+      };
+      const cerrar = () => {
+        visible = false;
+        pop.setCssStyles({ display: "none" });
+      };
+      btnInfo.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        visible = !visible;
+        if (visible)
+          construir();
+        pop.setCssStyles({ display: visible ? "block" : "none" });
+      });
+      const fuera = (ev) => {
+        if (visible && !pop.contains(ev.target) && !btnInfo.contains(ev.target)) {
+          cerrar();
+        }
+      };
+      document.addEventListener("mousedown", fuera);
+      limpieza.register(() => document.removeEventListener("mousedown", fuera));
+    }
+    lienzoColocado(reparto.estrecho);
+    redimensionar();
+    pintar();
+    revelar();
+  }
+  /**
+   * Armazón del toggle del panel, COMÚN a los cuatro bloques: la barra de botones (arriba,
+   * centrada, flotando sobre la fórmula) y el desplegable que cuelga de ella. Devuelve las
+   * cajas vacías y el estilo de sus opciones; QUIÉN va dentro y qué hace al pulsarlo es cosa
+   * de cada panel, que es lo único en lo que se diferencian.
+   *
+   * `barra` se crea antes que `menu` para que el desplegable quede por delante en el orden del
+   * documento; ambos son absolutos dentro del panel, así que no participan en su flujo.
+   */
+  crearMenuDesplegable(panelLatex) {
+    const barra = panelLatex.createDiv();
+    barra.style.cssText = "position:absolute; top:8px; left:0; right:0; z-index:6; display:flex; gap:6px; justify-content:center; pointer-events:none;";
+    const menu = panelLatex.createDiv();
+    menu.style.cssText = "position:absolute; top:36px; left:0; right:0; z-index:7; display:none; flex-direction:column; align-items:center; pointer-events:none;";
+    const caja = menu.createDiv();
+    caja.style.cssText = 'pointer-events:auto; display:flex; flex-direction:column; gap:2px; padding:4px; border-radius:10px; background:var(--lmath-panel); border:1px solid var(--lmath-borde); box-shadow:var(--lmath-sombra-flotante); font-family:"Lora", var(--font-interface);';
+    const itemEstilo = (el, habilitado) => {
+      el.style.cssText = "padding:5px 14px; font-size:11px; line-height:1.15; user-select:none; border-radius:6px; white-space:nowrap; text-align:center; transition:background 0.12s ease, color 0.12s ease; " + (habilitado ? "color:var(--lmath-texto); cursor:pointer; pointer-events:auto;" : "color:var(--lmath-texto-apagado); cursor:default; pointer-events:none;");
+    };
+    return { barra, menu, caja, itemEstilo };
+  }
+  /**
+   * Cierra el desplegable al pulsar FUERA de la barra y del menú. Se registra en la limpieza
+   * del bloque: es un listener del documento y sobreviviría al bloque que lo puso.
+   */
+  cerrarMenuAlPulsarFuera(barra, caja, limpieza, cerrar) {
+    const onDocDown = (e3) => {
+      if (!barra.contains(e3.target) && !caja.contains(e3.target))
+        cerrar();
+    };
+    document.addEventListener("mousedown", onDocDown);
+    limpieza.register(() => document.removeEventListener("mousedown", onDocDown));
+  }
+  /**
+   * Panel izquierdo de los bloques de OPERADOR (obs-derivate, obs-integral): el scroller de
+   * fórmula + una barra de toggle de TRES vistas —el OPERADOR sin evaluar (la forma de
+   * partida, vista por defecto), el RESULTADO evaluado, y AMBAS apiladas—. No cambia lo
+   * graficado: el plano ya grafica lo suyo (la derivada, el integrando); esto solo alterna la
+   * fórmula MOSTRADA, con el mismo lenguaje visual que el toggle de obs-graph.
+   *
+   * Los dos bloques comparten esta maquinaria ENTERA y se distinguen solo por sus textos: qué
+   * fórmulas hay (`operador`/`resultado`), qué glifo lleva el botón principal y qué opciones
+   * cuelgan del menú. Nada de eso justifica dos copias del mismo toggle.
+   */
+  async montarPanelVistas(contenedor, ctx, limpieza, reparto, config4) {
+    const { panelLatex, renderLatex } = this.crearScrollerLatex(contenedor, ctx, limpieza, reparto);
+    const { operador, resultado } = config4;
+    const latexDe = (v) => v === "operador" ? operador : v === "resultado" ? resultado : [operador, resultado];
+    const firmaDe = (v) => {
+      const l = latexDe(v);
+      return typeof l === "string" ? l : l.join(" ");
+    };
+    const { barra, menu, caja, itemEstilo } = this.crearMenuDesplegable(panelLatex);
+    const btnOriginal = barra.createDiv();
+    this.ponerTooltip(btnOriginal, t().botones.operador);
+    this.montarEtiquetaMath(btnOriginal, config4.glifoOperador, ctx);
+    const btnOpciones = this.crearBotonOpciones(barra, config4.tooltipOpciones);
+    const items = config4.opciones.map((o) => {
+      const el = caja.createDiv();
+      this.ponerTooltip(el, o.etiqueta);
+      this.montarEtiquetaMath(el, o.tex, ctx);
+      return el;
+    });
+    let vista = "operador";
+    let abierto = false;
+    const sincronizar = () => {
+      this.estiloBotonPanel(btnOriginal, vista === "operador");
+      this.estiloBotonOpciones(btnOpciones, vista !== "operador" || abierto);
+      this.iconoBotonOpciones(btnOpciones, abierto, config4.tooltipOpciones);
+      const actual = firmaDe(vista);
+      items.forEach((el, i2) => itemEstilo(el, firmaDe(config4.opciones[i2].vista) !== actual));
+      menu.style.display = abierto ? "flex" : "none";
+    };
+    const aplicar = async (i2) => {
+      abierto = false;
+      const v = config4.opciones[i2].vista;
+      if (firmaDe(v) !== firmaDe(vista)) {
+        vista = v;
+        await renderLatex(latexDe(vista));
+      }
+      sincronizar();
+    };
+    btnOriginal.addEventListener("click", () => void (async () => {
+      abierto = false;
+      if (vista !== "operador") {
+        vista = "operador";
+        await renderLatex(operador);
+      }
+      sincronizar();
+    })());
+    btnOpciones.addEventListener("click", (e3) => {
+      e3.stopPropagation();
+      abierto = !abierto;
+      sincronizar();
+    });
+    items.forEach((el, i2) => el.addEventListener("click", () => void aplicar(i2)));
+    this.cerrarMenuAlPulsarFuera(barra, caja, limpieza, () => {
+      if (!abierto)
+        return;
+      abierto = false;
+      sincronizar();
+    });
+    sincronizar();
+    await renderLatex(operador);
+  }
+  /**
    * Panel izquierdo de obs-graph / obs-system: el scroller de fórmula + la barra de
    * toggle de transformaciones ([Original] [Opciones ▾] con Simplificar / Despejar y).
    */
@@ -60564,8 +62259,7 @@ var MotorExperimental = class {
     const transformaciones = todas.filter((t2) => !t2.auto);
     if (ecuaciones.length > 0 && transformaciones.length > 0) {
       let estado = base;
-      const barra = panelLatex.createDiv();
-      barra.style.cssText = "position:absolute; top:8px; left:0; right:0; z-index:6; display:flex; gap:6px; justify-content:center; pointer-events:none;";
+      const { barra, menu, caja, itemEstilo } = this.crearMenuDesplegable(panelLatex);
       const estiloBoton = (b, activo) => this.estiloBotonPanel(b, activo);
       const btnOriginal = barra.createDiv();
       this.ponerTooltip(btnOriginal, t().botones.original);
@@ -60575,13 +62269,6 @@ var MotorExperimental = class {
         ctx
       );
       const btnOpciones = this.crearBotonOpciones(barra, t().botones.transformaciones);
-      const menu = panelLatex.createDiv();
-      menu.style.cssText = "position:absolute; top:36px; left:0; right:0; z-index:7; display:none; flex-direction:column; align-items:center; pointer-events:none;";
-      const caja = menu.createDiv();
-      caja.style.cssText = 'pointer-events:auto; display:flex; flex-direction:column; gap:2px; padding:4px; border-radius:10px; background:var(--lmath-panel); border:1px solid var(--lmath-borde); box-shadow:var(--lmath-sombra-flotante); font-family:"Lora", var(--font-interface);';
-      const itemEstilo = (el, habilitado) => {
-        el.style.cssText = "padding:5px 14px; font-size:11px; line-height:1.15; user-select:none; border-radius:6px; white-space:nowrap; text-align:center; transition:background 0.12s ease, color 0.12s ease; " + (habilitado ? "color:var(--lmath-texto); cursor:pointer; pointer-events:auto;" : "color:var(--lmath-texto-apagado); cursor:default; pointer-events:none;");
-      };
       const items = transformaciones.map((t2) => {
         const el = caja.createDiv();
         this.ponerTooltip(el, t2.etiqueta);
@@ -60621,108 +62308,42 @@ var MotorExperimental = class {
         sincronizar();
       });
       items.forEach((el, i2) => el.addEventListener("click", () => void aplicar(i2)));
-      const onDocDown = (e3) => {
-        if (abierto && !barra.contains(e3.target) && !caja.contains(e3.target)) {
-          abierto = false;
-          sincronizar();
-        }
-      };
-      document.addEventListener("mousedown", onDocDown);
-      limpieza.register(() => document.removeEventListener("mousedown", onDocDown));
+      this.cerrarMenuAlPulsarFuera(barra, caja, limpieza, () => {
+        if (!abierto)
+          return;
+        abierto = false;
+        sincronizar();
+      });
       sincronizar();
     }
     await renderLatex(original);
   }
   /**
-   * Panel izquierdo de obs-derivate: el scroller de fórmula + una barra de toggle de
-   * DOS vistas —[Original] muestra el operador sin evaluar `\frac{d}{dx}\left(f\right)`;
-   * [Derivada] muestra la derivada evaluada `f'\left(x\right) = …`—. No transforma lo
-   * graficado (el plano SIEMPRE grafica la derivada, ver `process`): solo alterna la
-   * fórmula MOSTRADA, como el toggle de obs-graph. Arranca en la vista "Derivada" (es el
-   * resultado, el foco del bloque).
+   * Panel izquierdo de obs-derivate: las dos fórmulas del bloque —el operador sin evaluar
+   * `\frac{d}{dx}\left(f\right)` y la derivada evaluada `f'\left(x\right) = …`— servidas al
+   * toggle común (`montarPanelVistas`), que arranca en el OPERADOR: es la forma de partida,
+   * análoga al `f(x)` de obs-graph. No transforma lo graficado —el plano SIEMPRE grafica la
+   * derivada, ver `process`—: solo alterna la fórmula MOSTRADA.
    */
   async montarPanelDerivada(contenedor, ecuaciones, ctx, limpieza, reparto) {
-    const { panelLatex, renderLatex } = this.crearScrollerLatex(contenedor, ctx, limpieza, reparto);
     const operadorSimp = derivadaOperadorSimplificadoLatex(ecuaciones);
     const operador = operadorSimp != null ? operadorSimp : derivadaOperadorLatex(ecuaciones);
-    const derivada = derivadaLatex(ecuaciones);
-    const latexDe = (v) => v === "operador" ? operador : v === "derivada" ? derivada : [operador, derivada];
-    const firmaDe = (v) => {
-      const l = latexDe(v);
-      return typeof l === "string" ? l : l.join("\0");
-    };
-    const barra = panelLatex.createDiv();
-    barra.style.cssText = "position:absolute; top:8px; left:0; right:0; z-index:6; display:flex; gap:6px; justify-content:center; pointer-events:none;";
-    const btnOriginal = barra.createDiv();
-    this.ponerTooltip(btnOriginal, t().botones.operador);
-    this.montarEtiquetaMath(btnOriginal, "\\frac{d}{dx}\\left(f(x)\\right)", ctx);
-    const btnOpciones = this.crearBotonOpciones(barra, t().botones.derivadaEvaluada);
-    const menu = panelLatex.createDiv();
-    menu.style.cssText = "position:absolute; top:36px; left:0; right:0; z-index:7; display:none; flex-direction:column; align-items:center; pointer-events:none;";
-    const caja = menu.createDiv();
-    caja.style.cssText = 'pointer-events:auto; display:flex; flex-direction:column; gap:2px; padding:4px; border-radius:10px; background:var(--lmath-panel); border:1px solid var(--lmath-borde); box-shadow:var(--lmath-sombra-flotante); font-family:"Lora", var(--font-interface);';
-    const itemEstilo = (el, habilitado) => {
-      el.style.cssText = "padding:5px 14px; font-size:11px; line-height:1.15; user-select:none; border-radius:6px; white-space:nowrap; text-align:center; transition:background 0.12s ease, color 0.12s ease; " + (habilitado ? "color:var(--lmath-texto); cursor:pointer; pointer-events:auto;" : "color:var(--lmath-texto-apagado); cursor:default; pointer-events:none;");
-    };
-    const opciones = [
-      { etiqueta: t().botones.derivada, tex: "f'(x)", vista: "derivada" },
-      // Vista combinada: su glifo APILA el operador sobre la derivada (representa que
-      // muestra ambas expresiones a la vez, una debajo de la otra).
-      {
-        etiqueta: t().botones.operadorYDerivada,
-        tex: "\\begin{matrix}\\frac{d}{dx}\\left(f(x)\\right)\\\\ f'\\left(x\\right)\\end{matrix}",
-        vista: "ambas"
-      }
-    ];
-    const items = opciones.map((o) => {
-      const el = caja.createDiv();
-      this.ponerTooltip(el, o.etiqueta);
-      this.montarEtiquetaMath(el, o.tex, ctx);
-      return el;
+    await this.montarPanelVistas(contenedor, ctx, limpieza, reparto, {
+      operador,
+      resultado: derivadaLatex(ecuaciones),
+      glifoOperador: "\\frac{d}{dx}\\left(f(x)\\right)",
+      tooltipOpciones: t().botones.derivadaEvaluada,
+      opciones: [
+        { etiqueta: t().botones.derivada, tex: "f'(x)", vista: "resultado" },
+        // Vista combinada: su glifo APILA el operador sobre la derivada (representa que
+        // muestra ambas expresiones a la vez, una debajo de la otra).
+        {
+          etiqueta: t().botones.operadorYDerivada,
+          tex: "\\begin{matrix}\\frac{d}{dx}\\left(f(x)\\right)\\\\ f'\\left(x\\right)\\end{matrix}",
+          vista: "ambas"
+        }
+      ]
     });
-    let vista = "operador";
-    let abierto = false;
-    const sincronizar = () => {
-      this.estiloBotonPanel(btnOriginal, vista === "operador");
-      this.estiloBotonOpciones(btnOpciones, vista !== "operador" || abierto);
-      this.iconoBotonOpciones(btnOpciones, abierto, t().botones.derivadaEvaluada);
-      const actual = firmaDe(vista);
-      items.forEach((el, i2) => itemEstilo(el, firmaDe(opciones[i2].vista) !== actual));
-      menu.style.display = abierto ? "flex" : "none";
-    };
-    const aplicar = async (i2) => {
-      abierto = false;
-      const v = opciones[i2].vista;
-      if (firmaDe(v) !== firmaDe(vista)) {
-        vista = v;
-        await renderLatex(latexDe(vista));
-      }
-      sincronizar();
-    };
-    btnOriginal.addEventListener("click", () => void (async () => {
-      abierto = false;
-      if (vista !== "operador") {
-        vista = "operador";
-        await renderLatex(operador);
-      }
-      sincronizar();
-    })());
-    btnOpciones.addEventListener("click", (e3) => {
-      e3.stopPropagation();
-      abierto = !abierto;
-      sincronizar();
-    });
-    items.forEach((el, i2) => el.addEventListener("click", () => void aplicar(i2)));
-    const onDocDown = (e3) => {
-      if (abierto && !barra.contains(e3.target) && !caja.contains(e3.target)) {
-        abierto = false;
-        sincronizar();
-      }
-    };
-    document.addEventListener("mousedown", onDocDown);
-    limpieza.register(() => document.removeEventListener("mousedown", onDocDown));
-    sincronizar();
-    await renderLatex(operador);
   }
   /**
    * Panel izquierdo de obs-integral: el scroller de fórmula + una barra de toggle de TRES
@@ -60739,86 +62360,28 @@ var MotorExperimental = class {
    * el cuerpo es la etiqueta (`\text{Integral divergente}`).
    */
   async montarPanelIntegral(contenedor, source, ctx, limpieza, reparto) {
-    const { panelLatex, renderLatex } = this.crearScrollerLatex(contenedor, ctx, limpieza, reparto);
     const operador = integralOperadorLatex(source);
     const { cuerpo, conector } = cuerpoAreaLatexExacto(source);
     const barrow = integralPrimitivaLatex(source);
     const resultado = cuerpo === null ? barrow != null ? barrow : operador : barrow ? `${barrow} ${conector} ${cuerpo}` : integralValorLatex(source, cuerpo, conector);
-    const latexDe = (v) => v === "operador" ? operador : v === "resultado" ? resultado : [operador, resultado];
-    const firmaDe = (v) => {
-      const l = latexDe(v);
-      return typeof l === "string" ? l : l.join(" ");
-    };
-    const barra = panelLatex.createDiv();
-    barra.style.cssText = "position:absolute; top:8px; left:0; right:0; z-index:6; display:flex; gap:6px; justify-content:center; pointer-events:none;";
-    const btnOriginal = barra.createDiv();
-    this.ponerTooltip(btnOriginal, t().botones.operador);
-    this.montarEtiquetaMath(btnOriginal, "\\int_a^b f(x)\\,dx", ctx);
-    const btnOpciones = this.crearBotonOpciones(barra, t().botones.primitivaEvaluada);
-    const menu = panelLatex.createDiv();
-    menu.style.cssText = "position:absolute; top:36px; left:0; right:0; z-index:7; display:none; flex-direction:column; align-items:center; pointer-events:none;";
-    const caja = menu.createDiv();
-    caja.style.cssText = 'pointer-events:auto; display:flex; flex-direction:column; gap:2px; padding:4px; border-radius:10px; background:var(--lmath-panel); border:1px solid var(--lmath-borde); box-shadow:var(--lmath-sombra-flotante); font-family:"Lora", var(--font-interface);';
-    const itemEstilo = (el, habilitado) => {
-      el.style.cssText = "padding:5px 14px; font-size:11px; line-height:1.15; user-select:none; border-radius:6px; white-space:nowrap; text-align:center; transition:background 0.12s ease, color 0.12s ease; " + (habilitado ? "color:var(--lmath-texto); cursor:pointer; pointer-events:auto;" : "color:var(--lmath-texto-apagado); cursor:default; pointer-events:none;");
-    };
-    const opciones = [
-      { etiqueta: t().botones.primitiva, tex: "\\left[F(x)\\right]_a^b", vista: "resultado" },
-      {
-        etiqueta: t().botones.operadorYPrimitiva,
-        tex: "\\begin{matrix}\\int_a^b f\\,dx\\\\ \\left[F(x)\\right]_a^b\\end{matrix}",
-        vista: "ambas"
-      }
-    ];
-    const items = opciones.map((o) => {
-      const el = caja.createDiv();
-      this.ponerTooltip(el, o.etiqueta);
-      this.montarEtiquetaMath(el, o.tex, ctx);
-      return el;
+    await this.montarPanelVistas(contenedor, ctx, limpieza, reparto, {
+      operador,
+      resultado,
+      // Glifo del botón principal: el operador integral (`∫ₐᵇ f dx`), análogo al `d/dx(f(x))`
+      // del botón "Operador" de obs-derivate.
+      glifoOperador: "\\int_a^b f(x)\\,dx",
+      tooltipOpciones: t().botones.primitivaEvaluada,
+      opciones: [
+        // La PRIMITIVA evaluada (glifo `[F(x)]_a^b`) y AMBAS (operador apilado sobre
+        // primitiva). Espejo de "Derivada" / "Operador y derivada" de obs-derivate.
+        { etiqueta: t().botones.primitiva, tex: "\\left[F(x)\\right]_a^b", vista: "resultado" },
+        {
+          etiqueta: t().botones.operadorYPrimitiva,
+          tex: "\\begin{matrix}\\int_a^b f\\,dx\\\\ \\left[F(x)\\right]_a^b\\end{matrix}",
+          vista: "ambas"
+        }
+      ]
     });
-    let vista = "operador";
-    let abierto = false;
-    const sincronizar = () => {
-      this.estiloBotonPanel(btnOriginal, vista === "operador");
-      this.estiloBotonOpciones(btnOpciones, vista !== "operador" || abierto);
-      this.iconoBotonOpciones(btnOpciones, abierto, t().botones.primitivaEvaluada);
-      const actual = firmaDe(vista);
-      items.forEach((el, i2) => itemEstilo(el, firmaDe(opciones[i2].vista) !== actual));
-      menu.style.display = abierto ? "flex" : "none";
-    };
-    const aplicar = async (i2) => {
-      abierto = false;
-      const v = opciones[i2].vista;
-      if (firmaDe(v) !== firmaDe(vista)) {
-        vista = v;
-        await renderLatex(latexDe(vista));
-      }
-      sincronizar();
-    };
-    btnOriginal.addEventListener("click", () => void (async () => {
-      abierto = false;
-      if (vista !== "operador") {
-        vista = "operador";
-        await renderLatex(operador);
-      }
-      sincronizar();
-    })());
-    btnOpciones.addEventListener("click", (e3) => {
-      e3.stopPropagation();
-      abierto = !abierto;
-      sincronizar();
-    });
-    items.forEach((el, i2) => el.addEventListener("click", () => void aplicar(i2)));
-    const onDocDown = (e3) => {
-      if (abierto && !barra.contains(e3.target) && !caja.contains(e3.target)) {
-        abierto = false;
-        sincronizar();
-      }
-    };
-    document.addEventListener("mousedown", onDocDown);
-    limpieza.register(() => document.removeEventListener("mousedown", onDocDown));
-    sincronizar();
-    await renderLatex(operador);
   }
   /**
    * Etiqueta formal del bloque, o null si es graficable: bloque VACÍO → "Sin
@@ -61469,25 +63032,30 @@ var LMathPlugin = class extends import_obsidian5.Plugin {
     void registrarFuenteLora(this);
     const ajustes = () => this.ajustes;
     const graphEngine = new GraphEngine(this);
-    const motorGraph = new MotorExperimental(this, false, false, ajustes);
+    const motorGraph = new MotorExperimental(this, "graph", ajustes);
     this.registerMarkdownCodeBlockProcessor(
       "obs-graph",
       (source, el, ctx) => this.MOTOR_EXPERIMENTAL ? motorGraph.process(source, el, ctx) : graphEngine.process(source, el, ctx)
     );
-    const motorSistema = new MotorExperimental(this, true, false, ajustes);
+    const motorSistema = new MotorExperimental(this, "system", ajustes);
     this.registerMarkdownCodeBlockProcessor(
       "obs-system",
       (source, el, ctx) => motorSistema.process(source, el, ctx)
     );
-    const motorDerivada = new MotorExperimental(this, false, true, ajustes);
+    const motorDerivada = new MotorExperimental(this, "derivate", ajustes);
     this.registerMarkdownCodeBlockProcessor(
       "obs-derivate",
       (source, el, ctx) => motorDerivada.process(source, el, ctx)
     );
-    const motorIntegral = new MotorExperimental(this, false, false, ajustes, true);
+    const motorIntegral = new MotorExperimental(this, "integral", ajustes);
     this.registerMarkdownCodeBlockProcessor(
       "obs-integral",
       (source, el, ctx) => motorIntegral.process(source, el, ctx)
+    );
+    const motorTrig = new MotorExperimental(this, "trig", ajustes);
+    this.registerMarkdownCodeBlockProcessor(
+      "obs-trig",
+      (source, el, ctx) => motorTrig.process(source, el, ctx)
     );
   }
   /** Carga las preferencias (loadData) copiando SOLO las claves vigentes (las de

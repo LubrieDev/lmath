@@ -21,6 +21,10 @@
   --lmath-texto: var(--text-normal);
   --lmath-texto-tenue: var(--text-muted);
   --lmath-texto-apagado: var(--text-faint);
+  /* Avisos del bloque (una opción mal escrita, un ángulo ilegible). Es cromo, así que sigue
+     al tema como el resto del marco; se separa de `--lmath-texto-tenue` porque un aviso que
+     se lee igual que el texto secundario no avisa de nada. */
+  --lmath-aviso: var(--text-warning);
   /* Chip flotante (inicio, zoom, ⓘ) y botones de la barra del panel. Se posan SOBRE el
      plano, cuya superficie es `--background-primary`; usar la secundaria los despega. */
   --lmath-chip: var(--background-secondary);

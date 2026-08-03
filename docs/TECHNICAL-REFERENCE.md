@@ -1,9 +1,23 @@
 # LMath — Internal Technical Reference
 
-Reverse-engineered from the source tree as of v1.2.4. Every statement in this document is
-backed by code; file paths are given per section. Where something cannot be confirmed from
-the code, it is stated explicitly. This is a reference manual for the internals, not
-onboarding material — for how to build, test and contribute, see `CONTRIBUTING.md`.
+**Technical guide for version 1.3.2.**
+
+This document describes the source tree **as it stands at one version**, and it is expected to
+go out of date: the plugin keeps growing, and a reference that claimed to be permanent would
+just be a reference that lies later. Read it against the version in the heading, and when you
+change the code, change the section that describes it in the same pull request — that is the
+only thing that keeps this file worth reading. Sections carry the paths they describe precisely
+so that a stale paragraph can be checked against the file it names.
+
+Reverse-engineered from the source tree. Every statement in this document is backed by code;
+file paths are given per section. Where something cannot be confirmed from the code, it is
+stated explicitly. This is a reference manual for the internals, not onboarding material — for
+how to build, test and contribute, see `CONTRIBUTING.md`.
+
+**Coverage note.** The v1.3.2 pass rewrote the sections touched by the new `obs-trig` block
+(§1, §2, §3, §13, §14.2, §14.3, §15.3, §16) and verified them against the code. The
+engine-internals sections (§4–§12) were last revised for v1.2.4 and were not re-audited for
+this release; they describe machinery `obs-trig` does not use.
 
 Naming note: the codebase is written with Spanish identifiers and comments. This document
 uses the actual identifiers (`Escena`, `ProveedorGeometria`, `despejar`…) so that text and
@@ -13,9 +27,16 @@ code can be cross-referenced directly.
 
 ## 1. System overview
 
-The plugin registers four Markdown code-block languages in Obsidian — `obs-graph`,
-`obs-system`, `obs-derivate`, `obs-integral` — and renders each block as a two-pane widget:
-a KaTeX formula panel on the left and an interactive Canvas-2D plot on the right.
+The plugin registers five Markdown code-block languages in Obsidian — `obs-graph`,
+`obs-system`, `obs-derivate`, `obs-integral`, `obs-trig` — and renders each block as a
+two-pane widget: a panel on the left and an interactive Canvas-2D plane on the right.
+
+The first four are **graphing** blocks: a KaTeX formula panel and a plot with camera, zoom,
+pan and crosshair. `obs-trig` (added in 1.3.2, §13) shares the frame — container, panel box,
+column/floating split, palette, lifecycle — and **nothing else**: it has no `Camara`, no
+`Escena`, no `ProveedorGeometria` and no tracer, because there is no curve to sample. Its
+left pane is a control surface rather than a formula showcase. When reading §4–§12, assume
+`obs-trig` is not involved.
 
 Internally the code is organized in **rings** (the term appears in
 `src/motor/contracts/index.ts`), enforced purely by import discipline:
@@ -23,8 +44,8 @@ Internally the code is organized in **rings** (the term appears in
 | Ring | Content | mathjs? | Obsidian/DOM? |
 |---|---|---|---|
 | 0 | `src/motor/contracts/*` — types only, zero logic, zero deps | no | no |
-| 1 | Numeric geometry: `src/motor/{tracing,discovery,analysis,scene,rendering,interaction}` | no | Canvas 2D only (rendering/interaction) |
-| 2 | Symbolic/parsing layer: `src/parser.ts`, `src/evaluador.ts`, `src/motor/parsing/*`, `src/motor/fields/*`, `src/{latex,simplificar,despejar,despejeInverso,condiciones,derivar,integral,integrar,formatoExpr,analisis,degeneradas,constantes}.ts` | yes (quarantined) | no |
+| 1 | Numeric geometry: `src/motor/{tracing,discovery,analysis,scene,rendering,interaction}`; plus `src/trig/{modeloTrig,exactosTrig,interaccionTrig,renderTrig}.ts` (§13) | no | Canvas 2D only (rendering/interaction) |
+| 2 | Symbolic/parsing layer: `src/parser.ts`, `src/evaluador.ts`, `src/motor/parsing/*`, `src/motor/fields/*`, `src/{latex,simplificar,despejar,despejeInverso,condiciones,derivar,integral,integrar,formatoExpr,analisis,degeneradas,constantes}.ts`; plus `src/trig/bloqueTrig.ts`, which compiles the written angle | yes (quarantined) | no |
 | 3 | Host: `main.ts`, `src/host-obsidian/*`, `src/engines/obs-graph/GraphEngine.ts` | indirectly | yes |
 
 Two hard quarantines follow from this:
@@ -41,7 +62,8 @@ Two hard quarantines follow from this:
 There are **two rendering engines** for `obs-graph`:
 
 - The **new engine** (`src/motor/` + host adapter `src/host-obsidian/MotorExperimental.ts`),
-  active for all four blocks.
+  active for the four graphing blocks. `obs-trig` uses the same host adapter but not the
+  engine.
 - The **legacy `GraphEngine`** (`src/engines/obs-graph/GraphEngine.ts`, WebGL-based), kept
   intact as a fallback behind the compile-time flag `MOTOR_EXPERIMENTAL = true` in
   `main.ts:23`. Only `obs-graph` can fall back; the comment in `main.ts` records that the
@@ -59,22 +81,25 @@ There are **two rendering engines** for `obs-graph`:
    merge; fossil keys found on disk trigger an immediate re-save with the filtered object
    (`main.ts:109-123`). It also calls `fijarIdioma()` before any UI text is produced, so the
    load notice and settings tab already appear in the stored language.
-2. Registers the settings tab (`PestanaAjustesLMath`, §13.2).
-3. `registrarFuenteLora(this)` without `await` — non-blocking font registration (§13.4).
-4. Creates one `MotorExperimental` per block type and registers the four
-   `registerMarkdownCodeBlockProcessor` callbacks. The constructor flags select the mode:
+2. Registers the settings tab (`PestanaAjustesLMath`, §14.2).
+3. `registrarFuenteLora(this)` without `await` — non-blocking font registration (§14.4).
+4. Creates one `MotorExperimental` per block type and registers the five
+   `registerMarkdownCodeBlockProcessor` callbacks. A **single string discriminant** selects
+   the mode; until 1.3.2 this was three positional booleans, which a fifth block would have
+   turned into `(false, false, ajustes, false, true)`:
 
    | Block | Construction | Meaning |
    |---|---|---|
-   | `obs-graph` | `new MotorExperimental(this, false, false, ajustes)` | one curve |
-   | `obs-system` | `new MotorExperimental(this, true, false, ajustes)` | N equations, N colors |
-   | `obs-derivate` | `new MotorExperimental(this, false, true, ajustes)` | plot f′(x) |
-   | `obs-integral` | `new MotorExperimental(this, false, false, ajustes, true)` | plot integrand + shade ∫ₐᵇ |
+   | `obs-graph` | `new MotorExperimental(this, "graph", ajustes)` | one curve |
+   | `obs-system` | `new MotorExperimental(this, "system", ajustes)` | N equations, N colors |
+   | `obs-derivate` | `new MotorExperimental(this, "derivate", ajustes)` | plot f′(x) |
+   | `obs-integral` | `new MotorExperimental(this, "integral", ajustes)` | plot integrand + shade ∫ₐᵇ |
+   | `obs-trig` | `new MotorExperimental(this, "trig", ajustes)` | unit circle, own renderer (§13) |
 
    `ajustes` is a **live getter** (`() => this.ajustes`), not a snapshot: a settings change
    affects any block that re-renders, without reloading the plugin.
 There is no step 5: the dev-console global that used to be installed here was removed in
-1.1.8 (§14.2).
+1.1.8 (§15.2).
 
 ---
 
@@ -84,8 +109,14 @@ There is no step 5: the dev-console global that used to be installed here was re
 (`src/host-obsidian/MotorExperimental.ts:71`) is the orchestration point. The complete flow
 for a block render:
 
+`obs-trig` leaves this flow **before it starts**: `process` dispatches to `procesarTrig`
+(§13) as its first act, so none of the stages below run for it — no equation split, no
+`ObjetoMatematico`, no composition root, no camera.
+
 ```
 source (raw block text)
+  │
+  ├─ modo === "trig" → procesarTrig(source, el, ctx) and return  (§13)
   │
   ├─ dividirEcuaciones(source)                 structural split (§4.1)
   │     └─ visibles = all (system) | first (others)
@@ -95,18 +126,21 @@ source (raw block text)
   │     obs-integral : extraerIntegral → integrand/limits (§12)
   │     otherwise    : graficadas = visibles
   │
-  ├─ LEFT PANEL  montarPanelLatex / montarPanelDerivada / montarPanelIntegral (§13.1)
+  ├─ LEFT PANEL  montarPanelLatex / montarPanelDerivada / montarPanelIntegral (§14.1)
   │     └─ transformation pipeline → bloqueALatex → MarkdownRenderer.render ($$…$$, KaTeX)
   │
   └─ RIGHT PANE (canvas)
         crearMotor / crearMotorSistema (composition root, §7)
-        ├─ classification veil (clasificarBloque → localizarVelo) (§4.4, §13.3)
+        ├─ classification veil (clasificarBloque → localizarVelo) (§4.4, §14.3)
         ├─ Camara + Navegacion wiring (§10)
         ├─ two-pass render scheduler (below)
         ├─ auto-framing (encuadreAutomatico, once) (§9.4)
-        └─ UI chrome: ⚙ badge, 🏠/+/− buttons, ⌖ rail toggle,
+        └─ UI chrome: 🏠/+/− buttons, ⌖ rail toggle,
            per-curve color selectors, ⓘ popovers
 ```
+
+(The experimental ⚙ badge that used to sit in that chrome was removed in 1.2.8; the glyph
+appears nowhere in `src/`.)
 
 ### 3.1 Two-pass rendering scheduler
 
@@ -228,7 +262,7 @@ on top, in priority order: unsupported LaTeX commands first (§5.1 —
 integral", "Invalid integrand", "No system", "Incomplete system", "No function"), then the
 per-equation degeneracy test. A non-null result renders the **veil**: a dark overlay with a
 formal label floating over a still-interactive plot. Core labels are produced in canonical
-Spanish and translated at the host boundary (§13.3).
+Spanish and translated at the host boundary (§14.3).
 
 ### 4.5 Polar period: `src/motor/parsing/periodoPolar.ts`
 
@@ -446,7 +480,7 @@ legacy engine: a fixed-range scan (x ∈ [−10, 10], 1000 steps) producing:
   `construirPuntosNotables` merges coincident markers within a world-space tolerance.
 
 Note the parallel system: the *new* engine computes notable points **from geometry**
-(§8.6), not from this module; `analisis.ts` remains the analytic path for explicit
+(§8.5), not from this module; `analisis.ts` remains the analytic path for explicit
 `obs-graph` summaries (`montarBotonInfo`) and the legacy engine.
 
 ### 5.6 LaTeX presentation: `src/latex.ts`
@@ -557,7 +591,7 @@ emit `"best-effort"`; `"exacta"` is reserved for a future certified mode), and o
 `parametro` — intrinsic-parameter samples aligned 1:1 with vertices. **`parametro` is the
 key interaction contract**: it is x for explicit-like branches, absent for
 parametric/polar/continuation branches, and its presence is what enables the per-x
-crosshair and rail (§8.6, §9.2).
+crosshair and rail (§8.5, §9.2).
 
 `Tolerancia` (`contracts/viewport.ts`) is the quality contract: `desviacionMaxPx` (Fréchet-
 style screen deviation), `pasoMaxPx`, and `pasada`. `Escena.actualizar` fixes it at
@@ -568,7 +602,7 @@ pixel constants (`SALTO_PX_MAX = 8`, `PASO_PX_FINAL = 2.5`, …).
 ### 8.2 Tracers: `src/motor/tracing/`
 
 **`TrazadorExplicitoAdaptativo`** (`explicit/`) — the obs-graph sampler *extracted* behind
-the contract, behaviorally identical to the shared legacy sampler (§14.4; the test suite
+the contract, behaviorally identical to the shared legacy sampler (§14.5; the test suite
 enforces parity). Uniform coarse sampling (1000–8000 samples, density tied to pixels) +
 recursive refinement of any interval whose screen jump exceeds 8 px (skipping intervals
 entirely off-screen on the same side), with depth 12 (interactive) / 18 (final). Key
@@ -586,7 +620,7 @@ mechanisms:
   rail read true y values; visual clipping belongs to the renderer), then a synthetic
   vertex at `yTop/yBot` = one view-height beyond the border makes the stroke climb the
   asymptote. These synthetic vertices are later recognized and pruned by interaction code
-  (`podarVerticesDePolo`, §8.6).
+  (`podarVerticesDePolo`, §8.5).
 - **Defensive cuts at exhausted refinement**: a sub-pixel interval that still jumps more
   than a view height across the visible band is a masked pole → cut; a sub-pixel jump whose
   interior probes confirm two plateaus (`esSaltoFinito`) is a step discontinuity (floor /
@@ -1008,9 +1042,152 @@ panel falls back to the numeric value. No `+C` (irrelevant under Barrow subtract
 
 ---
 
-## 13. Host presentation layer
+## 13. The trigonometric-circle subsystem (`obs-trig`, `src/trig/`)
 
-### 13.1 Formula panels (`MotorExperimental.ts`)
+Added in 1.3.2. The only block that does not use the geometry engine: a unit circle is an
+`arc()`, and forcing it through `ProveedorGeometria` → tracer → `Rama[]` would draw it *worse*
+than the browser does, as a sampled polyline. What it does share is the host frame
+(§14.1's container, panel box and column/floating split), the palette (§9.2's `paletaPlano`)
+and the lifecycle. Five modules: three fully pure, one that compiles expressions and one that
+draws to a canvas context:
+
+| Module | Ring | Role |
+|---|---|---|
+| `bloqueTrig.ts` | 2 | Block source → angles. The only one that compiles expressions. |
+| `modeloTrig.ts` | 1 | Everything derivable from one angle, computed once. |
+| `exactosTrig.ts` | 1 | The exact-value table for the 24 notable angles. |
+| `interaccionTrig.ts` | 1 | Drag/keyboard/slider arithmetic, DOM-free. |
+| `renderTrig.ts` | 1 | Canvas-2D renderer and the angle-writing functions. |
+
+### 13.1 Parser: `bloqueTrig.ts`
+
+**One line, one angle; the block has no options.** `parsearBloqueTrig` splits on newlines,
+takes the text left of the first `=` as a label (`θ` when absent) and evaluates the rest.
+There is deliberately no key/value syntax: without a place to hang an option, the block cannot
+grow one. Anything that is not a readable angle becomes an `AvisoTrig` (`{tipo, texto}`,
+untranslated — the host writes it with `t()`), and a block with **no** readable angle still
+renders, falling back to `ANGULO_POR_DEFECTO` (30°) while reporting what it could not read.
+
+It does **not** go through `dividirEcuaciones` (§4.1): there is no equation here, the `=` only
+names. It does reuse the input pipeline —
+`compilarExpresion(insertarProductoImplicito(normalizarEntrada(s)))` — so an angle accepts
+everything any other block accepts.
+
+**Units.** The angle a block declares is read in **radians** when it is a bare number; `°` is
+explicit (`normalizarEntrada` rewrites it to `*(pi/180)`, §5.1). Note that this is *not* the
+same rule as the one inside a trigonometric call, where a literal argument is read in degrees
+(`argumentoTrigonometrico`, §5.1): `θ = 30` is 30 radians, while `θ = sin(30)` is
+`sin(30°) = 0.5` radians. Both rules are live in the same line and neither is a bug in the
+other's terms.
+
+**`fuenteSimbolica(expr)`** (in `exactosTrig.ts`) decides from the **text**, never the number,
+whether the angle has a right to exact values: it must name degrees or π. `0.5236` does not
+earn it however close it passes to π/6 — an exactness that lies is worse than none.
+
+**`componenteNombrada(expr)`** returns the component a block *names*, so `sin(30)` opens with
+the sine already traced. It matches on the **normalized** string, so every spelling of one call
+(`\sin{30}`, `\sin 30`, `cos(45°)`) is handled by one rule. Three conditions, and the middle
+one is the subtle one:
+
+1. The name opens the string — excludes `2sin(30)`, `-sin(30)`, and also `asin`/`sinh`, which
+   do not start with `sin(`.
+2. The parenthesis closing that call is the **last character**, found by matching levels rather
+   than by a regex: `sin(30)+cos(30)` starts and ends the right way, and only counting
+   parentheses reveals that the final `)` is not the call's.
+3. The argument is constant, decided by evaluating it in an empty scope (`x` yields `NaN`).
+
+It selects a trace; it never reinterprets the angle.
+
+### 13.2 Angle model: `modeloTrig.ts`
+
+`modeloDeAngulo(rad)` → `ModeloTrig`: point on the circle, `PosicionAngular`, reference angle,
+whole turns, principal coterminal, arc length, sector area and the six ratios. No DOM, no i18n
+— positions are keys (`"II"`, `"ejeY-"`), not translated text, on the same split as
+`analysis/analisisDerivada.ts` (§11).
+
+Two decisions the tests pin down:
+
+- **Position is decided on the angle, never on the sign of `Math.cos`/`Math.sin`.**
+  `Math.cos(π/2)` is `6.1e-17` — positive — so asking the cosine would file 90° in quadrant I.
+  A multiple of π/2 within `EPS_EJE = 1e-12` is an axis; that margin absorbs float noise from
+  `90*(π/180)` vs `π/2`, and is far too tight to swallow a hand-written angle.
+- **Undefined ratios are `null`, not a huge number.** `tan 90°` is not `1.6e16`; the panel
+  writes "undefined" and the plane draws no segment. Which ones die is read off the position,
+  not off a division.
+
+Turns use `Math.trunc`, not `floor`: −400° is one turn clockwise, not two.
+
+### 13.3 Exact values: `exactosTrig.ts`
+
+A canonical table of the **7 first-quadrant** notables (0°…90° in steps of 15°), with the other
+17 derived by reduction plus quadrant sign. Writing all 24 by hand would let a single typo
+produce a cross-quadrant inconsistency — `sin 150°` ≠ `sin 30°` — that no one spots by eye;
+derived, that is impossible by construction. Every cell is checked numerically against `Math`
+to 1e-12 by the suite.
+
+`ValorExacto` carries `{tex, txt}` plus a `compuesto` flag for values that are a **sum at their
+outermost level** (`2+\sqrt{3}`): negating those by prefixing a minus silently produces a
+different number that happens to be the *opposite* ratio's value, so it looked plausible. They
+are wrapped in parentheses instead.
+
+`radianesExactoLatex` and the `tex` field currently have **no production consumer** — the panel
+and the ⓘ popover both render plain unicode (`√3/2`), because the popover is rebuilt on every
+frame of a drag and six KaTeX formulas per frame is untenable. They are exercised by the tests
+only; the only KaTeX in the block is the fixed `x² + y² = 1`.
+
+### 13.4 Interaction arithmetic: `interaccionTrig.ts`
+
+Pure, so it is testable without a DOM; the event wiring stays in the host.
+
+- **`deltaAngular`** makes the drag *accumulate*: 350° → 370°, not → 10°, so turns can be
+  counted with a finger.
+- **`imantar`** snaps to multiples of 15° within 4°, preserving turns (733° → 735°, not 15°).
+  **`imanVigente(ajuste, altPulsado)`** decides whether it applies at all: the setting rules,
+  and `Alt` suspends it while held. It is consulted **per event**, so releasing `Alt` mid-drag
+  snaps again without lifting the finger — which works only because the host keeps the raw and
+  the displayed angle separate (§13.5).
+- **`rangoDeslizador`** is always symmetric about 0 (base −360…360), widened in whole turns to
+  contain every angle the block *writes*, so a block saying `θ = 750°` stays reachable.
+  **`acotarARecorrido`** caps the raw value to that same range: the three controls write one
+  number, so none may reach a value another cannot represent.
+- **`pasoAnimacion`** wraps into `[0, 2π)` — the opposite of the drag, deliberately. A drag
+  that keeps turning expresses intent; an animation's turns only measure elapsed time. The
+  visible consequence is that the first frame reduces a multi-turn angle to its coterminal:
+  the point does not move, only the number.
+
+### 13.5 Renderer and the host path
+
+`renderTrig.dibujarTrig` draws, in order: cartesian grid, radial spokes, axes, circle, rim
+labels, the inactive angles, then the active one with its components on top. The framing is
+fixed (`encuadreTrig`: centre plus a radius at 0.7 of the shorter half-side, leaving the margin
+the labels live in) — no camera, no viewport to keep in sync.
+
+Details worth knowing before editing it:
+
+- Spokes are drawn every 15° **except the multiples of 90°**, where the axis already is: 20
+  dotted spokes, 24 dots on the rim, the 16 classics fatter.
+- Rim labels degrade by radius: two lines (degrees over the π fraction) ≥ 96 px, one line in
+  the chip's unit ≥ 84 px, the four axes ≥ 64 px, nothing below. The label under the active
+  angle is suppressed — matched by coterminal — because the coordinates of P need that gap.
+- The three components are drawn **always**, dotted at 55% when off: a component that did not
+  exist until switched on would have to be discovered before it could be understood. Only for
+  the active angle.
+- `textoGradosDe(rad)` is the **single** way an angle is written in degrees, used by the panel
+  reading and by every row of the ⓘ popover. It was two functions until 1.3.2, and the same
+  angle read `114.6°` in one and `114.59°` in the other, simultaneously.
+
+In the host (`MotorExperimental.procesarTrig`), the state that matters is the **raw vs
+displayed** angle split: the drag accumulates on the raw value and the magnet is applied when
+displaying it. Written to one number, the point would stick to the notable — every move would
+start from the already-snapped value and fall back inside the tolerance. Components seed from
+`componenteNombrada` of the angle that opens active and are the reader's from the first click;
+nothing here is ever written back to the note.
+
+---
+
+## 14. Host presentation layer
+
+### 14.1 Formula panels (`MotorExperimental.ts`)
 
 `crearScrollerLatex` builds the left panel: a fixed 261-px container hosting one
 independent horizontal-scroll *card* per formula (unified rule: one expression = one
@@ -1033,16 +1210,27 @@ change the displayed LaTeX"):
 - **`montarPanelDerivada`**: views operator / evaluated derivative / both (§11).
 - **`montarPanelIntegral`**: views operator / Barrow bracket + exact value / both (§12).
 
-### 13.2 Settings: `src/host-obsidian/ajustes.ts`
+### 14.2 Settings: `src/host-obsidian/ajustes.ts`
 
-`AjustesTransformaciones` = `{despejarAuto, puntosNotables, encuadreAuto, idioma}` with
-defaults `{false, true, true, "en"}`. The tab writes to `plugin.ajustes` and persists via
-the `PluginConAjustes` contract (decoupled from the concrete plugin class). Consumption
-points: `despejarAuto` in `baseAutomatica`; `puntosNotables` read **live on every
-repaint** (`escena.mostrarNotables`, `MotorExperimental.ts:214`); `encuadreAuto` once at
-block mount; `idioma` re-fixes the i18n pointer and re-renders the tab immediately.
+`AjustesTransformaciones` = `{despejarAuto, puntosNotables, encuadreAuto, unidadAngulo,
+imanTrig, idioma}` with defaults `{false, false, true, "degrees", true, "en"}`. The tab writes
+to `plugin.ajustes` and persists via the `PluginConAjustes` contract (decoupled from the
+concrete plugin class). Consumption points: `despejarAuto` in `baseAutomatica`;
+`puntosNotables` read **live on every repaint** (`escena.mostrarNotables`); `encuadreAuto`
+once at block mount; `unidadAngulo` and `imanTrig` once at `obs-trig` mount (§13.5);
+`idioma` re-fixes the i18n pointer and re-renders the tab immediately.
 
-### 13.3 i18n: `src/i18n/index.ts`
+The two trig settings are **presentation and gesture only** — neither changes how a block is
+*read*. `unidadAngulo` can be overridden per block, live, by the DEG/RAD/GRAD chip, which
+mutates a local and repaints; it does not write to the note and does not survive a re-render.
+`imanTrig` has no chip: `Alt` suspends it per gesture instead (§13.4).
+
+Since 1.3.1 the tab is declared **only** declaratively (`getSettingDefinitions()` +
+`getControlValue`/`setControlValue`), so Obsidian paints it and indexes its settings in the
+settings search. The imperative `display()` fallback — required for Obsidian 1.5–1.12 — went
+away with `minAppVersion` 1.13.0, and with it the last deprecated API in the plugin.
+
+### 14.3 i18n: `src/i18n/index.ts`
 
 Framework-agnostic string tables (`en` default, `es`) behind `t()`, with a module-level
 active-language pointer set by `fijarIdioma`. The core engine does **not** depend on i18n:
@@ -1051,7 +1239,12 @@ exactly those labels at the host boundary via an es→en map keyed by canonical 
 passing through anything unmapped. Host-generated labels come out of `t()` already
 localized.
 
-### 13.4 Fonts: `src/host-obsidian/fuentes.ts` + `styles.css`
+`obs-trig` follows the same split: its parser emits structured warnings (`AvisoTrig`,
+§13.1) with no text at all, and the host phrases them with `t().trig.anguloNoValido(...)`.
+The `trig` table also holds the component names, the four ⓘ section titles and the eight
+`PosicionAngular` labels, which is why the model may return `"ejeY-"` and never a sentence.
+
+### 14.4 Fonts: `src/host-obsidian/fuentes.ts` + `styles.css`
 
 The Lora variable fonts (`assets/fonts/Lora/*.ttf`) are imported as **Data URIs** — the
 esbuild flag `--loader:.ttf=dataurl` (package.json `build` script) embeds them in
@@ -1062,7 +1255,7 @@ to `.lmath-grafica` (the plot's DOM overlays) only — KaTeX keeps its own fonts
 neutralizes Obsidian's own math-block overflow wrappers so the plugin's scroller is the
 only scrollbar.
 
-### 13.5 Legacy engine: `src/engines/obs-graph/GraphEngine.ts` (+ `src/render/muestreoExplicito.ts`, `src/webgl.ts`)
+### 14.5 Legacy engine: `src/engines/obs-graph/GraphEngine.ts` (+ `src/render/muestreoExplicito.ts`, `src/webgl.ts`)
 
 The original single-function engine, still compiled and reachable via the flag in
 `main.ts`. Differences from the new engine: three stacked canvases (WebGL for the curve —
@@ -1079,9 +1272,9 @@ have no other consumers.
 
 ---
 
-## 14. Development tooling and tests
+## 15. Development tooling and tests
 
-### 14.1 Pipeline tracer: `src/herramientas/trazador.ts` + `formato.ts`
+### 15.1 Pipeline tracer: `src/herramientas/trazador.ts` + `formato.ts`
 
 A pure (no DOM/Obsidian) reproduction of what each block computes, calling the *same*
 functions as panel and engine (`dividirEcuaciones`, `simplificarEcuaciones`,
@@ -1092,7 +1285,7 @@ diagnosis (object type, normalized form, solve status). Input syntax `[ec1/ec2]`
 several equations on one terminal line. `formato.ts` renders the structure to plain text
 with facet flags.
 
-### 14.2 Consumers
+### 15.2 Consumers
 
 - `herramientas/trazar.ts` — the terminal CLI, and since 1.1.8 the only consumer. Bundled
   once with `npm run trazar`, executed with plain `node`
@@ -1103,7 +1296,7 @@ with facet flags.
   removed in 1.1.8 (commit `d75536d`) while clearing the Obsidian review warnings. The tracer
   core is unaffected — it is reachable from the CLI and directly from tests.
 
-### 14.3 Tests
+### 15.3 Tests
 
 Zero-dependency micro-runner (`tests/runner.ts`; per-`describe` timing decides which suite
 a new block belongs to). Two suites:
@@ -1111,7 +1304,11 @@ a new block belongs to). Two suites:
 - `tests/motor.test.ts` (`npm run test`, ~30 s, run on every change): sampler parity vs
   the legacy reference, continuation cases, cache behavior, geometry reading, notable
   points, solve/simplify/derive/integral units, condition-system reduction,
-  expansion-guard limits, tracer tool.
+  expansion-guard limits, tracer tool. It also pulls in `tests/modulos/trig.test.ts`
+  (§13): input units, the parser's no-options rule, the angle model, the exact-value
+  table checked numerically against `Math`, drag/slider arithmetic, the ratio a block
+  names, and that the degree formatter is shared. **486 assertions at 1.3.2, 75 of them
+  for `obs-trig`.**
 - `tests/zoom.test.ts` (`npm run test:zoom`, ~80 s): the anti-regression sweep for "the
   curve disappears / flickers when zooming out" — each bounded curve traced across ~150
   viewports × 2 canvas sizes × 2 passes, asserting **traced world length** (branch count
@@ -1128,11 +1325,17 @@ are not part of that chain because they are slow:
   generated inversion towers, checking that every real root of the original is claimed by
   the solved form, plus domain, representation and simplification.
 
+**What no suite covers:** the block host. `MotorExperimental` is DOM and canvas, and there is
+no DOM harness in this project, so everything from the panel outward — including the whole of
+`procesarTrig`'s wiring — is verified by eye in a vault. When you add host behavior, push the
+decidable part down into a pure module and test *that* (`imanVigente` is the pattern: the rule
+is tested, the `ev.altKey` wiring is not).
+
 Build is esbuild, bundling `main.ts` → CJS `main.js` (target es2018, `obsidian` external).
 
 ---
 
-## 15. Cross-cutting invariants
+## 16. Cross-cutting invariants
 
 A consolidated list of the rules the code depends on (each stated or enforced in the files
 cited):
@@ -1175,3 +1378,14 @@ cited):
 11. **Diagnostics have one home** — for `obs-integral`, all verdict labels render on the
     plot; the formula panel shows formulas only (`cuerpoAreaLatexExacto`,
     `etiquetaIntegral`, `clasificarBloque`).
+12. **Exactness comes from provenance, never from proximity** — a closed form is shown only
+    when the angle's *text* named degrees or π, or when the block's own controls produced the
+    number. `0.5236` is never sine ½ however close it passes to π/6 (`fuenteSimbolica`,
+    `derechoExacto`, §13.1).
+13. **One number, one way of writing it** — the same quantity may not read differently on two
+    surfaces at once. The panel and the ⓘ popover share `textoGradosDe`; the animation reduces
+    the stored angle rather than only the shown one, so the corner and the popover cannot
+    disagree about how many turns there are (`textoGradosDe`, `pasoAnimacion`, §13.5).
+14. **Looking is not editing** — dragging, animating, switching units and turning components
+    on are all ephemeral. No interaction in any block rewrites the note; re-rendering returns
+    to what is written (`procesarTrig`, §13.5).

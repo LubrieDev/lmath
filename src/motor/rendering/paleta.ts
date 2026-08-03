@@ -63,6 +63,28 @@ export interface PaletaPlano {
   readonly bordeRegion: string;
   /** Colores de curva por orden de ecuación (se reciclan si hay más ecuaciones). */
   readonly curvas: readonly ColorRGBA[];
+
+  // ── Círculo trigonométrico (obs-trig) ──────────────────────────────────────────────────
+  // UN TONO POR RAZÓN, y no por decoración: las tres componentes se encienden por separado y
+  // pueden estar las tres en pantalla a la vez, así que el color es lo único que empareja cada
+  // trazo con su fila del panel. (Mientras solo se dibujaba una, la POSICIÓN ya la identificaba
+  // y el color habría sido redundante; en cuanto hay dos, deja de serlo.)
+  //
+  // Los tres matices son los de `curvas` —azul, verde y morado del plugin—, no una familia nueva:
+  // el bloque no introduce colores, reutiliza los que la nota ya tiene aprendidos. El reparto
+  // sigue a la maqueta: seno morado, coseno azul, tangente verde.
+  /** La circunferencia unidad. */
+  readonly trigCircunferencia: string;
+  /** Marcas de los notables sobre la circunferencia y recta auxiliar x=1 de la tangente. */
+  readonly trigNotable: string;
+  /** Lado terminal (el radio que marca el ángulo) y el punto P. */
+  readonly trigRadio: string;
+  /** Seno: el cateto vertical. */
+  readonly trigSeno: string;
+  /** Coseno: el cateto horizontal. */
+  readonly trigCoseno: string;
+  /** Tangente: el segmento sobre la recta x=1. */
+  readonly trigTangente: string;
 }
 
 /** Paleta de SIEMPRE (tema oscuro): valores idénticos a los que había repartidos por los
@@ -93,6 +115,13 @@ export const PLANO_OSCURO: PaletaPlano = {
     [0.95, 0.40, 0.45, 1.0],  // rojo
     [0.35, 0.80, 0.85, 1.0],  // cian
   ],
+  trigCircunferencia: "rgba(175,180,195,0.85)",
+  trigNotable: "rgba(160,160,170,0.45)",
+  trigRadio: "rgba(235,238,245,0.95)",
+  // Contraste sobre el fondo oscuro de Obsidian: 5,8:1 · 6,0:1 · 9,1:1.
+  trigSeno: "rgba(217,115,230,1.0)",
+  trigCoseno: "rgba(79,158,255,1.0)",
+  trigTangente: "rgba(102,217,115,1.0)",
 };
 
 /** Paleta para fondo CLARO. Mismos seis matices (son identidad del plugin), oscurecidos
@@ -123,6 +152,17 @@ export const PLANO_CLARO: PaletaPlano = {
     [0.812, 0.184, 0.271, 1.0],  // rojo   #cf2f45
     [0.051, 0.498, 0.588, 1.0],  // cian   #0d7f96
   ],
+  // Sobre blanco, los mismos roles con el peso invertido: la circunferencia y el radio ganan
+  // opacidad (un gris tenue sobre blanco desaparece) y los tonos de las componentes bajan de
+  // luminosidad hasta contrastar, sin cambiar de familia — son exactamente los de `curvas`
+  // claras, así que un seno morado lo es igual en los dos temas.
+  trigCircunferencia: "rgba(30,38,55,0.60)",
+  trigNotable: "rgba(30,38,55,0.38)",
+  trigRadio: "rgba(24,30,44,0.92)",
+  // Contraste sobre blanco: 5,8:1 · 4,5:1 · 4,4:1.
+  trigSeno: "rgba(139,63,199,1.0)",
+  trigCoseno: "rgba(47,109,246,1.0)",
+  trigTangente: "rgba(31,138,76,1.0)",
 };
 
 // Paleta ACTIVA. Es estado de módulo a propósito: el tema es una propiedad de la APP

@@ -29,6 +29,15 @@ export interface Textos {
     plano: string;
     puntosNotables: EtiquetaVelo;
     encuadreAuto: EtiquetaVelo;
+    /** Círculo trigonométrico (obs-trig). */
+    trig: {
+      seccion: string;
+      unidad: EtiquetaVelo;
+      opcionGrados: string;
+      opcionRadianes: string;
+      opcionGradianes: string;
+      iman: EtiquetaVelo;
+    };
     idioma: {
       seccion: string;
       nombre: string;
@@ -59,6 +68,8 @@ export interface Textos {
     editarBloque: string;
     transformaciones: string;
     cerrarMenu: string;
+    reproducir: string;
+    pausar: string;
     despejarY: string;
     operador: string;
     derivadaEvaluada: string;
@@ -213,6 +224,46 @@ export interface Textos {
     sistemaIncompleto: EtiquetaVelo;
     sinFuncion: EtiquetaVelo;
   };
+  /** Avisos del bloque obs-trig. El parser los produce SIN traducir (tipo + fragmento
+   *  culpable) y el host los redacta aquí, que es donde vive el idioma. */
+  trig: {
+    anguloNoValido: (expr: string) => string;
+    /** Casillas del panel: qué razones se dibujan sobre la figura (ninguna, alguna o las tres). */
+    componentes: {
+      chip: string;
+      seno: string;
+      coseno: string;
+      tangente: string;
+    };
+    /** Contenido del panel ⓘ. Las secciones son plegables y solo la 1ª abre por defecto. */
+    info: {
+      chip: string;
+      seccionRazones: string;
+      seccionMedida: string;
+      seccionPosicion: string;
+      seccionRelacionados: string;
+      grados: string;
+      radianes: string;
+      /** Rótulo de la fila que sitúa el lado terminal. NO es «cuadrante»: los mismos ocho
+       *  valores cubren los cuatro cuadrantes y los cuatro semiejes. */
+      ladoTerminal: string;
+      posicion: Record<
+        "I" | "II" | "III" | "IV" | "ejeX+" | "ejeX-" | "ejeY+" | "ejeY-", string
+      >;
+      referencia: string;
+      vueltas: string;
+      coterminal: string;
+      arco: string;
+      sector: string;
+      complementario: string;
+      suplementario: string;
+      opuesto: string;
+      antipoda: string;
+      pitagorica: string;
+      pitagoricaNota: string;
+      noDefinida: string;
+    };
+  };
 }
 
 // ── Inglés (idioma por defecto) ──────────────────────────────────────────────
@@ -243,6 +294,26 @@ const EN: Textos = {
         "reaches the edge of the view the usual framing is kept. The view stays centered " +
         "on the origin and is the one the restore key returns to. Applies when the block is re-rendered.",
     },
+    trig: {
+      seccion: "Trigonometric circle",
+      unidad: {
+        etiqueta: "Angle unit",
+        detalle:
+          "Unit used to LABEL angles in obs-trig blocks (marks, readout and panel). It is " +
+          "presentation only: what you write in a block is always read the same way — a bare " +
+          "number is radians and ° is explicit — so switching this never changes the meaning " +
+          "of an expression you already wrote.",
+      },
+      opcionGrados: "Degrees",
+      opcionRadianes: "Radians",
+      opcionGradianes: "Gradians",
+      iman: {
+        etiqueta: "Snap to notable angles",
+        detalle:
+          "While dragging the point around the circle, snap to notable angles (multiples of " +
+          "15°). Hold Alt to drag freely without turning it off.",
+      },
+    },
     idioma: {
       seccion: "Language",
       nombre: "Language",
@@ -270,6 +341,8 @@ const EN: Textos = {
     editarBloque: "Edit the block",
     transformaciones: "Transformations",
     cerrarMenu: "Close menu",
+    reproducir: "Play (sweep the circle)",
+    pausar: "Pause",
     despejarY: "Solve for y",
     operador: "Operator",
     derivadaEvaluada: "Evaluated derivative",
@@ -439,6 +512,48 @@ const EN: Textos = {
       detalle: "Write a math expression to graph.",
     },
   },
+  trig: {
+    anguloNoValido: (expr) => `Not a valid angle: “${expr}”`,
+    // Abreviadas, y en minúscula: son las mismas tres palabras que encabezan la tabla de la
+    // lectura, justo encima. Escritas distinto (`Sine` arriba, `sin` abajo) parecerían dos cosas.
+    // El eje entre paréntesis es lo único que la casilla añade sobre el nombre: dice DÓNDE se lee
+    // esa razón en el plano, que es la mitad de lo que el dibujo enseña.
+    componentes: {
+      chip: "Components", seno: "sin (y)", coseno: "cos (x)", tangente: "tan",
+    },
+    info: {
+      chip: "Angle details",
+      seccionRazones: "The six ratios",
+      seccionMedida: "Angle measure",
+      seccionPosicion: "Position on the circle",
+      seccionRelacionados: "Related angles",
+      grados: "Degrees",
+      radianes: "Radians",
+      ladoTerminal: "Terminal side",
+      posicion: {
+        "I": "Quadrant I",
+        "II": "Quadrant II",
+        "III": "Quadrant III",
+        "IV": "Quadrant IV",
+        "ejeX+": "Positive x-axis",
+        "ejeX-": "Negative x-axis",
+        "ejeY+": "Positive y-axis",
+        "ejeY-": "Negative y-axis",
+      },
+      referencia: "Reference angle",
+      vueltas: "Complete turns",
+      coterminal: "Principal coterminal",
+      arco: "Arc length",
+      sector: "Sector area",
+      complementario: "Complementary",
+      suplementario: "Supplementary",
+      opuesto: "Opposite",
+      antipoda: "Antipodal",
+      pitagorica: "sin²θ + cos²θ",
+      pitagoricaNota: "checked numerically",
+      noDefinida: "undefined",
+    },
+  },
 };
 
 // ── Español ──────────────────────────────────────────────────────────────────
@@ -469,6 +584,26 @@ const ES: Textos = {
         "borde de la vista se deja el encuadre de siempre. La vista queda centrada en el " +
         "origen y es a la que vuelve la tecla de restaurar. Se aplica al volver a renderizar el bloque.",
     },
+    trig: {
+      seccion: "Círculo trigonométrico",
+      unidad: {
+        etiqueta: "Unidad de los ángulos",
+        detalle:
+          "Unidad con la que se ROTULAN los ángulos en los bloques obs-trig (marcas, lectura " +
+          "y panel). Es solo presentación: lo que escribes en un bloque se lee siempre igual " +
+          "—un número desnudo son radianes y el ° es explícito—, así que cambiar esto nunca " +
+          "altera el significado de una expresión ya escrita.",
+      },
+      opcionGrados: "Grados",
+      opcionRadianes: "Radianes",
+      opcionGradianes: "Gradianes",
+      iman: {
+        etiqueta: "Imán a los ángulos notables",
+        detalle:
+          "Al arrastrar el punto por la circunferencia, se pega a los ángulos notables " +
+          "(múltiplos de 15°). Manteniendo Alt se arrastra libre sin tener que desactivarlo.",
+      },
+    },
     idioma: {
       seccion: "Idioma",
       nombre: "Idioma",
@@ -496,6 +631,8 @@ const ES: Textos = {
     editarBloque: "Editar el bloque",
     transformaciones: "Transformaciones",
     cerrarMenu: "Cerrar menú",
+    reproducir: "Reproducir (recorrer el círculo)",
+    pausar: "Pausar",
     despejarY: "Despejar y",
     operador: "Operador",
     derivadaEvaluada: "Derivada evaluada",
@@ -663,6 +800,46 @@ const ES: Textos = {
     sinFuncion: {
       etiqueta: "Sin función",
       detalle: "Escribe una expresión matemática para graficar.",
+    },
+  },
+  trig: {
+    anguloNoValido: (expr) => `No es un ángulo válido: «${expr}»`,
+    // Las abreviaturas NO se traducen: `sin`, `cos` y `tan` son las mismas en los dos idiomas y
+    // son las que aparecen en la tabla, en el panel ⓘ y en cualquier libro.
+    componentes: {
+      chip: "Componentes", seno: "sin (y)", coseno: "cos (x)", tangente: "tan",
+    },
+    info: {
+      chip: "Detalles del ángulo",
+      seccionRazones: "Las seis razones",
+      seccionMedida: "Medida del ángulo",
+      seccionPosicion: "Posición en la circunferencia",
+      seccionRelacionados: "Ángulos relacionados",
+      grados: "Grados",
+      radianes: "Radianes",
+      ladoTerminal: "Lado terminal",
+      posicion: {
+        "I": "Cuadrante I",
+        "II": "Cuadrante II",
+        "III": "Cuadrante III",
+        "IV": "Cuadrante IV",
+        "ejeX+": "Eje X positivo",
+        "ejeX-": "Eje X negativo",
+        "ejeY+": "Eje Y positivo",
+        "ejeY-": "Eje Y negativo",
+      },
+      referencia: "Ángulo de referencia",
+      vueltas: "Vueltas completas",
+      coterminal: "Coterminal principal",
+      arco: "Longitud de arco",
+      sector: "Área del sector",
+      complementario: "Complementario",
+      suplementario: "Suplementario",
+      opuesto: "Opuesto",
+      antipoda: "Antípoda",
+      pitagorica: "sin²θ + cos²θ",
+      pitagoricaNota: "comprobación numérica",
+      noDefinida: "no definida",
     },
   },
 };

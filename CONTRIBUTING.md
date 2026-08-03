@@ -5,6 +5,10 @@ Thanks for taking the time. Bug reports, feature requests and pull requests are 
 - **Architecture and internals:** [`docs/TECHNICAL-REFERENCE.md`](https://github.com/LubrieDev/lmath/blob/main/docs/TECHNICAL-REFERENCE.md)
 - **One-page map:** [`docs/Architecture-Overview.md`](https://github.com/LubrieDev/lmath/blob/main/docs/Architecture-Overview.md)
 
+Both carry the plugin version they describe in their first line. They track the code rather
+than outlive it: a change that makes one of them wrong is not finished until that section is
+updated in the same pull request.
+
 ---
 
 ## Contents
@@ -24,7 +28,8 @@ Thanks for taking the time. Bug reports, feature requests and pull requests are 
 ## Getting set up
 
 Requirements: **Node.js**, **npm** and an Obsidian vault to test in (the plugin targets
-Obsidian `1.12.7` and above). TypeScript and esbuild come from `npm install`.
+Obsidian `1.13.0` and above — see `minAppVersion` in `manifest.json`, which is the number that
+actually decides). TypeScript and esbuild come from `npm install`.
 
 ```bash
 git clone https://github.com/LubrieDev/lmath.git
@@ -65,7 +70,7 @@ install and nothing to configure.
 
 | Command | What it covers | Cost |
 |---|---|---|
-| `npm run test` | Engine and symbolic units: sampling, continuation, caching, geometry reading, notable points, solve/simplify/derive/integrate, condition systems | seconds — **run on every change** |
+| `npm run test` | Engine and symbolic units: sampling, continuation, caching, geometry reading, notable points, solve/simplify/derive/integrate, condition systems. Also the `obs-trig` module: angle parsing, the exact-value table, drag and slider arithmetic | seconds — **run on every change** |
 | `npm run test:zoom` | Zoom-out sweep: each bounded curve traced across ~150 viewports, asserting traced world length | ~1 min |
 | `npm run test:todo` | The two above, chained | |
 | `npm run fuzz` | Differential fuzzer for **solver soundness**: generated equations per strategy family; every result marked complete must satisfy its original equation numerically | minutes |
@@ -74,7 +79,13 @@ install and nothing to configure.
 **Which ones to run.** `npm run test` always. Add `npm run test:zoom` if you touched tracing,
 scene or rendering. Add `npm run fuzz` and `npm run bateria` if you touched anything under the
 solver (`despejar.ts`, `despejeInverso.ts`, `condiciones.ts`, `simplificar.ts`,
-`formatoExpr.ts`).
+`formatoExpr.ts`). Work under `src/trig/` is covered by `npm run test` alone — it uses neither
+the tracer nor the solver.
+
+**What no suite can tell you.** There is no DOM harness here, so the block host
+(`MotorExperimental.ts`) is verified by eye in a vault — canvas drawing, gestures, panels,
+keyboard. When you add behavior there, push the part that can be decided into a pure module and
+test that; leave only the event wiring untested. Then say in the PR what you checked by hand.
 
 In the fuzzer output, the only column that must never be non-zero is **`UNSOUND`**. A
 `vacuo` count means the checker found no points to compare at, not a failure.
@@ -102,7 +113,8 @@ you get everything. Run it with plain `node`, **not** `npm run trazar --` — on
 cmd.exe corrupts `^` and parentheses in the argument.
 
 It reuses the same functions as the panel and the engine, so what it prints is what the plugin
-would do.
+would do. It does not know about `obs-trig`, which has no transform pipeline to trace: for an
+angle, `evaluarAngulo` is the whole story.
 
 ---
 
@@ -111,7 +123,7 @@ would do.
 Open an issue with:
 
 1. **The block, verbatim** — the language (`obs-graph`, `obs-system`, `obs-derivate`,
-   `obs-integral`) and its exact contents. Most bugs live in the input.
+   `obs-integral`, `obs-trig`) and its exact contents. Most bugs live in the input.
 2. **What you expected and what you got.** A screenshot helps for anything visual.
 3. **Versions** — plugin, Obsidian, and OS.
 
@@ -150,7 +162,7 @@ belongs somewhere else.
 
 ## The rules that are not negotiable
 
-These hold across the codebase and reviews check them (the full list is §15 of the Technical
+These hold across the codebase and reviews check them (the full list is §16 of the Technical
 Reference):
 
 - **Formal algebra never overrides numerics.** Every symbolic rewrite — simplification, a
@@ -168,6 +180,10 @@ Reference):
 - **Ring discipline.** Contracts import nothing. The geometry engine never imports mathjs or
   Obsidian; mathjs enters only through `motor/fields/` and the symbolic layer, Obsidian only
   through the host. This is what keeps the engine testable in plain Node.
+- **Looking is not editing.** Dragging, zooming, animating or toggling anything on a block is
+  ephemeral. No interaction rewrites the note; a re-render returns to what is written.
+- **One number, one way of writing it.** The same quantity may not read differently on two
+  surfaces at the same time — two formatters for one value is a bug waiting to be reported.
 
 ---
 
