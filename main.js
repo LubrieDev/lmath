@@ -61333,13 +61333,13 @@ var MotorExperimental = class {
    */
   montarDeslizador(padre, op) {
     const LADO = 14;
-    const raiz = padre.createDiv();
+    const raiz = padre.createDiv({ cls: "lmath-slider" });
     raiz.tabIndex = 0;
     raiz.setAttribute("role", "slider");
     raiz.setAttribute("aria-label", op.etiqueta);
     raiz.setAttribute("aria-valuemin", String(op.min));
     raiz.setAttribute("aria-valuemax", String(op.max));
-    raiz.style.cssText = `position:relative; width:100%; height:${LADO}px; flex:0 0 auto; touch-action:none; cursor:pointer; outline:none; user-select:none;`;
+    raiz.style.cssText = `position:relative; width:100%; height:${LADO}px; flex:0 0 auto; touch-action:none; cursor:pointer; user-select:none;`;
     const linea = raiz.createDiv();
     linea.style.cssText = "position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); height:4px; border-radius:3px; background:var(--lmath-borde); pointer-events:none;";
     const manija = raiz.createDiv();
@@ -61402,13 +61402,6 @@ var MotorExperimental = class {
         return;
       ev.preventDefault();
       emitir(nuevo);
-    });
-    raiz.addEventListener("focus", () => {
-      raiz.style.outline = "2px solid var(--lmath-acento)";
-      raiz.style.outlineOffset = "3px";
-    });
-    raiz.addEventListener("blur", () => {
-      raiz.style.outline = "none";
     });
     return { fijarValor };
   }
@@ -61559,9 +61552,9 @@ var MotorExperimental = class {
     this.montarEtiquetaMath(tarjeta.createDiv(), "x^2 + y^2 = 1", ctx);
     const puntoVivo = tarjeta.createDiv();
     puntoVivo.style.cssText = "margin-top:7px; padding-top:7px; border-top:1px solid var(--lmath-borde); font-size:11.5px; line-height:1.35; color:var(--lmath-texto-tenue);";
-    const lectura = columna.createDiv();
-    lectura.style.cssText = "flex:1 1 auto; min-height:0; overflow:hidden;";
+    const lectura = columna.createDiv({ cls: "lmath-trig-lectura" });
     const controles = columna.createDiv();
+    controles.setCssProps({ "--lmath-trig-alto-controles": `${ALTO_CONTROLES_TRIG}px` });
     if (bloque.avisos.length > 0) {
       const tira = columna.createDiv();
       columna.insertBefore(tira, lectura);
@@ -61592,13 +61585,12 @@ var MotorExperimental = class {
       aplicarCajaPanel(reparto);
       sincronizarBotonFormula();
       wrap.style.height = estrecho ? `${ancho}px` : `${ALTO_PANEL}px`;
-      if (estrecho) {
+      if (estrecho)
         wrap.append(controles);
-        controles.style.cssText = `position:absolute; left:0; right:0; bottom:0; height:${ALTO_CONTROLES_TRIG}px; box-sizing:border-box; padding:9px 12px; z-index:5; display:flex; flex-direction:column; gap:7px; border-top:1px solid var(--lmath-borde); background:var(--lmath-superficie);`;
-      } else {
+      else
         columna.append(controles);
-        controles.style.cssText = "margin-top:auto; flex:0 0 auto; display:flex; flex-direction:column; gap:7px;";
-      }
+      controles.toggleClass("lmath-trig-controles-pie", estrecho);
+      controles.toggleClass("lmath-trig-controles", !estrecho);
       if (lienzoColocado)
         lienzoColocado(estrecho);
     };
@@ -61765,8 +61757,7 @@ var MotorExperimental = class {
       repintar();
     });
     {
-      const fila = controles.createDiv();
-      fila.style.cssText = "display:flex; gap:5px;";
+      const fila = controles.createDiv({ cls: "lmath-trig-componentes" });
       fila.setAttribute("role", "group");
       fila.setAttribute("aria-label", t().trig.componentes.chip);
       const botones = /* @__PURE__ */ new Map();
@@ -61795,11 +61786,9 @@ var MotorExperimental = class {
           pintar();
         });
       }
-      const filaValor = controles.createDiv();
-      filaValor.style.cssText = "display:flex; align-items:baseline; justify-content:space-between; gap:8px; font-size:11px; line-height:1.1; color:var(--lmath-texto-tenue);";
+      const filaValor = controles.createDiv({ cls: "lmath-trig-valor" });
       filaValor.createDiv({ text: ETIQUETA_POR_DEFECTO });
-      const valorVivo = filaValor.createDiv();
-      valorVivo.style.cssText = "font-size:14px; font-weight:600; color:var(--lmath-texto); font-variant-numeric:tabular-nums;";
+      const valorVivo = filaValor.createDiv({ cls: "lmath-trig-valor-vivo" });
       const { fijarValor } = this.montarDeslizador(controles, {
         min: recorrido.min,
         max: recorrido.max,
@@ -61817,8 +61806,7 @@ var MotorExperimental = class {
       const celdas = [];
       const nombresRazon = [];
       for (const nombre of ["sin", "cos", "tan"]) {
-        const f = tabla.createDiv();
-        f.style.cssText = "display:flex; align-items:baseline; gap:8px; padding:2px 0; font-size:11.5px;";
+        const f = tabla.createDiv({ cls: "lmath-trig-razon" });
         nombresRazon.push(f.createDiv({ text: nombre }));
         nombresRazon[nombresRazon.length - 1].setCssStyles({
           width: "26px",

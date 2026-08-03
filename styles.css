@@ -171,3 +171,93 @@
   text-align: center;
   font-size: 24px;
 }
+
+/* ── obs-trig: lo que no depende de ningún número calculado ───────────────────────────
+   El bloque del círculo compone casi todo su cromo en el host, porque casi todo depende
+   de medidas que solo allí se conocen (el lado del chip, el ancho de la caja, la
+   posición de la manija). Lo que NO depende de nada vive aquí: es estilo fijo, y una
+   cadena en línea que nunca cambia solo consigue que el tema no la pueda alcanzar. */
+
+/* Deslizador del ángulo. La caja la dimensiona el host; esto es solo el foco. */
+.lmath-slider {
+  outline: none;
+}
+
+/* El anillo de foco va en `:focus-visible` y no en un listener de `focus`: el navegador
+   ya distingue el foco que deja el teclado del que deja un clic, y esa distinción es
+   justo la que hace falta — el anillo existe para quien navega sin ratón. */
+.lmath-slider:focus-visible {
+  outline: 2px solid var(--lmath-acento);
+  outline-offset: 3px;
+}
+
+/* Banda de LECTURA: se queda el alto sobrante entre la tarjeta y los controles.
+   `min-height: 0` es lo que la deja encoger dentro del flex en vez de desbordar. */
+.lmath-trig-lectura {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Controles en reparto por COLUMNAS: al pie de la columna del panel. */
+.lmath-trig-controles {
+  margin-top: auto;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+/* Los mismos controles en ESTRECHO: franja fija al pie del plano, siempre a la vista.
+   El alto llega como propiedad desde el host, que es quien lo reparte con el lienzo:
+   escribir aquí el número otra vez daría dos verdades para una sola medida. */
+.lmath-trig-controles-pie {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--lmath-trig-alto-controles);
+  box-sizing: border-box;
+  padding: 9px 12px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border-top: 1px solid var(--lmath-borde);
+  background: var(--lmath-superficie);
+}
+
+/* Fila de las tres casillas de componente (seno / coseno / tangente). */
+.lmath-trig-componentes {
+  display: flex;
+  gap: 5px;
+}
+
+/* Fila del valor: θ a la izquierda, el ángulo vivo a la derecha. */
+.lmath-trig-valor {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.1;
+  color: var(--lmath-texto-tenue);
+}
+
+/* El número que gobierna todo lo demás. `tabular-nums` evita que las cifras cambien de
+   ancho mientras se arrastra, que es cuando más se mira. */
+.lmath-trig-valor-vivo {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--lmath-texto);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Una fila de la tabla de razones: nombre, forma exacta y decimal. */
+.lmath-trig-razon {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 11.5px;
+}

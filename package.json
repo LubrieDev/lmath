@@ -1,6 +1,6 @@
 {
   "name": "lmath",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "Graph functions, systems, derivatives and integrals in interactive blocks, and explore the unit circle.",
   "main": "main.js",
   "scripts": {

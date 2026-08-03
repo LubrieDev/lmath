@@ -1720,7 +1720,9 @@ export class MotorExperimental {
     }
   ): { fijarValor: (valor: number) => void } {
     const LADO = 14;   // diámetro de la manija y alto de la caja
-    const raiz = padre.createDiv();
+    // `lmath-slider` solo trae el ANILLO DE FOCO (styles.css). La caja se dimensiona aquí
+    // porque depende de `LADO`, que también sitúa la manija: un número, un sitio.
+    const raiz = padre.createDiv({ cls: "lmath-slider" });
     raiz.tabIndex = 0;
     raiz.setAttribute("role", "slider");
     raiz.setAttribute("aria-label", op.etiqueta);
@@ -1730,7 +1732,9 @@ export class MotorExperimental {
       `position:relative; width:100%; height:${LADO}px; flex:0 0 auto; ` +
       // El dedo sobre el deslizador lo mueve; sin esto, el navegador se queda el gesto para
       // desplazar la nota y el mando no responde en el móvil, que es donde más se usa.
-      "touch-action:none; cursor:pointer; outline:none; user-select:none;";
+      // El `outline` NO se toca aquí: en línea ganaría siempre a `:focus-visible` y el
+      // anillo de foco no llegaría a verse nunca.
+      "touch-action:none; cursor:pointer; user-select:none;";
 
     const linea = raiz.createDiv();
     linea.style.cssText =
@@ -1802,13 +1806,11 @@ export class MotorExperimental {
       emitir(nuevo);
     });
 
-    // Anillo de foco en línea, como todo lo demás: si dependiera de la hoja de estilos, un
-    // control que solo se puede usar con el teclado se quedaría sin la única pista de dónde está.
-    raiz.addEventListener("focus", () => {
-      raiz.style.outline = "2px solid var(--lmath-acento)";
-      raiz.style.outlineOffset = "3px";
-    });
-    raiz.addEventListener("blur", () => { raiz.style.outline = "none"; });
+    // El anillo de foco lo pone `.lmath-slider:focus-visible` en la hoja de estilos. Antes lo
+    // pintaban un `focus` y un `blur` a mano, y además de ser estilo estático escrito en línea,
+    // aparecía también al hacer clic — que es cuando nadie lo necesita, porque el dedo ya sabe
+    // dónde está el mando. `:focus-visible` es exactamente esa distinción, hecha por el
+    // navegador y sin código.
 
     return { fijarValor };
   }
@@ -2033,8 +2035,7 @@ export class MotorExperimental {
       "font-size:11.5px; line-height:1.35; color:var(--lmath-texto-tenue);";
 
     // ── Lectura: la tabla de las tres razones, o la elegida en grande ─────────────────────
-    const lectura = columna.createDiv();
-    lectura.style.cssText = "flex:1 1 auto; min-height:0; overflow:hidden;";
+    const lectura = columna.createDiv({ cls: "lmath-trig-lectura" });
 
     // ── Controles ────────────────────────────────────────────────────────────────────────
     // Se crean aquí para que queden en el sitio correcto del árbol, y se RELLENAN más abajo,
@@ -2043,6 +2044,10 @@ export class MotorExperimental {
     // justo en el dispositivo donde más falta hace, porque arrastrar con el dedo sobre un
     // círculo de 300px es impreciso.
     const controles = columna.createDiv();
+    // El alto de la franja lo reparte el host —el lienzo cede exactamente esos píxeles—, así que
+    // el número vive en `ALTO_CONTROLES_TRIG` y viaja a la hoja de estilos como propiedad. Copiarlo
+    // en el CSS daría dos verdades para una sola medida, y bastaría tocar una para descuadrar todo.
+    controles.setCssProps({ "--lmath-trig-alto-controles": `${ALTO_CONTROLES_TRIG}px` });
 
     // Avisos del parser, redactados aquí: el parser los produce sin traducir (tipo + fragmento
     // culpable) y el idioma vive en el host. Van en el panel y no sobre el plano porque son un
@@ -2089,18 +2094,12 @@ export class MotorExperimental {
       // un deslizador que hay que destapar no sirve de nada justo donde el arrastre es más
       // impreciso. Así que en estrecho se mudan al pie del plano, que ahí sí está siempre a la
       // vista, y el lienzo les cede su alto.
-      if (estrecho) {
-        wrap.append(controles);
-        controles.style.cssText =
-          `position:absolute; left:0; right:0; bottom:0; height:${ALTO_CONTROLES_TRIG}px; ` +
-          "box-sizing:border-box; padding:9px 12px; z-index:5; " +
-          "display:flex; flex-direction:column; gap:7px; " +
-          "border-top:1px solid var(--lmath-borde); background:var(--lmath-superficie);";
-      } else {
-        columna.append(controles);
-        controles.style.cssText =
-          "margin-top:auto; flex:0 0 auto; display:flex; flex-direction:column; gap:7px;";
-      }
+      // Los dos estados son CLASES, no dos cadenas de estilo: así el cambio de reparto es
+      // encender una y apagar la otra, y no queda estilo en línea del estado anterior que
+      // haya que acordarse de limpiar.
+      if (estrecho) wrap.append(controles); else columna.append(controles);
+      controles.toggleClass("lmath-trig-controles-pie", estrecho);
+      controles.toggleClass("lmath-trig-controles", !estrecho);
       // El lienzo cede el alto de la franja, y los chips de abajo suben por encima de ella.
       if (lienzoColocado) lienzoColocado(estrecho);
     };
@@ -2309,8 +2308,7 @@ export class MotorExperimental {
     // directo y rápido para saltar a un ángulo; el deslizador es preciso, se maneja con el dedo
     // sin tapar la figura y permite recorrer la vuelta entera sin soltar.
     {
-      const fila = controles.createDiv();
-      fila.style.cssText = "display:flex; gap:5px;";
+      const fila = controles.createDiv({ cls: "lmath-trig-componentes" });
       // Grupo con nombre accesible: las tres casillas son una sola pregunta ("¿qué se dibuja?"),
       // no tres ajustes sueltos.
       fila.setAttribute("role", "group");
@@ -2359,14 +2357,9 @@ export class MotorExperimental {
 
       // Fila del valor: a la izquierda θ, a la derecha el ángulo vivo, grande, que es el número
       // que gobierna todo lo demás. La etiqueta es fija, así que se escribe una sola vez.
-      const filaValor = controles.createDiv();
-      filaValor.style.cssText =
-        "display:flex; align-items:baseline; justify-content:space-between; gap:8px; " +
-        "font-size:11px; line-height:1.1; color:var(--lmath-texto-tenue);";
+      const filaValor = controles.createDiv({ cls: "lmath-trig-valor" });
       filaValor.createDiv({ text: ETIQUETA_POR_DEFECTO });
-      const valorVivo = filaValor.createDiv();
-      valorVivo.style.cssText =
-        "font-size:14px; font-weight:600; color:var(--lmath-texto); font-variant-numeric:tabular-nums;";
+      const valorVivo = filaValor.createDiv({ cls: "lmath-trig-valor-vivo" });
 
       const { fijarValor } = this.montarDeslizador(controles, {
         min: recorrido.min, max: recorrido.max,
@@ -2394,9 +2387,7 @@ export class MotorExperimental {
       // misma afirmación. Se guardan para repintarlos cuando cambie el tema.
       const nombresRazon: HTMLElement[] = [];
       for (const nombre of ["sin", "cos", "tan"]) {
-        const f = tabla.createDiv();
-        f.style.cssText =
-          "display:flex; align-items:baseline; gap:8px; padding:2px 0; font-size:11.5px;";
+        const f = tabla.createDiv({ cls: "lmath-trig-razon" });
         nombresRazon.push(f.createDiv({ text: nombre }));
         nombresRazon[nombresRazon.length - 1].setCssStyles({
           width: "26px", flex: "0 0 auto",
