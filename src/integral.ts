@@ -1,12 +1,12 @@
 import { normalizarEntrada, contieneYLibre } from "./parser";
-import { insertarProductoImplicito } from "./motor/parsing/productoImplicito";
-import { tieneDobleSigno } from "./motor/parsing/dobleSigno";
+import { insertarProductoImplicito } from "./core/parsing/productoImplicito";
+import { tieneDobleSigno } from "./core/parsing/dobleSigno";
 import { exprALatex } from "./latex";
 import { compilarExpresion, compilarFuncion } from "./evaluador";
 import { clasificarDegenerada, type FuncionDegenerada } from "./degeneradas";
-import { crearFuncionReal } from "./motor/fields/funcionRealMathjs";
-import { areaDefinida, type ResultadoArea } from "./motor/analysis/areaBajoRama";
-import { numeroALatex } from "./motor/analysis/formatoNumero";
+import { crearFuncionReal } from "./core/fields/funcionRealMathjs";
+import { areaDefinida, type ResultadoArea } from "./core/analysis/areaBajoRama";
+import { numeroALatex } from "./core/analysis/formatoNumero";
 import { simplificarEcuaciones } from "./simplificar";
 import { integrarExpr } from "./integrar";
 

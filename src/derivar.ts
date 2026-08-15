@@ -1,7 +1,7 @@
 import { derivative, parse, simplify, type MathNode } from "mathjs";
 
 import { normalizarEntrada, contieneYLibre } from "./parser";
-import { insertarProductoImplicito } from "./motor/parsing/productoImplicito";
+import { insertarProductoImplicito } from "./core/parsing/productoImplicito";
 import { exprALatex } from "./latex";
 import { simplificarEcuaciones } from "./simplificar";
 import { racionalizarFracciones, combinarFracciones, resimbolizarConstantes, terminos as terminosAditivos, profundidadFraccion, opNodo, constNodo, simboloNodo, funcNodo, type Nodo } from "./formatoExpr";

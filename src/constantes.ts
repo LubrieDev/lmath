@@ -2,7 +2,7 @@
 // Constantes
 // ─────────────────────────────────────────────
 
-import { CENTINELAS_SIGNO } from "./motor/parsing/dobleSigno";
+import { CENTINELAS_SIGNO } from "./core/parsing/dobleSigno";
 
 export const FUNCIONES_TRIG = ["sin", "cos", "tan", "sec", "csc", "cot"] as const;
 export const FUNCIONES_LATEX = "sin|cos|tan|sec|csc|cot|log|ln";

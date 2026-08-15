@@ -32,7 +32,7 @@
 
 import { parse } from "mathjs";
 
-import { ramaDoble } from "./motor/parsing/dobleSigno";
+import { ramaDoble } from "./core/parsing/dobleSigno";
 
 import {
   contieneVariable, terminos, factores, valorConstanteFactor, rationalizeSeguro,

@@ -2815,7 +2815,7 @@ __export(main_exports, {
   default: () => LMathPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian5 = require("obsidian");
+var import_obsidian9 = require("obsidian");
 
 // src/engines/obs-graph/GraphEngine.ts
 var import_obsidian = require("obsidian");
@@ -45492,7 +45492,7 @@ var help = createHelp({
 });
 Chain.createProxy(math);
 
-// src/motor/parsing/dobleSigno.ts
+// src/core/parsing/dobleSigno.ts
 var EJES = [
   [["pm", 1], ["mp", -1]],
   [["pm2", 1], ["mp2", -1]]
@@ -45531,8 +45531,8 @@ function resolverCentinelas(exprNorm, eje, rama) {
       if (cierra === -1)
         break;
       const cuerpo = expr.slice(abre + 1, cierra);
-      const signo2 = signoBase * rama;
-      expr = expr.slice(0, m.index) + `(${signo2}*(${cuerpo}))` + expr.slice(cierra + 1);
+      const signo3 = signoBase * rama;
+      expr = expr.slice(0, m.index) + `(${signo3}*(${cuerpo}))` + expr.slice(cierra + 1);
     }
   }
   return expr;
@@ -45554,7 +45554,7 @@ var FUNCIONES_INVERSAS_EXTRA = {
   asec: (x) => Math.acos(1 / x),
   acot: (x) => Math.PI / 2 - Math.atan(x)
 };
-var FUNCIONES_SIGNO = Object.fromEntries(CENTINELAS_SIGNO.map(([nombre, signo2]) => [nombre, (u) => signo2 * u]));
+var FUNCIONES_SIGNO = Object.fromEntries(CENTINELAS_SIGNO.map(([nombre, signo3]) => [nombre, (u) => signo3 * u]));
 var FUNCIONES_DOMINIO = {
   dom: (cuerpo, cond) => cond >= 0 ? cuerpo : NaN
 };
@@ -45563,14 +45563,8 @@ var enteroCercano = (x) => {
   return Math.abs(x - r) <= 1e-12 * Math.max(1, Math.abs(x)) ? r : null;
 };
 var FUNCIONES_ESCALON_RAPIDAS = {
-  floor: (x) => {
-    var _a;
-    return typeof x === "number" ? (_a = enteroCercano(x)) != null ? _a : Math.floor(x) : NaN;
-  },
-  ceil: (x) => {
-    var _a;
-    return typeof x === "number" ? (_a = enteroCercano(x)) != null ? _a : Math.ceil(x) : NaN;
-  }
+  floor: (x) => typeof x === "number" ? enteroCercano(x) ?? Math.floor(x) : NaN,
+  ceil: (x) => typeof x === "number" ? enteroCercano(x) ?? Math.ceil(x) : NaN
 };
 
 // src/parser.ts
@@ -45882,16 +45876,12 @@ var FUNCIONES_POTENCIA = [
   "ln"
 ];
 function casarPotenciaFuncion(expr, i2) {
-  var _a, _b;
   const backslash = expr[i2] === "\\";
   if (!backslash && i2 > 0 && /[A-Za-z0-9_]/.test(expr[i2 - 1]))
     return null;
   const j = backslash ? i2 + 1 : i2;
   const func = FUNCIONES_POTENCIA.find(
-    (n) => {
-      var _a2;
-      return expr.startsWith(n, j) && !/[A-Za-z0-9_]/.test((_a2 = expr[j + n.length]) != null ? _a2 : "");
-    }
+    (n) => expr.startsWith(n, j) && !/[A-Za-z0-9_]/.test(expr[j + n.length] ?? "")
   );
   if (!func)
     return null;
@@ -45937,7 +45927,7 @@ function casarPotenciaFuncion(expr, i2) {
   const griego = /^\\(theta|pi|tau|phi)\b/.exec(expr.slice(k));
   if (griego)
     return { func, exp: exp3, arg: griego[1], fin: k + griego[0].length };
-  if (/[a-zA-Z]/.test((_a = expr[k]) != null ? _a : "") && !/[a-zA-Z0-9]/.test((_b = expr[k + 1]) != null ? _b : ""))
+  if (/[a-zA-Z]/.test(expr[k] ?? "") && !/[a-zA-Z0-9]/.test(expr[k + 1] ?? ""))
     return { func, exp: exp3, arg: expr[k], fin: k + 1 };
   return null;
 }
@@ -45983,20 +45973,20 @@ function convertirRaicesUnicode(expr) {
     i2++;
     while (expr[i2] === " ")
       i2++;
-    let signo2 = "";
+    let signo3 = "";
     if (expr[i2] === "-" || expr[i2] === "+") {
       let k = i2 + 1;
       while (expr[k] === " ")
         k++;
       if (expr[k] === "(" || esLetra2(expr[k]) || esDigito2(expr[k])) {
-        signo2 = expr[i2] === "-" ? "-" : "";
+        signo3 = expr[i2] === "-" ? "-" : "";
         i2 = k;
       }
     }
     if (expr[i2] === "(") {
       let g;
       [g, i2] = grupo(i2, "(", ")");
-      out += raiz(signo2 + g.slice(1, -1), n);
+      out += raiz(signo3 + g.slice(1, -1), n);
       continue;
     }
     const inicio = i2;
@@ -46016,7 +46006,7 @@ function convertirRaicesUnicode(expr) {
       out += n === 2 ? "sqrt" : "cbrt";
       continue;
     }
-    let radicando = signo2 + expr.slice(inicio, i2);
+    let radicando = signo3 + expr.slice(inicio, i2);
     if (SUPERINDICES[expr[i2]] !== void 0) {
       while (i2 < expr.length && SUPERINDICES[expr[i2]] !== void 0) {
         radicando += expr[i2];
@@ -46125,8 +46115,8 @@ function convertirDobleSigno(expr) {
     const fin = finDeOperandoSigno(expr, idx + m[0].length);
     const operando = expr.slice(idx + m[0].length, fin).trim() || "1";
     const ant = anteriorNoEspacio(expr, idx);
-    const suma = ant !== "" && !"+-*/^(,=<>[{".includes(ant) ? "+" : "";
-    expr = expr.slice(0, idx) + `${suma}${fn}(${operando})` + expr.slice(fin);
+    const suma3 = ant !== "" && !"+-*/^(,=<>[{".includes(ant) ? "+" : "";
+    expr = expr.slice(0, idx) + `${suma3}${fn}(${operando})` + expr.slice(fin);
   }
   return expr;
 }
@@ -46311,11 +46301,18 @@ var COMANDOS_SOPORTADOS = /* @__PURE__ */ new Set([
   "int",
   "to"
 ]);
+var COMPARADOR_SUELTO = /≤|≥|≠|<|>/g;
+var SIMBOLO_UNICODE_NO_SOPORTADO = /[∇∂∫∮∑∏∈∉⊂⊃∪∩∀∃∅⋅≈≡∝∠⊥∥′″↦…]/gu;
 function comandosNoSoportados(raw) {
   const vistos = /* @__PURE__ */ new Set();
   for (const m of raw.replace(/\\\\/g, " ").matchAll(/\\([a-zA-Z]+)/g))
     if (!COMANDOS_SOPORTADOS.has(m[1]))
       vistos.add(`\\${m[1]}`);
+  const sinFlechas = raw.replace(/->|→/g, " ");
+  for (const m of sinFlechas.matchAll(COMPARADOR_SUELTO))
+    vistos.add(m[0]);
+  for (const m of sinFlechas.matchAll(SIMBOLO_UNICODE_NO_SOPORTADO))
+    vistos.add(m[0]);
   return [...vistos];
 }
 function contieneYLibre(exprNorm) {
@@ -46423,7 +46420,6 @@ function binario(fn, p, q) {
   }
 }
 function compilarNodo(nodo, variables) {
-  var _a, _b;
   const n = nodo;
   switch (n.type) {
     case "ConstantNode": {
@@ -46433,12 +46429,12 @@ function compilarNodo(nodo, variables) {
       return () => v;
     }
     case "SymbolNode": {
-      const nombre = (_a = n.name) != null ? _a : "";
+      const nombre = n.name ?? "";
       const i2 = variables.indexOf(nombre);
       if (i2 === 0)
         return (a) => a;
       if (i2 === 1)
-        return (_a2, b) => b;
+        return (_a, b) => b;
       if (!(nombre in CONSTANTES))
         return null;
       const k = CONSTANTES[nombre];
@@ -46469,17 +46465,17 @@ function compilarNodo(nodo, variables) {
     }
     case "FunctionNode": {
       const ref = n.fn;
-      const nombre = typeof ref === "string" ? ref : (_b = ref == null ? void 0 : ref.name) != null ? _b : "";
+      const nombre = typeof ref === "string" ? ref : ref?.name ?? "";
       const args = compilarArgs(n.args, variables);
       if (args === null)
         return null;
       const [p, q] = args;
       const unaria = args.length === 1;
-      const signo2 = SIGNO_CENTINELA.get(nombre);
-      if (signo2 !== void 0) {
+      const signo3 = SIGNO_CENTINELA.get(nombre);
+      if (signo3 !== void 0) {
         if (!unaria)
           return null;
-        return signo2 > 0 ? p : (a, b) => -p(a, b);
+        return signo3 > 0 ? p : (a, b) => -p(a, b);
       }
       if (nombre === "dom") {
         return args.length === 2 ? (a, b) => q(a, b) >= 0 ? p(a, b) : NaN : null;
@@ -46529,7 +46525,7 @@ function compilarNodo(nodo, variables) {
 }
 function compilarArgs(args, variables) {
   const salida = [];
-  for (const arg2 of args != null ? args : []) {
+  for (const arg2 of args ?? []) {
     const c = compilarNodo(arg2, variables);
     if (c === null)
       return null;
@@ -46555,7 +46551,7 @@ function compilarNativo(expr, variables, referencia) {
     if (raiz === null)
       return null;
     candidata = variables.length === 2 ? (x, y) => raiz(x, y) : (x) => raiz(x, 0);
-  } catch (e3) {
+  } catch {
     return null;
   }
   const combinaciones = puntosDeSonda(variables.length);
@@ -46563,13 +46559,13 @@ function compilarNativo(expr, variables, referencia) {
     let esperado;
     try {
       esperado = referencia(punto);
-    } catch (e3) {
+    } catch {
       esperado = NaN;
     }
     let obtenido;
     try {
       obtenido = candidata(...punto);
-    } catch (e3) {
+    } catch {
       return null;
     }
     if (!equivalentes(esperado, obtenido))
@@ -46594,6 +46590,235 @@ function puntosDeSonda(n) {
   return puntos;
 }
 
+// src/core/parsing/productoImplicito.ts
+var FUNCIONES = /* @__PURE__ */ new Set([
+  "sin",
+  "cos",
+  "tan",
+  "sec",
+  "csc",
+  "cot",
+  "asin",
+  "acos",
+  "atan",
+  "acsc",
+  "asec",
+  "acot",
+  "atan2",
+  "sinh",
+  "cosh",
+  "tanh",
+  "asinh",
+  "acosh",
+  "atanh",
+  "sech",
+  "csch",
+  "coth",
+  // hiperbólicas recíprocas: mathjs las tiene, faltaban como átomo
+  "log",
+  "log10",
+  "log2",
+  "ln",
+  "exp",
+  "expm1",
+  "sqrt",
+  "cbrt",
+  "nthRoot",
+  "pow",
+  "hypot",
+  "abs",
+  "sign",
+  "floor",
+  "ceil",
+  "round",
+  "fix",
+  "gamma",
+  "factorial",
+  "min",
+  "max",
+  "mod",
+  "gcd",
+  "lcm",
+  // Centinelas del DOBLE SIGNO (`y = pm(sqrt(16-x²))` = ±√…), que emiten tanto el despeje
+  // par (despejar.ts) como el `\pm`/`\mp` escrito por el usuario (parser.ts). Son átomos
+  // (si no, se partirían en `p*m`), se evalúan en su rama principal (constantes.ts) y el
+  // motor los expande en las DOS ramas (motor/parsing/dobleSigno.ts). `toTex` los pinta
+  // `\pm` / `\mp` (latex.ts).
+  // `pm2`/`mp2` son el SEGUNDO eje de signo (dos ± independientes → cuatro curvas).
+  "pm",
+  "mp",
+  "pm2",
+  "mp2",
+  // Centinela de FAMILIA PERIÓDICA (`y = atan(g) + fam(k, pi)` = arctan(g)+kπ, k∈ℤ),
+  // que emite el despeje por inversión trig (despejeInverso.ts). Átomo (si no, se
+  // partiría en `f*a*m`); NO se evalúa ni se expande para graficar (el despeje es
+  // presentación: lo graficado es siempre la ecuación original). `toTex` lo pinta
+  // `k\pi`/`2k\pi` y añade la coletilla `, k∈ℤ` (latex.ts). `famN` es su hermano de
+  // dominio NATURAL (k∈ℕ): mismo render `k\pi`, pero la coletilla es `, k∈ℕ` —lo emite
+  // el despeje de `T(u)=0` cuando u>0 obliga a kπ>0 (`sin(1/(x²+y²))=0`, despejar.ts).
+  "fam",
+  "famN",
+  // Centinela de CONDICIÓN DE DOMINIO (`y = dom((x-27)², x-27)` = (x−27)² donde x−27≥0), que
+  // emite el despeje de las inversas de rango restringido (√ par, |·|). Átomo (si no, `d*o*m`);
+  // se evalúa a NaN fuera del dominio (constantes.ts) y `toTex` lo pinta como el cuerpo más la
+  // coletilla `, R≥0` (latex.ts). Lo graficado es siempre la original: el despeje es presentación.
+  "dom"
+]);
+var GRIEGAS = [
+  "alpha",
+  "beta",
+  "gamma",
+  "delta",
+  "epsilon",
+  "varepsilon",
+  "zeta",
+  "eta",
+  "iota",
+  "kappa",
+  "lambda",
+  "mu",
+  "nu",
+  "xi",
+  "omicron",
+  "rho",
+  "varrho",
+  "sigma",
+  "varsigma",
+  "upsilon",
+  "varphi",
+  "vartheta",
+  "chi",
+  "psi",
+  "omega",
+  "Gamma",
+  "Delta",
+  "Theta",
+  "Lambda",
+  "Xi",
+  "Pi",
+  "Sigma",
+  "Upsilon",
+  "Phi",
+  "Psi",
+  "Omega"
+];
+var CONSTANTES2 = /* @__PURE__ */ new Set([
+  "pi",
+  "theta",
+  "tau",
+  "phi",
+  "Infinity",
+  "NaN",
+  ...GRIEGAS
+]);
+var ATOMOS = [...FUNCIONES, ...CONSTANTES2].sort((a, b) => b.length - a.length);
+var esDigito = (c) => c >= "0" && c <= "9";
+var esLetra = (c) => /[a-zA-Z_]/.test(c);
+var esLetraODigito = (c) => /[a-zA-Z0-9_]/.test(c);
+function partirEnAtomos(run) {
+  const piezas = [];
+  let j = 0;
+  while (j < run.length) {
+    let atomo = null;
+    for (const a of ATOMOS) {
+      if (run.startsWith(a, j)) {
+        atomo = a;
+        break;
+      }
+    }
+    if (atomo) {
+      piezas.push(atomo);
+      j += atomo.length;
+    } else {
+      piezas.push(run[j]);
+      j++;
+    }
+  }
+  return piezas;
+}
+function expandir(run) {
+  return partirEnAtomos(run).join("*");
+}
+function sufijoFuncion(run) {
+  for (const f of ATOMOS) {
+    if (FUNCIONES.has(f) && run.endsWith(f))
+      return f;
+  }
+  return "";
+}
+function insertarProductoImplicito(expr) {
+  let out = "";
+  const prev = () => {
+    for (let k = out.length - 1; k >= 0; k--)
+      if (out[k] !== " ")
+        return out[k];
+    return "";
+  };
+  let ultimaFueFuncion = false;
+  let i2 = 0;
+  while (i2 < expr.length) {
+    const c = expr[i2];
+    const trasFuncion = ultimaFueFuncion;
+    ultimaFueFuncion = false;
+    if (c === "e" || c === "E") {
+      const p = prev();
+      const sig = expr[i2 + 1] ?? "";
+      const sig2 = expr[i2 + 2] ?? "";
+      const cientifica = (esDigito(p) || p === ".") && (esDigito(sig) || (sig === "+" || sig === "-") && esDigito(sig2));
+      if (cientifica) {
+        out += c;
+        i2++;
+        continue;
+      }
+    }
+    if (esLetra(c)) {
+      let j = i2;
+      while (j < expr.length && esLetraODigito(expr[j]))
+        j++;
+      const run = expr.slice(i2, j);
+      const p = prev();
+      if (esDigito(p) || p === ")" || p === "." || esLetra(p))
+        out += "*";
+      let k = j;
+      while (k < expr.length && expr[k] === " ")
+        k++;
+      const seguidoParen = expr[k] === "(";
+      if (seguidoParen) {
+        if (FUNCIONES.has(run)) {
+          out += run;
+          ultimaFueFuncion = true;
+        } else {
+          const fs = sufijoFuncion(run);
+          if (fs && /^[a-zA-Z]+$/.test(run.slice(0, run.length - fs.length))) {
+            const pref = run.slice(0, run.length - fs.length);
+            out += (pref ? expandir(pref) + "*" : "") + fs;
+            ultimaFueFuncion = true;
+          } else {
+            out += expandir(run) + "*";
+          }
+        }
+      } else {
+        out += expandir(run);
+      }
+      i2 = j;
+      continue;
+    }
+    if (c === "(") {
+      const p = prev();
+      if (!trasFuncion && (esDigito(p) || p === ")" || p === "."))
+        out += "*";
+      out += c;
+      i2++;
+      continue;
+    }
+    if (c === " ")
+      ultimaFueFuncion = trasFuncion;
+    out += c;
+    i2++;
+  }
+  return out;
+}
+
 // src/evaluador.ts
 function compilarExpresion(expr) {
   const compilada = parse2(expr).compile();
@@ -46606,27 +46831,38 @@ function compilarExpresion(expr) {
         ...FUNCIONES_SIGNO,
         ...FUNCIONES_DOMINIO
       });
-    } catch (e3) {
+    } catch {
       return NaN;
     }
   };
 }
 function compilarFuncion(expr, varName) {
-  const evaluar = compilarExpresion(expr);
-  const nativa = compilarNativo(expr, [varName], ([v]) => evaluar({ [varName]: v }));
+  const evaluar2 = compilarExpresion(expr);
+  const nativa = compilarNativo(expr, [varName], ([v]) => evaluar2({ [varName]: v }));
   if (nativa)
     return (v) => nativa(v);
-  return (v) => evaluar({ [varName]: v });
+  return (v) => evaluar2({ [varName]: v });
 }
 function compilarCampo(expr, varX = "x", varY = "y") {
-  const evaluar = compilarExpresion(expr);
-  const nativa = compilarNativo(expr, [varX, varY], ([x, y]) => evaluar({ [varX]: x, [varY]: y }));
+  const evaluar2 = compilarExpresion(expr);
+  const nativa = compilarNativo(expr, [varX, varY], ([x, y]) => evaluar2({ [varX]: x, [varY]: y }));
   if (nativa)
     return (x, y) => nativa(x, y);
-  return (x, y) => evaluar({ [varX]: x, [varY]: y });
+  return (x, y) => evaluar2({ [varX]: x, [varY]: y });
+}
+function evaluarConstante(expr) {
+  const limpio = expr.trim();
+  if (!limpio)
+    return null;
+  try {
+    const valor = compilarExpresion(insertarProductoImplicito(normalizarEntrada(limpio)))({});
+    return typeof valor === "number" && Number.isFinite(valor) ? valor : null;
+  } catch {
+    return null;
+  }
 }
 
-// src/formatoExpr.ts
+// src/expr/nodo.ts
 var opNodo = (op, fn, args, implicit) => new OperatorNode(op, fn, args, implicit);
 var constNodo = (value) => new ConstantNode(value);
 var simboloNodo = (name314) => new SymbolNode(name314);
@@ -46634,69 +46870,26 @@ var funcNodo = (fn, args) => new FunctionNode(fn, args);
 function contieneVariable(n, nombre) {
   return n.filter((nn) => nn.type === "SymbolNode" && nn.name === nombre).length > 0;
 }
-var LIMITE_EXPANSION = 16;
-function costeExpansion(n) {
-  var _a;
-  if (!n || typeof n !== "object")
-    return 1;
-  if (n.type === "ParenthesisNode")
-    return costeExpansion(n.content);
-  if (n.type === "OperatorNode") {
-    const args = (_a = n.args) != null ? _a : [];
-    if (args.length === 1)
-      return costeExpansion(args[0]);
-    const a = costeExpansion(args[0]), b = costeExpansion(args[1]);
-    if (n.op === "+" || n.op === "-")
-      return a + b;
-    if (n.op === "*")
-      return a * b;
-    if (n.op === "/")
-      return a * b;
-    if (n.op === "^") {
-      const k = valorConstanteFactor(args[1]);
-      if (k === null || !Number.isInteger(k))
-        return a;
-      return Math.pow(a, Math.abs(k));
-    }
-    return a + b;
-  }
-  return 1;
-}
-function rationalizeSeguro(expr) {
-  let nodo;
-  try {
-    nodo = typeof expr === "string" ? parse2(expr) : expr;
-  } catch (e3) {
-    return null;
-  }
-  if (costeExpansion(nodo) > LIMITE_EXPANSION)
-    return null;
-  try {
-    return rationalize(nodo);
-  } catch (e3) {
-    return null;
-  }
-}
 function esConstante(n) {
   return n.filter((nn) => nn.type === "SymbolNode").length === 0;
 }
 function contieneFuncion(n) {
   return n.filter((nn) => nn.type === "FunctionNode").length > 0;
 }
-function terminos(n, signo2 = 1) {
+function terminos(n, signo3 = 1) {
   if (n.type === "ParenthesisNode")
-    return terminos(n.content, signo2);
+    return terminos(n.content, signo3);
   if (n.type === "OperatorNode") {
     if (n.op === "+" && n.args.length === 2)
-      return [...terminos(n.args[0], signo2), ...terminos(n.args[1], signo2)];
+      return [...terminos(n.args[0], signo3), ...terminos(n.args[1], signo3)];
     if (n.op === "-" && n.args.length === 2)
-      return [...terminos(n.args[0], signo2), ...terminos(n.args[1], -signo2)];
+      return [...terminos(n.args[0], signo3), ...terminos(n.args[1], -signo3)];
     if (n.op === "-" && n.args.length === 1)
-      return terminos(n.args[0], -signo2);
+      return terminos(n.args[0], -signo3);
   }
   if (n.type === "ConstantNode" && typeof n.value === "number" && n.value < 0)
-    return [{ signo: -signo2, nodo: parse2(String(-n.value)) }];
-  return [{ signo: signo2, nodo: n }];
+    return [{ signo: -signo3, nodo: parse2(String(-n.value)) }];
+  return [{ signo: signo3, nodo: n }];
 }
 function factores(n, exp3 = 1) {
   if (n.type === "ParenthesisNode")
@@ -46720,6 +46913,112 @@ function valorConstanteFactor(nodo) {
   }
   return null;
 }
+function strFactorSeguro(n) {
+  const s = n.toString();
+  const raiz = n.type === "ParenthesisNode" ? n.content : n;
+  const esAditivo = raiz.type === "OperatorNode" && (raiz.op === "+" || raiz.op === "-");
+  return esAditivo ? `(${s})` : s;
+}
+
+// src/expr/fracciones.ts
+function mcd(a, b) {
+  a = Math.abs(a);
+  b = Math.abs(b);
+  while (b) {
+    [a, b] = [b, a % b];
+  }
+  return a;
+}
+function fraccionExacta(v) {
+  if (!Number.isFinite(v))
+    return null;
+  if (Number.isInteger(v))
+    return { n: v, d: 1 };
+  try {
+    const f = fraction(v);
+    if (f.d > 64)
+      return null;
+    const val = f.s * f.n / f.d;
+    return Math.abs(val - v) < 1e-9 ? { n: f.s * f.n, d: f.d } : null;
+  } catch {
+    return null;
+  }
+}
+function terminoRacional(nodo) {
+  const fs = factores(nodo);
+  let n = 1, d = 1;
+  const simbNum = [], simbDen = [];
+  let huboDecimal = false;
+  for (const f of fs) {
+    const val = valorConstanteFactor(f.nodo);
+    if (val !== null) {
+      const fr = fraccionExacta(val);
+      if (!fr)
+        return null;
+      if (!Number.isInteger(val))
+        huboDecimal = true;
+      if (f.exp === 1) {
+        n *= fr.n;
+        d *= fr.d;
+      } else {
+        n *= fr.d;
+        d *= fr.n;
+      }
+    } else {
+      (f.exp === 1 ? simbNum : simbDen).push(strFactorSeguro(f.nodo));
+    }
+  }
+  if (!huboDecimal && d === 1)
+    return null;
+  let signo3 = 1;
+  if (n < 0) {
+    signo3 = -signo3;
+    n = -n;
+  }
+  if (d < 0) {
+    signo3 = -signo3;
+    d = -d;
+  }
+  const g = mcd(n, d) || 1;
+  n /= g;
+  d /= g;
+  const num = [...n !== 1 || simbNum.length === 0 ? [String(n)] : [], ...simbNum].join("*");
+  const denPartes = [...d !== 1 ? [String(d)] : [], ...simbDen];
+  return { num, den: denPartes.length ? denPartes.join("*") : null, signo: signo3 };
+}
+function racionalizarFracciones(n) {
+  const ts = terminos(n);
+  if (ts.length === 0)
+    return n;
+  const racs = ts.map((t2) => terminoRacional(t2.nodo));
+  if (racs.every((r) => r === null))
+    return n;
+  let out = "";
+  ts.forEach((t2, i2) => {
+    const rac2 = racs[i2];
+    if (rac2) {
+      const signo3 = t2.signo * rac2.signo;
+      const cuerpo = (numerador) => rac2.den ? `(${numerador})/(${rac2.den})` : numerador;
+      if (i2 === 0)
+        out = signo3 === 1 ? cuerpo(rac2.num) : cuerpo(`-${rac2.num}`);
+      else
+        out += signo3 === 1 ? ` + ${cuerpo(rac2.num)}` : ` - ${cuerpo(rac2.num)}`;
+    } else {
+      const s = t2.nodo.toString();
+      if (i2 === 0)
+        out = t2.signo === 1 ? s : `-(${s})`;
+      else
+        out += t2.signo === 1 ? ` + ${s}` : ` - ${s}`;
+    }
+  });
+  try {
+    return parse2(out);
+  } catch {
+    return n;
+  }
+}
+
+// src/expr/signos.ts
 var SIG_NEG = 1;
 var SIG_CERO = 2;
 var SIG_POS = 4;
@@ -46761,14 +47060,13 @@ var SIGNO_FUNCION = {
 };
 var FUNCION_IMPAR = /* @__PURE__ */ new Set(["cbrt", "sinh", "asinh", "atanh", "tanh", "atan", "asin"]);
 function signoDe(n) {
-  var _a, _b;
   const nodo = n.type === "ParenthesisNode" ? n.content : n;
   if (nodo.filter((m) => m.type === "SymbolNode" && !NOMBRES_CONSTANTES.has(m.name)).length === 0) {
     try {
       const v = nodo.evaluate();
       if (typeof v === "number")
         return signoDeNumero(v);
-    } catch (e3) {
+    } catch {
     }
   }
   if (nodo.type === "ConstantNode")
@@ -46810,7 +47108,7 @@ function signoDe(n) {
     return SIG_TODO;
   }
   if (nodo.type === "FunctionNode") {
-    const fn = (_b = (_a = nodo.fn) == null ? void 0 : _a.name) != null ? _b : "";
+    const fn = nodo.fn?.name ?? "";
     if (SIGNO_FUNCION[fn] !== void 0 && nodo.args.length === 1)
       return SIGNO_FUNCION[fn];
     if (FUNCION_IMPAR.has(fn) && nodo.args.length === 1)
@@ -46831,6 +47129,347 @@ function signoDe(n) {
 }
 var esNoNegativo = (n) => (signoDe(n) & SIG_NEG) === 0;
 var esSiempreNegativo = (n) => signoDe(n) === SIG_NEG;
+
+// src/expr/expansion.ts
+var LIMITE_EXPANSION = 16;
+function costeExpansion(n) {
+  if (!n || typeof n !== "object")
+    return 1;
+  if (n.type === "ParenthesisNode")
+    return costeExpansion(n.content);
+  if (n.type === "OperatorNode") {
+    const args = n.args ?? [];
+    if (args.length === 1)
+      return costeExpansion(args[0]);
+    const a = costeExpansion(args[0]), b = costeExpansion(args[1]);
+    if (n.op === "+" || n.op === "-")
+      return a + b;
+    if (n.op === "*")
+      return a * b;
+    if (n.op === "/")
+      return a * b;
+    if (n.op === "^") {
+      const k = valorConstanteFactor(args[1]);
+      if (k === null || !Number.isInteger(k))
+        return a;
+      return Math.pow(a, Math.abs(k));
+    }
+    return a + b;
+  }
+  return 1;
+}
+function rationalizeSeguro(expr) {
+  let nodo;
+  try {
+    nodo = typeof expr === "string" ? parse2(expr) : expr;
+  } catch {
+    return null;
+  }
+  if (costeExpansion(nodo) > LIMITE_EXPANSION)
+    return null;
+  try {
+    return rationalize(nodo);
+  } catch {
+    return null;
+  }
+}
+
+// src/expr/combinarFracciones.ts
+var clavePot = (f) => f.nodo.toString();
+function aFraccionPot(n) {
+  if (n.type === "ParenthesisNode")
+    return aFraccionPot(n.content);
+  if (n.type === "OperatorNode") {
+    const [a, b] = n.args ?? [];
+    if (n.op === "*" && n.args.length === 2) {
+      const A = aFraccionPot(a), B = aFraccionPot(b);
+      return { num: [...A.num, ...B.num], den: [...A.den, ...B.den] };
+    }
+    if (n.op === "/" && n.args.length === 2) {
+      const A = aFraccionPot(a), B = aFraccionPot(b);
+      return { num: [...A.num, ...B.den], den: [...A.den, ...B.num] };
+    }
+    if (n.op === "-" && n.args.length === 1) {
+      const A = aFraccionPot(a);
+      return { num: [...A.num, { nodo: parse2("-1"), exp: 1 }], den: A.den };
+    }
+    if ((n.op === "+" || n.op === "-") && n.args.length === 2) {
+      const A = aFraccionPot(a), B = aFraccionPot(b);
+      const denU = unionPot(A.den, B.den);
+      const tA = renderFactoresPot([...A.num, ...restaPot(denU, A.den)]);
+      const tB = renderFactoresPot([...B.num, ...restaPot(denU, B.den)]);
+      const suma3 = n.op === "+" ? `${tA} + ${tB}` : `${tA} - (${tB})`;
+      return { num: [{ nodo: parse2(suma3), exp: 1 }], den: denU };
+    }
+    if (n.op === "^") {
+      const k0 = valorConstanteFactor(b);
+      if (k0 !== null && Number.isInteger(k0) && k0 !== 0) {
+        const A = aFraccionPot(a), k = Math.abs(k0);
+        const pot = (fs) => fs.map((f) => ({ nodo: f.nodo, exp: f.exp * k }));
+        return k0 > 0 ? { num: pot(A.num), den: pot(A.den) } : { num: pot(A.den), den: pot(A.num) };
+      }
+    }
+  }
+  return { num: [{ nodo: n, exp: 1 }], den: [] };
+}
+function agruparPot(fs) {
+  const m = /* @__PURE__ */ new Map();
+  for (const f of fs) {
+    const k = clavePot(f), prev = m.get(k);
+    if (prev)
+      prev.exp += f.exp;
+    else
+      m.set(k, { nodo: f.nodo, exp: f.exp });
+  }
+  return m;
+}
+function unionPot(a, b) {
+  const ma = agruparPot(a), mb = agruparPot(b), out = [];
+  for (const k of /* @__PURE__ */ new Set([...ma.keys(), ...mb.keys()])) {
+    const fa = ma.get(k), fb = mb.get(k);
+    out.push({ nodo: (fa ?? fb).nodo, exp: Math.max(fa?.exp ?? 0, fb?.exp ?? 0) });
+  }
+  return out;
+}
+function restaPot(a, b) {
+  const mb = agruparPot(b), out = [];
+  for (const [k, f] of agruparPot(a)) {
+    const exp3 = f.exp - (mb.get(k)?.exp ?? 0);
+    if (exp3 > 0)
+      out.push({ nodo: f.nodo, exp: exp3 });
+  }
+  return out;
+}
+function esSuma(n) {
+  if (n.type === "ParenthesisNode")
+    return esSuma(n.content);
+  return n.type === "OperatorNode" && (n.op === "+" || n.op === "-") && n.args.length === 2;
+}
+function esAtomo(n) {
+  if (n.type === "ParenthesisNode")
+    return esAtomo(n.content);
+  return n.type === "SymbolNode" || n.type === "ConstantNode" || n.type === "FunctionNode";
+}
+function renderFactoresPot(fs) {
+  let coefN = 1, coefD = 1;
+  const resto = [];
+  for (const f of fs) {
+    const v = valorConstanteFactor(f.nodo);
+    const fr = v !== null ? fraccionExacta(v) : null;
+    if (fr) {
+      coefN *= Math.pow(fr.n, f.exp);
+      coefD *= Math.pow(fr.d, f.exp);
+    } else
+      resto.push(f);
+  }
+  let signo3 = 1;
+  if (coefN < 0) {
+    signo3 = -signo3;
+    coefN = -coefN;
+  }
+  const g = mcd(coefN, coefD) || 1;
+  coefN /= g;
+  coefD /= g;
+  const orden = [...resto.filter((f) => !esSuma(f.nodo)), ...resto.filter((f) => esSuma(f.nodo))];
+  const cuerpo = orden.map((f) => {
+    const base = esAtomo(f.nodo) ? f.nodo.toString() : `(${f.nodo.toString()})`;
+    return f.exp === 1 ? esAtomo(f.nodo) ? base : strFactorSeguro(f.nodo) : `${base}^${f.exp}`;
+  });
+  const partes = [
+    ...coefN !== 1 || cuerpo.length === 0 ? [String(coefN)] : [],
+    ...cuerpo
+  ];
+  let out = partes.join(" * ");
+  if (coefD !== 1)
+    out = `(${out}) / ${coefD}`;
+  return signo3 === 1 ? out : `-(${out})`;
+}
+function expandirSumaPolinomica(n) {
+  if (!esSuma(n) || contieneFuncion(n))
+    return n;
+  const s = n.toString();
+  if (s.length > 240)
+    return n;
+  const r0 = rationalizeSeguro(s);
+  if (!r0)
+    return n;
+  try {
+    const r = combinarYordenar(r0);
+    return parse2(formatearCanonico(racionalizarFracciones(r)));
+  } catch {
+    return n;
+  }
+}
+function combinarFracciones(n) {
+  const fr = aFraccionPot(n);
+  const num = restaPot(fr.num, fr.den).map((f) => ({ ...f, nodo: expandirSumaPolinomica(f.nodo) }));
+  const den = restaPot(fr.den, fr.num);
+  const numS = renderFactoresPot(num);
+  if (den.length === 0)
+    return parse2(numS);
+  return parse2(`(${numS}) / (${renderFactoresPot(den)})`);
+}
+function profundidadFraccion(n) {
+  let max3 = 0;
+  const rec = (node, d) => {
+    if (!node || typeof node !== "object")
+      return;
+    const nd = node.type === "OperatorNode" && node.op === "/" ? d + 1 : d;
+    if (nd > max3)
+      max3 = nd;
+    if (node.content)
+      rec(node.content, nd);
+    for (const a of node.args ?? [])
+      rec(a, nd);
+  };
+  rec(n, 0);
+  return max3;
+}
+
+// src/expr/radicales.ts
+function formaSimbolica(v) {
+  if (!Number.isFinite(v) || Number.isInteger(v))
+    return null;
+  const cerca2 = (a, b) => Math.abs(a - b) <= 1e-9 * (1 + Math.abs(b));
+  if (cerca2(Math.abs(v), Math.PI))
+    return v < 0 ? "-pi" : "pi";
+  if (cerca2(Math.abs(v), Math.E))
+    return v < 0 ? "-e" : "e";
+  for (let k = 2; k <= 100; k++) {
+    const lk = Math.log(k);
+    if (cerca2(v, lk))
+      return `log(${k}, e)`;
+    if (cerca2(v, -lk))
+      return `-log(${k}, e)`;
+    if (cerca2(v, 1 / lk))
+      return `1/log(${k}, e)`;
+    if (cerca2(v, -1 / lk))
+      return `-1/log(${k}, e)`;
+  }
+  const signo3 = (s) => v < 0 ? `-(${s})` : s;
+  const k2 = radicandoEntero(Math.abs(v), 2);
+  if (k2 !== null)
+    return signo3(strRadical(k2, 2));
+  const kr = radicandoEntero(1 / Math.abs(v), 2);
+  if (kr !== null) {
+    const { a, b } = extraerFactorRadical(kr, 2) ?? { a: 1, b: kr };
+    if (b !== 1)
+      return signo3(`sqrt(${b})/${a * b}`);
+  }
+  const k3 = radicandoEntero(Math.abs(v), 3);
+  if (k3 !== null)
+    return signo3(strRadical(k3, 3));
+  for (const base of [10, 2]) {
+    const p = Math.pow(base, Math.abs(v));
+    const k = Math.round(p);
+    if (k >= 2 && k <= 1e9 && Math.abs(p - k) <= 1e-9 * k && !Number.isInteger(Math.log(k) / Math.log(base)))
+      return signo3(`log(${k}, ${base})`);
+  }
+  return null;
+}
+function radicandoEntero(v, indice) {
+  if (!Number.isFinite(v) || v <= 0)
+    return null;
+  const q = Math.pow(v, indice);
+  const k = Math.round(q);
+  if (k < 2 || k > 1e9)
+    return null;
+  if (Math.abs(q - k) > 1e-9 * k)
+    return null;
+  const r = Math.round(Math.pow(k, 1 / indice));
+  return Math.pow(r, indice) === k ? null : k;
+}
+function extraerFactorRadical(k, indice) {
+  if (!Number.isInteger(k) || k < 2 || k > 1e9 || indice < 2 || indice > 12)
+    return null;
+  let a = 1, b = k;
+  for (let p = 2; Math.pow(p, indice) <= b; p++) {
+    const pe = Math.pow(p, indice);
+    while (b % pe === 0) {
+      b /= pe;
+      a *= p;
+    }
+  }
+  return a === 1 ? null : { a, b };
+}
+function strRadical(k, indice) {
+  const raiz = (r) => indice === 2 ? `sqrt(${r})` : `nthRoot(${r}, ${indice})`;
+  const f = extraerFactorRadical(k, indice);
+  if (f === null)
+    return raiz(k);
+  return f.b === 1 ? `${f.a}` : `${f.a}*${raiz(f.b)}`;
+}
+function reducirRadicales(n) {
+  return n.transform((node) => {
+    if (node.type !== "FunctionNode")
+      return node;
+    const nombre = node.fn?.name;
+    const indice = nombre === "sqrt" ? 2 : nombre === "cbrt" ? 3 : nombre === "nthRoot" && node.args?.length === 2 && node.args[1].type === "ConstantNode" ? Number(node.args[1].value) : 0;
+    if (!Number.isInteger(indice) || indice < 2 || indice > 12)
+      return node;
+    const radicando = node.args?.[0];
+    if (!radicando)
+      return node;
+    const fs = factores(radicando);
+    let k = 1;
+    const resto = [];
+    for (const f2 of fs) {
+      const val = f2.nodo.type === "ConstantNode" ? Number(f2.nodo.value) : NaN;
+      if (f2.exp === 1 && Number.isInteger(val) && val > 0)
+        k *= val;
+      else
+        resto.push(f2.exp === 1 ? strFactorSeguro(f2.nodo) : `1/(${strFactorSeguro(f2.nodo)})`);
+    }
+    const f = extraerFactorRadical(k, indice);
+    if (f === null)
+      return node;
+    const raiz = (cuerpo) => indice === 2 ? `sqrt(${cuerpo})` : `nthRoot(${cuerpo}, ${indice})`;
+    const dentro2 = [...f.b !== 1 || resto.length === 0 ? [String(f.b)] : [], ...resto].join("*");
+    const fuera = dentro2 === "1" ? `${f.a}` : `${f.a}*${raiz(dentro2)}`;
+    try {
+      return parse2(fuera);
+    } catch {
+      return node;
+    }
+  });
+}
+function contieneLog(n) {
+  return n.filter((x) => x.type === "FunctionNode" && x.fn?.name === "log").length > 0;
+}
+function resimbolizarConstantes(n) {
+  const resimbolizado = reducirRadicales(n).transform((node) => {
+    if (node.isConstantNode && typeof node.value === "number") {
+      const s = formaSimbolica(node.value);
+      if (s)
+        return parse2(s);
+    }
+    return node;
+  });
+  const colapsarReciproco = (m) => {
+    const t2 = m.map(colapsarReciproco);
+    if (t2.type === "OperatorNode" && t2.op === "*" && t2.args.length === 2) {
+      for (const [i2, j] of [[0, 1], [1, 0]]) {
+        const r = t2.args[j];
+        if (r.type === "OperatorNode" && r.op === "/" && r.args.length === 2 && r.args[0].type === "ConstantNode" && Number(r.args[0].value) === 1)
+          return opNodo("/", "divide", [t2.args[i2], r.args[1]]);
+      }
+    }
+    return t2;
+  };
+  const logAlFinal = (m) => {
+    const t2 = m.map(logAlFinal);
+    if (t2.type === "OperatorNode" && t2.op === "*" && t2.args.length === 2) {
+      const [l, r] = t2.args;
+      const dep = (x) => x.filter((y) => y.isSymbolNode === true && y.name === "x").length > 0;
+      if (contieneLog(l) && !dep(l) && dep(r))
+        return opNodo("*", "multiply", [r, l]);
+    }
+    return t2;
+  };
+  return colapsarReciproco(logAlFinal(resimbolizado));
+}
+
+// src/formatoExpr.ts
 function sinFactoresConstantes(n) {
   let nodo = n;
   for (let i2 = 0; i2 < 16; i2++) {
@@ -46922,114 +47561,11 @@ function coeficientesAlFrente(n) {
 function formatearCanonico(n) {
   return renderCanonico(terminos(coeficientesAlFrente(n)));
 }
-function strFactorSeguro(n) {
-  const s = n.toString();
-  const raiz = n.type === "ParenthesisNode" ? n.content : n;
-  const esAditivo = raiz.type === "OperatorNode" && (raiz.op === "+" || raiz.op === "-");
-  return esAditivo ? `(${s})` : s;
-}
-function mcd(a, b) {
-  a = Math.abs(a);
-  b = Math.abs(b);
-  while (b) {
-    [a, b] = [b, a % b];
-  }
-  return a;
-}
-function fraccionExacta(v) {
-  if (!Number.isFinite(v))
-    return null;
-  if (Number.isInteger(v))
-    return { n: v, d: 1 };
-  try {
-    const f = fraction(v);
-    if (f.d > 64)
-      return null;
-    const val = f.s * f.n / f.d;
-    return Math.abs(val - v) < 1e-9 ? { n: f.s * f.n, d: f.d } : null;
-  } catch (e3) {
-    return null;
-  }
-}
-function terminoRacional(nodo) {
-  const fs = factores(nodo);
-  let n = 1, d = 1;
-  const simbNum = [], simbDen = [];
-  let huboDecimal = false;
-  for (const f of fs) {
-    const val = valorConstanteFactor(f.nodo);
-    if (val !== null) {
-      const fr = fraccionExacta(val);
-      if (!fr)
-        return null;
-      if (!Number.isInteger(val))
-        huboDecimal = true;
-      if (f.exp === 1) {
-        n *= fr.n;
-        d *= fr.d;
-      } else {
-        n *= fr.d;
-        d *= fr.n;
-      }
-    } else {
-      (f.exp === 1 ? simbNum : simbDen).push(strFactorSeguro(f.nodo));
-    }
-  }
-  if (!huboDecimal && d === 1)
-    return null;
-  let signo2 = 1;
-  if (n < 0) {
-    signo2 = -signo2;
-    n = -n;
-  }
-  if (d < 0) {
-    signo2 = -signo2;
-    d = -d;
-  }
-  const g = mcd(n, d) || 1;
-  n /= g;
-  d /= g;
-  const num = [...n !== 1 || simbNum.length === 0 ? [String(n)] : [], ...simbNum].join("*");
-  const denPartes = [...d !== 1 ? [String(d)] : [], ...simbDen];
-  return { num, den: denPartes.length ? denPartes.join("*") : null, signo: signo2 };
-}
-function racionalizarFracciones(n) {
-  const ts = terminos(n);
-  if (ts.length === 0)
-    return n;
-  const racs = ts.map((t2) => terminoRacional(t2.nodo));
-  if (racs.every((r) => r === null))
-    return n;
-  let out = "";
-  ts.forEach((t2, i2) => {
-    const rac = racs[i2];
-    if (rac) {
-      const signo2 = t2.signo * rac.signo;
-      const cuerpo = (numerador) => rac.den ? `(${numerador})/(${rac.den})` : numerador;
-      if (i2 === 0)
-        out = signo2 === 1 ? cuerpo(rac.num) : cuerpo(`-${rac.num}`);
-      else
-        out += signo2 === 1 ? ` + ${cuerpo(rac.num)}` : ` - ${cuerpo(rac.num)}`;
-    } else {
-      const s = t2.nodo.toString();
-      if (i2 === 0)
-        out = t2.signo === 1 ? s : `-(${s})`;
-      else
-        out += t2.signo === 1 ? ` + ${s}` : ` - ${s}`;
-    }
-  });
-  try {
-    return parse2(out);
-  } catch (e3) {
-    return n;
-  }
-}
 var CONSTANTES_CON_NOMBRE = /* @__PURE__ */ new Set(["pi", "e", "tau", "phi"]);
 function baseFactor(nodo) {
-  var _a, _b;
   if (nodo.type === "SymbolNode")
     return nodo.name;
-  if (nodo.type === "OperatorNode" && nodo.op === "^" && ((_b = (_a = nodo.args) == null ? void 0 : _a[0]) == null ? void 0 : _b.type) === "SymbolNode")
+  if (nodo.type === "OperatorNode" && nodo.op === "^" && nodo.args?.[0]?.type === "SymbolNode")
     return nodo.args[0].name;
   return nodo.toString();
 }
@@ -47063,13 +47599,13 @@ function combinarYordenar(n) {
       } else
         (f.exp === 1 ? num : den).push(f.nodo);
     }
-    let signo2 = t2.signo;
+    let signo3 = t2.signo;
     if (num1 < 0) {
-      signo2 = -signo2;
+      signo3 = -signo3;
       num1 = -num1;
     }
     if (den1 < 0) {
-      signo2 = -signo2;
+      signo3 = -signo3;
       den1 = -den1;
     }
     const g = mcd(num1, den1) || 1;
@@ -47078,7 +47614,7 @@ function combinarYordenar(n) {
     const orden = (xs) => [...xs].sort((a, b) => claveFactor(a) < claveFactor(b) ? -1 : claveFactor(a) > claveFactor(b) ? 1 : 0);
     const numS = orden(num), denS = orden(den);
     const reord = coefSucio || num.some((x, i2) => x !== numS[i2]) || den.some((x, i2) => x !== denS[i2]);
-    return { signo: signo2, n: num1, d: den1, num: numS, den: denS, reord };
+    return { signo: signo3, n: num1, d: den1, num: numS, den: denS, reord };
   });
   if (descs.some((x) => x === null))
     return n;
@@ -47104,320 +47640,20 @@ function combinarYordenar(n) {
     return parse2("0");
   let out = "";
   grps.forEach((g, i2) => {
-    const signo2 = g.n < 0 ? -1 : 1, valN = Math.abs(g.n);
+    const signo3 = g.n < 0 ? -1 : 1, valN = Math.abs(g.n);
     const numStr = [...valN !== 1 || g.num.length === 0 ? [String(valN)] : [], ...g.num].join("*");
     const denPartes = [...g.d !== 1 ? [String(g.d)] : [], ...g.den];
     const cuerpo = (numerador) => denPartes.length ? `(${numerador})/(${denPartes.join("*")})` : numerador;
     if (i2 === 0)
-      out = signo2 === 1 ? cuerpo(numStr) : cuerpo(`-${numStr}`);
+      out = signo3 === 1 ? cuerpo(numStr) : cuerpo(`-${numStr}`);
     else
-      out += signo2 === 1 ? ` + ${cuerpo(numStr)}` : ` - ${cuerpo(numStr)}`;
+      out += signo3 === 1 ? ` + ${cuerpo(numStr)}` : ` - ${cuerpo(numStr)}`;
   });
   try {
     return parse2(out);
-  } catch (e3) {
+  } catch {
     return n;
   }
-}
-var clavePot = (f) => f.nodo.toString();
-function aFraccionPot(n) {
-  var _a;
-  if (n.type === "ParenthesisNode")
-    return aFraccionPot(n.content);
-  if (n.type === "OperatorNode") {
-    const [a, b] = (_a = n.args) != null ? _a : [];
-    if (n.op === "*" && n.args.length === 2) {
-      const A = aFraccionPot(a), B = aFraccionPot(b);
-      return { num: [...A.num, ...B.num], den: [...A.den, ...B.den] };
-    }
-    if (n.op === "/" && n.args.length === 2) {
-      const A = aFraccionPot(a), B = aFraccionPot(b);
-      return { num: [...A.num, ...B.den], den: [...A.den, ...B.num] };
-    }
-    if (n.op === "-" && n.args.length === 1) {
-      const A = aFraccionPot(a);
-      return { num: [...A.num, { nodo: parse2("-1"), exp: 1 }], den: A.den };
-    }
-    if ((n.op === "+" || n.op === "-") && n.args.length === 2) {
-      const A = aFraccionPot(a), B = aFraccionPot(b);
-      const denU = unionPot(A.den, B.den);
-      const tA = renderFactoresPot([...A.num, ...restaPot(denU, A.den)]);
-      const tB = renderFactoresPot([...B.num, ...restaPot(denU, B.den)]);
-      const suma = n.op === "+" ? `${tA} + ${tB}` : `${tA} - (${tB})`;
-      return { num: [{ nodo: parse2(suma), exp: 1 }], den: denU };
-    }
-    if (n.op === "^") {
-      const k0 = valorConstanteFactor(b);
-      if (k0 !== null && Number.isInteger(k0) && k0 !== 0) {
-        const A = aFraccionPot(a), k = Math.abs(k0);
-        const pot = (fs) => fs.map((f) => ({ nodo: f.nodo, exp: f.exp * k }));
-        return k0 > 0 ? { num: pot(A.num), den: pot(A.den) } : { num: pot(A.den), den: pot(A.num) };
-      }
-    }
-  }
-  return { num: [{ nodo: n, exp: 1 }], den: [] };
-}
-function agruparPot(fs) {
-  const m = /* @__PURE__ */ new Map();
-  for (const f of fs) {
-    const k = clavePot(f), prev = m.get(k);
-    if (prev)
-      prev.exp += f.exp;
-    else
-      m.set(k, { nodo: f.nodo, exp: f.exp });
-  }
-  return m;
-}
-function unionPot(a, b) {
-  var _a, _b;
-  const ma = agruparPot(a), mb = agruparPot(b), out = [];
-  for (const k of /* @__PURE__ */ new Set([...ma.keys(), ...mb.keys()])) {
-    const fa = ma.get(k), fb = mb.get(k);
-    out.push({ nodo: (fa != null ? fa : fb).nodo, exp: Math.max((_a = fa == null ? void 0 : fa.exp) != null ? _a : 0, (_b = fb == null ? void 0 : fb.exp) != null ? _b : 0) });
-  }
-  return out;
-}
-function restaPot(a, b) {
-  var _a, _b;
-  const mb = agruparPot(b), out = [];
-  for (const [k, f] of agruparPot(a)) {
-    const exp3 = f.exp - ((_b = (_a = mb.get(k)) == null ? void 0 : _a.exp) != null ? _b : 0);
-    if (exp3 > 0)
-      out.push({ nodo: f.nodo, exp: exp3 });
-  }
-  return out;
-}
-function esSuma(n) {
-  if (n.type === "ParenthesisNode")
-    return esSuma(n.content);
-  return n.type === "OperatorNode" && (n.op === "+" || n.op === "-") && n.args.length === 2;
-}
-function esAtomo(n) {
-  if (n.type === "ParenthesisNode")
-    return esAtomo(n.content);
-  return n.type === "SymbolNode" || n.type === "ConstantNode" || n.type === "FunctionNode";
-}
-function renderFactoresPot(fs) {
-  let coefN = 1, coefD = 1;
-  const resto = [];
-  for (const f of fs) {
-    const v = valorConstanteFactor(f.nodo);
-    const fr = v !== null ? fraccionExacta(v) : null;
-    if (fr) {
-      coefN *= Math.pow(fr.n, f.exp);
-      coefD *= Math.pow(fr.d, f.exp);
-    } else
-      resto.push(f);
-  }
-  let signo2 = 1;
-  if (coefN < 0) {
-    signo2 = -signo2;
-    coefN = -coefN;
-  }
-  const g = mcd(coefN, coefD) || 1;
-  coefN /= g;
-  coefD /= g;
-  const orden = [...resto.filter((f) => !esSuma(f.nodo)), ...resto.filter((f) => esSuma(f.nodo))];
-  const cuerpo = orden.map((f) => {
-    const base = esAtomo(f.nodo) ? f.nodo.toString() : `(${f.nodo.toString()})`;
-    return f.exp === 1 ? esAtomo(f.nodo) ? base : strFactorSeguro(f.nodo) : `${base}^${f.exp}`;
-  });
-  const partes = [
-    ...coefN !== 1 || cuerpo.length === 0 ? [String(coefN)] : [],
-    ...cuerpo
-  ];
-  let out = partes.join(" * ");
-  if (coefD !== 1)
-    out = `(${out}) / ${coefD}`;
-  return signo2 === 1 ? out : `-(${out})`;
-}
-function expandirSumaPolinomica(n) {
-  if (!esSuma(n) || contieneFuncion(n))
-    return n;
-  const s = n.toString();
-  if (s.length > 240)
-    return n;
-  const r0 = rationalizeSeguro(s);
-  if (!r0)
-    return n;
-  try {
-    const r = combinarYordenar(r0);
-    return parse2(formatearCanonico(racionalizarFracciones(r)));
-  } catch (e3) {
-    return n;
-  }
-}
-function combinarFracciones(n) {
-  const fr = aFraccionPot(n);
-  const num = restaPot(fr.num, fr.den).map((f) => ({ ...f, nodo: expandirSumaPolinomica(f.nodo) }));
-  const den = restaPot(fr.den, fr.num);
-  const numS = renderFactoresPot(num);
-  if (den.length === 0)
-    return parse2(numS);
-  return parse2(`(${numS}) / (${renderFactoresPot(den)})`);
-}
-function profundidadFraccion(n) {
-  let max3 = 0;
-  const rec = (node, d) => {
-    var _a;
-    if (!node || typeof node !== "object")
-      return;
-    const nd = node.type === "OperatorNode" && node.op === "/" ? d + 1 : d;
-    if (nd > max3)
-      max3 = nd;
-    if (node.content)
-      rec(node.content, nd);
-    for (const a of (_a = node.args) != null ? _a : [])
-      rec(a, nd);
-  };
-  rec(n, 0);
-  return max3;
-}
-function formaSimbolica(v) {
-  var _a;
-  if (!Number.isFinite(v) || Number.isInteger(v))
-    return null;
-  const cerca2 = (a, b) => Math.abs(a - b) <= 1e-9 * (1 + Math.abs(b));
-  if (cerca2(Math.abs(v), Math.PI))
-    return v < 0 ? "-pi" : "pi";
-  if (cerca2(Math.abs(v), Math.E))
-    return v < 0 ? "-e" : "e";
-  for (let k = 2; k <= 100; k++) {
-    const lk = Math.log(k);
-    if (cerca2(v, lk))
-      return `log(${k}, e)`;
-    if (cerca2(v, -lk))
-      return `-log(${k}, e)`;
-    if (cerca2(v, 1 / lk))
-      return `1/log(${k}, e)`;
-    if (cerca2(v, -1 / lk))
-      return `-1/log(${k}, e)`;
-  }
-  const signo2 = (s) => v < 0 ? `-(${s})` : s;
-  const k2 = radicandoEntero(Math.abs(v), 2);
-  if (k2 !== null)
-    return signo2(strRadical(k2, 2));
-  const kr = radicandoEntero(1 / Math.abs(v), 2);
-  if (kr !== null) {
-    const { a, b } = (_a = extraerFactorRadical(kr, 2)) != null ? _a : { a: 1, b: kr };
-    if (b !== 1)
-      return signo2(`sqrt(${b})/${a * b}`);
-  }
-  const k3 = radicandoEntero(Math.abs(v), 3);
-  if (k3 !== null)
-    return signo2(strRadical(k3, 3));
-  for (const base of [10, 2]) {
-    const p = Math.pow(base, Math.abs(v));
-    const k = Math.round(p);
-    if (k >= 2 && k <= 1e9 && Math.abs(p - k) <= 1e-9 * k && !Number.isInteger(Math.log(k) / Math.log(base)))
-      return signo2(`log(${k}, ${base})`);
-  }
-  return null;
-}
-function radicandoEntero(v, indice) {
-  if (!Number.isFinite(v) || v <= 0)
-    return null;
-  const q = Math.pow(v, indice);
-  const k = Math.round(q);
-  if (k < 2 || k > 1e9)
-    return null;
-  if (Math.abs(q - k) > 1e-9 * k)
-    return null;
-  const r = Math.round(Math.pow(k, 1 / indice));
-  return Math.pow(r, indice) === k ? null : k;
-}
-function extraerFactorRadical(k, indice) {
-  if (!Number.isInteger(k) || k < 2 || k > 1e9 || indice < 2 || indice > 12)
-    return null;
-  let a = 1, b = k;
-  for (let p = 2; Math.pow(p, indice) <= b; p++) {
-    const pe = Math.pow(p, indice);
-    while (b % pe === 0) {
-      b /= pe;
-      a *= p;
-    }
-  }
-  return a === 1 ? null : { a, b };
-}
-function strRadical(k, indice) {
-  const raiz = (r) => indice === 2 ? `sqrt(${r})` : `nthRoot(${r}, ${indice})`;
-  const f = extraerFactorRadical(k, indice);
-  if (f === null)
-    return raiz(k);
-  return f.b === 1 ? `${f.a}` : `${f.a}*${raiz(f.b)}`;
-}
-function reducirRadicales(n) {
-  return n.transform((node) => {
-    var _a, _b, _c;
-    if (node.type !== "FunctionNode")
-      return node;
-    const nombre = (_a = node.fn) == null ? void 0 : _a.name;
-    const indice = nombre === "sqrt" ? 2 : nombre === "cbrt" ? 3 : nombre === "nthRoot" && ((_b = node.args) == null ? void 0 : _b.length) === 2 && node.args[1].type === "ConstantNode" ? Number(node.args[1].value) : 0;
-    if (!Number.isInteger(indice) || indice < 2 || indice > 12)
-      return node;
-    const radicando = (_c = node.args) == null ? void 0 : _c[0];
-    if (!radicando)
-      return node;
-    const fs = factores(radicando);
-    let k = 1;
-    const resto = [];
-    for (const f2 of fs) {
-      const val = f2.nodo.type === "ConstantNode" ? Number(f2.nodo.value) : NaN;
-      if (f2.exp === 1 && Number.isInteger(val) && val > 0)
-        k *= val;
-      else
-        resto.push(f2.exp === 1 ? strFactorSeguro(f2.nodo) : `1/(${strFactorSeguro(f2.nodo)})`);
-    }
-    const f = extraerFactorRadical(k, indice);
-    if (f === null)
-      return node;
-    const raiz = (cuerpo) => indice === 2 ? `sqrt(${cuerpo})` : `nthRoot(${cuerpo}, ${indice})`;
-    const dentro = [...f.b !== 1 || resto.length === 0 ? [String(f.b)] : [], ...resto].join("*");
-    const fuera = dentro === "1" ? `${f.a}` : `${f.a}*${raiz(dentro)}`;
-    try {
-      return parse2(fuera);
-    } catch (e3) {
-      return node;
-    }
-  });
-}
-function contieneLog(n) {
-  return n.filter((x) => {
-    var _a;
-    return x.type === "FunctionNode" && ((_a = x.fn) == null ? void 0 : _a.name) === "log";
-  }).length > 0;
-}
-function resimbolizarConstantes(n) {
-  const resimbolizado = reducirRadicales(n).transform((node) => {
-    if (node.isConstantNode && typeof node.value === "number") {
-      const s = formaSimbolica(node.value);
-      if (s)
-        return parse2(s);
-    }
-    return node;
-  });
-  const colapsarReciproco = (m) => {
-    const t2 = m.map(colapsarReciproco);
-    if (t2.type === "OperatorNode" && t2.op === "*" && t2.args.length === 2) {
-      for (const [i2, j] of [[0, 1], [1, 0]]) {
-        const r = t2.args[j];
-        if (r.type === "OperatorNode" && r.op === "/" && r.args.length === 2 && r.args[0].type === "ConstantNode" && Number(r.args[0].value) === 1)
-          return opNodo("/", "divide", [t2.args[i2], r.args[1]]);
-      }
-    }
-    return t2;
-  };
-  const logAlFinal = (m) => {
-    const t2 = m.map(logAlFinal);
-    if (t2.type === "OperatorNode" && t2.op === "*" && t2.args.length === 2) {
-      const [l, r] = t2.args;
-      const dep = (x) => x.filter((y) => y.isSymbolNode === true && y.name === "x").length > 0;
-      if (contieneLog(l) && !dep(l) && dep(r))
-        return opNodo("*", "multiply", [r, l]);
-    }
-    return t2;
-  };
-  return colapsarReciproco(logAlFinal(resimbolizado));
 }
 
 // src/despejeInverso.ts
@@ -47455,11 +47691,10 @@ function desParen(n) {
   return n.type === "ParenthesisNode" ? desParen(n.content) : n;
 }
 function trigDeY(n) {
-  var _a, _b, _c;
   const nodo = desParen(n);
-  if (nodo.type !== "FunctionNode" || ((_a = nodo.args) == null ? void 0 : _a.length) !== 1)
+  if (nodo.type !== "FunctionNode" || nodo.args?.length !== 1)
     return null;
-  const nombre = (_c = (_b = nodo.fn) == null ? void 0 : _b.name) != null ? _c : "";
+  const nombre = nodo.fn?.name ?? "";
   if (!TRIGS.has(nombre))
     return null;
   const arg2 = desParen(nodo.args[0]);
@@ -47543,7 +47778,7 @@ function sincosExpandido(fn, arg2) {
   try {
     A = parse2(renderTerminos1(ts[0]));
     B = parse2(terminosAStr(ts.slice(1)));
-  } catch (e3) {
+  } catch {
     return null;
   }
   const sA = sincosExpandido("sin", A), cA = sincosExpandido("cos", A);
@@ -47559,10 +47794,9 @@ function expandirTrig(D) {
   let out;
   try {
     out = D.transform((n) => {
-      var _a, _b;
-      if (fallo || n.type !== "FunctionNode" || ((_a = n.args) == null ? void 0 : _a.length) !== 1)
+      if (fallo || n.type !== "FunctionNode" || n.args?.length !== 1)
         return n;
-      const fn = (_b = n.fn) == null ? void 0 : _b.name;
+      const fn = n.fn?.name;
       if (fn !== "sin" && fn !== "cos")
         return n;
       const arg2 = desParen(n.args[0]);
@@ -47576,28 +47810,27 @@ function expandirTrig(D) {
       }
       try {
         return parse2(s);
-      } catch (e3) {
+      } catch {
         fallo = true;
         return n;
       }
     });
-  } catch (e3) {
+  } catch {
     return null;
   }
   return fallo ? null : out;
 }
 var RESERVADO = /^(CY|SY|aux\d+|sn\d+|cs\d+)$/;
 function sustituirAtomos(n, st) {
-  var _a, _b, _c;
   if (n.type === "FunctionNode") {
-    const fn = (_a = n.fn) == null ? void 0 : _a.name;
+    const fn = n.fn?.name;
     if (contieneY(n)) {
-      const arg2 = ((_b = n.args) == null ? void 0 : _b.length) === 1 ? desParen(n.args[0]) : null;
-      if ((fn === "sin" || fn === "cos") && (arg2 == null ? void 0 : arg2.type) === "SymbolNode" && arg2.name === "y")
+      const arg2 = n.args?.length === 1 ? desParen(n.args[0]) : null;
+      if ((fn === "sin" || fn === "cos") && arg2?.type === "SymbolNode" && arg2.name === "y")
         return parse2(fn === "cos" ? "CY" : "SY");
       return null;
     }
-    if ((fn === "sin" || fn === "cos") && ((_c = n.args) == null ? void 0 : _c.length) === 1) {
+    if ((fn === "sin" || fn === "cos") && n.args?.length === 1) {
       const argS = n.args[0].toString();
       let par = st.pares.get(argS);
       if (!par) {
@@ -47635,7 +47868,7 @@ function restaurarAtomos(s, inverso) {
     return parse2(s).transform(
       (n) => n.type === "SymbolNode" && inverso.has(n.name) ? parse2(inverso.get(n.name)) : n
     ).toString();
-  } catch (e3) {
+  } catch {
     return s;
   }
 }
@@ -47669,7 +47902,6 @@ function simboloPotencia(n0) {
   return null;
 }
 function colectar(n) {
-  var _a;
   const p = /* @__PURE__ */ new Map();
   for (const t2 of terminos(n)) {
     let coef = t2.signo;
@@ -47683,7 +47915,7 @@ function colectar(n) {
       const sp = simboloPotencia(f.nodo);
       if (sp === null || f.exp !== 1)
         return null;
-      pot.set(sp.sym, ((_a = pot.get(sp.sym)) != null ? _a : 0) + sp.k);
+      pot.set(sp.sym, (pot.get(sp.sym) ?? 0) + sp.k);
     }
     agregar(p, { coef, pot });
   }
@@ -47704,13 +47936,12 @@ function escalarPoli(a, c) {
   return out;
 }
 function multPoli(a, b) {
-  var _a;
   const out = /* @__PURE__ */ new Map();
   for (const ma of a.values()) {
     for (const mb of b.values()) {
       const pot = new Map(ma.pot);
       for (const [s, k] of mb.pot)
-        pot.set(s, ((_a = pot.get(s)) != null ? _a : 0) + k);
+        pot.set(s, (pot.get(s) ?? 0) + k);
       agregar(out, { coef: ma.coef * mb.coef, pot });
     }
   }
@@ -47723,10 +47954,9 @@ function binom(n, k) {
   return r;
 }
 function reducirParSinCos(p, sn, cs, impedirImpar) {
-  var _a, _b;
   const out = /* @__PURE__ */ new Map();
   for (const m of p.values()) {
-    const k = (_a = m.pot.get(sn)) != null ? _a : 0;
+    const k = m.pot.get(sn) ?? 0;
     if (k <= (impedirImpar ? 0 : 1)) {
       agregar(out, m);
       continue;
@@ -47740,17 +47970,16 @@ function reducirParSinCos(p, sn, cs, impedirImpar) {
         pot.set(sn, 1);
       else
         pot.delete(sn);
-      pot.set(cs, ((_b = pot.get(cs)) != null ? _b : 0) + 2 * i2);
+      pot.set(cs, (pot.get(cs) ?? 0) + 2 * i2);
       agregar(out, { coef: m.coef * binom(mm, i2) * (i2 % 2 === 0 ? 1 : -1), pot });
     }
   }
   return out;
 }
 function cuadraticaEnCY(p) {
-  var _a;
   const A = /* @__PURE__ */ new Map(), B = /* @__PURE__ */ new Map(), C = /* @__PURE__ */ new Map();
   for (const m of p.values()) {
-    const k = (_a = m.pot.get("CY")) != null ? _a : 0;
+    const k = m.pot.get("CY") ?? 0;
     if (k > 2)
       return null;
     const pot = new Map(m.pot);
@@ -47806,7 +48035,6 @@ function mayorCuadrado(g) {
   return 1;
 }
 function completarCuadrado(p) {
-  var _a;
   const syms = /* @__PURE__ */ new Set();
   for (const m of p.values())
     for (const s of m.pot.keys())
@@ -47816,7 +48044,7 @@ function completarCuadrado(p) {
   const sym = [...syms][0];
   let a = 0, b = 0, c = 0;
   for (const m of p.values()) {
-    const k = (_a = m.pot.get(sym)) != null ? _a : 0;
+    const k = m.pot.get(sym) ?? 0;
     if (k === 0)
       c = m.coef;
     else if (k === 1)
@@ -47844,7 +48072,7 @@ function ramaCosValida(uStr, evalF) {
   try {
     const c = parse2(uStr).compile();
     fu = (x) => c.evaluate({ x });
-  } catch (e3) {
+  } catch {
     return false;
   }
   const N = 240, x0 = -6, x1 = 6;
@@ -47854,7 +48082,7 @@ function ramaCosValida(uStr, evalF) {
     let u;
     try {
       u = fu(x);
-    } catch (e3) {
+    } catch {
       continue;
     }
     if (typeof u !== "number" || !Number.isFinite(u))
@@ -47870,16 +48098,12 @@ function ramaCosValida(uStr, evalF) {
   return viables >= 2;
 }
 function despejeTrigCuadratico(D, DVal) {
-  var _a;
   try {
     if (D.filter(
-      (n) => {
-        var _a2, _b;
-        return n.type === "FunctionNode" && (((_a2 = n.fn) == null ? void 0 : _a2.name) === "sin" || ((_b = n.fn) == null ? void 0 : _b.name) === "cos") && contieneY(n);
-      }
+      (n) => n.type === "FunctionNode" && (n.fn?.name === "sin" || n.fn?.name === "cos") && contieneY(n)
     ).length === 0)
       return null;
-  } catch (e3) {
+  } catch {
     return null;
   }
   const exp3 = expandirTrig(D);
@@ -47890,10 +48114,10 @@ function despejeTrigCuadratico(D, DVal) {
   if (sust === null)
     return null;
   const inverso = st.inverso;
-  const rac = rationalizeSeguro(sust);
-  if (rac === null)
+  const rac2 = rationalizeSeguro(sust);
+  if (rac2 === null)
     return null;
-  const pol0 = colectar(rac);
+  const pol0 = colectar(rac2);
   if (pol0 === null)
     return null;
   let pol = pol0;
@@ -47917,11 +48141,11 @@ function despejeTrigCuadratico(D, DVal) {
     evalF = (x, y) => {
       try {
         return c.evaluate({ x, y });
-      } catch (e3) {
+      } catch {
         return NaN;
       }
     };
-  } catch (e3) {
+  } catch {
     return null;
   }
   const emitir = (inner2) => {
@@ -47973,13 +48197,13 @@ function despejeTrigCuadratico(D, DVal) {
     den = /* @__PURE__ */ new Map();
     agregar(den, { coef: d, pot: /* @__PURE__ */ new Map() });
   }
-  const radicando = (_a = completarCuadrado(discRed)) != null ? _a : renderPoli(discRed);
+  const radicando = completarCuadrado(discRed) ?? renderPoli(discRed);
   const numS = renderPoli(num);
   const denS = renderPoli(den);
   if (radicando === null || numS === null || denS === null)
     return null;
   const raiz = `${s === 1 ? "" : `${s}*`}sqrt(${radicando})`;
-  const uCon = (signo2) => numS === "0" ? denS === "1" ? `${signo2 === "-" ? "-" : ""}${raiz}` : `(${signo2 === "-" ? "-" : ""}${raiz})/(${denS})` : denS === "1" ? `${numS} ${signo2} ${raiz}` : `((${numS}) ${signo2} ${raiz})/(${denS})`;
+  const uCon = (signo3) => numS === "0" ? denS === "1" ? `${signo3 === "-" ? "-" : ""}${raiz}` : `(${signo3 === "-" ? "-" : ""}${raiz})/(${denS})` : denS === "1" ? `${numS} ${signo3} ${raiz}` : `((${numS}) ${signo3} ${raiz})/(${denS})`;
   const validas = ["+", "-"].filter((sg) => ramaCosValida(restaurarAtomos(uCon(sg), inverso), evalF));
   if (validas.length === 0)
     return null;
@@ -48085,9 +48309,8 @@ function fraccion2(v) {
   }
   return null;
 }
-function raizCuadratica(b, s, r, d, signo2) {
-  var _a;
-  let [B, S, D] = [b, s * signo2, d];
+function raizCuadratica(b, s, r, d, signo3) {
+  let [B, S, D] = [b, s * signo3, d];
   const g = mcd3(mcd3(Math.round(B), Math.round(S)), Math.round(D));
   if (g > 1 && [B, S, D].every((v) => Math.abs(v - Math.round(v)) < 1e-9)) {
     B /= g;
@@ -48101,7 +48324,7 @@ function raizCuadratica(b, s, r, d, signo2) {
   }
   const abs3 = Math.abs(S);
   const cuerpo = r === 1 ? `${abs3}` : abs3 === 1 ? `sqrt(${r})` : `${abs3}*sqrt(${r})`;
-  const arriba = Math.abs(B) < EPS2 ? S < 0 ? `-${cuerpo}` : cuerpo : `${(_a = fraccion2(B)) != null ? _a : B} ${S < 0 ? "-" : "+"} ${cuerpo}`;
+  const arriba = Math.abs(B) < EPS2 ? S < 0 ? `-${cuerpo}` : cuerpo : `${fraccion2(B) ?? B} ${S < 0 ? "-" : "+"} ${cuerpo}`;
   return Math.abs(D - 1) < EPS2 ? arriba : `(${arriba})/(${D})`;
 }
 function raices(p0) {
@@ -48150,11 +48373,11 @@ function raices(p0) {
     const e3 = fraccion2(v);
     return e3 === null ? null : [...out, { valor: v, expr: e3 }];
   }
-  const entero = Math.round(disc);
-  if (Math.abs(disc - entero) > 1e-9)
+  const entero2 = Math.round(disc);
+  if (Math.abs(disc - entero2) > 1e-9)
     return null;
-  const s = mayorCuadrado2(entero);
-  const r = entero / (s * s);
+  const s = mayorCuadrado2(entero2);
+  const r = entero2 / (s * s);
   const raiz = Math.sqrt(disc);
   const mas = raizCuadratica(-b, s, r, 2 * a, 1);
   const menos = raizCuadratica(-b, s, r, 2 * a, -1);
@@ -48170,7 +48393,7 @@ function conjuntoDe(cond) {
   let r;
   try {
     r = racionalDe(parse2(cond));
-  } catch (e3) {
+  } catch {
     return null;
   }
   if (r === null || esCero(r.den))
@@ -48186,7 +48409,7 @@ function conjuntoDe(cond) {
   let f;
   try {
     f = compilarFuncion(cond, VAR);
-  } catch (e3) {
+  } catch {
     return null;
   }
   const cumple = (x) => {
@@ -48237,8 +48460,8 @@ function intersecar(A, B) {
       if (Math.abs(sup - inf) < 1e-12 && !(minCerrado && maxCerrado))
         continue;
       out.push({
-        min: inf === -Infinity ? null : (desdeA != null ? desdeA : a).min,
-        max: sup === Infinity ? null : (hastaA != null ? hastaA : a).max,
+        min: inf === -Infinity ? null : (desdeA ?? a).min,
+        max: sup === Infinity ? null : (hastaA ?? a).max,
         minCerrado,
         maxCerrado
       });
@@ -48274,188 +48497,7 @@ function simplificarCondiciones(conds) {
   };
 }
 
-// src/motor/parsing/productoImplicito.ts
-var FUNCIONES = /* @__PURE__ */ new Set([
-  "sin",
-  "cos",
-  "tan",
-  "sec",
-  "csc",
-  "cot",
-  "asin",
-  "acos",
-  "atan",
-  "acsc",
-  "asec",
-  "acot",
-  "atan2",
-  "sinh",
-  "cosh",
-  "tanh",
-  "asinh",
-  "acosh",
-  "atanh",
-  "sech",
-  "csch",
-  "coth",
-  // hiperbólicas recíprocas: mathjs las tiene, faltaban como átomo
-  "log",
-  "log10",
-  "log2",
-  "ln",
-  "exp",
-  "expm1",
-  "sqrt",
-  "cbrt",
-  "nthRoot",
-  "pow",
-  "hypot",
-  "abs",
-  "sign",
-  "floor",
-  "ceil",
-  "round",
-  "fix",
-  "gamma",
-  "factorial",
-  "min",
-  "max",
-  "mod",
-  "gcd",
-  "lcm",
-  // Centinelas del DOBLE SIGNO (`y = pm(sqrt(16-x²))` = ±√…), que emiten tanto el despeje
-  // par (despejar.ts) como el `\pm`/`\mp` escrito por el usuario (parser.ts). Son átomos
-  // (si no, se partirían en `p*m`), se evalúan en su rama principal (constantes.ts) y el
-  // motor los expande en las DOS ramas (motor/parsing/dobleSigno.ts). `toTex` los pinta
-  // `\pm` / `\mp` (latex.ts).
-  // `pm2`/`mp2` son el SEGUNDO eje de signo (dos ± independientes → cuatro curvas).
-  "pm",
-  "mp",
-  "pm2",
-  "mp2",
-  // Centinela de FAMILIA PERIÓDICA (`y = atan(g) + fam(k, pi)` = arctan(g)+kπ, k∈ℤ),
-  // que emite el despeje por inversión trig (despejeInverso.ts). Átomo (si no, se
-  // partiría en `f*a*m`); NO se evalúa ni se expande para graficar (el despeje es
-  // presentación: lo graficado es siempre la ecuación original). `toTex` lo pinta
-  // `k\pi`/`2k\pi` y añade la coletilla `, k∈ℤ` (latex.ts). `famN` es su hermano de
-  // dominio NATURAL (k∈ℕ): mismo render `k\pi`, pero la coletilla es `, k∈ℕ` —lo emite
-  // el despeje de `T(u)=0` cuando u>0 obliga a kπ>0 (`sin(1/(x²+y²))=0`, despejar.ts).
-  "fam",
-  "famN",
-  // Centinela de CONDICIÓN DE DOMINIO (`y = dom((x-27)², x-27)` = (x−27)² donde x−27≥0), que
-  // emite el despeje de las inversas de rango restringido (√ par, |·|). Átomo (si no, `d*o*m`);
-  // se evalúa a NaN fuera del dominio (constantes.ts) y `toTex` lo pinta como el cuerpo más la
-  // coletilla `, R≥0` (latex.ts). Lo graficado es siempre la original: el despeje es presentación.
-  "dom"
-]);
-var CONSTANTES2 = /* @__PURE__ */ new Set(["pi", "theta", "tau", "phi", "Infinity", "NaN"]);
-var ATOMOS = [...FUNCIONES, ...CONSTANTES2].sort((a, b) => b.length - a.length);
-var esDigito = (c) => c >= "0" && c <= "9";
-var esLetra = (c) => /[a-zA-Z_]/.test(c);
-var esLetraODigito = (c) => /[a-zA-Z0-9_]/.test(c);
-function expandir(run) {
-  const piezas = [];
-  let j = 0;
-  while (j < run.length) {
-    let atomo = null;
-    for (const a of ATOMOS) {
-      if (run.startsWith(a, j)) {
-        atomo = a;
-        break;
-      }
-    }
-    if (atomo) {
-      piezas.push(atomo);
-      j += atomo.length;
-    } else {
-      piezas.push(run[j]);
-      j++;
-    }
-  }
-  return piezas.join("*");
-}
-function sufijoFuncion(run) {
-  for (const f of ATOMOS) {
-    if (FUNCIONES.has(f) && run.endsWith(f))
-      return f;
-  }
-  return "";
-}
-function insertarProductoImplicito(expr) {
-  var _a, _b;
-  let out = "";
-  const prev = () => {
-    for (let k = out.length - 1; k >= 0; k--)
-      if (out[k] !== " ")
-        return out[k];
-    return "";
-  };
-  let ultimaFueFuncion = false;
-  let i2 = 0;
-  while (i2 < expr.length) {
-    const c = expr[i2];
-    const trasFuncion = ultimaFueFuncion;
-    ultimaFueFuncion = false;
-    if (c === "e" || c === "E") {
-      const p = prev();
-      const sig = (_a = expr[i2 + 1]) != null ? _a : "";
-      const sig2 = (_b = expr[i2 + 2]) != null ? _b : "";
-      const cientifica = (esDigito(p) || p === ".") && (esDigito(sig) || (sig === "+" || sig === "-") && esDigito(sig2));
-      if (cientifica) {
-        out += c;
-        i2++;
-        continue;
-      }
-    }
-    if (esLetra(c)) {
-      let j = i2;
-      while (j < expr.length && esLetraODigito(expr[j]))
-        j++;
-      const run = expr.slice(i2, j);
-      const p = prev();
-      if (esDigito(p) || p === ")" || p === "." || esLetra(p))
-        out += "*";
-      let k = j;
-      while (k < expr.length && expr[k] === " ")
-        k++;
-      const seguidoParen = expr[k] === "(";
-      if (seguidoParen) {
-        if (FUNCIONES.has(run)) {
-          out += run;
-          ultimaFueFuncion = true;
-        } else {
-          const fs = sufijoFuncion(run);
-          if (fs && /^[a-zA-Z]+$/.test(run.slice(0, run.length - fs.length))) {
-            const pref = run.slice(0, run.length - fs.length);
-            out += (pref ? expandir(pref) + "*" : "") + fs;
-            ultimaFueFuncion = true;
-          } else {
-            out += expandir(run) + "*";
-          }
-        }
-      } else {
-        out += expandir(run);
-      }
-      i2 = j;
-      continue;
-    }
-    if (c === "(") {
-      const p = prev();
-      if (!trasFuncion && (esDigito(p) || p === ")" || p === "."))
-        out += "*";
-      out += c;
-      i2++;
-      continue;
-    }
-    if (c === " ")
-      ultimaFueFuncion = trasFuncion;
-    out += c;
-    i2++;
-  }
-  return out;
-}
-
-// src/motor/parsing/componentesParametricas.ts
+// src/core/parsing/componentesParametricas.ts
 var COMPONENTE = /^([xy])\s*(?:\\left)?\(\s*t\s*(?:\\right)?\)\s*=([\s\S]+)$/;
 function componenteParametrica(ec) {
   const m = COMPONENTE.exec(ec.trim());
@@ -48491,25 +48533,115 @@ function simbolosLibres(exprNorm) {
   const libres = /* @__PURE__ */ new Set();
   try {
     parse2(exprNorm).traverse((nodo, path, padre) => {
-      if (nodo.isSymbolNode && !((padre == null ? void 0 : padre.isFunctionNode) && path === "fn"))
+      if (nodo.isSymbolNode && !(padre?.isFunctionNode && path === "fn"))
         libres.add(nodo.name);
     });
-  } catch (e3) {
+  } catch {
   }
   return libres;
 }
 function renombrarParametroAX(exprNorm) {
   try {
     const arbol = parse2(exprNorm).transform(
-      (nodo, path, padre) => nodo.isSymbolNode && nodo.name === "t" && !((padre == null ? void 0 : padre.isFunctionNode) && path === "fn") ? simboloNodo("x") : nodo
+      (nodo, path, padre) => nodo.isSymbolNode && nodo.name === "t" && !(padre?.isFunctionNode && path === "fn") ? simboloNodo("x") : nodo
     );
     return arbol.toString();
-  } catch (e3) {
+  } catch {
     return exprNorm;
   }
 }
 
-// src/latex.ts
+// src/core/parsing/restriccionDominio.ts
+var COMPARADOR = /(\\leq?(?![a-zA-Z])|<=|≤|<|\\geq?(?![a-zA-Z])|>=|≥|>)/g;
+var HAY_COMPARADOR = new RegExp(COMPARADOR.source);
+var INFINITO = /^([+-]?)\s*(?:\\infty|∞|Infinity)$/;
+function cotaDe(pieza) {
+  const s = pieza.trim();
+  const inf = INFINITO.exec(s);
+  if (inf)
+    return inf[1] === "-" ? -Infinity : Infinity;
+  return evaluarConstante(s);
+}
+var sentidoDe = (token) => token.startsWith(">") || token.startsWith("\u2265") || token.startsWith("\\g") ? "ge" : "le";
+function grupoFinal(s) {
+  if (!s.endsWith("}"))
+    return null;
+  let prof = 0;
+  for (let i2 = s.length - 1; i2 >= 0; i2--) {
+    if (s[i2] === "}")
+      prof++;
+    else if (s[i2] === "{" && --prof === 0) {
+      return { antes: s.slice(0, i2), interior: s.slice(i2 + 1, -1), texto: s.slice(i2) };
+    }
+  }
+  return null;
+}
+function nombreVariable(operando) {
+  const s = normalizarEntrada(operando.trim()).trim();
+  return /^[a-zA-Z][a-zA-Z0-9]*$/.test(s) ? s : null;
+}
+function leerIntervalo(interior, texto) {
+  const trozos = interior.split(COMPARADOR);
+  const piezas = trozos.filter((_, i2) => i2 % 2 === 0).map((p) => p.trim());
+  const signos = trozos.filter((_, i2) => i2 % 2 === 1).map(sentidoDe);
+  const comun = { texto, piezas, signos };
+  const acotado = (v) => v !== null;
+  if (signos.length === 2) {
+    if (signos[0] !== signos[1])
+      return null;
+    const variable = nombreVariable(piezas[1]);
+    if (!variable)
+      return null;
+    const a = cotaDe(piezas[0]);
+    const b = cotaDe(piezas[2]);
+    if (!acotado(a) || !acotado(b))
+      return null;
+    return signos[0] === "le" ? { ...comun, variable, min: a, max: b } : { ...comun, variable, min: b, max: a };
+  }
+  if (signos.length === 1) {
+    const cotaIzq = cotaDe(piezas[0]);
+    const cotaDer = cotaDe(piezas[1]);
+    const izquierda = cotaIzq === null ? nombreVariable(piezas[0]) : null;
+    const derecha = cotaDer === null ? nombreVariable(piezas[1]) : null;
+    if (izquierda && acotado(cotaDer)) {
+      return signos[0] === "le" ? { ...comun, variable: izquierda, min: -Infinity, max: cotaDer } : { ...comun, variable: izquierda, min: cotaDer, max: Infinity };
+    }
+    if (derecha && acotado(cotaIzq)) {
+      return signos[0] === "le" ? { ...comun, variable: derecha, min: cotaIzq, max: Infinity } : { ...comun, variable: derecha, min: -Infinity, max: cotaIzq };
+    }
+  }
+  return null;
+}
+function separarRestriccion(ec) {
+  const s = ec.trim();
+  const grupo = grupoFinal(s);
+  if (!grupo)
+    return { expr: ec, restriccion: null, ilegible: null };
+  const restriccion = leerIntervalo(grupo.interior, grupo.texto);
+  if (!restriccion) {
+    const separado = grupo.antes === "" || /\s$/.test(grupo.antes);
+    const interior = grupo.interior.trim();
+    const intento = separado && (interior === "" || HAY_COMPARADOR.test(interior));
+    return { expr: ec, restriccion: null, ilegible: intento ? grupo.texto : null };
+  }
+  return { expr: grupo.antes.trim(), restriccion, ilegible: null };
+}
+function lineasDeEcuacion(source) {
+  return source.split(/\r?\n|\\\\/);
+}
+function sinRestricciones(source) {
+  return lineasDeEcuacion(source).map((linea) => separarRestriccion(linea).expr).join("\n");
+}
+function dentro(r, v) {
+  return v >= r.min && v <= r.max;
+}
+function transformarSinRestriccion(ec, fn) {
+  const { expr, restriccion } = separarRestriccion(ec);
+  const salida = fn(expr);
+  return restriccion === null ? salida : `${salida} ${restriccion.texto}`;
+}
+
+// src/latex/nodoATex.ts
 function embellecerInversasLatex(tex) {
   return tex.replace(/\\sin\s*\^\{-1\}/g, "\\arcsin").replace(/\\cos\s*\^\{-1\}/g, "\\arccos").replace(/\\tan\s*\^\{-1\}/g, "\\arctan").replace(/\\csc\s*\^\{-1\}/g, "\\operatorname{arccsc}").replace(/\\sec\s*\^\{-1\}/g, "\\operatorname{arcsec}").replace(/\\cot\s*\^\{-1\}/g, "\\operatorname{arccot}");
 }
@@ -48550,9 +48682,8 @@ function pelar(n) {
   return r;
 }
 function fraccionDelExponente(exp3) {
-  var _a, _b;
   const e3 = pelar(exp3);
-  if (e3.type !== "OperatorNode" || e3.op !== "/" || ((_a = e3.args) == null ? void 0 : _a.length) !== 2)
+  if (e3.type !== "OperatorNode" || e3.op !== "/" || e3.args?.length !== 2)
     return null;
   const den = pelar(e3.args[1]);
   if (den.type !== "ConstantNode" || typeof den.value !== "number")
@@ -48561,7 +48692,7 @@ function fraccionDelExponente(exp3) {
     return null;
   let num = pelar(e3.args[0]);
   let negativo = false;
-  if (num.type === "OperatorNode" && num.op === "-" && ((_b = num.args) == null ? void 0 : _b.length) === 1) {
+  if (num.type === "OperatorNode" && num.op === "-" && num.args?.length === 1) {
     negativo = true;
     num = pelar(num.args[0]);
   }
@@ -48590,13 +48721,12 @@ function radicalDeExponente(base, exp3, options) {
 }
 var raizNodo = (u, q) => q === 2 ? funcNodo(simboloNodo("sqrt"), [u]) : funcNodo(simboloNodo("nthRoot"), [u, constNodo(q)]);
 function raizDePotencia(n) {
-  var _a, _b, _c;
   if (n.type !== "FunctionNode" || !n.args)
     return null;
   let q;
-  if (((_a = n.fn) == null ? void 0 : _a.name) === "sqrt" && n.args.length === 1)
+  if (n.fn?.name === "sqrt" && n.args.length === 1)
     q = 2;
-  else if (((_b = n.fn) == null ? void 0 : _b.name) === "nthRoot" && n.args.length === 2) {
+  else if (n.fn?.name === "nthRoot" && n.args.length === 2) {
     const idx = pelar(n.args[1]);
     if (idx.type !== "ConstantNode" || typeof idx.value !== "number")
       return null;
@@ -48606,7 +48736,7 @@ function raizDePotencia(n) {
   if (!Number.isInteger(q) || q < 2)
     return null;
   const radicando = pelar(n.args[0]);
-  if (!(radicando.type === "OperatorNode" && radicando.op === "^" && ((_c = radicando.args) == null ? void 0 : _c.length) === 2))
+  if (!(radicando.type === "OperatorNode" && radicando.op === "^" && radicando.args?.length === 2))
     return null;
   const m = pelar(radicando.args[1]);
   if (m.type !== "ConstantNode" || typeof m.value !== "number")
@@ -48639,12 +48769,11 @@ function normalizarRaizDePotencia(n) {
   );
 }
 function normalizarPotenciasRacionales(node) {
-  var _a;
   const n = node.map(normalizarPotenciasRacionales);
   const comoRaiz = normalizarRaizDePotencia(n);
   if (comoRaiz !== n)
     return comoRaiz;
-  if (!(n.type === "OperatorNode" && n.op === "^" && ((_a = n.args) == null ? void 0 : _a.length) === 2))
+  if (!(n.type === "OperatorNode" && n.op === "^" && n.args?.length === 2))
     return n;
   const f = fraccionDelExponente(n.args[1]);
   if (f === null)
@@ -48666,8 +48795,7 @@ function normalizarPotenciasRacionales(node) {
   return negativo ? opNodo("/", "divide", [constNodo(1), conEntero]) : conEntero;
 }
 function manejadorFuncionesTex(node, options) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
-  if (node.type === "FunctionNode" && ((_a = node.fn) == null ? void 0 : _a.name) === PAREN_DESNUDA && node.args.length === 1)
+  if (node.type === "FunctionNode" && node.fn?.name === PAREN_DESNUDA && node.args.length === 1)
     return `\\left(${node.args[0].toTex(options)}\\right)`;
   const argFuncion = (arg2, nombreTex) => {
     let raiz = arg2;
@@ -48678,39 +48806,39 @@ function manejadorFuncionesTex(node, options) {
     return atomico ? `${nombreTex} ${argTex.trim()}` : `${nombreTex}\\left(${argTex}\\right)`;
   };
   if (node.type === "FunctionNode") {
-    const nombre = (_b = node.fn) == null ? void 0 : _b.name;
+    const nombre = node.fn?.name;
     const base = nombre === "log10" && node.args.length === 1 ? "10" : nombre === "log2" && node.args.length === 1 ? "2" : nombre === "log" && node.args.length === 2 ? node.args[1].toTex(options).trim() : void 0;
     if (base !== void 0)
       return argFuncion(node.args[0], base === "e" ? "\\ln" : `\\log_{${base}}`);
   }
   const SIGNO_TEX = Object.fromEntries(CENTINELAS_SIGNO.map(([n, s]) => [n, s === 1 ? "\\pm" : "\\mp"]));
-  if (node.type === "FunctionNode" && SIGNO_TEX[(_c = node.fn) == null ? void 0 : _c.name] && node.args.length === 1) {
+  if (node.type === "FunctionNode" && SIGNO_TEX[node.fn?.name] && node.args.length === 1) {
     const arg2 = node.args[0];
     const raiz = arg2.type === "ParenthesisNode" ? arg2.content : arg2;
-    const aditivo = raiz.type === "OperatorNode" && (raiz.op === "+" || raiz.op === "-") && ((_d = raiz.args) == null ? void 0 : _d.length) === 2;
+    const aditivo = raiz.type === "OperatorNode" && (raiz.op === "+" || raiz.op === "-") && raiz.args?.length === 2;
     const cuerpo = arg2.toTex(options);
-    const signo2 = SIGNO_TEX[node.fn.name];
-    return aditivo ? `${signo2}\\left(${cuerpo}\\right)` : `${signo2} ${cuerpo}`;
+    const signo3 = SIGNO_TEX[node.fn.name];
+    return aditivo ? `${signo3}\\left(${cuerpo}\\right)` : `${signo3} ${cuerpo}`;
   }
-  if (node.type === "OperatorNode" && node.op === "+" && ((_e = node.args) == null ? void 0 : _e.length) === 2 && node.args[1].type === "FunctionNode" && SIGNO_TEX[(_f = node.args[1].fn) == null ? void 0 : _f.name]) {
+  if (node.type === "OperatorNode" && node.op === "+" && node.args?.length === 2 && node.args[1].type === "FunctionNode" && SIGNO_TEX[node.args[1].fn?.name]) {
     return `${node.args[0].toTex(options)} ${node.args[1].toTex(options)}`;
   }
-  if (node.type === "FunctionNode" && (((_g = node.fn) == null ? void 0 : _g.name) === "fam" || ((_h = node.fn) == null ? void 0 : _h.name) === "famN") && node.args.length === 2) {
+  if (node.type === "FunctionNode" && (node.fn?.name === "fam" || node.fn?.name === "famN") && node.args.length === 2) {
     const kTex = node.args[0].toTex(options).trim();
     let p = node.args[1];
     while (p.type === "ParenthesisNode")
       p = p.content;
     if (p.type === "SymbolNode" && p.name === "pi")
       return `${kTex}\\pi`;
-    if (p.type === "OperatorNode" && p.op === "*" && ((_i = p.args) == null ? void 0 : _i.length) === 2 && p.args[0].type === "ConstantNode" && p.args[1].type === "SymbolNode" && p.args[1].name === "pi") {
+    if (p.type === "OperatorNode" && p.op === "*" && p.args?.length === 2 && p.args[0].type === "ConstantNode" && p.args[1].type === "SymbolNode" && p.args[1].name === "pi") {
       return `${p.args[0].toTex(options)}${kTex}\\pi`;
     }
     return `${kTex}\\left(${p.toTex(options)}\\right)`;
   }
-  if (node.type === "FunctionNode" && ((_j = node.fn) == null ? void 0 : _j.name) === "dom" && node.args.length === 2)
+  if (node.type === "FunctionNode" && node.fn?.name === "dom" && node.args.length === 2)
     return node.args[0].toTex(options);
   if (node.type === "FunctionNode" && node.args.length === 1) {
-    const nombreTex = NOMBRE_FUNCION_TEX[(_k = node.fn) == null ? void 0 : _k.name];
+    const nombreTex = NOMBRE_FUNCION_TEX[node.fn?.name];
     if (nombreTex)
       return argFuncion(node.args[0], nombreTex);
   }
@@ -48719,7 +48847,7 @@ function manejadorFuncionesTex(node, options) {
     let b = base;
     while (b.type === "ParenthesisNode")
       b = b.content;
-    const nombreTex = b.type === "FunctionNode" && b.args.length === 1 ? NOMBRE_FUNCION_TEX[(_l = b.fn) == null ? void 0 : _l.name] : void 0;
+    const nombreTex = b.type === "FunctionNode" && b.args.length === 1 ? NOMBRE_FUNCION_TEX[b.fn?.name] : void 0;
     const expNegativo = exp3.type === "ConstantNode" && exp3.value < 0;
     if (nombreTex && !expNegativo)
       return argFuncion(b.args[0], `${nombreTex}^{${exp3.toTex(options)}}`);
@@ -48745,6 +48873,8 @@ function limpiarTex(tex) {
   resultado = resultado.replace(/(?<!\\left)\(/g, "\\left(").replace(/(?<!\\right)\)/g, "\\right)");
   return resultado.trim();
 }
+
+// src/latex/ordenPolinomio.ts
 var VAR_ORDEN = "x";
 function contieneVarOrden(n) {
   return n.filter((s) => s.type === "SymbolNode" && s.name === VAR_ORDEN).length > 0;
@@ -48803,12 +48933,12 @@ function gradoEnX(n) {
 }
 function ordenarPolinomioDescendente(node) {
   const terminos2 = [];
-  const aplanar = (n, signo2) => {
+  const aplanar = (n, signo3) => {
     if (n.type === "OperatorNode" && n.args.length === 2 && (n.op === "+" || n.op === "-")) {
-      aplanar(n.args[0], signo2);
-      aplanar(n.args[1], n.op === "-" ? -signo2 : signo2);
+      aplanar(n.args[0], signo3);
+      aplanar(n.args[1], n.op === "-" ? -signo3 : signo3);
     } else
-      terminos2.push({ signo: signo2, nodo: n });
+      terminos2.push({ signo: signo3, nodo: n });
   };
   aplanar(node, 1);
   if (terminos2.length < 2)
@@ -48827,14 +48957,15 @@ function ordenarPolinomioDescendente(node) {
   }
   return acc;
 }
+
+// src/latex/agrupaciones.ts
 function nombreFuncionDesnuda(n) {
-  var _a, _b, _c, _d;
-  if (n.type === "FunctionNode" && ((_a = n.fn) == null ? void 0 : _a.name) === "log" && ((_b = n.args) == null ? void 0 : _b.length) === 2) {
+  if (n.type === "FunctionNode" && n.fn?.name === "log" && n.args?.length === 2) {
     const arg2 = n.args[0];
     if (arg2.type === "SymbolNode" || arg2.type === "ConstantNode")
       return "log";
   }
-  if (n.type === "FunctionNode" && ((_c = n.args) == null ? void 0 : _c.length) === 1 && NOMBRE_FUNCION_TEX[(_d = n.fn) == null ? void 0 : _d.name]) {
+  if (n.type === "FunctionNode" && n.args?.length === 1 && NOMBRE_FUNCION_TEX[n.fn?.name]) {
     const a = n.args[0];
     if (a.type === "SymbolNode" || a.type === "ConstantNode")
       return n.fn.name;
@@ -48879,7 +49010,6 @@ function agruparFuncionesDesnudasEnProducto(node) {
   return [...resto, ...alFinal].reduce((acc, f) => opNodo("*", "multiply", [acc, f]));
 }
 function factorRadical(n) {
-  var _a, _b, _c, _d, _e, _f;
   const conIndice = (base, p, q) => {
     if (!Number.isInteger(p) || !Number.isInteger(q) || q < 2 || p < 1)
       return null;
@@ -48891,17 +49021,17 @@ function factorRadical(n) {
       exp: opNodo("/", "divide", [constNodo(p), constNodo(q)])
     };
   };
-  if (n.type === "FunctionNode" && ((_a = n.args) == null ? void 0 : _a.length) === 1 && ((_b = n.fn) == null ? void 0 : _b.name) === "sqrt")
+  if (n.type === "FunctionNode" && n.args?.length === 1 && n.fn?.name === "sqrt")
     return conIndice(pelar(n.args[0]), 1, 2);
-  if (n.type === "FunctionNode" && ((_c = n.args) == null ? void 0 : _c.length) === 2 && ((_d = n.fn) == null ? void 0 : _d.name) === "nthRoot") {
+  if (n.type === "FunctionNode" && n.args?.length === 2 && n.fn?.name === "nthRoot") {
     const q = pelar(n.args[1]);
     if (q.type !== "ConstantNode" || typeof q.value !== "number")
       return null;
     return conIndice(pelar(n.args[0]), 1, q.value);
   }
-  if (n.type === "OperatorNode" && n.op === "^" && ((_e = n.args) == null ? void 0 : _e.length) === 2) {
+  if (n.type === "OperatorNode" && n.op === "^" && n.args?.length === 2) {
     const e3 = pelar(n.args[1]);
-    if (e3.type !== "OperatorNode" || e3.op !== "/" || ((_f = e3.args) == null ? void 0 : _f.length) !== 2)
+    if (e3.type !== "OperatorNode" || e3.op !== "/" || e3.args?.length !== 2)
       return null;
     const num = pelar(e3.args[0]);
     const den = pelar(e3.args[1]);
@@ -48955,6 +49085,8 @@ function fusionarRadicalesEnProducto(node) {
   const llanos = salida.filter((f) => factorRadical(f) === null);
   return [...llanos, ...raices2].reduce((acc, f) => opNodo("*", "multiply", [acc, f]));
 }
+
+// src/latex.ts
 function ladoALatex(lado) {
   const norm3 = insertarProductoImplicito(normalizarEntrada(lado.trim()));
   if (norm3 === "")
@@ -48968,7 +49100,7 @@ function ladoALatex(lado) {
       )
     );
     return limpiarTex(arbol.toTex(OPCIONES_TEX));
-  } catch (e3) {
+  } catch {
     return norm3;
   }
 }
@@ -48992,13 +49124,10 @@ function coletillaDominio(rhs) {
   let nodo;
   try {
     nodo = parse2(insertarProductoImplicito(normalizarEntrada(rhs.trim())));
-  } catch (e3) {
+  } catch {
     return "";
   }
-  const doms = nodo.filter((n) => {
-    var _a;
-    return n.type === "FunctionNode" && ((_a = n.fn) == null ? void 0 : _a.name) === "dom" && n.args.length === 2;
-  });
+  const doms = nodo.filter((n) => n.type === "FunctionNode" && n.fn?.name === "dom" && n.args.length === 2);
   const resuelto = simplificarCondiciones(doms.map((d) => d.args[1].toString()));
   if (resuelto !== null)
     return coletillaRango(resuelto);
@@ -49033,9 +49162,9 @@ function ecuacionALatex(ecuacion, alineada = false) {
   const partes = ecuacion.split("=");
   if (partes.length !== 2)
     return ecuacion;
-  const signo2 = alineada ? "&=" : "=";
+  const signo3 = alineada ? "&=" : "=";
   const coletilla = parametrosDeFamilia(ecuacion).map((p) => `${SEPARADOR_COLETILLA}${p.nombre}\\in\\mathbb{${p.natural ? "N" : "Z"}}`).join("");
-  return ladoALatex(partes[0]) + signo2 + ladoALatex(partes[1]) + coletillaDominio(partes[1]) + coletilla;
+  return ladoALatex(partes[0]) + signo3 + ladoALatex(partes[1]) + coletillaDominio(partes[1]) + coletilla;
 }
 function bloqueALatex(ecuaciones, sistema = false) {
   if (ecuaciones.length === 0) {
@@ -49045,7 +49174,17 @@ function bloqueALatex(ecuaciones, sistema = false) {
   const lineas = ecuaciones.map((ec) => lineaALatex(ec, multi));
   return multi ? `\\begin{cases}\\begin{aligned}${lineas.join("\\\\[1ex]")}\\end{aligned}\\end{cases}` : lineas[0];
 }
+function coletillaRestriccion(r) {
+  const piezas = r.piezas.map((p) => ladoALatex(p));
+  const partes = piezas.map(
+    (p, i2) => i2 === 0 ? p : `${r.signos[i2 - 1] === "ge" ? "\\ge" : "\\le"} ${p}`
+  );
+  return `${SEPARADOR_COLETILLA}${partes.join(" ")}`;
+}
 function lineaALatex(ec, alineada) {
+  const { expr, restriccion } = separarRestriccion(ec);
+  if (restriccion)
+    return `${lineaALatex(expr, alineada)}${coletillaRestriccion(restriccion)}`;
   const s = ec.trim();
   const tupla = separarTupla(s);
   if (tupla) {
@@ -49104,22 +49243,22 @@ var RANGO_X = { min: -10, max: 10, pasos: 1e3 };
 var LIMITE_PUNTOS_NOTABLES = 20;
 var TOLERANCIA_FUSION = 0.05;
 var MIN_MUESTRAS_TRAMO = 3;
-function fronteraTramo(evaluar, xFuera, xCero) {
-  let fuera = xFuera, dentro = xCero;
+function fronteraTramo(evaluar2, xFuera, xCero) {
+  let fuera = xFuera, dentro2 = xCero;
   for (let i2 = 0; i2 < 60; i2++) {
-    const m = (fuera + dentro) / 2;
-    if (evaluar(m) === 0)
-      dentro = m;
+    const m = (fuera + dentro2) / 2;
+    if (evaluar2(m) === 0)
+      dentro2 = m;
     else
       fuera = m;
   }
-  const limpio = Math.round(dentro * 1e9) / 1e9;
-  return { x: limpio, cerrado: evaluar(limpio) === 0 };
+  const limpio = Math.round(dentro2 * 1e9) / 1e9;
+  return { x: limpio, cerrado: evaluar2(limpio) === 0 };
 }
-function refinarRaiz(evaluar, a, fa, b) {
+function refinarRaiz(evaluar2, a, fa, b) {
   for (let i2 = 0; i2 < 60; i2++) {
     const m2 = (a + b) / 2;
-    const fm2 = evaluar(m2);
+    const fm2 = evaluar2(m2);
     if (!Number.isFinite(fm2))
       return null;
     if (fm2 === 0)
@@ -49132,19 +49271,19 @@ function refinarRaiz(evaluar, a, fa, b) {
     }
   }
   const m = (a + b) / 2;
-  const fm = evaluar(m);
+  const fm = evaluar2(m);
   return Number.isFinite(fm) && Math.abs(fm) < 1e-3 ? m : null;
 }
-function tramoHastaInfinito(evaluar, signo2) {
-  let x = signo2 * 100;
+function tramoHastaInfinito(evaluar2, signo3) {
+  let x = signo3 * 100;
   for (let i2 = 0; i2 < 15; i2++) {
-    if (evaluar(x) !== 0)
+    if (evaluar2(x) !== 0)
       return false;
     x *= 10;
   }
   return true;
 }
-function detectarRaices(evaluar, xs, ys) {
+function detectarRaices(evaluar2, xs, ys) {
   const raices2 = [];
   const agregar2 = (x) => {
     if (!raices2.some((r) => Math.abs(r - x) < 1e-4))
@@ -49171,8 +49310,8 @@ function detectarRaices(evaluar, xs, ys) {
     while (j + 1 < ys.length && ys[j + 1] === 0)
       j++;
     if (j - i2 + 1 >= MIN_MUESTRAS_TRAMO) {
-      const izq = i2 > 0 ? fronteraTramo(evaluar, xs[i2 - 1], xs[i2]) : tramoHastaInfinito(evaluar, -1) ? { x: -Infinity, cerrado: false } : { x: xs[0], cerrado: true };
-      const der = j < ys.length - 1 ? fronteraTramo(evaluar, xs[j + 1], xs[j]) : tramoHastaInfinito(evaluar, 1) ? { x: Infinity, cerrado: false } : { x: xs[ys.length - 1], cerrado: true };
+      const izq = i2 > 0 ? fronteraTramo(evaluar2, xs[i2 - 1], xs[i2]) : tramoHastaInfinito(evaluar2, -1) ? { x: -Infinity, cerrado: false } : { x: xs[0], cerrado: true };
+      const der = j < ys.length - 1 ? fronteraTramo(evaluar2, xs[j + 1], xs[j]) : tramoHastaInfinito(evaluar2, 1) ? { x: Infinity, cerrado: false } : { x: xs[ys.length - 1], cerrado: true };
       intervalos.push({ a: izq.x, cerradoA: izq.cerrado, b: der.x, cerradoB: der.cerrado });
       for (let k = i2; k <= j; k++)
         enTramo.add(k);
@@ -49189,7 +49328,7 @@ function detectarRaices(evaluar, xs, ys) {
       continue;
     }
     if (ya * yb < 0) {
-      const r = refinarRaiz(evaluar, xs[i2], ya, xs[i2 + 1]);
+      const r = refinarRaiz(evaluar2, xs[i2], ya, xs[i2 + 1]);
       if (r !== null)
         agregar2(r);
     }
@@ -49199,20 +49338,19 @@ function detectarRaices(evaluar, xs, ys) {
     agregar2(xs[n]);
   return { puntos: raices2.sort((p, q) => p - q), intervalos };
 }
-function detectarVertices(xs, ys, delta, evaluar) {
-  var _a, _b;
+function detectarVertices(xs, ys, delta, evaluar2) {
   const cruzaPolo = (xL, yL, xR, yR) => {
     if (yL * yR >= 0)
       return false;
     let lo = xL, hi = xR;
     for (let k = 0; k < 40; k++) {
       const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3;
-      if (Math.abs(evaluar(m1)) < Math.abs(evaluar(m2)))
+      if (Math.abs(evaluar2(m1)) < Math.abs(evaluar2(m2)))
         lo = m1;
       else
         hi = m2;
     }
-    const pico = Math.abs(evaluar((lo + hi) / 2));
+    const pico = Math.abs(evaluar2((lo + hi) / 2));
     return !Number.isFinite(pico) || pico > Math.max(Math.abs(yL), Math.abs(yR)) * 4;
   };
   const vertices = [];
@@ -49220,7 +49358,7 @@ function detectarVertices(xs, ys, delta, evaluar) {
     const yPrev = ys[i2 - 1], yCurr = ys[i2], yNext = ys[i2 + 1];
     if (!Number.isFinite(yPrev) || !Number.isFinite(yCurr) || !Number.isFinite(yNext))
       continue;
-    if (!Number.isFinite((_a = ys[i2 - 2]) != null ? _a : 0) || !Number.isFinite((_b = ys[i2 + 2]) != null ? _b : 0))
+    if (!Number.isFinite(ys[i2 - 2] ?? 0) || !Number.isFinite(ys[i2 + 2] ?? 0))
       continue;
     const dAntes = yCurr - yPrev;
     const dDespues = yNext - yCurr;
@@ -49242,7 +49380,7 @@ function detectarVertices(xs, ys, delta, evaluar) {
   }
   return vertices;
 }
-function analizarFuncion(evaluar) {
+function analizarFuncion(evaluar2) {
   const { min: min3, max: max3, pasos } = RANGO_X;
   const delta = (max3 - min3) / pasos;
   const xs = new Array(pasos + 1);
@@ -49250,12 +49388,12 @@ function analizarFuncion(evaluar) {
   for (let i2 = 0; i2 <= pasos; i2++) {
     const x = min3 + i2 * delta;
     xs[i2] = x;
-    ys[i2] = evaluar(x);
+    ys[i2] = evaluar2(x);
   }
-  const { puntos, intervalos } = detectarRaices(evaluar, xs, ys);
+  const { puntos, intervalos } = detectarRaices(evaluar2, xs, ys);
   return {
     raices: puntos,
-    vertices: detectarVertices(xs, ys, delta, evaluar),
+    vertices: detectarVertices(xs, ys, delta, evaluar2),
     intervalosRaiz: intervalos
   };
 }
@@ -49309,10 +49447,10 @@ function construirPuntosNotables(analisis, interseccionY, estadoRaices, estadoVe
 }
 
 // src/degeneradas.ts
-function clasificarDegenerada(evaluar) {
+function clasificarDegenerada(evaluar2) {
   let reales = 0, infinitos = 0, complejos = 0;
   const muestra = (x) => {
-    const v = evaluar(x);
+    const v = evaluar2(x);
     if (typeof v === "number") {
       if (Number.isFinite(v))
         reales++;
@@ -49407,8 +49545,8 @@ function construirQuadStrip(puntos, grosorClip) {
 // src/render/muestreoExplicito.ts
 function muestrearFuncion(p) {
   const { evalX, domX, domY, H, interactivo } = p;
-  const MUESTRAS5 = interactivo ? Math.min(2e3, Math.max(1e3, Math.floor((domX[1] - domX[0]) * 20))) : Math.min(8e3, Math.max(2e3, Math.floor((domX[1] - domX[0]) * 50)));
-  const dx = (domX[1] - domX[0]) / MUESTRAS5;
+  const MUESTRAS6 = interactivo ? Math.min(2e3, Math.max(1e3, Math.floor((domX[1] - domX[0]) * 20))) : Math.min(8e3, Math.max(2e3, Math.floor((domX[1] - domX[0]) * 50)));
+  const dx = (domX[1] - domX[0]) / MUESTRAS6;
   const SALTO_PX_MAX = 8;
   const PROF_MAX3 = interactivo ? 12 : 18;
   const Hmundo = domY[1] - domY[0];
@@ -49507,8 +49645,8 @@ function muestrearFuncion(p) {
     const fueraMismoLado = ya > domY[1] && yb > domY[1] || ya < domY[0] && yb < domY[0];
     const poloEnTramo = asintotasMismaRama.some((q) => q > Math.min(xa, xb) && q < Math.max(xa, xb));
     const cambioSigno = finA && finB && ya * yb < 0;
-    const refinar = prof < PROF_MAX3 && (poloEnTramo || cambioSigno || saltoPx > SALTO_PX_MAX && !fueraMismoLado);
-    if (refinar) {
+    const refinar2 = prof < PROF_MAX3 && (poloEnTramo || cambioSigno || saltoPx > SALTO_PX_MAX && !fueraMismoLado);
+    if (refinar2) {
       const xm = (xa + xb) / 2;
       const ym = evalX(xm);
       tramo(xa, ya, xm, ym, prof + 1);
@@ -49572,7 +49710,7 @@ function muestrearFuncion(p) {
   let y0 = evalX(x0);
   if (Number.isFinite(y0))
     emit(x0, y0);
-  for (let i2 = 1; i2 <= MUESTRAS5; i2++) {
+  for (let i2 = 1; i2 <= MUESTRAS6; i2++) {
     const x1 = domX[0] + i2 * dx;
     const y1 = evalX(x1);
     tramo(x0, y0, x1, y1, 0);
@@ -49679,10 +49817,7 @@ var GraphEngine = class {
       const ctxCross = canvasCross.getContext("2d");
       if (gl) {
         limpieza.register(
-          () => {
-            var _a;
-            return (_a = gl.getExtension("WEBGL_lose_context")) == null ? void 0 : _a.loseContext();
-          }
+          () => gl.getExtension("WEBGL_lose_context")?.loseContext()
         );
       }
       const evalX = compilarFuncion(expr, "x");
@@ -49718,7 +49853,7 @@ var GraphEngine = class {
           let y;
           try {
             y = evalXNum(x);
-          } catch (e3) {
+          } catch {
             return { estado: "indef" };
           }
           if (!Number.isFinite(y))
@@ -49761,11 +49896,10 @@ var GraphEngine = class {
         const sx = (x) => (x - domX[0]) / (domX[1] - domX[0]) * W;
         const sy = (y) => H - (y - domY[0]) / (domY[1] - domY[0]) * H;
         const generarTicks = (min3, max3, maxTicks = 10) => {
-          var _a;
           const rango = max3 - min3;
           const paso = Math.pow(10, Math.floor(Math.log10(rango / maxTicks)));
           const pasos = [1, 2, 5, 10].map((m) => m * paso);
-          const pasoFinal = (_a = pasos.find((p) => rango / p <= maxTicks)) != null ? _a : pasos[pasos.length - 1];
+          const pasoFinal = pasos.find((p) => rango / p <= maxTicks) ?? pasos[pasos.length - 1];
           const ticks = [];
           const inicio = Math.ceil(min3 / pasoFinal) * pasoFinal;
           for (let t2 = inicio; t2 <= max3 + 1e-9; t2 += pasoFinal)
@@ -50401,9 +50535,9 @@ var GraphEngine = class {
 };
 
 // src/host-obsidian/MotorExperimental.ts
-var import_obsidian4 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 
-// src/motor/scene/viewport-utils.ts
+// src/core/scene/viewport-utils.ts
 function crearViewport(domX, domY, anchoPx, altoPx, dpr) {
   return {
     domX: [domX[0], domX[1]],
@@ -50423,7 +50557,7 @@ function aMundoX(vp, px2) {
   return vp.domX[0] + px2 / vp.anchoPx * (vp.domX[1] - vp.domX[0]);
 }
 
-// src/motor/interaction/Camara.ts
+// src/core/interaction/Camara.ts
 var DOM_Y_DEFECTO = [-7, 7];
 var FACTOR_ZOOM_MUESCA = 1.05;
 var TAU_ZOOM_MS = 90;
@@ -50473,10 +50607,9 @@ var Camara = class {
     // ¿La animación en curso es el regreso a la vista base (🏠)?
     this.volviendoAInicio = false;
     this.limpiezas = [];
-    var _a;
     this.altoPx = altoPx;
     this.dpr = Math.ceil(window.devicePixelRatio || 1);
-    const seguirCursor = (_a = opciones.seguirCursor) != null ? _a : true;
+    const seguirCursor = opciones.seguirCursor ?? true;
     const onDown = (e3) => {
       this.cancelarAnimacion();
       this.punteros.set(e3.pointerId, { x: e3.offsetX, y: e3.offsetY });
@@ -50503,10 +50636,9 @@ var Camara = class {
       }
     };
     const onSoltar = (e3) => {
-      var _a2, _b;
       if (!this.punteros.delete(e3.pointerId))
         return;
-      if ((_b = (_a2 = this.canvas).hasPointerCapture) == null ? void 0 : _b.call(_a2, e3.pointerId))
+      if (this.canvas.hasPointerCapture?.(e3.pointerId))
         this.canvas.releasePointerCapture(e3.pointerId);
       this.pellizco = null;
     };
@@ -50786,7 +50918,7 @@ var Camara = class {
   }
 };
 
-// src/motor/analysis/lecturaRama.ts
+// src/core/analysis/lecturaRama.ts
 function puntoEnSegmento(rama, k, u) {
   const p = rama.puntos;
   return {
@@ -51000,7 +51132,7 @@ function yEnRamas(ramas, worldX) {
   return null;
 }
 
-// src/motor/interaction/Navegacion.ts
+// src/core/interaction/Navegacion.ts
 var MAPA = {
   w: "w",
   a: "a",
@@ -51086,7 +51218,7 @@ var Navegacion = class {
       this.ultimo = t2;
       if (dt > 0) {
         const vp = this.camara.viewport();
-        const escala = this.fino ? FACTOR_PRECISION : 1;
+        const escala2 = this.fino ? FACTOR_PRECISION : 1;
         if (this._railOn) {
           let dirX = 0;
           if (this.teclas.has("a"))
@@ -51099,11 +51231,11 @@ var Navegacion = class {
           if (this.teclas.has("s"))
             dirZoom += 1;
           const ySeed = this.ySemilla(vp);
-          const factor = dirZoom !== 0 ? Math.pow(VEL_ZOOM_POR_SEG, dirZoom * dt * escala) : 1;
+          const factor = dirZoom !== 0 ? Math.pow(VEL_ZOOM_POR_SEG, dirZoom * dt * escala2) : 1;
           if (this.curva.tieneAsintotasVerticales()) {
-            this.pasoCarrilAsintota(vp, dirX, escala, dt, factor, ySeed);
+            this.pasoCarrilAsintota(vp, dirX, escala2, dt, factor, ySeed);
           } else {
-            const deltaPx = dirX * VEL_PAN_PX * escala * dt;
+            const deltaPx = dirX * VEL_PAN_PX * escala2 * dt;
             const pos = this.curva.avanzarArco(this._railX, ySeed, deltaPx, vp);
             if (pos) {
               this._railX = pos.x;
@@ -51124,7 +51256,7 @@ var Navegacion = class {
             my -= 1;
           if (mx !== 0 || my !== 0) {
             const norm3 = Math.hypot(mx, my);
-            const v = VEL_PAN_PX * escala * dt;
+            const v = VEL_PAN_PX * escala2 * dt;
             const dx = mx / norm3 * v * ((vp.domX[1] - vp.domX[0]) / vp.anchoPx);
             const dy = my / norm3 * v * ((vp.domY[1] - vp.domY[0]) / vp.altoPx);
             this.camara.panear(dx, dy);
@@ -51194,14 +51326,13 @@ var Navegacion = class {
    *    al destino FIJO y=0 con curva ×10→×1 (`centroCamaraAncla`); en X lo sigue con normalidad.
    *    Invertir la dirección deshace el camino exactamente y re-engancha el punto a la curva.
    */
-  pasoCarrilAsintota(vp, dirX, escala, dt, factor, ySeed) {
-    var _a;
+  pasoCarrilAsintota(vp, dirX, escala2, dt, factor, ySeed) {
     const semiY = (vp.domY[1] - vp.domY[0]) / 2;
     const cyActual = (vp.domY[0] + vp.domY[1]) / 2;
     const semiX = (vp.domX[1] - vp.domX[0]) / 2;
     const alturaEscape = ALTURA_ESCAPE_SEMIALTURAS * semiY;
     if (dirX !== 0 && this._escape) {
-      const pasoMundo = VEL_PAN_PX * escala * factorRampaVerticalidad(Infinity) * dt * ((vp.domY[1] - vp.domY[0]) / vp.altoPx);
+      const pasoMundo = VEL_PAN_PX * escala2 * factorRampaVerticalidad(Infinity) * dt * ((vp.domY[1] - vp.domY[0]) / vp.altoPx);
       const sentido = (dirX >= 0 ? 1 : -1) === this._dirSubida ? 1 : -1;
       this._yEscape += sentido * this._signoEscape * pasoMundo;
       this._pendiente = Infinity;
@@ -51217,12 +51348,12 @@ var Navegacion = class {
     } else if (dirX !== 0) {
       const dir = dirX >= 0 ? 1 : -1;
       const rampa = factorRampaVerticalidad(this._pendiente);
-      const deltaPx = dirX * VEL_PAN_PX * escala * rampa * dt;
+      const deltaPx = dirX * VEL_PAN_PX * escala2 * rampa * dt;
       const hayVecina = this.curva.hayVecina(this._railX, ySeed, dir, vp);
       this._sinVecina = !hayVecina;
       const pos = this.curva.avanzarArco(this._railX, ySeed, deltaPx, vp, hayVecina);
       if (pos) {
-        const yAnt = (_a = this._railY) != null ? _a : pos.y;
+        const yAnt = this._railY ?? pos.y;
         const dx = Math.abs(pos.x - this._railX);
         const enChorro = !hayVecina && this._pendiente > PENDIENTE_CORTE_CARRIL;
         this._pendiente = pos.evento === "salto" || pos.evento === "tope" ? Infinity : dx > 1e-12 ? Math.abs(pos.y - yAnt) / dx : Infinity;
@@ -51364,7 +51495,7 @@ var Navegacion = class {
   }
 };
 
-// src/motor/tracing/explicit/envolventeAltaFrecuencia.ts
+// src/core/tracing/explicit/envolventeAltaFrecuencia.ts
 var MUESTRAS_DETECCION = 8;
 var PASO_COLUMNAS = 3;
 var MUESTRAS_ENVOLVENTE = 64;
@@ -51472,10 +51603,10 @@ function divergeEnColumna(f, xa, dx) {
 function limpiarRachas(mascara, valor, minimo) {
   let ini = -1;
   for (let c = 0; c <= mascara.length; c++) {
-    const dentro = c < mascara.length && mascara[c] === valor;
-    if (dentro && ini < 0)
+    const dentro2 = c < mascara.length && mascara[c] === valor;
+    if (dentro2 && ini < 0)
       ini = c;
-    else if (!dentro && ini >= 0) {
+    else if (!dentro2 && ini >= 0) {
       const bordeIzq = ini === 0;
       const bordeDer = c === mascara.length;
       if (!bordeIzq && !bordeDer && c - ini < minimo)
@@ -51489,10 +51620,10 @@ function tramosDe(mascara, valor, x0, dx) {
   const out = [];
   let ini = -1;
   for (let c = 0; c <= mascara.length; c++) {
-    const dentro = c < mascara.length && mascara[c] === valor;
-    if (dentro && ini < 0)
+    const dentro2 = c < mascara.length && mascara[c] === valor;
+    if (dentro2 && ini < 0)
       ini = c;
-    else if (!dentro && ini >= 0) {
+    else if (!dentro2 && ini >= 0) {
       out.push({ a: x0 + ini * dx, b: x0 + c * dx });
       ini = -1;
     }
@@ -51539,7 +51670,7 @@ function envolvente(f, vp, tramo, objetoId, yBot, yTop) {
   };
 }
 
-// src/motor/tracing/explicit/TrazadorExplicitoAdaptativo.ts
+// src/core/tracing/explicit/TrazadorExplicitoAdaptativo.ts
 var VERTICES_POR_COLUMNA_MAX = 2048;
 var TrazadorExplicitoAdaptativo = class {
   /**
@@ -51587,8 +51718,8 @@ var TrazadorExplicitoAdaptativo = class {
     const domY = viewport.domY;
     const H = viewport.altoPx;
     const interactivo = tolerancia.pasada === "interactiva";
-    const MUESTRAS5 = interactivo ? Math.min(2e3, Math.max(1e3, Math.floor((domX[1] - domX[0]) * 20))) : Math.min(8e3, Math.max(2e3, Math.floor((domX[1] - domX[0]) * 50)));
-    const dx = (domX[1] - domX[0]) / MUESTRAS5;
+    const MUESTRAS6 = interactivo ? Math.min(2e3, Math.max(1e3, Math.floor((domX[1] - domX[0]) * 20))) : Math.min(8e3, Math.max(2e3, Math.floor((domX[1] - domX[0]) * 50)));
+    const dx = (domX[1] - domX[0]) / MUESTRAS6;
     const SALTO_PX_MAX = 8;
     const PROF_MAX3 = interactivo ? 12 : 18;
     const Hmundo = domY[1] - domY[0];
@@ -51700,8 +51831,8 @@ var TrazadorExplicitoAdaptativo = class {
       if (!Number.isFinite(ym))
         return false;
       const yLin = (ya + yb) / 2;
-      const escala = Math.max(Math.abs(ya), Math.abs(yb), 1);
-      return Math.abs(ym - yLin) <= 0.01 * escala;
+      const escala2 = Math.max(Math.abs(ya), Math.abs(yb), 1);
+      return Math.abs(ym - yLin) <= 0.01 * escala2;
     };
     const tramo = (xa, ya, xb, yb, prof) => {
       const finA = Number.isFinite(ya), finB = Number.isFinite(yb);
@@ -51714,8 +51845,8 @@ var TrazadorExplicitoAdaptativo = class {
       );
       const cambioSigno = finA && finB && ya * yb < 0;
       const agotado = prof >= PROF_MAX3 || verticesEnColumna[columnaDe((xa + xb) / 2)] >= VERTICES_POR_COLUMNA_MAX;
-      const refinar = !agotado && (poloEnTramo || cambioSigno || saltoPx > SALTO_PX_MAX && !fueraMismoLado);
-      if (refinar) {
+      const refinar2 = !agotado && (poloEnTramo || cambioSigno || saltoPx > SALTO_PX_MAX && !fueraMismoLado);
+      if (refinar2) {
         const xm = (xa + xb) / 2;
         const ym = evalX(xm);
         tramo(xa, ya, xm, ym, prof + 1);
@@ -51798,7 +51929,7 @@ var TrazadorExplicitoAdaptativo = class {
     let y0 = evalX(x0);
     if (Number.isFinite(y0))
       emit(x0, y0);
-    for (let i2 = 1; i2 <= MUESTRAS5; i2++) {
+    for (let i2 = 1; i2 <= MUESTRAS6; i2++) {
       const x1 = domX[0] + i2 * dx;
       const y1 = evalX(x1);
       tramo(x0, y0, x1, y1, 0);
@@ -51823,7 +51954,7 @@ var TrazadorExplicitoAdaptativo = class {
   }
 };
 
-// src/motor/tracing/continuation/TrazadorContinuacion.ts
+// src/core/tracing/continuation/TrazadorContinuacion.ts
 var PASO_PX_FINAL = 2.5;
 var PASO_PX_INTERACTIVO = 4.5;
 var MAX_PASOS = 2e4;
@@ -51877,12 +52008,12 @@ var TrazadorContinuacion = class {
       (tolerancia.pasada === "interactiva" ? GIRO_SUAVE_GRADOS_INTERACTIVO : GIRO_SUAVE_GRADOS_FINAL) * Math.PI / 180
     );
     this.pasoMinSuave = porPx * PASO_MIN_SUAVE_PX;
-    const escala = escalaCurva(semillas);
+    const escala2 = escalaCurva(semillas);
     const porPantalla = Math.max(1e-12, anchoMundo / viewport.anchoPx * pasoPx);
-    const hMax = Number.isFinite(escala) ? Math.min(porPantalla, Math.max(porPantalla / DIVISOR_SUELO_PASO, escala / PASOS_MINIMOS_CURVA)) : porPantalla;
-    const umbralSemilla = Math.min(hMax * 1.5, escala / CURVA_POR_SEMILLA);
-    const umbralDuplicado = Math.min(hMax * 1.5, escala / CURVA_POR_DUPLICADO);
-    const radioCierre = Math.min(hMax, escala / CURVA_POR_CIERRE);
+    const hMax = Number.isFinite(escala2) ? Math.min(porPantalla, Math.max(porPantalla / DIVISOR_SUELO_PASO, escala2 / PASOS_MINIMOS_CURVA)) : porPantalla;
+    const umbralSemilla = Math.min(hMax * 1.5, escala2 / CURVA_POR_SEMILLA);
+    const umbralDuplicado = Math.min(hMax * 1.5, escala2 / CURVA_POR_DUPLICADO);
+    const radioCierre = Math.min(hMax, escala2 / CURVA_POR_CIERRE);
     const presupuesto = {
       evals: 0,
       max: tolerancia.pasada === "interactiva" ? MAX_EVALS_INTERACTIVO : MAX_EVALS_FINAL
@@ -51900,10 +52031,7 @@ var TrazadorContinuacion = class {
     const ramas = [];
     const visitada = new Array(semillas.length).fill(false);
     let puntosEmitidos = 0;
-    const proyectadas = semillas.map((s) => {
-      var _a;
-      return (_a = this.corregir(Fc, grad, s.punto, hMax)) != null ? _a : s.punto;
-    });
+    const proyectadas = semillas.map((s) => this.corregir(Fc, grad, s.punto, hMax) ?? s.punto);
     for (let s = 0; s < semillas.length && ramas.length < MAX_COMPONENTES; s++) {
       if (visitada[s])
         continue;
@@ -52316,7 +52444,7 @@ var TrazadorContinuacion = class {
   }
 };
 
-// src/motor/tracing/parametric/TrazadorParametricoAdaptativo.ts
+// src/core/tracing/parametric/TrazadorParametricoAdaptativo.ts
 var N0_FINAL = 400;
 var N0_INTERACTIVO = 200;
 var PROF_MAX_FINAL = 20;
@@ -52482,7 +52610,7 @@ var TrazadorParametricoAdaptativo = class {
   }
 };
 
-// src/motor/discovery/sampled/DescubrimientoMuestreado.ts
+// src/core/discovery/sampled/DescubrimientoMuestreado.ts
 var CELDAS_REFINADAS = 16;
 var PROF_MAX = 5;
 var SUB = 4;
@@ -52673,7 +52801,7 @@ function minAbs(vs) {
   return m;
 }
 
-// src/motor/fields/funcionRealMathjs.ts
+// src/core/fields/funcionRealMathjs.ts
 function crearFuncionReal(exprNormalizada) {
   try {
     const g = compilarFuncion(exprNormalizada, "x");
@@ -52683,12 +52811,12 @@ function crearFuncionReal(exprNormalizada) {
         return typeof v === "number" ? v : NaN;
       }
     };
-  } catch (e3) {
+  } catch {
     return { eval: () => NaN };
   }
 }
 
-// src/motor/fields/campoEscalarMathjs.ts
+// src/core/fields/campoEscalarMathjs.ts
 function crearCampoEscalar(exprDiferencia) {
   try {
     const g = compilarCampo(exprDiferencia);
@@ -52698,12 +52826,12 @@ function crearCampoEscalar(exprDiferencia) {
         return typeof v === "number" ? v : NaN;
       }
     };
-  } catch (e3) {
+  } catch {
     return { eval: () => NaN };
   }
 }
 
-// src/motor/fields/parametrizacionMathjs.ts
+// src/core/fields/parametrizacionMathjs.ts
 var aNumero = (v) => typeof v === "number" ? v : NaN;
 function crearParametrizacionCartesiana(exprX, exprY, dominio, periodica) {
   try {
@@ -52714,7 +52842,7 @@ function crearParametrizacionCartesiana(exprX, exprY, dominio, periodica) {
       dominio,
       periodica
     };
-  } catch (e3) {
+  } catch {
     return { eval: () => ({ x: NaN, y: NaN }), dominio, periodica };
   }
 }
@@ -52729,12 +52857,12 @@ function crearParametrizacionPolar(exprR, dominio, periodica) {
       dominio,
       periodica
     };
-  } catch (e3) {
+  } catch {
     return { eval: () => ({ x: NaN, y: NaN }), dominio, periodica };
   }
 }
 
-// src/motor/parsing/periodoPolar.ts
+// src/core/parsing/periodoPolar.ts
 var DOS_PI = 2 * Math.PI;
 var DOMINIO_POLAR_DEFECTO = [0, DOS_PI];
 var TRIG = /* @__PURE__ */ new Set(["sin", "cos", "tan", "cot", "sec", "csc"]);
@@ -52771,7 +52899,7 @@ function pendienteLineal(arg2, variable) {
   let g;
   try {
     g = compilarFuncion(arg2.toString(), variable);
-  } catch (e3) {
+  } catch {
     return null;
   }
   const y0 = aNumero2(g(0.3)), y1 = aNumero2(g(1.3)), y2 = aNumero2(g(2.3));
@@ -52786,7 +52914,7 @@ function periodoValido(expr, P4, variable) {
   let g;
   try {
     g = compilarFuncion(expr, variable);
-  } catch (e3) {
+  } catch {
     return false;
   }
   let ok = 0;
@@ -52821,7 +52949,7 @@ function pendientesTrigonometricas(expr, variable) {
         return null;
       fracciones.push(f);
     }
-  } catch (e3) {
+  } catch {
     return null;
   }
   return fracciones;
@@ -52870,37 +52998,38 @@ function periodoComun(a, b) {
   return DOS_PI * p / q;
 }
 
-// src/motor/parsing/construirObjeto.ts
+// src/core/parsing/construirObjeto.ts
 var DOMINIO_DEFECTO = [0, 2 * Math.PI];
 var norm2 = (s) => insertarProductoImplicito(normalizarEntrada(s));
 function construirObjeto(source, id) {
-  const s = source.trim();
+  const { expr, restriccion } = separarRestriccion(source);
+  const s = expr.trim();
   const par = intentarParametrica(s);
   if (par)
-    return parametrica(id, source, par[0], par[1]);
+    return parametrica(id, source, par[0], par[1], restriccion);
   const comp = funcionDelParametro(s);
   if (comp) {
-    const f = explicita(id, source, renombrarParametroAX(norm2(comp.expr)));
+    const f = explicita(id, source, renombrarParametroAX(norm2(comp.expr)), restriccion, ["x", "t"]);
     return comp.eje === "x" ? { ...f, salida: "x" } : f;
   }
-  const partes = source.split("=");
+  const partes = s.split("=");
   if (partes.length === 2) {
     const lhs = norm2(partes[0].trim());
     const rhs = norm2(partes[1].trim());
     if (lhs === "y")
-      return explicita(id, source, rhs);
+      return explicita(id, source, rhs, restriccion);
     if (rhs === "y")
-      return explicita(id, source, lhs);
+      return explicita(id, source, lhs, restriccion);
     if (lhs === "r")
-      return polar(id, source, partes[1]);
+      return polar(id, source, partes[1], restriccion);
     if (rhs === "r")
-      return polar(id, source, partes[0]);
-    return implicita(id, source, `(${lhs})-(${rhs})`);
+      return polar(id, source, partes[0], restriccion);
+    return implicita(id, source, `(${lhs})-(${rhs})`, restriccion);
   }
-  const expr = norm2(partes[0].trim());
-  if (contieneYLibre(expr))
-    return implicita(id, source, expr);
-  return explicita(id, source, expr);
+  const suelta = norm2(partes[0].trim());
+  if (contieneYLibre(suelta))
+    return implicita(id, source, suelta, restriccion);
+  return explicita(id, source, suelta, restriccion);
 }
 function intentarParametrica(s) {
   if (s.length < 2 || s[0] !== "(")
@@ -52942,24 +53071,84 @@ function comaNivel0(texto) {
   }
   return -1;
 }
-function explicita(id, source, expr) {
-  return { id, tipo: "explicita", fuente: source, variables: ["x"], f: crearFuncionReal(expr) };
+var suVariable = (r, nombres) => nombres.includes(r.variable);
+function restringirFuncion(f, r) {
+  return { eval: (x) => dentro(r, x) ? f.eval(x) : NaN };
 }
-function implicita(id, source, exprDiferencia) {
-  return { id, tipo: "implicita", fuente: source, variables: ["x", "y"], F: crearCampoEscalar(exprDiferencia) };
+function restringirCampo(F, r, eje) {
+  const vale = (x, y) => dentro(r, eje === "x" ? x : y);
+  const gradiente = F.gradiente?.bind(F);
+  const recortado = {
+    eval: (x, y) => vale(x, y) ? F.eval(x, y) : NaN
+  };
+  if (!gradiente)
+    return recortado;
+  return {
+    ...recortado,
+    gradiente: (x, y) => vale(x, y) ? gradiente(x, y) : [NaN, NaN]
+  };
 }
-function parametrica(id, source, exprX, exprY) {
+function dominioRestringido(base, r) {
+  return [
+    Number.isFinite(r.min) ? r.min : base[0],
+    Number.isFinite(r.max) ? r.max : base[1]
+  ];
+}
+var VACIA = {
+  variable: "",
+  min: NaN,
+  max: NaN,
+  texto: "",
+  piezas: [],
+  signos: []
+};
+var avisoDe = (r, nombres) => r !== null && !suVariable(r, nombres) ? { avisoRestriccion: "variableAjena" } : {};
+function explicita(id, source, expr, r = null, nombres = ["x"]) {
+  const f = crearFuncionReal(expr);
+  return {
+    id,
+    tipo: "explicita",
+    fuente: source,
+    variables: ["x"],
+    ...avisoDe(r, nombres),
+    f: r === null ? f : restringirFuncion(f, suVariable(r, nombres) ? r : VACIA)
+  };
+}
+function implicita(id, source, exprDiferencia, r = null) {
+  const F = crearCampoEscalar(exprDiferencia);
+  const eje = r?.variable === "y" ? "y" : "x";
+  return {
+    id,
+    tipo: "implicita",
+    fuente: source,
+    variables: ["x", "y"],
+    ...avisoDe(r, ["x", "y"]),
+    F: r === null ? F : restringirCampo(F, suVariable(r, ["x", "y"]) ? r : VACIA, eje)
+  };
+}
+var parametrizacionVacia = (p) => ({
+  ...p,
+  eval: () => ({ x: NaN, y: NaN })
+});
+function parametrica(id, source, exprX, exprY, r = null) {
+  const p = crearParametrizacionCartesiana(
+    exprX,
+    exprY,
+    r !== null && suVariable(r, ["t"]) ? dominioRestringido(DOMINIO_DEFECTO, r) : DOMINIO_DEFECTO,
+    r === null
+  );
   return {
     id,
     tipo: "parametrica",
     fuente: source,
     variables: ["t"],
-    p: crearParametrizacionCartesiana(exprX, exprY, DOMINIO_DEFECTO, true)
+    ...avisoDe(r, ["t"]),
+    p: r === null || suVariable(r, ["t"]) ? p : parametrizacionVacia(p)
   };
 }
 var normPolar = (ladoExpr) => norm2(ladoExpr.trim().replace(/θ/g, "theta"));
 function expresionPolar(source) {
-  const partes = source.split("=");
+  const partes = separarRestriccion(source).expr.split("=");
   if (partes.length !== 2)
     return null;
   const lhs = norm2(partes[0].trim());
@@ -52971,20 +53160,28 @@ function expresionPolar(source) {
   return null;
 }
 function expresionesParametricas(source) {
-  return intentarParametrica(source.trim());
+  return intentarParametrica(separarRestriccion(source).expr.trim());
 }
-function polar(id, source, ladoExpr) {
+function polar(id, source, ladoExpr, r = null) {
   const expr = normPolar(ladoExpr);
+  const base = dominioPolar(expr);
+  const acotada = r !== null && suVariable(r, ["theta"]);
+  const p = crearParametrizacionPolar(
+    expr,
+    acotada ? dominioRestringido(base, r) : base,
+    r === null
+  );
   return {
     id,
     tipo: "polar",
     fuente: source,
     variables: ["theta"],
-    p: crearParametrizacionPolar(expr, dominioPolar(expr), true)
+    ...avisoDe(r, ["theta"]),
+    p: r === null || acotada ? p : parametrizacionVacia(p)
   };
 }
 
-// src/motor/parsing/dividirEcuaciones.ts
+// src/core/parsing/dividirEcuaciones.ts
 var NO_ES_ETIQUETA = /* @__PURE__ */ new Set(["x", "y", "e", "i"]);
 function desenvolverDefinicionFuncion(ec) {
   const m = /^([a-zA-Z])\s*(?:\\left)?\(\s*x\s*(?:\\right)?\)\s*=([\s\S]+)$/.exec(ec);
@@ -53011,7 +53208,7 @@ function dividirEcuaciones(source) {
   return fusionarComponentes(lineas);
 }
 
-// src/motor/analysis/puntosNotablesDeRama.ts
+// src/core/analysis/puntosNotablesDeRama.ts
 var LIMITE_POR_CATEGORIA = 30;
 function recolectar(ramas, objetoId, viewport) {
   const raices2 = [];
@@ -53179,7 +53376,7 @@ function resumenPuntosNotables(ramas, objetoId, viewport) {
   return recolectar(ramas, objetoId, viewport);
 }
 
-// src/motor/analysis/separarImplicita.ts
+// src/core/analysis/separarImplicita.ts
 function campoTranspuesto(F) {
   return { eval: (x, y) => F.eval(y, x) };
 }
@@ -53255,7 +53452,7 @@ function separarTrigY(F) {
         continue;
       const a = (F1 - F2) / (T1 - T2);
       const c = F1 - a * T1;
-      let escala = 1 + Math.abs(a) + Math.abs(c);
+      let escala2 = 1 + Math.abs(a) + Math.abs(c);
       let valido = true;
       for (const y of resto) {
         const real = F.eval(x, y);
@@ -53263,8 +53460,8 @@ function separarTrigY(F) {
           valido = false;
           break;
         }
-        escala = Math.max(escala, 1 + Math.abs(real));
-        if (Math.abs(a * T(y) + c - real) > TOL_REL * escala) {
+        escala2 = Math.max(escala2, 1 + Math.abs(real));
+        if (Math.abs(a * T(y) + c - real) > TOL_REL * escala2) {
           ok = false;
           break;
         }
@@ -53339,7 +53536,7 @@ function ramasMonomioY(F) {
         continue;
       const a = (F1 - F2) / (M1 - M2);
       const c = F1 - a * M1;
-      let escala = 1 + Math.abs(a) + Math.abs(c);
+      let escala2 = 1 + Math.abs(a) + Math.abs(c);
       let valido = true;
       for (const y of resto) {
         const real = F.eval(x, y);
@@ -53347,8 +53544,8 @@ function ramasMonomioY(F) {
           valido = false;
           break;
         }
-        escala = Math.max(escala, 1 + Math.abs(real));
-        if (Math.abs(a * m.M(y) + c - real) > TOL_REL * escala) {
+        escala2 = Math.max(escala2, 1 + Math.abs(real));
+        if (Math.abs(a * m.M(y) + c - real) > TOL_REL * escala2) {
           ok = false;
           break;
         }
@@ -53495,7 +53692,7 @@ function extenderPolosPeriodicos(F, polos, x0, x1) {
   return [...salida].sort((a, b) => a - b);
 }
 
-// src/motor/providers/ProveedorImplicitoSeparable.ts
+// src/core/providers/ProveedorImplicitoSeparable.ts
 var ProveedorImplicitoSeparable = class {
   /**
    * `transpuesta=true` → las ramas despejadas son x=g(y) (separable en X, p.ej.
@@ -53575,7 +53772,7 @@ function ramasJuntoAPolos(f, objetoId, polos, vp, yaTrazadas) {
         continue;
       const pts = [];
       let prevX = px2 + s * dMin, prevY = v0;
-      let dentro = false;
+      let dentro2 = false;
       for (let d = dMin * 2; d <= alcance; d *= 2) {
         const x = px2 + s * d;
         const y = f.eval(x);
@@ -53590,17 +53787,17 @@ function ramasJuntoAPolos(f, objetoId, polos, vp, yaTrazadas) {
           }
           const ye = f.eval(lo);
           if (Number.isFinite(ye)) {
-            if (!dentro && Math.abs(ye) <= bandaAbs)
+            if (!dentro2 && Math.abs(ye) <= bandaAbs)
               pts.push(prevX, prevY >= 0 ? yTop : yBot);
             pts.push(lo, ye);
           }
           break;
         }
-        if (!dentro && Math.abs(y) <= bandaAbs) {
+        if (!dentro2 && Math.abs(y) <= bandaAbs) {
           pts.push(prevX, prevY >= 0 ? yTop : yBot);
-          dentro = true;
+          dentro2 = true;
         }
-        if (dentro)
+        if (dentro2)
           pts.push(x, y);
         prevX = x;
         prevY = y;
@@ -53732,7 +53929,7 @@ function dedupAsintotas(asintotas) {
   return out;
 }
 
-// src/motor/providers/ProveedorExplicito.ts
+// src/core/providers/ProveedorExplicito.ts
 var ProveedorExplicito = class {
   constructor(objeto, trazador) {
     this.objeto = objeto;
@@ -53770,7 +53967,7 @@ var ProveedorExplicito = class {
   }
 };
 
-// src/motor/providers/ProveedorImplicito.ts
+// src/core/providers/ProveedorImplicito.ts
 var ProveedorImplicito = class {
   constructor(objeto, descubrimiento, trazador, trazadorExplicito) {
     this.objeto = objeto;
@@ -53853,7 +54050,7 @@ function invertirPolilinea(p) {
   return q;
 }
 
-// src/motor/providers/ProveedorImplicitoPeriodico.ts
+// src/core/providers/ProveedorImplicitoPeriodico.ts
 var PI2 = Math.PI;
 var INVERSAS2 = {
   tan: { periodo: PI2, bases: [{ inv: Math.atan, rango: [-PI2 / 2, PI2 / 2] }] },
@@ -53961,7 +54158,7 @@ function trasladarY(r, dy) {
   return { puntos: q, cerrada: r.cerrada, calidad: r.calidad, objetoId: r.objetoId, parametro: r.parametro };
 }
 
-// src/motor/providers/ProveedorImplicitoTeselado.ts
+// src/core/providers/ProveedorImplicitoTeselado.ts
 var MIN_CELDAS = 4;
 var MAX_LOSETAS = 8192;
 var MAX_PUNTOS_TESELADO = 4e5;
@@ -54149,7 +54346,7 @@ function trasladar(r, dx, dy) {
   return { puntos: q, cerrada: r.cerrada, calidad: r.calidad, objetoId: r.objetoId };
 }
 
-// src/motor/tracing/raster/marchingSquares.ts
+// src/core/tracing/raster/marchingSquares.ts
 function contornosMarchingSquares(F, vp, objetoId, cellPx, maxNodos) {
   const [x0, x1] = vp.domX, [y0, y1] = vp.domY;
   let cols = Math.max(2, Math.round(vp.anchoPx / Math.max(0.5, cellPx)));
@@ -54320,7 +54517,7 @@ function contornosMarchingSquares(F, vp, objetoId, cellPx, maxNodos) {
   return ramas;
 }
 
-// src/motor/providers/ProveedorImplicitoRasterizado.ts
+// src/core/providers/ProveedorImplicitoRasterizado.ts
 var UMBRAL_CRUCES = 24;
 var SONDEOS = 14;
 var MUESTRAS_SONDEO = 220;
@@ -54379,7 +54576,7 @@ var ProveedorImplicitoRasterizado = class {
   }
 };
 
-// src/motor/providers/ProveedorParametrico.ts
+// src/core/providers/ProveedorParametrico.ts
 var ProveedorParametrico = class {
   constructor(objeto, trazador) {
     this.objeto = objeto;
@@ -54392,7 +54589,7 @@ var ProveedorParametrico = class {
   }
 };
 
-// src/motor/providers/ProveedorConCache.ts
+// src/core/providers/ProveedorConCache.ts
 function firma(vp, t2) {
   return `${vp.domX[0]}|${vp.domX[1]}|${vp.domY[0]}|${vp.domY[1]}|${vp.anchoPx}|${vp.altoPx}|${t2.pasada}|${t2.desviacionMaxPx}|${t2.pasoMaxPx}`;
 }
@@ -54415,7 +54612,7 @@ var ProveedorConCache = class {
   }
 };
 
-// src/motor/providers/ProveedorSinPuntosEje.ts
+// src/core/providers/ProveedorSinPuntosEje.ts
 var ProveedorSinPuntosEje = class {
   constructor(interno) {
     this.interno = interno;
@@ -54432,7 +54629,7 @@ var ProveedorSinPuntosEje = class {
   }
 };
 
-// src/motor/providers/ProveedorUnion.ts
+// src/core/providers/ProveedorUnion.ts
 var ProveedorUnion = class {
   constructor(objetoId, internos) {
     this.objetoId = objetoId;
@@ -54477,7 +54674,7 @@ function simplificarExpr(exprNorm) {
   let base;
   try {
     base = parse2(exprNorm);
-  } catch (e3) {
+  } catch {
     return null;
   }
   const r = rationalizeSeguro(base);
@@ -54490,7 +54687,7 @@ function simplificarExpr(exprNorm) {
       {},
       OPCIONES_SIMPLIFY
     );
-  } catch (e3) {
+  } catch {
     return base;
   }
 }
@@ -54507,7 +54704,7 @@ function variablesLibres(expr) {
         nombres.add(nn.name);
     });
     return [...nombres];
-  } catch (e3) {
+  } catch {
     return [];
   }
 }
@@ -54527,7 +54724,7 @@ function formasEquivalentes(a, b) {
         return finA === finB;
       return Math.abs(va - vb) <= 1e-8 * (1 + Math.abs(va));
     });
-  } catch (e3) {
+  } catch {
     return false;
   }
 }
@@ -54549,7 +54746,7 @@ function simplificarLado(lado) {
   let curNodo;
   try {
     curNodo = parse2(actual);
-  } catch (e3) {
+  } catch {
     return actual;
   }
   if (profundidadFraccion(curNodo) < 2)
@@ -54557,11 +54754,11 @@ function simplificarLado(lado) {
   const candidatas = [];
   try {
     candidatas.push(formatear(parse2(norm3)));
-  } catch (e3) {
+  } catch {
   }
   try {
     candidatas.push(formatear(combinarFracciones(n)));
-  } catch (e3) {
+  } catch {
   }
   let mejorStr = actual, mejorCosto = costo(curNodo);
   for (const s of candidatas) {
@@ -54571,13 +54768,13 @@ function simplificarLado(lado) {
         mejorStr = s;
         mejorCosto = cost;
       }
-    } catch (e3) {
+    } catch {
     }
   }
   return mejorStr;
 }
 function simplificarEcuaciones(ecuaciones) {
-  return ecuaciones.map((ec) => {
+  return ecuaciones.map((entrada) => transformarSinRestriccion(entrada, (ec) => {
     const comp = componenteParametrica(ec);
     if (comp)
       return `${comp.eje}(t) = ${simplificarLado(comp.expr)}`;
@@ -54585,10 +54782,31 @@ function simplificarEcuaciones(ecuaciones) {
     if (partes.length === 2)
       return `${simplificarLado(partes[0])} = ${simplificarLado(partes[1])}`;
     return simplificarLado(ec);
-  });
+  }));
 }
 
-// src/despejar.ts
+// src/despeje/aritmetica.ts
+var mcdEnteros = (a, b) => b === 0 ? Math.abs(a) : mcdEnteros(b, Math.abs(a % b));
+function normalizarFraccion(num, den) {
+  if (den === 0)
+    return null;
+  if (den < 0) {
+    num = -num;
+    den = -den;
+  }
+  const g = mcdEnteros(Math.abs(num), den) || 1;
+  return { num: num / g, den: den / g };
+}
+function fraccionSencilla(v) {
+  for (let den = 2; den <= 64; den++) {
+    const num = v * den;
+    if (Math.abs(num - Math.round(num)) <= 1e-9 * Math.max(1, Math.abs(num)))
+      return normalizarFraccion(Math.round(num), den);
+  }
+  return null;
+}
+
+// src/despeje/estrategias.ts
 var contieneY2 = (n) => contieneVariable(n, "y");
 function factorEsY(n) {
   if (n.type === "ParenthesisNode")
@@ -54669,14 +54887,6 @@ function inversoExponenteFraccionarioY(n) {
     return f.num === 1 ? `${f.den}` : `${f.den}/${f.num}`;
   return `1/${v}`;
 }
-function fraccionSencilla(v) {
-  for (let den = 2; den <= 64; den++) {
-    const num = v * den;
-    if (Math.abs(num - Math.round(num)) <= 1e-9 * Math.max(1, Math.abs(num)))
-      return normalizarFraccion(Math.round(num), den);
-  }
-  return null;
-}
 function despejePotencia(t2, derecha) {
   const fs = factores(t2.nodo);
   const conYf = fs.filter((f) => contieneY2(f.nodo));
@@ -54700,11 +54910,10 @@ function despejePotencia(t2, derecha) {
   return doble === null ? null : { ecuacion: `y = ${doble}`, completo: true };
 }
 function raizY(n) {
-  var _a;
   const nodo = desParen3(n);
   if (nodo.type !== "FunctionNode")
     return null;
-  const nombre = (_a = nodo.fn) == null ? void 0 : _a.name;
+  const nombre = nodo.fn?.name;
   const arg0 = nodo.args[0] && desParen3(nodo.args[0]);
   if (!arg0 || arg0.type !== "SymbolNode" || arg0.name !== "y")
     return null;
@@ -54723,7 +54932,7 @@ function conDominio(cuerpo, cond) {
   let c;
   try {
     c = parse2(cond);
-  } catch (e3) {
+  } catch {
     return `dom(${cuerpo}, ${cond})`;
   }
   if (esNoNegativo(c))
@@ -54748,11 +54957,10 @@ function despejeRaiz(t2, derecha) {
   return cuerpo === null ? null : { ecuacion: `y = ${cuerpo}`, completo: true };
 }
 function raizDePotenciaY(n0) {
-  var _a;
   const nodo = desParen3(n0);
   if (nodo.type !== "FunctionNode")
     return null;
-  const nombre = (_a = nodo.fn) == null ? void 0 : _a.name;
+  const nombre = nodo.fn?.name;
   let n = null;
   let rad;
   if (nombre === "sqrt" && nodo.args.length === 1) {
@@ -54798,22 +55006,11 @@ function exponenteEntero(n) {
   return v !== null && Number.isInteger(v) ? v : null;
 }
 function esAbsDeY(n) {
-  var _a;
   const nodo = desParen3(n);
-  if (nodo.type !== "FunctionNode" || ((_a = nodo.fn) == null ? void 0 : _a.name) !== "abs" || nodo.args.length !== 1)
+  if (nodo.type !== "FunctionNode" || nodo.fn?.name !== "abs" || nodo.args.length !== 1)
     return false;
   const arg2 = desParen3(nodo.args[0]);
   return arg2.type === "SymbolNode" && arg2.name === "y";
-}
-function normalizarFraccion(num, den) {
-  if (den === 0)
-    return null;
-  if (den < 0) {
-    num = -num;
-    den = -den;
-  }
-  const g = mcdEnteros(Math.abs(num), den) || 1;
-  return { num: num / g, den: den / g };
 }
 function racionalConstante(n) {
   const nodo = desParen3(n);
@@ -54832,11 +55029,10 @@ function racionalConstante(n) {
   return v !== null && Number.isInteger(v) ? { num: v, den: 1 } : null;
 }
 function indiceRaiz(n) {
-  var _a;
   const nodo = desParen3(n);
   if (nodo.type !== "FunctionNode")
     return null;
-  const nombre = (_a = nodo.fn) == null ? void 0 : _a.name;
+  const nombre = nodo.fn?.name;
   if (nombre === "sqrt" && nodo.args.length === 1)
     return { n: 2, rad: nodo.args[0] };
   if (nombre === "cbrt" && nodo.args.length === 1)
@@ -54878,7 +55074,7 @@ function absYExponente(t2) {
 function limpiarAbsoluto(s) {
   try {
     return formatearCanonico(racionalizarFracciones(combinarFracciones(parse2(s))));
-  } catch (e3) {
+  } catch {
     return s;
   }
 }
@@ -54933,7 +55129,7 @@ function despejeMultiplicativo(t2, derecha) {
     return null;
   return `${renderProducto(conYf)} = ${ladoDerecho(t2, derecha, libres)}`;
 }
-function despejeReciproco(t2, derecha) {
+function despejeReciproco(t2, derecha, resolver) {
   const fs = factores(t2.nodo);
   const conYf = fs.filter((f) => contieneY2(f.nodo));
   const libres = fs.filter((f) => !contieneY2(f.nodo));
@@ -54946,7 +55142,7 @@ function despejeReciproco(t2, derecha) {
   const denFree = libres.filter((f) => f.exp === -1).map((f) => `(${f.nodo.toString()})`);
   const arriba = (t2.signo === -1 ? "-" : "") + (numFree.length ? numFree.join("*") : "1");
   const abajo = [...denFree, `(${renderTerminos(derecha)})`].join("*");
-  const rec = despejar(`${E} = (${arriba})/(${abajo})`);
+  const rec = resolver(`${E} = (${arriba})/(${abajo})`);
   return rec && rec.completo ? rec : null;
 }
 var TRIG_CERO = {
@@ -54962,7 +55158,7 @@ function uSiemprePositivo(uStr) {
   try {
     const c = parse2(insertarProductoImplicito(normalizarEntrada(uStr))).compile();
     f = (s) => c.evaluate(s);
-  } catch (e3) {
+  } catch {
     return false;
   }
   const malla = [-8, -3.5, -1.5, -0.5, 0.3, 0.9, 2.2, 5.1];
@@ -54972,7 +55168,7 @@ function uSiemprePositivo(uStr) {
       let v;
       try {
         v = f({ x, y });
-      } catch (e3) {
+      } catch {
         continue;
       }
       if (typeof v !== "number" || !Number.isFinite(v))
@@ -54983,8 +55179,7 @@ function uSiemprePositivo(uStr) {
     }
   return vistos >= 8;
 }
-function despejeTrigCero(t2, derecha) {
-  var _a, _b, _c;
+function despejeTrigCero(t2, derecha, resolver) {
   const noNulos = derecha.filter((d) => {
     const n = desParen3(d.nodo);
     return !(n.type === "ConstantNode" && n.value === 0);
@@ -54992,9 +55187,9 @@ function despejeTrigCero(t2, derecha) {
   if (noNulos.length !== 0)
     return null;
   const nodo = desParen3(t2.nodo);
-  if (nodo.type !== "FunctionNode" || ((_a = nodo.args) == null ? void 0 : _a.length) !== 1)
+  if (nodo.type !== "FunctionNode" || nodo.args?.length !== 1)
     return null;
-  const info = TRIG_CERO[(_c = (_b = nodo.fn) == null ? void 0 : _b.name) != null ? _c : ""];
+  const info = TRIG_CERO[nodo.fn?.name ?? ""];
   if (!info)
     return null;
   const u = desParen3(nodo.args[0]);
@@ -55005,23 +55200,192 @@ function despejeTrigCero(t2, derecha) {
   if (cero === null)
     return null;
   const rhs = info.base ? `${info.base} + ${cero}` : cero;
-  const rec = despejar(`${uStr} = ${rhs}`);
+  const rec = resolver(`${uStr} = ${rhs}`);
   return rec && rec.completo ? rec : null;
 }
+
+// src/despeje/presentacion.ts
+var SENTINELAS_SIGNO = /* @__PURE__ */ new Set(["pm", "mp"]);
+function coefYresto(n) {
+  let coef = 1;
+  const resto = [];
+  for (const f of factores(n)) {
+    if (f.exp !== 1)
+      return null;
+    if (f.nodo.type === "ConstantNode") {
+      const v = Number(f.nodo.value);
+      if (!Number.isInteger(v))
+        return null;
+      coef *= v;
+    } else
+      resto.push(f.nodo.toString());
+  }
+  return { coef, resto: resto.join(" * ") };
+}
+function reducirFraccionEntera(rhs) {
+  let n;
+  try {
+    n = parse2(rhs);
+  } catch {
+    return rhs;
+  }
+  const raiz = desParen3(n);
+  if (raiz.type !== "OperatorNode" || raiz.op !== "/" || raiz.args.length !== 2)
+    return rhs;
+  const den = desParen3(raiz.args[1]);
+  if (den.type !== "ConstantNode")
+    return rhs;
+  const d = Number(den.value);
+  if (!Number.isInteger(d) || d < 2)
+    return rhs;
+  const ts = terminos(desParen3(raiz.args[0]));
+  if (ts.length === 0)
+    return rhs;
+  const partes = [];
+  for (const t2 of ts) {
+    const nodo = desParen3(t2.nodo);
+    const sentinela = nodo.type === "FunctionNode" && nodo.args.length === 1 && nodo.fn?.name !== void 0 && SENTINELAS_SIGNO.has(nodo.fn.name) ? nodo.fn.name : null;
+    const cr = coefYresto(sentinela === null ? nodo : nodo.args[0]);
+    if (cr === null)
+      return rhs;
+    partes.push({ signo: t2.signo, ...cr, envoltura: sentinela });
+  }
+  let g = d;
+  for (const p of partes)
+    g = mcdEnteros(g, Math.abs(p.coef));
+  if (g < 2)
+    return rhs;
+  let out = "";
+  partes.forEach((p, i2) => {
+    const c = p.coef / g;
+    const nucleo = p.resto === "" ? String(c) : c === 1 ? p.resto : `${c} * ${p.resto}`;
+    const cuerpo = p.envoltura ? `${p.envoltura}(${nucleo})` : nucleo;
+    if (i2 === 0)
+      out = p.signo === 1 ? cuerpo : `-${cuerpo}`;
+    else
+      out += p.signo === 1 ? ` + ${cuerpo}` : ` - ${cuerpo}`;
+  });
+  return d / g === 1 ? out : `(${out}) / (${d / g})`;
+}
+function embellecerConstantes(ec) {
+  try {
+    const partes = ec.split("=");
+    if (partes.length !== 2)
+      return ec;
+    const original = parse2(partes[1]);
+    const rhs = reducirFraccionEntera(resimbolizarConstantes(original).toString());
+    if (rhs === original.toString())
+      return ec;
+    return `${partes[0].trim()} = ${rhs}`;
+  } catch {
+    return ec;
+  }
+}
+
+// src/despeje/verificacion.ts
+function ramaReal(uStr, g, evalD) {
+  let fu;
+  try {
+    const c = parse2(uStr).compile();
+    fu = (x) => c.evaluate({ x });
+  } catch {
+    return false;
+  }
+  const muestras = [-2.3, -1.1, -0.4, -0.15, 0.15, 0.35, 0.7, 1.6, 3.2];
+  let viables = 0;
+  for (const x of muestras) {
+    let u;
+    try {
+      u = fu(x);
+    } catch {
+      continue;
+    }
+    if (typeof u !== "number" || !Number.isFinite(u))
+      continue;
+    const escala2 = 1 + x * x * x * x;
+    if (g % 2 === 0) {
+      if (u < -1e-9)
+        continue;
+      const y = Math.pow(Math.max(u, 0), 1 / g);
+      for (const yy of [y, -y]) {
+        const d = evalD(x, yy);
+        if (!Number.isFinite(d) || Math.abs(d) > 1e-6 * (escala2 + y * y * y * y))
+          return false;
+      }
+    } else {
+      const y = Math.sign(u) * Math.pow(Math.abs(u), 1 / g);
+      const d = evalD(x, y);
+      if (!Number.isFinite(d) || Math.abs(d) > 1e-6 * (escala2 + y * y * y * y))
+        return false;
+    }
+    viables++;
+  }
+  return viables >= 2;
+}
+function solucionValida(rhs, evalD) {
+  let total = 0;
+  for (const rama of expandirDobleSigno(rhs)) {
+    const n = puntosValidos(rama, evalD);
+    if (n === null)
+      return false;
+    total += n;
+  }
+  return total >= 2;
+}
+function evaluadorDe(D) {
+  try {
+    const c = D.compile();
+    return (x, y) => {
+      try {
+        return c.evaluate({ x, y });
+      } catch {
+        return NaN;
+      }
+    };
+  } catch {
+    return null;
+  }
+}
+function puntosValidos(rhs, evalD) {
+  let f;
+  try {
+    f = compilarFuncion(rhs, "x");
+  } catch {
+    return null;
+  }
+  let validos = 0;
+  for (let i2 = 0; i2 <= 120; i2++) {
+    const x = -6 + i2 * 12 / 120;
+    let y;
+    try {
+      y = f(x);
+    } catch {
+      continue;
+    }
+    if (typeof y !== "number" || !Number.isFinite(y))
+      continue;
+    const d = evalD(x, y);
+    if (!Number.isFinite(d) || Math.abs(d) > 1e-6 * (1 + x * x * x * x + y * y * y * y))
+      return null;
+    validos++;
+  }
+  return validos;
+}
+
+// src/despejar.ts
 var contieneX = (n) => contieneVariable(n, "x");
-var mcdEnteros = (a, b) => b === 0 ? Math.abs(a) : mcdEnteros(b, Math.abs(a % b));
 function simpDesp(s) {
   try {
     const n = simplificarExpr(s);
     return n ? formatearCanonico(racionalizarFracciones(n)) : s;
-  } catch (e3) {
+  } catch {
     return s;
   }
 }
 function simpSiConstante(s) {
   try {
     return contieneX(parse2(s)) ? s : simpDesp(s);
-  } catch (e3) {
+  } catch {
     return s;
   }
 }
@@ -55045,45 +55409,6 @@ function potenciaYCoef(t2) {
   const coef = renderProducto(libres);
   return { power, coef: t2.signo === 1 ? coef : `-(${coef})` };
 }
-function ramaReal(uStr, g, evalD) {
-  let fu;
-  try {
-    const c = parse2(uStr).compile();
-    fu = (x) => c.evaluate({ x });
-  } catch (e3) {
-    return false;
-  }
-  const muestras = [-2.3, -1.1, -0.4, -0.15, 0.15, 0.35, 0.7, 1.6, 3.2];
-  let viables = 0;
-  for (const x of muestras) {
-    let u;
-    try {
-      u = fu(x);
-    } catch (e3) {
-      continue;
-    }
-    if (typeof u !== "number" || !Number.isFinite(u))
-      continue;
-    const escala = 1 + x * x * x * x;
-    if (g % 2 === 0) {
-      if (u < -1e-9)
-        continue;
-      const y = Math.pow(Math.max(u, 0), 1 / g);
-      for (const yy of [y, -y]) {
-        const d = evalD(x, yy);
-        if (!Number.isFinite(d) || Math.abs(d) > 1e-6 * (escala + y * y * y * y))
-          return false;
-      }
-    } else {
-      const y = Math.sign(u) * Math.pow(Math.abs(u), 1 / g);
-      const d = evalD(x, y);
-      if (!Number.isFinite(d) || Math.abs(d) > 1e-6 * (escala + y * y * y * y))
-        return false;
-    }
-    viables++;
-  }
-  return viables >= 2;
-}
 function baseYExponente(f) {
   const nodo = desParen3(f.nodo);
   if (nodo.type === "OperatorNode" && nodo.op === "^" && nodo.args.length === 2) {
@@ -55095,7 +55420,7 @@ function baseYExponente(f) {
 }
 function raizImpar(R, n) {
   const fuera = [];
-  const dentro = [];
+  const dentro2 = [];
   for (const f of factores(R)) {
     const { base, k } = baseYExponente(f);
     const pot = (e3) => e3 === 1 ? `(${base.toString()})` : `(${base.toString()})^(${e3})`;
@@ -55104,19 +55429,18 @@ function raizImpar(R, n) {
     else {
       if (contieneY2(base))
         return null;
-      dentro.push(pot(k));
+      dentro2.push(pot(k));
     }
   }
-  if (dentro.length === 0)
+  if (dentro2.length === 0)
     return fuera.length ? fuera.join("*") : "1";
-  const radicando = dentro.join("*");
+  const radicando = dentro2.join("*");
   const raiz = `nthRoot(${radicando}, ${n})`;
   return fuera.length ? `${fuera.join("*")}*${raiz}` : raiz;
 }
 function reducirRaizImpar(L, R) {
-  var _a;
-  const intento = (potencia, otro) => {
-    const p = desParen3(potencia);
+  const intento = (potencia3, otro) => {
+    const p = desParen3(potencia3);
     if (!(p.type === "OperatorNode" && p.op === "^" && p.args.length === 2))
       return null;
     const n = exponenteEntero(p.args[1]);
@@ -55131,11 +55455,11 @@ function reducirRaizImpar(L, R) {
     try {
       const D = simplify(parse2(`(${base.toString()}) - (${raiz})`));
       return D && contieneY2(D) ? D : null;
-    } catch (e3) {
+    } catch {
       return null;
     }
   };
-  return (_a = intento(L, R)) != null ? _a : intento(R, L);
+  return intento(L, R) ?? intento(R, L);
 }
 function reducirRaizImparPorTerminos(D) {
   const ts = terminos(D);
@@ -55158,7 +55482,7 @@ function reducirRaizImparPorTerminos(D) {
     let R;
     try {
       R = parse2(renderTerminos(otroLado));
-    } catch (e3) {
+    } catch {
       continue;
     }
     const reducido = reducirRaizImpar(p, R);
@@ -55170,12 +55494,11 @@ function reducirRaizImparPorTerminos(D) {
 function plegarRaicesImpares(n) {
   try {
     return n.transform((nn) => {
-      var _a;
       if (nn.type !== "OperatorNode" || nn.op !== "^" || nn.args.length !== 2)
         return nn;
       const base = desParen3(nn.args[0]);
       const k = exponenteEntero(nn.args[1]);
-      if (k === null || base.type !== "FunctionNode" || ((_a = base.fn) == null ? void 0 : _a.name) !== "nthRoot")
+      if (k === null || base.type !== "FunctionNode" || base.fn?.name !== "nthRoot")
         return nn;
       if (base.args.length !== 2)
         return nn;
@@ -55184,7 +55507,7 @@ function plegarRaicesImpares(n) {
         return nn;
       return parse2(`nthRoot((${base.args[0].toString()})^(${k}), ${idx})`);
     });
-  } catch (e3) {
+  } catch {
     return n;
   }
 }
@@ -55194,7 +55517,7 @@ function despejeCuadratico(D0, DVal = D0) {
     const e3 = simplificarExpr(D0.toString());
     if (e3)
       D = e3;
-  } catch (e3) {
+  } catch {
   }
   const ts = terminos(D);
   const conY = ts.filter((t2) => contieneY2(t2.nodo));
@@ -55220,11 +55543,11 @@ function despejeCuadratico(D0, DVal = D0) {
     evalD = (x, y) => {
       try {
         return c.evaluate({ x, y });
-      } catch (e3) {
+      } catch {
         return NaN;
       }
     };
-  } catch (e3) {
+  } catch {
     return null;
   }
   if (!degs.includes(2)) {
@@ -55276,7 +55599,7 @@ function enY(D, valor) {
     return simpDesp(D.transform(
       (n) => n.type === "SymbolNode" && n.name === "y" ? parse2(String(valor)) : n
     ).toString());
-  } catch (e3) {
+  } catch {
     return "";
   }
 }
@@ -55293,11 +55616,11 @@ function esAfinEnY(D) {
     f = (x, y) => {
       try {
         return c.evaluate({ x, y });
-      } catch (e3) {
+      } catch {
         return NaN;
       }
     };
-  } catch (e3) {
+  } catch {
     return false;
   }
   let comprobados = 0;
@@ -55342,11 +55665,10 @@ function despejeLinealEnY(D) {
 }
 var MAX_ELEVACIONES = 3;
 function radicandoDeY(f) {
-  var _a;
   if (f.exp !== 1)
     return null;
   const n = desParen3(f.nodo);
-  return n.type === "FunctionNode" && ((_a = n.fn) == null ? void 0 : _a.name) === "sqrt" && n.args.length === 1 && contieneY2(n) ? n.args[0] : null;
+  return n.type === "FunctionNode" && n.fn?.name === "sqrt" && n.args.length === 1 && contieneY2(n) ? n.args[0] : null;
 }
 function partirRadical(t2) {
   const fs = factores(t2.nodo);
@@ -55381,7 +55703,7 @@ function elevarAlCuadrado(D) {
   let out;
   try {
     out = simplify(`(${coef})^2*(${rad.toString()}) - (${cuadradoExpandido(resto)})`);
-  } catch (e3) {
+  } catch {
     return null;
   }
   return { D: out, radical: `sqrt(${rad.toString()})`, valor };
@@ -55393,69 +55715,19 @@ function guardaEnX(expr, pasos, yFinal) {
   let n;
   try {
     n = parse2(s);
-  } catch (e3) {
+  } catch {
     return s;
   }
   if (contieneY2(n)) {
     try {
       n = n.transform((z) => z.type === "SymbolNode" && z.name === "y" ? parse2(`(${yFinal})`) : z);
-    } catch (e3) {
+    } catch {
       return s;
     }
   }
   return simpDesp(n.toString());
 }
-function solucionValida(rhs, evalD) {
-  let total = 0;
-  for (const rama of expandirDobleSigno(rhs)) {
-    const n = puntosValidos(rama, evalD);
-    if (n === null)
-      return false;
-    total += n;
-  }
-  return total >= 2;
-}
-function evaluadorDe(D) {
-  try {
-    const c = D.compile();
-    return (x, y) => {
-      try {
-        return c.evaluate({ x, y });
-      } catch (e3) {
-        return NaN;
-      }
-    };
-  } catch (e3) {
-    return null;
-  }
-}
-function puntosValidos(rhs, evalD) {
-  let f;
-  try {
-    f = compilarFuncion(rhs, "x");
-  } catch (e3) {
-    return null;
-  }
-  let validos = 0;
-  for (let i2 = 0; i2 <= 120; i2++) {
-    const x = -6 + i2 * 12 / 120;
-    let y;
-    try {
-      y = f(x);
-    } catch (e3) {
-      continue;
-    }
-    if (typeof y !== "number" || !Number.isFinite(y))
-      continue;
-    const d = evalD(x, y);
-    if (!Number.isFinite(d) || Math.abs(d) > 1e-6 * (1 + x * x * x * x + y * y * y * y))
-      return null;
-    validos++;
-  }
-  return validos;
-}
 function despejeRadicales(D0, DVal) {
-  var _a, _b;
   let D = D0;
   const pasos = [];
   for (let i2 = 0; i2 < MAX_ELEVACIONES; i2++) {
@@ -55471,7 +55743,7 @@ function despejeRadicales(D0, DVal) {
     return null;
   if (!contieneY2(D))
     return null;
-  const rhsCrudo = rhsCompleto((_a = despejeLinealEnY(D)) != null ? _a : despejarAnidado(`${D.toString()} = 0`));
+  const rhsCrudo = rhsCompleto(despejeLinealEnY(D) ?? despejarAnidado(`${D.toString()} = 0`));
   if (rhsCrudo === null)
     return null;
   let rhs = rhsCrudo;
@@ -55485,7 +55757,7 @@ function despejeRadicales(D0, DVal) {
       guardas.push(cond);
     rhs = conG;
   }
-  if (((_b = simplificarCondiciones(guardas)) == null ? void 0 : _b.tipo) === "imposible")
+  if (simplificarCondiciones(guardas)?.tipo === "imposible")
     return null;
   const evalD = evaluadorDe(DVal);
   return evalD !== null && solucionValida(rhs, evalD) ? { ecuacion: `y = ${rhs}`, completo: true } : null;
@@ -55506,7 +55778,7 @@ function despejeSinDenominadores(D) {
   try {
     const prod2 = dens.map((d) => `(${d})`).join("*");
     limpio = simplify(`(${D.toString()})*(${prod2})`);
-  } catch (e3) {
+  } catch {
     return null;
   }
   if (!contieneY2(limpio) || denominadoresConY(limpio).length > 0)
@@ -55557,9 +55829,8 @@ function aislarInversion(nodo, target, ctx) {
   return ctx && ctx.nivel > 0 && contieneY2(n) ? ctx.alTope(n, target) : null;
 }
 function pelarCapa(n, target, ctx) {
-  var _a, _b;
-  const dentro = ctx && { alTope: ctx.alTope, nivel: ctx.nivel + 1 };
-  const aislar = (hijo, t2) => aislarInversion(hijo, t2, dentro);
+  const dentro2 = ctx && { alTope: ctx.alTope, nivel: ctx.nivel + 1 };
+  const aislar = (hijo, t2) => aislarInversion(hijo, t2, dentro2);
   if (n.type === "SymbolNode" && n.name === "y")
     return target;
   if (n.type === "OperatorNode") {
@@ -55603,7 +55874,7 @@ function pelarCapa(n, target, ctx) {
     return null;
   }
   if (n.type === "FunctionNode") {
-    const fn = (_b = (_a = n.fn) == null ? void 0 : _a.name) != null ? _b : "";
+    const fn = n.fn?.name ?? "";
     if (fn === "log" && n.args.length === 2 && !contieneY2(n.args[1])) {
       const base = desParen3(n.args[1]).toString();
       return aislar(n.args[0], `(${base})^(${target})`);
@@ -55658,7 +55929,6 @@ function despejePorInversion(L, R) {
   return rhs === null ? null : { ecuacion: `y = ${rhs}`, completo: true };
 }
 function despejar(ecuacion) {
-  var _a, _b;
   if (componenteParametrica(ecuacion))
     return null;
   let partes = ecuacion.split("=");
@@ -55673,13 +55943,13 @@ function despejar(ecuacion) {
     L = parse2(norm3(partes[0]));
     R = parse2(norm3(partes[1]));
     D = parse2(`(${norm3(partes[0])})-(${norm3(partes[1])})`);
-  } catch (e3) {
+  } catch {
     return null;
   }
   if (!contieneY2(D))
     return null;
   const DVal = D;
-  D = (_b = (_a = reducirRaizImpar(L, R)) != null ? _a : reducirRaizImparPorTerminos(D)) != null ? _b : D;
+  D = reducirRaizImpar(L, R) ?? reducirRaizImparPorTerminos(D) ?? D;
   const ts = terminos(D);
   const conY = ts.filter((t2) => contieneY2(t2.nodo));
   const sinY = ts.filter((t2) => !contieneY2(t2.nodo));
@@ -55710,10 +55980,10 @@ function despejar(ecuacion) {
     const trig = despejeTrigInverso(conY[0], derecha);
     if (trig)
       return trig;
-    const trigCero = despejeTrigCero(conY[0], derecha);
+    const trigCero = despejeTrigCero(conY[0], derecha, despejar);
     if (trigCero)
       return trigCero;
-    const recip = despejeReciproco(conY[0], derecha);
+    const recip = despejeReciproco(conY[0], derecha, despejar);
     if (recip)
       return recip;
     const mult = despejeMultiplicativo(conY[0], derecha);
@@ -55745,87 +56015,9 @@ function despejar(ecuacion) {
   return { ecuacion: `${renderTerminos(conY)} = ${renderCanonico(derecha)}`, completo: false };
 }
 function despejarEcuaciones(ecuaciones) {
-  return ecuaciones.map((ec) => {
-    var _a, _b;
-    return embellecerConstantes((_b = (_a = despejar(ec)) == null ? void 0 : _a.ecuacion) != null ? _b : ec);
-  });
-}
-var SENTINELAS_SIGNO = /* @__PURE__ */ new Set(["pm", "mp"]);
-function coefYresto(n) {
-  let coef = 1;
-  const resto = [];
-  for (const f of factores(n)) {
-    if (f.exp !== 1)
-      return null;
-    if (f.nodo.type === "ConstantNode") {
-      const v = Number(f.nodo.value);
-      if (!Number.isInteger(v))
-        return null;
-      coef *= v;
-    } else
-      resto.push(f.nodo.toString());
-  }
-  return { coef, resto: resto.join(" * ") };
-}
-function reducirFraccionEntera(rhs) {
-  var _a;
-  let n;
-  try {
-    n = parse2(rhs);
-  } catch (e3) {
-    return rhs;
-  }
-  const raiz = desParen3(n);
-  if (raiz.type !== "OperatorNode" || raiz.op !== "/" || raiz.args.length !== 2)
-    return rhs;
-  const den = desParen3(raiz.args[1]);
-  if (den.type !== "ConstantNode")
-    return rhs;
-  const d = Number(den.value);
-  if (!Number.isInteger(d) || d < 2)
-    return rhs;
-  const ts = terminos(desParen3(raiz.args[0]));
-  if (ts.length === 0)
-    return rhs;
-  const partes = [];
-  for (const t2 of ts) {
-    const nodo = desParen3(t2.nodo);
-    const sentinela = nodo.type === "FunctionNode" && nodo.args.length === 1 && ((_a = nodo.fn) == null ? void 0 : _a.name) !== void 0 && SENTINELAS_SIGNO.has(nodo.fn.name) ? nodo.fn.name : null;
-    const cr = coefYresto(sentinela === null ? nodo : nodo.args[0]);
-    if (cr === null)
-      return rhs;
-    partes.push({ signo: t2.signo, ...cr, envoltura: sentinela });
-  }
-  let g = d;
-  for (const p of partes)
-    g = mcdEnteros(g, Math.abs(p.coef));
-  if (g < 2)
-    return rhs;
-  let out = "";
-  partes.forEach((p, i2) => {
-    const c = p.coef / g;
-    const nucleo = p.resto === "" ? String(c) : c === 1 ? p.resto : `${c} * ${p.resto}`;
-    const cuerpo = p.envoltura ? `${p.envoltura}(${nucleo})` : nucleo;
-    if (i2 === 0)
-      out = p.signo === 1 ? cuerpo : `-${cuerpo}`;
-    else
-      out += p.signo === 1 ? ` + ${cuerpo}` : ` - ${cuerpo}`;
-  });
-  return d / g === 1 ? out : `(${out}) / (${d / g})`;
-}
-function embellecerConstantes(ec) {
-  try {
-    const partes = ec.split("=");
-    if (partes.length !== 2)
-      return ec;
-    const original = parse2(partes[1]);
-    const rhs = reducirFraccionEntera(resimbolizarConstantes(original).toString());
-    if (rhs === original.toString())
-      return ec;
-    return `${partes[0].trim()} = ${rhs}`;
-  } catch (e3) {
-    return ec;
-  }
+  return ecuaciones.map(
+    (entrada) => transformarSinRestriccion(entrada, (ec) => embellecerConstantes(despejar(ec)?.ecuacion ?? ec))
+  );
 }
 function despejeExplicito(ecuacion) {
   const r = despejar(ecuacion);
@@ -55842,7 +56034,7 @@ function despejeExplicito(ecuacion) {
   return rhs;
 }
 
-// src/motor/analysis/periodicidadCampo.ts
+// src/core/analysis/periodicidadCampo.ts
 var PI3 = Math.PI;
 var CANDIDATOS = [1, PI3 / 2, 2, PI3, 4, 2 * PI3, 4 * PI3, 6 * PI3];
 var N_PUNTOS = 30;
@@ -55883,7 +56075,7 @@ function detectarPeriodos(F) {
   return { px: detectar("x"), py: detectar("y") };
 }
 
-// src/motor/rendering/paleta.ts
+// src/core/rendering/paleta.ts
 var PLANO_OSCURO = {
   rejilla: "rgba(130,130,150,0.12)",
   eje: "rgba(160,160,170,0.7)",
@@ -55980,7 +56172,7 @@ function colorCurva(indice) {
   return c[(indice % c.length + c.length) % c.length];
 }
 
-// src/motor/rendering/RendererCanvas2D.ts
+// src/core/rendering/RendererCanvas2D.ts
 var colorDe = (e3) => e3.rol !== void 0 ? colorCurva(e3.rol) : e3.color;
 var css = (c) => `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)}, ${c[3]})`;
 var LIM_PX = 1e6;
@@ -56048,36 +56240,36 @@ var RendererCanvas2D = class {
     ctx.save();
     for (const poly of regiones) {
       let run = [];
-      let signo2 = 0;
+      let signo3 = 0;
       const rellenar = () => {
-        if (run.length >= 4 && signo2 !== 0) {
+        if (run.length >= 4 && signo3 !== 0) {
           ctx.beginPath();
           ctx.moveTo(run[0], ejeY);
           for (let i2 = 0; i2 < run.length; i2 += 2)
             ctx.lineTo(run[i2], run[i2 + 1]);
           ctx.lineTo(run[run.length - 2], ejeY);
           ctx.closePath();
-          ctx.fillStyle = signo2 > 0 ? paletaPlano().rellenoPositivo : paletaPlano().rellenoNegativo;
+          ctx.fillStyle = signo3 > 0 ? paletaPlano().rellenoPositivo : paletaPlano().rellenoNegativo;
           ctx.fill();
-          tramar(signo2 > 0 ? paletaPlano().tramaPositiva : paletaPlano().tramaNegativa);
+          tramar(signo3 > 0 ? paletaPlano().tramaPositiva : paletaPlano().tramaNegativa);
         }
         run = [];
-        signo2 = 0;
+        signo3 = 0;
       };
       let px2 = 0, py2 = 0, hay = false;
       for (let k = 0; k < poly.length; k += 2) {
         const x = poly[k], y = poly[k + 1];
         const s = y > 0 ? 1 : y < 0 ? -1 : 0;
-        if (hay && s !== 0 && signo2 !== 0 && s !== signo2) {
+        if (hay && s !== 0 && signo3 !== 0 && s !== signo3) {
           const t2 = py2 / (py2 - y);
           const cortePx = clampPx(aPantallaX(vp, px2 + (x - px2) * t2));
           run.push(cortePx, ejeY);
           rellenar();
           run.push(cortePx, ejeY);
-          signo2 = s;
+          signo3 = s;
         }
-        if (s !== 0 && signo2 === 0)
-          signo2 = s;
+        if (s !== 0 && signo3 === 0)
+          signo3 = s;
         run.push(clampPx(aPantallaX(vp, x)), clampPx(aPantallaY(vp, y)));
         px2 = x;
         py2 = y;
@@ -56174,12 +56366,11 @@ var RendererCanvas2D = class {
   }
 };
 
-// src/motor/rendering/overlay/Overlay.ts
+// src/core/rendering/overlay/Overlay.ts
 function pasoBonito(rango, maxTicks) {
-  var _a;
   const base = Math.pow(10, Math.floor(Math.log10(rango / maxTicks)));
   const pasos = [1, 2, 5, 10].map((m) => m * base);
-  return (_a = pasos.find((p) => rango / p <= maxTicks)) != null ? _a : pasos[pasos.length - 1];
+  return pasos.find((p) => rango / p <= maxTicks) ?? pasos[pasos.length - 1];
 }
 function ticksConPaso(min3, max3, paso, capN) {
   if (!(paso > 0))
@@ -56298,7 +56489,7 @@ var Overlay = class {
   }
 };
 
-// src/motor/rendering/Crosshair.ts
+// src/core/rendering/Crosshair.ts
 var CURSOR_ICONO = "M430.5-430.59q-20.5-20.59-20.5-49.5t20.59-49.41q20.59-20.5 49.5-20.5t49.41 20.59q20.5 20.59 20.5 49.5t-20.59 49.41q-20.59 20.5-49.5 20.5t-49.41-20.59ZM450-640v-200h60v200h-60Zm0 520v-200h60v200h-60Zm190-330v-60h200v60H640Zm-520 0v-60h200v60H120Z";
 var Crosshair = class {
   constructor(ctx) {
@@ -56315,10 +56506,10 @@ var Crosshair = class {
     if (!this.cursorPath)
       this.cursorPath = new Path2D(CURSOR_ICONO);
     const S = 20;
-    const escala = S / 960;
+    const escala2 = S / 960;
     ctx.save();
     ctx.translate(px2, py2);
-    ctx.scale(escala, escala);
+    ctx.scale(escala2, escala2);
     ctx.translate(-480, 480);
     ctx.fillStyle = paletaPlano().cursor;
     ctx.fill(this.cursorPath);
@@ -56327,15 +56518,17 @@ var Crosshair = class {
   /**
    * Dibuja la cruz en cursorPx (px CSS). Sigue la curva SELECCIONADA (`item`, que el
    * host elige con los botones de color); el marcador toma el color de esa curva.
-   * Obtiene la y INTERPOLANDO la `Rama` (no evalúa f). `anclado` añade el anillo
-   * naranja del modo carril.
+   * `anclado` añade el anillo naranja del modo carril.
+   *
+   * La `y` llega YA RESUELTA. No se calcula aquí a propósito: de dónde sale ese número —de
+   * evaluar la función o de interpolar la polilínea— es una decisión matemática, y este módulo
+   * es un renderer. La toma `Escena.yEnCurva`, que es el único sitio donde vive.
    */
-  dibujar(vp, cursorPx, item, anclado = false, yMundo) {
+  dibujar(vp, cursorPx, item, anclado, y) {
     const ctx = this.ctx;
     const W = vp.anchoPx;
     const H = vp.altoPx;
     const worldX = aMundoX(vp, cursorPx);
-    const y = yMundo !== void 0 ? yMundo : item ? yEnRamas(item.geometria.ramas, worldX) : null;
     if (y === null || !Number.isFinite(y))
       return;
     const py2 = aPantallaY(vp, y);
@@ -56364,7 +56557,7 @@ var Crosshair = class {
       ctx.fill();
       ctx.beginPath();
       ctx.arc(cursorPx, py2, 3, 0, Math.PI * 2);
-      const e3 = item == null ? void 0 : item.estilo;
+      const e3 = item?.estilo;
       const c = e3 ? e3.rol !== void 0 ? colorCurva(e3.rol) : e3.color : colorCurva(0);
       ctx.fillStyle = `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)}, 1)`;
       ctx.fill();
@@ -56388,7 +56581,7 @@ var Crosshair = class {
   }
 };
 
-// src/motor/analysis/interseccionesRamas.ts
+// src/core/analysis/interseccionesRamas.ts
 var MAX_PUNTOS = 200;
 var LIMITE_CELDAS = 256;
 function interseccionSegmentos(ax, ay, bx, by, cx, cy, dx, dy) {
@@ -56568,7 +56761,7 @@ function cruzarRamas(ramasA, ramasB, eps, maxPuntos, out, region, estado) {
   }
 }
 
-// src/motor/analysis/areaBajoRama.ts
+// src/core/analysis/areaBajoRama.ts
 var ETIQUETA_DIVERGENTE = {
   tipo: "etiqueta",
   etiqueta: "Integral divergente",
@@ -56597,7 +56790,7 @@ var signo = (v) => v > 0 ? 1 : v < 0 ? -1 : 0;
 function simpson(fa, fm, fb, a, b) {
   return (b - a) / 6 * (fa + 4 * fm + fb);
 }
-function adaptativo(f, a, b, fa, fb, fm, entero, tol, prof, presupuesto) {
+function adaptativo(f, a, b, fa, fb, fm, entero2, tol, prof, presupuesto) {
   if (--presupuesto.n < 0)
     return NaN;
   const m = (a + b) / 2;
@@ -56607,18 +56800,18 @@ function adaptativo(f, a, b, fa, fb, fm, entero, tol, prof, presupuesto) {
     return NaN;
   const izq = simpson(fa, flm, fm, a, m);
   const der = simpson(fm, frm, fb, m, b);
-  const suma = izq + der;
-  if (prof <= 0 || Math.abs(suma - entero) <= 15 * tol)
-    return suma + (suma - entero) / 15;
+  const suma3 = izq + der;
+  if (prof <= 0 || Math.abs(suma3 - entero2) <= 15 * tol)
+    return suma3 + (suma3 - entero2) / 15;
   return adaptativo(f, a, m, fa, fm, flm, izq, tol / 2, prof - 1, presupuesto) + adaptativo(f, m, b, fm, fb, frm, der, tol / 2, prof - 1, presupuesto);
 }
 function integrar(f, a, b) {
   const fa = f(a), fb = f(b), fm = f((a + b) / 2);
   if (!Number.isFinite(fa) || !Number.isFinite(fb) || !Number.isFinite(fm))
     return NaN;
-  const entero = simpson(fa, fm, fb, a, b);
-  const tol = TOL_SIMPSON * (1 + Math.abs(entero));
-  return adaptativo(f, a, b, fa, fb, fm, entero, tol, PROF_MAX2, { n: MAX_NODOS });
+  const entero2 = simpson(fa, fm, fb, a, b);
+  const tol = TOL_SIMPSON * (1 + Math.abs(entero2));
+  return adaptativo(f, a, b, fa, fb, fm, entero2, tol, PROF_MAX2, { n: MAX_NODOS });
 }
 function poloEntreSignos(f, x1, x2) {
   let a = x1, b = x2, fa = f(a);
@@ -56652,7 +56845,7 @@ function poloEnCelda(f, xa, xb) {
 function escanearInterior(f, a, b) {
   const paso = (b - a) / MUESTRAS_ESCANEO;
   const xs = [], fs = [];
-  let escala = 0, nEscala = 0;
+  let escala2 = 0, nEscala = 0;
   for (let i2 = 1; i2 < MUESTRAS_ESCANEO; i2++) {
     const x = a + paso * i2, v = f(x);
     if (Number.isNaN(v))
@@ -56661,10 +56854,10 @@ function escanearInterior(f, a, b) {
       return "polo";
     xs.push(x);
     fs.push(v);
-    escala += Math.abs(v);
+    escala2 += Math.abs(v);
     nEscala++;
   }
-  const media = nEscala > 0 ? escala / nEscala : 0;
+  const media = nEscala > 0 ? escala2 / nEscala : 0;
   const umbralPico = Math.max(SPIKE_ABS, 1e3 * media);
   for (let i2 = 0; i2 + 1 < fs.length; i2++) {
     if (signo(fs[i2]) !== 0 && signo(fs[i2 + 1]) !== 0 && signo(fs[i2]) !== signo(fs[i2 + 1])) {
@@ -56776,7 +56969,7 @@ function recortarRegion(ramas, a, b) {
   return salida;
 }
 
-// src/motor/scene/autoencuadre.ts
+// src/core/scene/autoencuadre.ts
 var FRACCION_DISPARO = 0.6;
 var OCUPACION_MAXIMA = 0.6;
 var COLCHON_PX = 2;
@@ -56862,7 +57055,7 @@ function semiYAcotado(ramas, vpSondeo, semiYDefecto) {
   return semi > semiYDefecto ? semi : null;
 }
 
-// src/motor/scene/Escena.ts
+// src/core/scene/Escena.ts
 var Escena = class {
   constructor(objetos, overlay, renderer, crosshair) {
     this.objetos = objetos;
@@ -57005,7 +57198,8 @@ var Escena = class {
       this.renderer.dibujarIntersecciones(this.puntosCruce, viewport);
     }
     if (cursorPx !== null && this.curvaRecorrible()) {
-      this.crosshair.dibujar(viewport, cursorPx, this.items[this.seleccion], anclado, yMundo);
+      const y = yMundo !== void 0 ? yMundo : this.yEnCurva(aMundoX(viewport, cursorPx));
+      this.crosshair.dibujar(viewport, cursorPx, this.items[this.seleccion], anclado, y);
     }
     if (ratonPx !== null && ratonPx !== void 0 && ratonPy !== null && ratonPy !== void 0) {
       this.crosshair.dibujarCursorCruz(ratonPx, ratonPy);
@@ -57027,9 +57221,22 @@ var Escena = class {
   solucionesInfinitas() {
     return this.cruceSolapa;
   }
-  /** y sobre la curva SELECCIONADA en un x de mundo, leída de la geometría cacheada
-   *  (para el carril). Agnóstico: no evalúa f. */
+  /**
+   * y sobre la curva SELECCIONADA en un x de mundo. La usan el carril y el crosshair, y es el
+   * ÚNICO sitio donde se decide de dónde sale ese número.
+   *
+   * Con lector exacto (la explícita `y = f(x)`) se EVALÚA la función: el valor es el mismo con
+   * cualquier zoom y con cualquier paneo, porque no depende del trazado. Sin él —implícitas,
+   * paramétricas, polares— se interpola la polilínea como siempre: ahí «la y en esta x» no tiene
+   * respuesta única y la rama sabe por dónde pasó el trazador, que es la mejor fuente disponible.
+   *
+   * Que la elección viva aquí y no en el crosshair es a propósito: el renderer dibuja, no decide
+   * de dónde viene la matemática.
+   */
   yEnCurva(worldX) {
+    const objeto = this.objetos[this.seleccion];
+    if (objeto?.lectorY)
+      return objeto.lectorY(worldX);
     const it = this.items[this.seleccion];
     return it ? yEnRamas(it.geometria.ramas, worldX) : null;
   }
@@ -57123,11 +57330,10 @@ var Escena = class {
    * habilita las raíces de extremo de rama (misma semántica que el dibujo).
    */
   resumenNotables(viewport) {
-    var _a, _b;
     const it = this.items[this.seleccion];
     if (!it)
       return { raices: [], vertices: [], interseccionesY: [] };
-    return resumenPuntosNotables(it.geometria.ramas, (_b = (_a = it.geometria.ramas[0]) == null ? void 0 : _a.objetoId) != null ? _b : "", viewport);
+    return resumenPuntosNotables(it.geometria.ramas, it.geometria.ramas[0]?.objetoId ?? "", viewport);
   }
   /** Número de curvas del sistema (objetos de la escena). */
   numeroCurvas() {
@@ -57150,7 +57356,20 @@ var Escena = class {
   }
 };
 
-// src/motor/app/composicion.ts
+// src/math/ordenada.ts
+function lectorExacto(objeto) {
+  if (objeto.tipo !== "explicita")
+    return null;
+  if (objeto.salida === "x")
+    return null;
+  const f = objeto.f;
+  return (x) => {
+    const y = f.eval(x);
+    return typeof y === "number" && Number.isFinite(y) ? y : null;
+  };
+}
+
+// src/core/app/composicion.ts
 function crearProveedor(objeto) {
   if (objeto.tipo === "implicita") {
     const F = objeto.F;
@@ -57212,19 +57431,20 @@ function crearProveedor(objeto) {
 }
 function proveedorDeEcuacion(ec, id) {
   const ramas = tieneDobleSigno(normalizarEntrada(ec)) ? expandirDobleSigno(normalizarEntrada(ec)) : [ec];
-  if (ramas.length === 1)
-    return crearProveedor(construirObjeto(ramas[0], id));
-  return new ProveedorUnion(id, ramas.map((e3) => crearProveedor(construirObjeto(e3, id))));
+  const objetos = ramas.map((e3) => construirObjeto(e3, id));
+  const proveedor = objetos.length === 1 ? crearProveedor(objetos[0]) : new ProveedorUnion(id, objetos.map((o) => crearProveedor(o)));
+  return { proveedor, objetos };
 }
 function objetoEscena(ec, id, indiceColor, ocultarPuntosEje = false) {
-  const base = proveedorDeEcuacion(ec, id);
+  const { proveedor: base, objetos } = proveedorDeEcuacion(ec, id);
   const proveedor = new ProveedorConCache(ocultarPuntosEje ? new ProveedorSinPuntosEje(base) : base);
   const estilo = {
     color: [...colorCurva(indiceColor)],
     grosorPx: 2,
     rol: indiceColor
   };
-  return { proveedor, estilo };
+  const lectorY = objetos.length === 1 ? lectorExacto(objetos[0]) : null;
+  return lectorY ? { proveedor, estilo, lectorY } : { proveedor, estilo };
 }
 function construirObjetosEscena(source) {
   return dividirEcuaciones(source).map((ec, i2) => objetoEscena(ec, `eq-${i2}`, i2, true));
@@ -57233,918 +57453,76 @@ function montarEscena(ctx2d, objetos) {
   return new Escena(objetos, new Overlay(ctx2d), new RendererCanvas2D(ctx2d), new Crosshair(ctx2d));
 }
 function crearMotor(ctx2d, source) {
-  var _a;
-  const ec = (_a = dividirEcuaciones(source)[0]) != null ? _a : "";
+  const ec = dividirEcuaciones(source)[0] ?? "";
   return montarEscena(ctx2d, ec ? [objetoEscena(ec, "obs-graph", 0)] : []);
 }
 function crearMotorSistema(ctx2d, source) {
   return montarEscena(ctx2d, construirObjetosEscena(source));
 }
 
-// src/motor/analysis/analisisPolar.ts
-var DOS_PI2 = 2 * Math.PI;
-var MUESTRAS = 4096;
-var TOL_REL2 = 1e-6;
-var MAX_ANGULOS_POLO = 12;
-function refinarExtremo(g, a, b, buscarMaximo) {
-  let lo = a, hi = b;
-  for (let i2 = 0; i2 < 80; i2++) {
-    const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3;
-    const v1 = g(m1), v2 = g(m2);
-    const peor1 = !Number.isFinite(v1);
-    const peor2 = !Number.isFinite(v2);
-    if (peor1 && peor2)
-      break;
-    const mejor2 = peor1 || !peor2 && (buscarMaximo ? v2 > v1 : v2 < v1);
-    if (mejor2)
-      lo = m1;
+// src/core/parsing/parametros.ts
+var COORDENADAS = /* @__PURE__ */ new Set(["x", "y", "r", "t", "theta"]);
+var DECLARACION = /^\s*(\\[a-zA-Z]+|[a-zA-Z][a-zA-Z0-9]*)\s*=([^=]+?);?\s*$/;
+function leerDeclaracion(linea) {
+  const m = DECLARACION.exec(linea);
+  if (!m)
+    return null;
+  const escrito = m[1];
+  const nombre = normalizarEntrada(escrito).trim();
+  if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(nombre) || COORDENADAS.has(nombre))
+    return null;
+  const valor = evaluarConstante(m[2]);
+  return valor === null ? null : { nombre, escrito, valor };
+}
+function separarParametros(source) {
+  const lineas = source.split(/\r?\n/);
+  const porNombre = /* @__PURE__ */ new Map();
+  const resto = [];
+  for (const linea of lineas) {
+    const p = leerDeclaracion(linea);
+    if (p)
+      porNombre.set(p.nombre, p);
     else
-      hi = m2;
+      resto.push(linea);
   }
-  const t2 = (lo + hi) / 2;
-  return { t: t2, v: g(t2) };
+  return { parametros: [...porNombre.values()], source: resto.join("\n") };
 }
-function refinarCero(g, a, b) {
-  let lo = a, hi = b;
-  const fLo = g(lo);
-  for (let i2 = 0; i2 < 60; i2++) {
-    const m = (lo + hi) / 2;
-    const fm = g(m);
-    if (!Number.isFinite(fm))
-      break;
-    if (fm === 0)
-      return m;
-    if (fLo * fm < 0)
-      hi = m;
-    else
-      lo = m;
-  }
-  return (lo + hi) / 2;
-}
-function simetriaValida(g, P4, periodica, reflejar, signo2, escala) {
-  let comprobadas = 0;
-  for (let i2 = 0; i2 < 64; i2++) {
-    const th = (i2 + 0.5) * (P4 / 64);
-    let espejo = reflejar(th);
-    if (periodica)
-      espejo = (espejo % P4 + P4) % P4;
-    else if (espejo < 0 || espejo > P4)
-      return false;
-    const a = signo2 * g(th), b = g(espejo);
-    if (!Number.isFinite(a) || !Number.isFinite(b))
-      continue;
-    if (Math.abs(a - b) > TOL_REL2 * Math.max(1, escala))
-      return false;
-    comprobadas++;
-  }
-  return comprobadas >= 16;
-}
-function clasificarPatron(g) {
-  const N = 512;
-  const KMAX = 24;
-  const rs = new Array(N);
-  for (let i2 = 0; i2 < N; i2++) {
-    const v = g(i2 * DOS_PI2 / N);
-    if (!Number.isFinite(v))
-      return null;
-    rs[i2] = v;
-  }
-  const a0 = rs.reduce((s, v) => s + v, 0) / N;
-  let energia = rs.reduce((s, v) => s + (v - a0) * (v - a0), 0) / N;
-  let mejorK = 0, mejorAmp = 0;
-  for (let k = 1; k <= KMAX; k++) {
-    let A = 0, B = 0;
-    for (let i2 = 0; i2 < N; i2++) {
-      const th = i2 * DOS_PI2 / N;
-      A += rs[i2] * Math.cos(k * th);
-      B += rs[i2] * Math.sin(k * th);
-    }
-    const amp = 2 / N * Math.hypot(A, B);
-    if (amp > mejorAmp) {
-      mejorAmp = amp;
-      mejorK = k;
-    }
-  }
-  const escala = Math.max(Math.abs(a0), mejorAmp);
-  if (escala < 1e-9)
-    return null;
-  energia -= mejorAmp * mejorAmp / 2;
-  const residuo = Math.sqrt(Math.max(0, energia)) / escala;
-  if (residuo > 0.01)
-    return null;
-  const casiCero = (v) => Math.abs(v) < 0.01 * escala;
-  if (casiCero(mejorAmp))
-    return { tipo: "circunferenciaCentrada" };
-  if (casiCero(a0)) {
-    if (mejorK === 1)
-      return { tipo: "circunferenciaPorPolo" };
-    return { tipo: "rosa", petalos: mejorK % 2 === 1 ? mejorK : 2 * mejorK };
-  }
-  if (mejorK !== 1)
-    return null;
-  const a = Math.abs(a0);
-  if (Math.abs(a - mejorAmp) < 0.01 * escala)
-    return { tipo: "cardioide" };
-  if (a < mejorAmp)
-    return { tipo: "limaconLazo" };
-  if (a < 2 * mejorAmp)
-    return { tipo: "limaconHoyuelo" };
-  return { tipo: "limaconConvexo" };
-}
-function analizarPolar(exprR) {
-  let g;
-  try {
-    const crudo = compilarFuncion(exprR, "theta");
-    g = (t2) => {
-      const v = crudo(t2);
-      return typeof v === "number" ? v : NaN;
-    };
-  } catch (e3) {
-    return null;
-  }
-  const [, periodoCurva] = dominioPolar(exprR);
-  const periodoR = periodoDeR(exprR);
-  const paso = periodoCurva / MUESTRAS;
-  const ths = new Array(MUESTRAS + 1);
-  const rs = new Array(MUESTRAS + 1);
-  let finitas = 0;
-  for (let i2 = 0; i2 <= MUESTRAS; i2++) {
-    ths[i2] = i2 * paso;
-    rs[i2] = g(ths[i2]);
-    if (Number.isFinite(rs[i2]))
-      finitas++;
-  }
-  if (finitas < 8)
-    return null;
-  let iMin = -1, iMax = -1;
-  for (let i2 = 0; i2 <= MUESTRAS; i2++) {
-    if (!Number.isFinite(rs[i2]))
-      continue;
-    if (iMin < 0 || rs[i2] < rs[iMin])
-      iMin = i2;
-    if (iMax < 0 || rs[i2] > rs[iMax])
-      iMax = i2;
-  }
-  const vecindad = (i2) => [
-    ths[Math.max(0, i2 - 1)],
-    ths[Math.min(MUESTRAS, i2 + 1)]
-  ];
-  const [aMin, bMin] = vecindad(iMin);
-  const [aMax, bMax] = vecindad(iMax);
-  const extMin = refinarExtremo(g, aMin, bMin, false);
-  const extMax = refinarExtremo(g, aMax, bMax, true);
-  const mejoraMin = Number.isFinite(extMin.v) && extMin.v < rs[iMin];
-  const rMin = mejoraMin ? extMin.v : rs[iMin];
-  const thetaRMin = mejoraMin ? extMin.t : ths[iMin];
-  const mejoraMax = Number.isFinite(extMax.v) && extMax.v > rs[iMax];
-  const rMax = mejoraMax ? extMax.v : rs[iMax];
-  const thetaRMax = mejoraMax ? extMax.t : ths[iMax];
-  const escala = Math.max(Math.abs(rMin), Math.abs(rMax));
-  const cerosPolo = [];
-  let demasiadosCeros = false;
-  for (let i2 = 0; i2 < MUESTRAS && !demasiadosCeros; i2++) {
-    const a = rs[i2], b = rs[i2 + 1];
-    if (!Number.isFinite(a) || !Number.isFinite(b))
-      continue;
-    if (a !== 0 && a * b >= 0)
-      continue;
-    const raiz = a === 0 ? ths[i2] : refinarCero(g, ths[i2], ths[i2 + 1]);
-    const repetido = cerosPolo.some(
-      (t2) => Math.abs(t2 - raiz) < paso || periodoR !== null && Math.abs(((raiz - t2) % periodoR + periodoR) % periodoR) < paso
-    );
-    if (!repetido)
-      cerosPolo.push(raiz);
-    if (cerosPolo.length > MAX_ANGULOS_POLO)
-      demasiadosCeros = true;
-  }
-  const angulosPolo = demasiadosCeros ? null : cerosPolo;
-  let periodicaEnDominio = true;
-  for (let i2 = 0; i2 < 16 && periodicaEnDominio; i2++) {
-    const th = (i2 + 0.5) * (periodoCurva / 16);
-    const a = g(th), b = g(th + periodoCurva);
-    if (!Number.isFinite(a) || !Number.isFinite(b))
-      continue;
-    if (Math.abs(a - b) > TOL_REL2 * Math.max(1, escala))
-      periodicaEnDominio = false;
-  }
-  const sim = (reflejar, signo2) => simetriaValida(g, periodoCurva, periodicaEnDominio, reflejar, signo2, escala);
-  const simetrias = [];
-  if (sim((t2) => t2 + Math.PI, 1))
-    simetrias.push("polo");
-  if (sim((t2) => -t2, 1) || sim((t2) => Math.PI - t2, -1))
-    simetrias.push("ejePolar");
-  if (sim((t2) => Math.PI - t2, 1) || sim((t2) => -t2, -1))
-    simetrias.push("vertical");
-  let areaBarrida = null;
-  if (finitas === MUESTRAS + 1) {
-    let suma = rs[0] * rs[0] + rs[MUESTRAS] * rs[MUESTRAS];
-    for (let i2 = 1; i2 < MUESTRAS; i2++)
-      suma += (i2 % 2 === 1 ? 4 : 2) * rs[i2] * rs[i2];
-    const integral = suma * paso / 3;
-    if (Number.isFinite(integral))
-      areaBarrida = integral / 2;
-  }
-  let ordenRotacional = null;
-  if (periodoR !== null && periodoR > 0) {
-    const n = DOS_PI2 / periodoR;
-    const redondeado = Math.round(n);
-    if (redondeado >= 2 && Math.abs(n - redondeado) < 1e-6)
-      ordenRotacional = redondeado;
-  }
+function recorridoDe(valor) {
+  const r = Math.max(10, Math.ceil(Math.abs(valor)));
+  const paso = r / 1e3;
   return {
-    periodoR,
-    ordenRotacional,
-    simetrias,
-    rMin,
-    rMax,
-    thetaRMin,
-    thetaRMax,
-    cambiaSigno: rMin < 0 && rMax > 0,
-    angulosPolo,
-    areaBarrida,
-    intervaloArea: periodoCurva,
-    patron: clasificarPatron(g)
+    min: -r,
+    max: r,
+    paso,
+    pasoGrande: r / 10,
+    decimales: Math.max(0, Math.ceil(-Math.log10(paso)))
   };
 }
-
-// src/motor/analysis/analisisParametrico.ts
-var DOS_PI3 = 2 * Math.PI;
-var MUESTRAS2 = 2e3;
-var TOL_REL3 = 1e-6;
-var MAX_AUTOINTERSECCIONES = 200;
-function refinarExtremo2(g, a, b, buscarMaximo) {
-  let lo = a, hi = b;
-  for (let i2 = 0; i2 < 60; i2++) {
-    const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3;
-    const v1 = g(m1), v2 = g(m2);
-    const malo1 = !Number.isFinite(v1), malo2 = !Number.isFinite(v2);
-    if (malo1 && malo2)
-      break;
-    const mejor2 = malo1 || !malo2 && (buscarMaximo ? v2 > v1 : v2 < v1);
-    if (mejor2)
-      lo = m1;
-    else
-      hi = m2;
-  }
-  return g((lo + hi) / 2);
+function patronDeComando(escrito) {
+  return new RegExp(`${escrito.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")}(?![a-zA-Z])`, "g");
 }
-function corteSegmentos(a, b, c, d) {
-  const r = { x: b.x - a.x, y: b.y - a.y };
-  const s = { x: d.x - c.x, y: d.y - c.y };
-  const den = r.x * s.y - r.y * s.x;
-  if (Math.abs(den) < 1e-15)
-    return null;
-  const t2 = ((c.x - a.x) * s.y - (c.y - a.y) * s.x) / den;
-  const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / den;
-  const EPS3 = 1e-9;
-  if (t2 < -EPS3 || t2 > 1 + EPS3 || u < -EPS3 || u > 1 + EPS3)
-    return null;
-  return { x: a.x + t2 * r.x, y: a.y + t2 * r.y };
-}
-function armonicaDominante(vs) {
-  const N = vs.length;
-  const KMAX = 16;
-  const media = vs.reduce((s, v) => s + v, 0) / N;
-  let energia = vs.reduce((s, v) => s + (v - media) * (v - media), 0) / N;
-  if (energia < 1e-18)
-    return null;
-  let mejorK = 0, mejorA = 0, mejorB = 0, mejorAmp = 0;
-  for (let k = 1; k <= KMAX; k++) {
-    let A = 0, B = 0;
-    for (let i2 = 0; i2 < N; i2++) {
-      const th = i2 * DOS_PI3 / N;
-      A += vs[i2] * Math.sin(k * th);
-      B += vs[i2] * Math.cos(k * th);
-    }
-    A *= 2 / N;
-    B *= 2 / N;
-    const amp = Math.hypot(A, B);
-    if (amp > mejorAmp) {
-      mejorAmp = amp;
-      mejorK = k;
-      mejorA = A;
-      mejorB = B;
-    }
-  }
-  if (mejorK === 0 || mejorAmp < 1e-9)
-    return null;
-  energia -= mejorAmp * mejorAmp / 2;
-  const residuo = Math.sqrt(Math.max(0, energia)) / mejorAmp;
-  return { k: mejorK, amplitud: mejorAmp, fase: Math.atan2(mejorB, mejorA), residuo };
-}
-function analizarParametrico(exprX, exprY, tMin, tMax, muestras = MUESTRAS2) {
-  const MUESTRAS5 = muestras;
-  let gx;
-  let gy;
-  try {
-    const cx = compilarFuncion(exprX, "t");
-    const cy = compilarFuncion(exprY, "t");
-    gx = (t2) => {
-      const v = cx(t2);
-      return typeof v === "number" ? v : NaN;
-    };
-    gy = (t2) => {
-      const v = cy(t2);
-      return typeof v === "number" ? v : NaN;
-    };
-  } catch (e3) {
-    return null;
-  }
-  const largo = tMax - tMin;
-  const paso = largo / MUESTRAS5;
-  const ts = new Array(MUESTRAS5 + 1);
-  const pts = new Array(MUESTRAS5 + 1);
-  let finitos = 0;
-  for (let i2 = 0; i2 <= MUESTRAS5; i2++) {
-    const t2 = tMin + i2 * paso;
-    ts[i2] = t2;
-    pts[i2] = { x: gx(t2), y: gy(t2) };
-    if (Number.isFinite(pts[i2].x) && Number.isFinite(pts[i2].y))
-      finitos++;
-  }
-  if (finitos < 8)
-    return null;
-  let iXMin = -1, iXMax = -1, iYMin = -1, iYMax = -1;
-  for (let i2 = 0; i2 <= MUESTRAS5; i2++) {
-    const p = pts[i2];
-    if (!Number.isFinite(p.x) || !Number.isFinite(p.y))
-      continue;
-    if (iXMin < 0 || p.x < pts[iXMin].x)
-      iXMin = i2;
-    if (iXMax < 0 || p.x > pts[iXMax].x)
-      iXMax = i2;
-    if (iYMin < 0 || p.y < pts[iYMin].y)
-      iYMin = i2;
-    if (iYMax < 0 || p.y > pts[iYMax].y)
-      iYMax = i2;
-  }
-  const alrededor = (i2) => [ts[Math.max(0, i2 - 1)], ts[Math.min(MUESTRAS5, i2 + 1)]];
-  const mejor = (i2, g, max3, base) => {
-    const [a, b] = alrededor(i2);
-    const v = refinarExtremo2(g, a, b, max3);
-    if (!Number.isFinite(v))
-      return base;
-    return max3 ? Math.max(v, base) : Math.min(v, base);
-  };
-  const xMin = mejor(iXMin, gx, false, pts[iXMin].x);
-  const xMax = mejor(iXMax, gx, true, pts[iXMax].x);
-  const yMin = mejor(iYMin, gy, false, pts[iYMin].y);
-  const yMax = mejor(iYMax, gy, true, pts[iYMax].y);
-  const escala = Math.max(xMax - xMin, yMax - yMin, 1e-9);
-  const pIni = pts[0], pFin = pts[MUESTRAS5];
-  const cerrada = Number.isFinite(pIni.x) && Number.isFinite(pFin.x) && Math.hypot(pFin.x - pIni.x, pFin.y - pIni.y) < TOL_REL3 * escala;
-  const px2 = periodoDeExpresion(exprX, "t");
-  const py2 = periodoDeExpresion(exprY, "t");
-  let periodo = null;
-  if (px2 !== null && py2 !== null)
-    periodo = periodoComun(px2, py2);
-  else if (px2 !== null && py2 === null)
-    periodo = null;
-  else if (px2 === null && py2 !== null)
-    periodo = null;
-  const periodoExcedeDominio = periodo !== null && periodo > largo * (1 + 1e-9);
-  let distMin = Infinity;
-  for (let i2 = 0; i2 < MUESTRAS5; i2++) {
-    const a = pts[i2], b = pts[i2 + 1];
-    if (!Number.isFinite(a.x) || !Number.isFinite(b.x))
-      continue;
-    const dx = b.x - a.x, dy = b.y - a.y;
-    const len2 = dx * dx + dy * dy;
-    const s = len2 < 1e-18 ? 0 : Math.max(0, Math.min(1, -(a.x * dx + a.y * dy) / len2));
-    distMin = Math.min(distMin, Math.hypot(a.x + s * dx, a.y + s * dy));
-  }
-  const pasaPorOrigen = distMin < 1e-4 * escala;
-  const celda = escala / 200;
-  const rejilla = /* @__PURE__ */ new Map();
-  const clave = (x, y) => `${Math.round(x / celda)},${Math.round(y / celda)}`;
-  for (const p of pts) {
-    if (!Number.isFinite(p.x) || !Number.isFinite(p.y))
-      continue;
-    const k = clave(p.x, p.y);
-    const lista = rejilla.get(k);
-    if (lista)
-      lista.push(p);
-    else
-      rejilla.set(k, [p]);
-  }
-  const enLaCurva = (x, y) => {
-    var _a;
-    const cx = Math.round(x / celda), cy = Math.round(y / celda);
-    for (let dx = -1; dx <= 1; dx++)
-      for (let dy = -1; dy <= 1; dy++)
-        for (const p of (_a = rejilla.get(`${cx + dx},${cy + dy}`)) != null ? _a : [])
-          if (Math.hypot(p.x - x, p.y - y) < 2 * celda)
-            return true;
-    return false;
-  };
-  const simetriaVale = (refl) => {
-    let comprobados = 0;
-    for (let i2 = 0; i2 <= MUESTRAS5; i2 += 7) {
-      const p = pts[i2];
-      if (!Number.isFinite(p.x) || !Number.isFinite(p.y))
-        continue;
-      const q = refl(p);
-      if (!enLaCurva(q.x, q.y))
-        return false;
-      comprobados++;
-    }
-    return comprobados >= 16;
-  };
-  const simetrias = [];
-  if (simetriaVale((p) => ({ x: -p.x, y: -p.y })))
-    simetrias.push("origen");
-  if (simetriaVale((p) => ({ x: p.x, y: -p.y })))
-    simetrias.push("ejeX");
-  if (simetriaVale((p) => ({ x: -p.x, y: p.y })))
-    simetrias.push("ejeY");
-  const celdaCorte = 1e-3 * escala;
-  const vistos = /* @__PURE__ */ new Set();
-  const yaContado = (p) => {
-    const cx = Math.round(p.x / celdaCorte), cy = Math.round(p.y / celdaCorte);
-    for (let dx = -1; dx <= 1; dx++)
-      for (let dy = -1; dy <= 1; dy++)
-        if (vistos.has(`${cx + dx},${cy + dy}`))
-          return true;
-    return false;
-  };
-  let demasiadosCortes = false;
-  let nCortes = 0;
-  for (let i2 = 0; i2 < MUESTRAS5 && !demasiadosCortes; i2++) {
-    const a = pts[i2], b = pts[i2 + 1];
-    if (!Number.isFinite(a.x) || !Number.isFinite(b.x))
-      continue;
-    const minAx = Math.min(a.x, b.x), maxAx = Math.max(a.x, b.x);
-    const minAy = Math.min(a.y, b.y), maxAy = Math.max(a.y, b.y);
-    for (let j = i2 + 2; j < MUESTRAS5; j++) {
-      if (i2 === 0 && j === MUESTRAS5 - 1 && cerrada)
-        continue;
-      const c = pts[j], d = pts[j + 1];
-      if (!Number.isFinite(c.x) || !Number.isFinite(d.x))
-        continue;
-      if (Math.min(c.x, d.x) > maxAx || Math.max(c.x, d.x) < minAx || Math.min(c.y, d.y) > maxAy || Math.max(c.y, d.y) < minAy)
-        continue;
-      const p = corteSegmentos(a, b, c, d);
-      if (p === null || yaContado(p))
-        continue;
-      vistos.add(`${Math.round(p.x / celdaCorte)},${Math.round(p.y / celdaCorte)}`);
-      nCortes++;
-      if (nCortes > MAX_AUTOINTERSECCIONES) {
-        demasiadosCortes = true;
-        break;
-      }
-    }
-  }
-  const autointersecciones = demasiadosCortes ? null : nCortes;
-  let longitud = 0;
-  for (let i2 = 0; i2 < MUESTRAS5; i2++) {
-    const a = pts[i2], b = pts[i2 + 1];
-    if (!Number.isFinite(a.x) || !Number.isFinite(b.x) || !Number.isFinite(a.y) || !Number.isFinite(b.y)) {
-      longitud = null;
-      break;
-    }
-    longitud += Math.hypot(b.x - a.x, b.y - a.y);
-  }
-  let areaAlgebraica = null;
-  if (cerrada && finitos === MUESTRAS5 + 1) {
-    let suma = 0;
-    for (let i2 = 0; i2 < MUESTRAS5; i2++) {
-      const a = pts[i2], b = pts[i2 + 1];
-      suma += a.x * b.y - b.x * a.y;
-    }
-    areaAlgebraica = suma / 2;
-  }
-  let familia = null;
-  if (periodo !== null && !periodoExcedeDominio) {
-    const N = 512;
-    const xs = [], ys = [];
-    let evaluables = true;
-    for (let i2 = 0; i2 < N && evaluables; i2++) {
-      const t2 = tMin + i2 * periodo / N;
-      const vx = gx(t2), vy = gy(t2);
-      if (!Number.isFinite(vx) || !Number.isFinite(vy))
-        evaluables = false;
-      xs.push(vx);
-      ys.push(vy);
-    }
-    const hx = evaluables ? armonicaDominante(xs) : null;
-    const hy = evaluables ? armonicaDominante(ys) : null;
-    if (hx && hy && hx.residuo < 0.01 && hy.residuo < 0.01) {
-      const mcd6 = (m, n) => n === 0 ? m : mcd6(n, m % n);
-      const g = mcd6(hx.k, hy.k);
-      const a = hx.k / g, b = hy.k / g;
-      let desfase = hx.fase - hx.k / hy.k * hy.fase;
-      desfase = (desfase % DOS_PI3 + DOS_PI3) % DOS_PI3;
-      if (desfase > Math.PI)
-        desfase -= DOS_PI3;
-      if (a === 1 && b === 1) {
-        const redonda = Math.abs(hx.amplitud - hy.amplitud) < 0.01 * hx.amplitud && Math.abs(Math.abs(desfase) - Math.PI / 2) < 0.01;
-        familia = redonda ? { tipo: "circunferencia" } : { tipo: "elipse" };
-      } else {
-        familia = { tipo: "lissajous", a, b, desfase };
-      }
-    }
-  }
-  return {
-    tMin,
-    tMax,
-    cerrada,
-    periodo,
-    periodoExcedeDominio,
-    xMin,
-    xMax,
-    yMin,
-    yMax,
-    pasaPorOrigen,
-    simetrias,
-    autointersecciones,
-    longitud,
-    areaAlgebraica,
-    familia
-  };
-}
-
-// src/motor/analysis/analisisIntegral.ts
-var MUESTRAS3 = 1024;
-var MAX_CRUCES = 6;
-var ITERS_BISECCION = 60;
-function raizEntre(g, x1, x2) {
-  let lo = x1, hi = x2;
-  let flo = g(lo);
-  for (let i2 = 0; i2 < ITERS_BISECCION; i2++) {
-    const m = (lo + hi) / 2;
-    const fm = g(m);
-    if (fm === 0 || !Number.isFinite(fm))
-      return m;
-    if (fm > 0 === flo > 0) {
-      lo = m;
-      flo = fm;
-    } else {
-      hi = m;
-    }
-  }
-  return (lo + hi) / 2;
-}
-function barrerSignos(g, lo, hi) {
-  const paso = (hi - lo) / MUESTRAS3;
-  const cruces = [];
-  let xPrev = NaN, sPrev = 0;
-  let vioPositivo = false, vioNegativo = false;
-  for (let i2 = 0; i2 <= MUESTRAS3; i2++) {
-    const x = i2 === MUESTRAS3 ? hi : lo + paso * i2;
-    const v = g(x);
-    if (!Number.isFinite(v) || v === 0)
-      continue;
-    const s = v > 0 ? 1 : -1;
-    if (s > 0)
-      vioPositivo = true;
-    else
-      vioNegativo = true;
-    if (sPrev !== 0 && s !== sPrev) {
-      cruces.push(raizEntre(g, xPrev, x));
-      if (cruces.length > MAX_CRUCES)
-        return { cruces: null, signo: null };
-    }
-    xPrev = x;
-    sPrev = s;
-  }
-  if (cruces.length > 0)
-    return { cruces, signo: null };
-  const signo2 = vioPositivo ? 1 : vioNegativo ? -1 : 0;
-  return { cruces, signo: signo2 };
-}
-function descomponer(f, lo, hi, cruces, total, impropia) {
-  const cortes = [lo, ...cruces, hi];
-  let positiva = 0, negativa = 0;
-  for (let i2 = 0; i2 + 1 < cortes.length; i2++) {
-    const r = areaDefinida(f, cortes[i2], cortes[i2 + 1]);
-    if (r.tipo !== "valor")
-      return null;
-    if (r.valor >= 0)
-      positiva += r.valor;
-    else
-      negativa += r.valor;
-  }
-  const tol = impropia ? 1e-3 : 1e-6;
-  if (Math.abs(positiva + negativa - total) > tol * (1 + Math.abs(total)))
-    return null;
-  return { positiva, negativa };
-}
-function analizarIntegral(f, a, b) {
-  if (!Number.isFinite(a) || !Number.isFinite(b))
-    return null;
-  const area = areaDefinida(f, a, b);
-  if (area.tipo !== "valor")
-    return null;
-  const invertido = a > b;
-  const lo = Math.min(a, b), hi = Math.max(a, b);
-  const g = (x) => f.eval(x);
-  if (lo === hi) {
-    return {
-      a,
-      b,
-      valor: 0,
-      impropia: false,
-      singularidades: [],
-      invertido,
-      signo: null,
-      cruces: [],
-      areaPositiva: null,
-      areaNegativa: null,
-      promedio: null
-    };
-  }
-  const singularidades = area.impropia ? [lo, hi].filter((x) => !Number.isFinite(g(x))) : [];
-  const { cruces, signo: signo2 } = barrerSignos(g, lo, hi);
-  let areaPositiva = null;
-  let areaNegativa = null;
-  if (cruces !== null && cruces.length > 0) {
-    const partes = descomponer(f, lo, hi, cruces, invertido ? -area.valor : area.valor, area.impropia);
-    if (partes) {
-      areaPositiva = partes.positiva;
-      areaNegativa = partes.negativa;
-    }
-  }
-  return {
-    a,
-    b,
-    valor: area.valor,
-    impropia: area.impropia,
-    singularidades,
-    invertido,
-    signo: signo2,
-    cruces,
-    areaPositiva,
-    areaNegativa,
-    // Valor medio: ∫ₐᵇf/(b−a). Con los límites al revés se invierten numerador y
-    // denominador a la vez, así que el promedio sale igual (y correcto) sin caso aparte.
-    promedio: area.valor / (b - a)
-  };
-}
-
-// src/motor/analysis/analisisDerivada.ts
-var RANGO2 = { min: -10, max: 10, pasos: 1e3 };
-var MAX_TRAMOS = 4;
-var MAX_CANDIDATOS = 40;
-var SALTO_RELATIVO = 0.5;
-var H_LEJOS = 1e-3;
-var H_CERCA = 1e-5;
-var PERSISTENCIA = 0.3;
-function clasificarQuiebre(df, x) {
-  const lLejos = df(x - H_LEJOS), rLejos = df(x + H_LEJOS);
-  const lCerca = df(x - H_CERCA), rCerca = df(x + H_CERCA);
-  if ([lLejos, rLejos, lCerca, rCerca].some(Number.isNaN))
-    return null;
-  const diverge = (cerca3, lejos2) => !Number.isFinite(cerca3) || Math.abs(cerca3) > 3 * Math.abs(lejos2) + 1;
-  const divIzq = diverge(lCerca, lLejos), divDer = diverge(rCerca, rLejos);
-  if (divIzq || divDer) {
-    if (!divIzq || !divDer)
-      return "cuspide";
-    return lCerca > 0 === rCerca > 0 ? "tangenteVertical" : "cuspide";
-  }
-  const lejos = Math.abs(lLejos - rLejos), cerca2 = Math.abs(lCerca - rCerca);
-  const escala = 1 + Math.max(Math.abs(lCerca), Math.abs(rCerca));
-  if (cerca2 < 1e-3 * escala)
-    return null;
-  if (cerca2 < PERSISTENCIA * lejos)
-    return null;
-  return "esquina";
-}
-function continuaEn(f, x) {
-  const izq = f(x - H_CERCA), der = f(x + H_CERCA);
-  if (!Number.isFinite(izq) || !Number.isFinite(der) || !Number.isFinite(f(x)))
-    return false;
-  return Math.abs(izq - der) < 1e-3 * (1 + Math.max(Math.abs(izq), Math.abs(der)));
-}
-function detectarNoDerivables(f, df, xs, fv, dv) {
-  const celdas = [];
-  for (let i2 = 0; i2 + 1 < xs.length; i2++) {
-    if (!Number.isFinite(fv[i2]) || !Number.isFinite(fv[i2 + 1]))
-      continue;
-    const a = dv[i2], b = dv[i2 + 1];
-    const finA = Number.isFinite(a), finB = Number.isFinite(b);
-    if (finA && finB) {
-      const escala = 1 + Math.max(Math.abs(a), Math.abs(b));
-      if (Math.abs(a - b) <= SALTO_RELATIVO * escala)
-        continue;
-    }
-    if (!finA && !finB)
-      continue;
-    celdas.push([xs[i2], xs[i2 + 1]]);
-    if (celdas.length > MAX_CANDIDATOS)
-      return null;
-  }
-  const puntos = [];
-  for (const [x1, x2] of celdas) {
-    let lo = x1, hi = x2;
-    for (let i2 = 0; i2 < 50; i2++) {
-      const m = (lo + hi) / 2;
-      const dm = df(m), dlo = df(lo);
-      const rotoIzq = !Number.isFinite(dm) || !Number.isFinite(dlo) || Math.abs(dm - dlo) > SALTO_RELATIVO * (1 + Math.max(Math.abs(dm), Math.abs(dlo)));
-      if (rotoIzq)
-        hi = m;
-      else
-        lo = m;
-    }
-    const x = (lo + hi) / 2;
-    const limpio = Math.abs(x) < 1e-9 ? 0 : Math.round(x * 1e9) / 1e9;
-    if (puntos.some((p) => Math.abs(p.x - limpio) < 1e-4))
-      continue;
-    if (!continuaEn(f, limpio))
-      continue;
-    const tipo = clasificarQuiebre(df, limpio);
-    if (!tipo)
-      continue;
-    puntos.push({ x: limpio, tipo });
-  }
-  return puntos.sort((p, q) => p.x - q.x);
-}
-function tipoDeCero(df, x, paso) {
-  let izq = 0, der = 0;
-  for (let h = paso; h > paso / 1e3; h /= 10) {
-    const a = df(x - h), b = df(x + h);
-    if (!Number.isFinite(a) || !Number.isFinite(b))
-      continue;
-    if (izq === 0 && Math.abs(a) > 1e-12)
-      izq = a > 0 ? 1 : -1;
-    if (der === 0 && Math.abs(b) > 1e-12)
-      der = b > 0 ? 1 : -1;
-    if (izq !== 0 && der !== 0)
-      break;
-  }
-  if (izq === 0 || der === 0 || izq === der)
-    return "estacionario";
-  return izq > 0 ? "maximo" : "minimo";
-}
-function nadaContradiceInfinito(f, df, signo2, positivo) {
-  let x = signo2 * 100;
-  for (let i2 = 0; i2 < 15; i2++) {
-    const fv = f(x), dvv = df(x);
-    if (Number.isNaN(fv))
-      return false;
-    if (Number.isFinite(dvv) && dvv !== 0 && dvv > 0 !== positivo)
-      return false;
-    x *= 10;
-  }
-  return true;
-}
-function frontera(pred, xDentro, xFuera) {
-  let dentro = xDentro, fuera = xFuera;
-  for (let i2 = 0; i2 < 60; i2++) {
-    const m = (dentro + fuera) / 2;
-    if (pred(m))
-      dentro = m;
-    else
-      fuera = m;
-  }
-  return (dentro + fuera) / 2;
-}
-function detectarMonotonia(f, df, xs, fv, dv) {
-  const tramos = [];
-  let inicio = -1, signo2 = 0;
-  const cerrar = (i2) => {
-    if (inicio < 0 || signo2 === 0)
-      return;
-    tramos.push({ a: xs[inicio], b: xs[i2], creciente: signo2 > 0 });
-    inicio = -1;
-    signo2 = 0;
-  };
-  for (let i2 = 0; i2 < xs.length; i2++) {
-    const vivo = Number.isFinite(fv[i2]) && Number.isFinite(dv[i2]);
-    const s = vivo && dv[i2] !== 0 ? dv[i2] > 0 ? 1 : -1 : 0;
-    if (!vivo) {
-      cerrar(i2 > 0 ? i2 - 1 : 0);
-      continue;
-    }
-    if (s === 0)
-      continue;
-    if (signo2 === 0) {
-      inicio = i2;
-      signo2 = s;
-      continue;
-    }
-    if (s !== signo2) {
-      cerrar(i2 - 1);
-      inicio = i2;
-      signo2 = s;
-    }
-  }
-  cerrar(xs.length - 1);
-  if (tramos.length === 0 || tramos.length > MAX_TRAMOS)
-    return tramos.length === 0 ? [] : null;
-  const dentro = (x) => Number.isFinite(f(x)) && Number.isFinite(df(x));
-  const paso = (RANGO2.max - RANGO2.min) / RANGO2.pasos;
-  const refinados = tramos.map((t2) => {
-    let a = t2.a, b = t2.b;
-    const mismoSigno = (x) => dentro(x) && df(x) > 0 === t2.creciente;
-    if (a > RANGO2.min + paso / 2)
-      a = frontera(mismoSigno, a, a - paso);
-    if (b < RANGO2.max - paso / 2)
-      b = frontera(mismoSigno, b, b + paso);
-    return { a, b, creciente: t2.creciente };
-  });
-  const ultimo = refinados.length - 1;
-  if (refinados[0].a <= RANGO2.min + paso / 2 && nadaContradiceInfinito(f, df, -1, refinados[0].creciente))
-    refinados[0] = { ...refinados[0], a: -Infinity };
-  if (refinados[ultimo].b >= RANGO2.max - paso / 2 && nadaContradiceInfinito(f, df, 1, refinados[ultimo].creciente))
-    refinados[ultimo] = { ...refinados[ultimo], b: Infinity };
-  return refinados;
-}
-function analizarDerivada(f, df) {
-  const { min: min3, max: max3, pasos } = RANGO2;
-  const delta = (max3 - min3) / pasos;
-  const xs = new Array(pasos + 1);
-  const fv = new Array(pasos + 1);
-  const dv = new Array(pasos + 1);
-  for (let i2 = 0; i2 <= pasos; i2++) {
-    const x = min3 + i2 * delta;
-    xs[i2] = x;
-    fv[i2] = f(x);
-    dv[i2] = df(x);
-  }
-  const dfDom = (x) => Number.isFinite(f(x)) ? df(x) : NaN;
-  const analisis = analizarFuncion(dfDom);
-  const quiebres = detectarNoDerivables(f, df, xs, fv, dv);
-  const ceros = analisis.intervalosRaiz.length > 0 ? [] : analisis.raices.filter(
-    (x) => !(quiebres != null ? quiebres : []).some((p) => Math.abs(p.x - x) < 1e-4)
+var RUN_DE_LETRAS = /(\\?)([a-zA-Z]+)/g;
+function sustituirParametros(expr, parametros, valores) {
+  if (parametros.length === 0)
+    return expr;
+  const valorDe = (p) => `(${valores?.get(p.nombre) ?? p.valor})`;
+  const comandos = parametros.filter((p) => p.escrito.startsWith("\\")).sort((a, b) => b.escrito.length - a.escrito.length);
+  let s = expr;
+  for (const p of comandos)
+    s = s.replace(patronDeComando(p.escrito), valorDe(p));
+  const desnudos = new Map(
+    parametros.filter((p) => !p.escrito.startsWith("\\")).map((p) => [p.escrito, p])
   );
-  const criticos = [
-    ...ceros.map((x) => ({ x, tipo: tipoDeCero(df, x, delta) })),
-    ...(quiebres != null ? quiebres : []).map((p) => ({ x: p.x, tipo: p.tipo }))
-  ].sort((p, q) => p.x - q.x);
-  const inflexiones = analisis.vertices.map((v) => v.x).sort((p, q) => p - q);
-  const d0 = Number.isFinite(f(0)) ? df(0) : NaN;
-  const monotonia = detectarMonotonia(f, df, xs, fv, dv);
-  const acotadoPorRango = monotonia !== null && monotonia.length > 0 && (monotonia[0].a <= min3 + delta / 2 && monotonia[0].a !== -Infinity || monotonia[monotonia.length - 1].b >= max3 - delta / 2 && monotonia[monotonia.length - 1].b !== Infinity);
-  return {
-    pendienteEn0: Number.isFinite(d0) ? d0 : null,
-    criticos,
-    monotonia,
-    inflexiones,
-    noDerivables: quiebres === null ? null : quiebres.map((p) => p.x),
-    acotadoPorRango,
-    rango: [min3, max3]
-  };
-}
-
-// src/motor/analysis/formatoNumero.ts
-var TOL_SNAP = 1e-4;
-var DEN_MAX_PI = 16;
-var NUM_MAX_PI = 64;
-var DECIMALES = 4;
-var mcd5 = (a, b) => b === 0 ? a : mcd5(b, a % b);
-function cerca(v, objetivo) {
-  return Math.abs(v - objetivo) <= TOL_SNAP * Math.max(1, Math.abs(objetivo));
-}
-function formaDe(v) {
-  if (!Number.isFinite(v))
-    return { tipo: "decimal", v };
-  const n = Math.round(v);
-  if (cerca(v, n))
-    return { tipo: "entero", n: n === 0 ? 0 : n };
-  const ratio = v / Math.PI;
-  for (let q = 1; q <= DEN_MAX_PI; q++) {
-    const p = Math.round(ratio * q);
-    if (p === 0 || Math.abs(p) > NUM_MAX_PI)
-      continue;
-    if (mcd5(Math.abs(p), q) !== 1)
-      continue;
-    if (cerca(v, p * Math.PI / q))
-      return { tipo: "pi", f: { p, q } };
-  }
-  return { tipo: "decimal", v };
-}
-function decimalCompacto(v) {
-  if (!Number.isFinite(v))
-    return v > 0 ? "\u221E" : "-\u221E";
-  const r = parseFloat(v.toFixed(DECIMALES));
-  return Object.is(r, -0) ? "0" : String(r);
-}
-function numeroATexto(v) {
-  const f = formaDe(v);
-  if (f.tipo === "entero")
-    return String(f.n);
-  if (f.tipo === "decimal")
-    return decimalCompacto(f.v);
-  const { p, q } = f.f;
-  const signo2 = p < 0 ? "-" : "";
-  const mag = Math.abs(p);
-  const numerador = mag === 1 ? "\u03C0" : `${mag}\u03C0`;
-  return q === 1 ? `${signo2}${numerador}` : `${signo2}${numerador}/${q}`;
-}
-function numeroALatex(v) {
-  const f = formaDe(v);
-  if (f.tipo === "entero")
-    return String(f.n);
-  if (f.tipo === "decimal") {
-    if (!Number.isFinite(f.v))
-      return f.v > 0 ? "\\infty" : "-\\infty";
-    return decimalCompacto(f.v);
-  }
-  const { p, q } = f.f;
-  const signo2 = p < 0 ? "-" : "";
-  const mag = Math.abs(p);
-  const numerador = mag === 1 ? "\\pi" : `${mag}\\pi`;
-  return q === 1 ? `${signo2}${numerador}` : `${signo2}\\frac{${numerador}}{${q}}`;
+  if (desnudos.size === 0)
+    return s;
+  return s.replace(RUN_DE_LETRAS, (todo, barra, run) => {
+    if (barra)
+      return todo;
+    return partirEnAtomos(run).map((a) => {
+      const p = desnudos.get(a);
+      return p ? valorDe(p) : a;
+    }).join("");
+  });
 }
 
 // src/derivar.ts
@@ -58217,7 +57595,7 @@ function derivadasEquivalentes(a, b) {
         return finA === finB;
       return Math.abs(va - vb) <= 1e-8 * (1 + Math.abs(va));
     });
-  } catch (e3) {
+  } catch {
     return false;
   }
 }
@@ -58253,7 +57631,7 @@ function derivadaDistribuida(norm3) {
   let raiz;
   try {
     raiz = parse2(norm3);
-  } catch (e3) {
+  } catch {
     return null;
   }
   const fs = factoresProducto(raiz);
@@ -58264,7 +57642,7 @@ function derivadaDistribuida(norm3) {
     let di;
     try {
       di = derivative(fs[i2], VAR2);
-    } catch (e3) {
+    } catch {
       return null;
     }
     if (esCeroLiteral(di))
@@ -58275,11 +57653,11 @@ function derivadaDistribuida(norm3) {
         termino = opNodo("*", "multiply", [termino, fs[j]]);
     try {
       termino = combinarFracciones(simplify(termino, REGLAS_DERIVADA));
-    } catch (e3) {
+    } catch {
     }
     for (const t2 of terminos(termino)) {
-      const { signo: signo2, mag } = extraerSigno(t2.nodo);
-      partes.push({ signo: t2.signo * signo2, mag });
+      const { signo: signo3, mag } = extraerSigno(t2.nodo);
+      partes.push({ signo: t2.signo * signo3, mag });
     }
   }
   if (partes.length === 0)
@@ -58295,7 +57673,7 @@ function derivadaDistribuida(norm3) {
   });
   try {
     return parse2(s);
-  } catch (e3) {
+  } catch {
     return null;
   }
 }
@@ -58306,10 +57684,10 @@ function simplificarDerivada(cruda, norm3) {
     const conRaices = simplify(cruda, REGLAS_DERIVADA);
     try {
       candidatas.push(combinarFracciones(conRaices));
-    } catch (e3) {
+    } catch {
     }
     candidatas.push(conRaices);
-  } catch (e3) {
+  } catch {
   }
   const dist = derivadaDistribuida(norm3);
   if (dist)
@@ -58323,7 +57701,7 @@ function simplificarDerivada(cruda, norm3) {
         mejor = c;
         mejorCosto = costo2(c);
       }
-    } catch (e3) {
+    } catch {
     }
   }
   return mejor;
@@ -58333,9 +57711,8 @@ var esCeroLiteral = (n) => n.type === "ConstantNode" && n.value === 0;
 function derivarConEscalones(norm3) {
   const escalones = [];
   const sustituir = (n) => {
-    var _a, _b;
     const m = n.map(sustituir);
-    if (m.type === "FunctionNode" && ((_a = m.args) == null ? void 0 : _a.length) === 1 && FUNCIONES_ESCALON.has((_b = m.fn) == null ? void 0 : _b.name)) {
+    if (m.type === "FunctionNode" && m.args?.length === 1 && FUNCIONES_ESCALON.has(m.fn?.name)) {
       const nombre = `escalonInterno${escalones.length}`;
       escalones.push({ nombre, original: n, arg: m.args[0] });
       return simboloNodo(nombre);
@@ -58414,9 +57791,8 @@ function sustituirSignos(norm3) {
   const raiz = parse2(norm3);
   let hay = false;
   const sustituir = (n) => {
-    var _a, _b;
     const m = n.map(sustituir);
-    const s = m.type === "FunctionNode" && ((_a = m.args) == null ? void 0 : _a.length) === 1 ? SIMBOLO_SIGNO[(_b = m.fn) == null ? void 0 : _b.name] : void 0;
+    const s = m.type === "FunctionNode" && m.args?.length === 1 ? SIMBOLO_SIGNO[m.fn?.name] : void 0;
     if (!s)
       return m;
     hay = true;
@@ -58432,14 +57808,14 @@ function derivarExpr(expr) {
   try {
     if (clasificarDegenerada(compilarFuncion(norm3, VAR2)))
       return null;
-  } catch (e3) {
+  } catch {
   }
   let conSigno2 = false;
   try {
     const s = sustituirSignos(norm3);
     norm3 = s.expr;
     conSigno2 = s.hay;
-  } catch (e3) {
+  } catch {
     return null;
   }
   try {
@@ -58451,7 +57827,7 @@ function derivarExpr(expr) {
     return resimbolizarConstantes(
       racionalizarFracciones(simplificarDerivada(derivarConEscalones(norm3), norm3))
     ).toString();
-  } catch (e3) {
+  } catch {
     return null;
   }
 }
@@ -58477,9 +57853,70 @@ function derivadaLatex(ecuaciones) {
   return `f'\\left(${VAR2}\\right) = ${cuerpo}`;
 }
 
+// src/core/analysis/formatoNumero.ts
+var TOL_SNAP = 1e-4;
+var DEN_MAX_PI = 16;
+var NUM_MAX_PI = 64;
+var DECIMALES = 4;
+var mcd5 = (a, b) => b === 0 ? a : mcd5(b, a % b);
+function cerca(v, objetivo) {
+  return Math.abs(v - objetivo) <= TOL_SNAP * Math.max(1, Math.abs(objetivo));
+}
+function formaDe(v) {
+  if (!Number.isFinite(v))
+    return { tipo: "decimal", v };
+  const n = Math.round(v);
+  if (cerca(v, n))
+    return { tipo: "entero", n: n === 0 ? 0 : n };
+  const ratio = v / Math.PI;
+  for (let q = 1; q <= DEN_MAX_PI; q++) {
+    const p = Math.round(ratio * q);
+    if (p === 0 || Math.abs(p) > NUM_MAX_PI)
+      continue;
+    if (mcd5(Math.abs(p), q) !== 1)
+      continue;
+    if (cerca(v, p * Math.PI / q))
+      return { tipo: "pi", f: { p, q } };
+  }
+  return { tipo: "decimal", v };
+}
+function decimalCompacto(v) {
+  if (!Number.isFinite(v))
+    return v > 0 ? "\u221E" : "-\u221E";
+  const r = parseFloat(v.toFixed(DECIMALES));
+  return Object.is(r, -0) ? "0" : String(r);
+}
+function numeroATexto(v) {
+  const f = formaDe(v);
+  if (f.tipo === "entero")
+    return String(f.n);
+  if (f.tipo === "decimal")
+    return decimalCompacto(f.v);
+  const { p, q } = f.f;
+  const signo3 = p < 0 ? "-" : "";
+  const mag = Math.abs(p);
+  const numerador = mag === 1 ? "\u03C0" : `${mag}\u03C0`;
+  return q === 1 ? `${signo3}${numerador}` : `${signo3}${numerador}/${q}`;
+}
+function numeroALatex(v) {
+  const f = formaDe(v);
+  if (f.tipo === "entero")
+    return String(f.n);
+  if (f.tipo === "decimal") {
+    if (!Number.isFinite(f.v))
+      return f.v > 0 ? "\\infty" : "-\\infty";
+    return decimalCompacto(f.v);
+  }
+  const { p, q } = f.f;
+  const signo3 = p < 0 ? "-" : "";
+  const mag = Math.abs(p);
+  const numerador = mag === 1 ? "\\pi" : `${mag}\\pi`;
+  return q === 1 ? `${signo3}${numerador}` : `${signo3}\\frac{${numerador}}{${q}}`;
+}
+
 // src/integrar.ts
 var VAR3 = "x";
-var MUESTRAS4 = [-7.3, -2.6, -1.2, -0.7, -0.3, 0.4, 1.1, 2.7, 5.8, 11.4];
+var MUESTRAS = [-7.3, -2.6, -1.2, -0.7, -0.3, 0.4, 1.1, 2.7, 5.8, 11.4];
 var REGLAS_TRIG = [
   { l: "csc(n1)", r: "1/sin(n1)" },
   { l: "sec(n1)", r: "1/cos(n1)" },
@@ -58496,7 +57933,7 @@ function valorConstante(n) {
   try {
     const v = n.evaluate();
     return typeof v === "number" && Number.isFinite(v) ? v : null;
-  } catch (e3) {
+  } catch {
     return null;
   }
 }
@@ -58504,7 +57941,7 @@ function coefLineal(u) {
   try {
     const a = valorConstante(simplify(derivative(u, VAR3)));
     return a !== null && a !== 0 ? a : null;
-  } catch (e3) {
+  } catch {
     return null;
   }
 }
@@ -58541,7 +57978,7 @@ function integrarArcotangente(q) {
   let d1;
   try {
     d1 = simplify(derivative(q, VAR3));
-  } catch (e3) {
+  } catch {
     return null;
   }
   const dosK = coefLineal(d1);
@@ -58557,7 +57994,7 @@ function integrarArcotangente(q) {
     if (typeof m !== "number" || !Number.isFinite(m) || k <= 0 || m <= 0)
       return null;
     return `atan(x*sqrt((${k})/(${m})))/sqrt((${k})*(${m}))`;
-  } catch (e3) {
+  } catch {
     return null;
   }
 }
@@ -58574,13 +58011,13 @@ function integrarDerivadaLogaritmica(p, q) {
   try {
     fp = compilarFuncion(p.toString(), VAR3);
     fq = compilarFuncion(q.toString(), VAR3);
-  } catch (e3) {
+  } catch {
     return null;
   }
   const h = 1e-6;
   let c = null;
   let comparables = 0;
-  for (const x of MUESTRAS4) {
+  for (const x of MUESTRAS) {
     const vp = fp(x), q1 = fq(x + h), q0 = fq(x - h);
     if (typeof vp !== "number" || !Number.isFinite(vp))
       continue;
@@ -58698,12 +58135,12 @@ function verificaNumerica(integrando, primitiva) {
   try {
     f = compilarFuncion(integrando, VAR3);
     F = compilarFuncion(primitiva, VAR3);
-  } catch (e3) {
+  } catch {
     return false;
   }
   const h = 1e-6;
   let comparables = 0;
-  for (const x of MUESTRAS4) {
+  for (const x of MUESTRAS) {
     const vf = f(x);
     if (typeof vf !== "number" || !Number.isFinite(vf))
       continue;
@@ -58724,14 +58161,14 @@ function integrarExpr(expr) {
   let raiz;
   try {
     raiz = parse2(norm3);
-  } catch (e3) {
+  } catch {
     return null;
   }
   let cruda = integrar2(raiz);
   if (cruda === null) {
     try {
       cruda = integrar2(simplify(norm3, REGLAS_TRIG));
-    } catch (e3) {
+    } catch {
       return null;
     }
   }
@@ -58740,10 +58177,10 @@ function integrarExpr(expr) {
   let limpio = cruda;
   try {
     limpio = resimbolizarConstantes(racionalizarFracciones(simplify(cruda))).toString();
-  } catch (e3) {
+  } catch {
     try {
       limpio = simplify(cruda).toString();
-    } catch (e4) {
+    } catch {
     }
   }
   return verificaNumerica(norm3, limpio) ? limpio : null;
@@ -58876,14 +58313,14 @@ function evaluarLimite(raw) {
   try {
     const v = compilarExpresion(norm3)({});
     return typeof v === "number" && Number.isFinite(v) ? v : null;
-  } catch (e3) {
+  } catch {
     return null;
   }
 }
 function latexSeguro(expr) {
   try {
     return exprALatex(expr) || "\\text{[...]}";
-  } catch (e3) {
+  } catch {
     return "\\text{[...]}";
   }
 }
@@ -58894,7 +58331,7 @@ function integralOperadorLatex(source) {
   let integrando = it.integrandoDisplay;
   try {
     integrando = simplificarEcuaciones([integrando])[0];
-  } catch (e3) {
+  } catch {
   }
   return `\\int_{${latexSeguro(it.a)}}^{${latexSeguro(it.b)}} ${latexSeguro(integrando)}\\,d${it.variable}`;
 }
@@ -58917,7 +58354,7 @@ function evaluarArea(source) {
     return null;
   const a = evaluarLimite(it.a), b = evaluarLimite(it.b);
   const f = crearFuncionReal(insertarProductoImplicito(normalizarEntrada(it.integrando)));
-  return areaDefinida(f, a != null ? a : NaN, b != null ? b : NaN);
+  return areaDefinida(f, a ?? NaN, b ?? NaN);
 }
 function formatearArea(v) {
   const r = Math.round(v);
@@ -58933,7 +58370,7 @@ function cuerpoAreaLatex(r) {
 function racionalDe2(v, tol = 1e-9, qmax = 1e3) {
   if (!Number.isFinite(v))
     return null;
-  const signo2 = v < 0 ? -1 : 1;
+  const signo3 = v < 0 ? -1 : 1;
   let x = Math.abs(v);
   let hm1 = 1, hm2 = 0, km1 = 0, km2 = 1;
   for (let i2 = 0; i2 < 40; i2++) {
@@ -58941,8 +58378,8 @@ function racionalDe2(v, tol = 1e-9, qmax = 1e3) {
     const h = a * hm1 + hm2, k = a * km1 + km2;
     if (k > qmax)
       break;
-    if (Math.abs(signo2 * h / k - v) <= tol * (1 + Math.abs(v)))
-      return { p: signo2 * h, q: k };
+    if (Math.abs(signo3 * h / k - v) <= tol * (1 + Math.abs(v)))
+      return { p: signo3 * h, q: k };
     hm2 = hm1;
     hm1 = h;
     km2 = km1;
@@ -58956,10 +58393,10 @@ function racionalDe2(v, tol = 1e-9, qmax = 1e3) {
 }
 var racionalStr = (r) => r.q === 1 ? String(r.p) : `${r.p}/${r.q}`;
 function multSimbolo(r, sym) {
-  const signo2 = r.p < 0 ? "-" : "";
+  const signo3 = r.p < 0 ? "-" : "";
   const ap = Math.abs(r.p);
   const num = ap === 1 ? sym : `${ap}*${sym}`;
-  return r.q === 1 ? `${signo2}${num}` : `${signo2}(${num})/${r.q}`;
+  return r.q === 1 ? `${signo3}${num}` : `${signo3}(${num})/${r.q}`;
 }
 function valorExactoExpr(v) {
   if (!Number.isFinite(v))
@@ -58988,7 +58425,7 @@ function valorExactoLatex(v) {
     return null;
   try {
     return exprALatex(e3);
-  } catch (e4) {
+  } catch {
     return null;
   }
 }
@@ -59012,7 +58449,7 @@ function etiquetaIntegral(source) {
     const deg = clasificarDegenerada(compilarFuncion(norm3, "x"));
     if (deg)
       return deg;
-  } catch (e3) {
+  } catch {
   }
   const area = evaluarArea(source);
   return area && area.tipo === "etiqueta" ? { etiqueta: area.etiqueta, detalle: area.detalle } : null;
@@ -59037,7 +58474,7 @@ function cuerpoAreaExactoBase(source) {
           return { cuerpo: exacto, conector: "=" };
         return { cuerpo: formatearAprox(v), conector: "\\approx" };
       }
-    } catch (e3) {
+    } catch {
     }
   }
   const ent = Math.round(area.valor);
@@ -59051,9 +58488,7 @@ function cuerpoAreaExactoBase(source) {
 // src/host-obsidian/ajustes.ts
 var import_obsidian2 = require("obsidian");
 
-// src/i18n/index.ts
-var IDIOMAS = ["en", "es"];
-var IDIOMA_POR_DEFECTO = "en";
+// src/i18n/en.ts
 var EN = {
   aviso: { cargado: "LMath loaded successfully!" },
   ajustes: {
@@ -59065,17 +58500,17 @@ var EN = {
     plano: "Plane",
     puntosNotables: {
       etiqueta: "Show notable points",
-      detalle: "Draws the markers for roots, vertices, Y-intercepts and the solutions (crossings) of systems on the plane. When disabled the plane stays clean: the \u24D8 summary still lists them, and the crosshair and rail mode do not change. Applies when the block is re-rendered."
+      detalle: "Draws the markers for roots, vertices, Y-intercepts and the solutions (crossings) of systems on the plane. When disabled the plane stays clean: the \u24D8 summary still lists them, and the crosshair and rail mode do not change."
     },
     encuadreAuto: {
       etiqueta: "Automatic framing",
-      detalle: "Zooms the initial view in when the curve is bounded and leaves a lot of empty plane (heart, lemniscate, astroid\u2026). It only zooms in, never out: if the curve reaches the edge of the view the usual framing is kept. The view stays centered on the origin and is the one the restore key returns to. Applies when the block is re-rendered."
+      detalle: "Zooms the initial view in when the curve is bounded and leaves a lot of empty plane (heart, lemniscate, astroid\u2026). It only zooms in, never out: if the curve reaches the edge of the view the usual framing is kept. The view stays centered on the origin and is the one the restore key returns to."
     },
     trig: {
       seccion: "Trigonometric circle",
       unidad: {
         etiqueta: "Angle unit",
-        detalle: "Unit used to LABEL angles in obs-trig blocks (marks, readout and panel). It is presentation only: what you write in a block is always read the same way \u2014 a bare number is radians and \xB0 is explicit \u2014 so switching this never changes the meaning of an expression you already wrote."
+        detalle: "Unit used to LABEL angles in obs-trig blocks (marks, readout and panel), and in the \u24D8 panel of obs-vector, which has no chip of its own. It is presentation only: what you write in a block is always read the same way \u2014 a bare number is radians and \xB0 is explicit \u2014 so switching this never changes the meaning of an expression you already wrote."
       },
       opcionGrados: "Degrees",
       opcionRadianes: "Radians",
@@ -59088,9 +58523,10 @@ var EN = {
     idioma: {
       seccion: "Language",
       nombre: "Language",
-      desc: "Language of the plugin interface (labels, buttons and messages). Applies immediately to the settings; open blocks update when they are re-rendered.",
+      desc: "Language of the plugin interface (labels, buttons and messages). Every setting on this tab applies immediately: blocks already on screen rebuild themselves, which returns their zoom and their view to the starting point.",
       opcionEn: "English",
-      opcionEs: "Espa\xF1ol"
+      opcionEs: "Espa\xF1ol",
+      opcionPt: "Portugu\xEAs"
     }
   },
   canvasNoDisponible: "Error: Canvas 2D not available",
@@ -59102,6 +58538,7 @@ var EN = {
     seleccionarEcuacion: (n) => `Select equation ${n}`,
     solucionesSistema: "System solutions",
     resumenNotables: "Notable points summary",
+    parametros: "Parameter sliders",
     resumenIntegral: "About this integral",
     resumenDerivada: "What the derivative says about f",
     original: "Original",
@@ -59126,12 +58563,12 @@ var EN = {
     sistemaIncompleto: "Incomplete system: at least one equation is missing. A system needs at least two equations and two unknowns.",
     infinitasCoinciden: "Infinitely many solutions: the curves coincide over a stretch (they are the same).",
     infinitasPeriodico: "Infinitely many solutions: the system is periodic (the solutions repeat endlessly).",
-    demasiadas: "Too many solutions in this view to list; zoom in.",
-    sinSolucion: "No solution in the current view.",
+    sinSolucion: "The curves do not meet.",
     unaSolucion: "Solution:",
     nSoluciones: (n) => `Solutions (${n}):`,
     yMas: (n) => `\u2026 and ${n} more`,
-    enVista: "In the current view."
+    enIntervalo: (min3, max3) => `Searched over ${min3} \u2264 x \u2264 ${max3}.`,
+    noResoluble: "This system cannot be solved exactly; no solutions are listed."
   },
   resumen: {
     interseccionesYInfinitas: "Y-axis intercepts: infinitely many",
@@ -59246,10 +58683,33 @@ var EN = {
     punto: (x) => `x = ${x}`,
     rangoAnalisis: (a, b) => `Analysed on ${a} \u2264 x \u2264 ${b}`
   },
+  parametros: {
+    mando: (nombre) => `Value of ${nombre}`
+  },
   velo: {
     simboloNoSoportado: "Unsupported symbol",
     simbolosNoSoportados: "Unsupported symbols",
     simboloDetalle: (lista) => `The engine does not recognize ${lista}. Rewrite the expression without that symbol (or use its equivalent: \\cdot, \\times, \\div, \\pm, \\sqrt, \\frac\u2026).`,
+    // Se nombran las DOS variables —la escrita y la del bloque— porque el arreglo está en esa
+    // diferencia, y decir solo «restricción no válida» dejaría al autor buscando el error en
+    // los números del intervalo, que están bien.
+    restriccionAjena: (escrita, propia) => ({
+      etiqueta: "Restriction on another variable",
+      detalle: `The domain restriction bounds ${escrita}, but this block is drawn in ${propia}. Write the interval in ${propia}, or nothing is left to draw.`
+    }),
+    // Se cita el grupo TAL COMO SE ESCRIBIÓ: el fallo está en un extremo concreto y verlo entre
+    // comillas es lo que lo señala. Decir solo «restricción no válida» dejaría al autor mirando
+    // el comparador, que casi siempre está bien.
+    restriccionIlegible: (texto) => ({
+      etiqueta: "Unreadable domain restriction",
+      detalle: `${texto} is not an interval this block can read. Write it as {a \u2264 x \u2264 b}, {x \u2265 a} or {x \u2264 b}, with numbers or named constants (\\pi, e, \\infty) at the ends.`
+    }),
+    // El intervalo se LEE bien: lo que no existe es su contenido. Se dicen los dos extremos en el
+    // orden en que quedaron, porque el error casi siempre es haberlos escrito al revés.
+    restriccionVacia: (variable, min3, max3) => ({
+      etiqueta: "Empty interval",
+      detalle: `The restriction asks for ${variable} \u2265 ${min3} and ${variable} \u2264 ${max3} at the same time, so no point qualifies. Swap the ends if you meant the other way round.`
+    }),
     integrandoNoValido: {
       etiqueta: "Invalid integrand",
       detalle: "The integrand must be a function of x. An equation (implicit curve, with `=` or with `y`) is not integrated: graph it in an obs-graph block."
@@ -59269,6 +58729,40 @@ var EN = {
     sinFuncion: {
       etiqueta: "No function",
       detalle: "Write a math expression to graph."
+    },
+    sinVector: {
+      etiqueta: "No vector",
+      detalle: "Write one vector per line, for example v = (3, 2)."
+    },
+    nadaQueDibujar: {
+      etiqueta: "Nothing to draw",
+      detalle: "What you wrote is typeset above. To draw an arrow, a vector needs numeric components, like v = (3, 2)."
+    }
+  },
+  vector: {
+    vistas: {
+      escrito: "What the block declares",
+      entrePuntos: "Vector between the points",
+      opciones: "Vector between the points"
+    },
+    info: {
+      chip: "Vector details",
+      entre: (a, b) => `Between ${a} and ${b}`,
+      modulo: "Magnitude",
+      direccion: "Direction",
+      // No «Quadrant»: los mismos ocho valores cubren cuadrantes Y semiejes, igual que en el
+      // círculo, de donde se toman ya traducidos.
+      posicion: "Position",
+      unitario: "Unit vector",
+      escalar: "Dot product",
+      angulo: "Angle",
+      determinante: "Determinant",
+      areaParalelogramo: "Parallelogram area",
+      areaTriangulo: "Triangle area",
+      perpendiculares: "Perpendicular",
+      paralelos: "Parallel",
+      distancia: "Distance",
+      puntoMedio: "Midpoint"
     }
   },
   trig: {
@@ -59317,6 +58811,34 @@ var EN = {
     }
   }
 };
+var VELO_NUCLEO_EN = {
+  "Indefinida": {
+    etiqueta: "Undefined",
+    detalle: "The expression is not defined over \u211D."
+  },
+  "No definida en \u211D": {
+    etiqueta: "Not defined over \u211D",
+    detalle: "The expression produces complex values and cannot be represented on the real plane."
+  },
+  "Indeterminada": {
+    etiqueta: "Indeterminate",
+    detalle: "The expression produces an indeterminate form."
+  },
+  "Integral divergente": {
+    etiqueta: "Divergent integral",
+    detalle: "The integral does not converge: the function is unbounded on the interval."
+  },
+  "Fuera de dominio": {
+    etiqueta: "Out of domain",
+    detalle: "The integration interval falls outside the function's real domain."
+  },
+  "L\xEDmites no num\xE9ricos": {
+    etiqueta: "Non-numeric limits",
+    detalle: "The integration limits do not evaluate to a real number."
+  }
+};
+
+// src/i18n/es.ts
 var ES = {
   aviso: { cargado: "\xA1LMath se ha cargado correctamente!" },
   ajustes: {
@@ -59328,17 +58850,17 @@ var ES = {
     plano: "Plano",
     puntosNotables: {
       etiqueta: "Mostrar puntos notables",
-      detalle: "Pinta en el plano los marcadores de ra\xEDces, v\xE9rtices, cortes con Y y las soluciones (cruces) de los sistemas. Al desactivarlo el plano queda limpio: el resumen \u24D8 los sigue listando, y el crosshair y el modo carril no cambian. Se aplica al volver a renderizar el bloque."
+      detalle: "Pinta en el plano los marcadores de ra\xEDces, v\xE9rtices, cortes con Y y las soluciones (cruces) de los sistemas. Al desactivarlo el plano queda limpio: el resumen \u24D8 los sigue listando, y el crosshair y el modo carril no cambian."
     },
     encuadreAuto: {
       etiqueta: "Encuadre autom\xE1tico",
-      detalle: "Acerca la vista inicial cuando la curva es acotada y deja mucho plano vac\xEDo (coraz\xF3n, lemniscata, astroide\u2026). Solo acerca, nunca aleja: si la curva llega al borde de la vista se deja el encuadre de siempre. La vista queda centrada en el origen y es a la que vuelve la tecla de restaurar. Se aplica al volver a renderizar el bloque."
+      detalle: "Acerca la vista inicial cuando la curva es acotada y deja mucho plano vac\xEDo (coraz\xF3n, lemniscata, astroide\u2026). Solo acerca, nunca aleja: si la curva llega al borde de la vista se deja el encuadre de siempre. La vista queda centrada en el origen y es a la que vuelve la tecla de restaurar."
     },
     trig: {
       seccion: "C\xEDrculo trigonom\xE9trico",
       unidad: {
         etiqueta: "Unidad de los \xE1ngulos",
-        detalle: "Unidad con la que se ROTULAN los \xE1ngulos en los bloques obs-trig (marcas, lectura y panel). Es solo presentaci\xF3n: lo que escribes en un bloque se lee siempre igual \u2014un n\xFAmero desnudo son radianes y el \xB0 es expl\xEDcito\u2014, as\xED que cambiar esto nunca altera el significado de una expresi\xF3n ya escrita."
+        detalle: "Unidad con la que se ROTULAN los \xE1ngulos en los bloques obs-trig (marcas, lectura y panel), y en el panel \u24D8 de obs-vector, que no tiene chip propio. Es solo presentaci\xF3n: lo que escribes en un bloque se lee siempre igual \u2014un n\xFAmero desnudo son radianes y el \xB0 es expl\xEDcito\u2014, as\xED que cambiar esto nunca altera el significado de una expresi\xF3n ya escrita."
       },
       opcionGrados: "Grados",
       opcionRadianes: "Radianes",
@@ -59351,9 +58873,10 @@ var ES = {
     idioma: {
       seccion: "Idioma",
       nombre: "Idioma",
-      desc: "Idioma de la interfaz del plugin (etiquetas, botones y mensajes). Se aplica de inmediato a los ajustes; los bloques abiertos se actualizan al volver a renderizarse.",
+      desc: "Idioma de la interfaz del plugin (etiquetas, botones y mensajes). Todos los ajustes de esta pesta\xF1a se aplican al momento: los bloques que est\xE9n a la vista se rehacen, y eso devuelve su zoom y su vista al punto de partida.",
       opcionEn: "English",
-      opcionEs: "Espa\xF1ol"
+      opcionEs: "Espa\xF1ol",
+      opcionPt: "Portugu\xEAs"
     }
   },
   canvasNoDisponible: "Error: Canvas 2D no disponible",
@@ -59365,6 +58888,7 @@ var ES = {
     seleccionarEcuacion: (n) => `Seleccionar ecuaci\xF3n ${n}`,
     solucionesSistema: "Soluciones del sistema",
     resumenNotables: "Resumen de puntos notables",
+    parametros: "Deslizadores de par\xE1metros",
     resumenIntegral: "Sobre esta integral",
     resumenDerivada: "Qu\xE9 dice la derivada de f",
     original: "Original",
@@ -59389,12 +58913,12 @@ var ES = {
     sistemaIncompleto: "Sistema incompleto: falta al menos una ecuaci\xF3n. Un sistema necesita como m\xEDnimo dos ecuaciones y dos inc\xF3gnitas.",
     infinitasCoinciden: "Infinitas soluciones: las curvas coinciden en un tramo (son la misma).",
     infinitasPeriodico: "Infinitas soluciones: el sistema es peri\xF3dico (las soluciones se repiten sin fin).",
-    demasiadas: "Demasiadas soluciones en esta vista para enumerarlas; acerca el zoom.",
-    sinSolucion: "Sin soluci\xF3n en la vista actual.",
+    sinSolucion: "Las curvas no se cortan.",
     unaSolucion: "Soluci\xF3n:",
     nSoluciones: (n) => `Soluciones (${n}):`,
     yMas: (n) => `\u2026 y ${n} m\xE1s`,
-    enVista: "En la vista actual."
+    enIntervalo: (min3, max3) => `Buscadas en ${min3} \u2264 x \u2264 ${max3}.`,
+    noResoluble: "Este sistema no se puede resolver de forma exacta; no se enumeran soluciones."
   },
   resumen: {
     interseccionesYInfinitas: "Intersecciones con el eje Y: infinitas",
@@ -59509,10 +59033,25 @@ var ES = {
     punto: (x) => `x = ${x}`,
     rangoAnalisis: (a, b) => `Analizado en ${a} \u2264 x \u2264 ${b}`
   },
+  parametros: {
+    mando: (nombre) => `Valor de ${nombre}`
+  },
   velo: {
     simboloNoSoportado: "S\xEDmbolo no soportado",
     simbolosNoSoportados: "S\xEDmbolos no soportados",
     simboloDetalle: (lista) => `El motor no reconoce ${lista}. Reescribe la expresi\xF3n sin ese s\xEDmbolo (o usa su equivalente: \\cdot, \\times, \\div, \\pm, \\sqrt, \\frac\u2026).`,
+    restriccionAjena: (escrita, propia) => ({
+      etiqueta: "Restricci\xF3n sobre otra variable",
+      detalle: `La restricci\xF3n de dominio acota ${escrita}, pero este bloque se dibuja en ${propia}. Escribe el intervalo en ${propia}, o no queda nada que dibujar.`
+    }),
+    restriccionIlegible: (texto) => ({
+      etiqueta: "Restricci\xF3n de dominio ilegible",
+      detalle: `${texto} no es un intervalo que este bloque sepa leer. Escr\xEDbelo como {a \u2264 x \u2264 b}, {x \u2265 a} o {x \u2264 b}, con n\xFAmeros o constantes con nombre (\\pi, e, \\infty) en los extremos.`
+    }),
+    restriccionVacia: (variable, min3, max3) => ({
+      etiqueta: "Intervalo vac\xEDo",
+      detalle: `La restricci\xF3n pide ${variable} \u2265 ${min3} y ${variable} \u2264 ${max3} a la vez, as\xED que no queda ning\xFAn punto. Si los extremos est\xE1n al rev\xE9s, interc\xE1mbialos.`
+    }),
     integrandoNoValido: {
       etiqueta: "Integrando no v\xE1lido",
       detalle: "El integrando debe ser una funci\xF3n de x. Una ecuaci\xF3n (curva impl\xEDcita, con `=` o con `y`) no se integra: graf\xEDcala en un bloque obs-graph."
@@ -59532,6 +59071,40 @@ var ES = {
     sinFuncion: {
       etiqueta: "Sin funci\xF3n",
       detalle: "Escribe una expresi\xF3n matem\xE1tica para graficar."
+    },
+    sinVector: {
+      etiqueta: "Sin vector",
+      detalle: "Escribe un vector por l\xEDnea, por ejemplo v = (3, 2)."
+    },
+    nadaQueDibujar: {
+      etiqueta: "Nada que dibujar",
+      detalle: "Lo que has escrito se tipograf\xEDa arriba. Para dibujar una flecha hace falta un vector con componentes num\xE9ricas, como v = (3, 2)."
+    }
+  },
+  vector: {
+    vistas: {
+      escrito: "Lo que declara el bloque",
+      entrePuntos: "Vector entre los puntos",
+      opciones: "Vector entre los puntos"
+    },
+    info: {
+      chip: "Detalles de los vectores",
+      entre: (a, b) => `Entre ${a} y ${b}`,
+      modulo: "M\xF3dulo",
+      direccion: "Direcci\xF3n",
+      // No «Cuadrante»: los mismos ocho valores cubren cuadrantes Y semiejes, igual que en el
+      // círculo, de donde se toman ya traducidos.
+      posicion: "Posici\xF3n",
+      unitario: "Vector unitario",
+      escalar: "Producto escalar",
+      angulo: "\xC1ngulo",
+      determinante: "Determinante",
+      areaParalelogramo: "\xC1rea del paralelogramo",
+      areaTriangulo: "\xC1rea del tri\xE1ngulo",
+      perpendiculares: "Perpendiculares",
+      paralelos: "Paralelos",
+      distancia: "Distancia",
+      puntoMedio: "Punto medio"
     }
   },
   trig: {
@@ -59578,45 +59151,363 @@ var ES = {
     }
   }
 };
-var RECURSOS = { en: EN, es: ES };
-var VELO_NUCLEO_EN = {
-  "Indefinida": {
-    etiqueta: "Undefined",
-    detalle: "The expression is not defined over \u211D."
+
+// src/i18n/pt.ts
+var PT = {
+  aviso: { cargado: "LMath foi carregado corretamente!" },
+  ajustes: {
+    transformaciones: "Transforma\xE7\xF5es",
+    despejarAuto: {
+      etiqueta: "Isolar automaticamente",
+      detalle: "Ao renderizar uma equa\xE7\xE3o, mostra diretamente o resultado isolado (y = f(x)) sem premir \xABIsolar\xBB. O bot\xE3o \xABIsolar\xBB fica oculto no painel."
+    },
+    plano: "Plano",
+    puntosNotables: {
+      etiqueta: "Mostrar pontos not\xE1veis",
+      detalle: "Desenha no plano os marcadores de ra\xEDzes, v\xE9rtices, interse\xE7\xF5es com Y e as solu\xE7\xF5es (cruzamentos) dos sistemas. Ao desativar, o plano fica limpo: o resumo \u24D8 continua a list\xE1-los, e a mira e o modo carril n\xE3o mudam."
+    },
+    encuadreAuto: {
+      etiqueta: "Enquadramento autom\xE1tico",
+      detalle: "Aproxima a vista inicial quando a curva \xE9 limitada e deixa muito plano vazio (cora\xE7\xE3o, lemniscata, astroide\u2026). S\xF3 aproxima, nunca afasta: se a curva chegar \xE0 borda da vista, mant\xE9m-se o enquadramento de sempre. A vista fica centrada na origem e \xE9 a ela que volta a tecla de restaurar."
+    },
+    trig: {
+      seccion: "C\xEDrculo trigonom\xE9trico",
+      unidad: {
+        etiqueta: "Unidade dos \xE2ngulos",
+        detalle: "Unidade com que os \xE2ngulos s\xE3o ROTULADOS nos blocos obs-trig (marcas, leitura e painel), e no painel \u24D8 de obs-vector, que n\xE3o tem chip pr\xF3prio. \xC9 apenas apresenta\xE7\xE3o: o que escreves num bloco l\xEA-se sempre igual \u2014um n\xFAmero nu s\xE3o radianos e o \xB0 \xE9 expl\xEDcito\u2014, por isso mudar isto nunca altera o significado de uma express\xE3o j\xE1 escrita."
+      },
+      opcionGrados: "Graus",
+      opcionRadianes: "Radianos",
+      opcionGradianes: "Grados centesimais",
+      iman: {
+        etiqueta: "\xCDman para os \xE2ngulos not\xE1veis",
+        detalle: "Ao arrastar o ponto pela circunfer\xEAncia, ele cola-se aos \xE2ngulos not\xE1veis (m\xFAltiplos de 15\xB0). Mantendo Alt arrasta-se livremente sem ter de o desativar."
+      }
+    },
+    idioma: {
+      seccion: "Idioma",
+      nombre: "Idioma",
+      desc: "Idioma da interface do plugin (r\xF3tulos, bot\xF5es e mensagens). Todas as defini\xE7\xF5es deste separador aplicam-se de imediato: os blocos \xE0 vista s\xE3o refeitos, e isso devolve o zoom e a vista ao ponto de partida.",
+      opcionEn: "English",
+      opcionEs: "Espa\xF1ol",
+      opcionPt: "Portugu\xEAs"
+    }
   },
-  "No definida en \u211D": {
-    etiqueta: "Not defined over \u211D",
-    detalle: "The expression produces complex values and cannot be represented on the real plane."
+  canvasNoDisponible: "Erro: Canvas 2D n\xE3o dispon\xEDvel",
+  botones: {
+    vistaInicial: "Vista inicial (desfaz zoom e deslocamento)",
+    acercar: "Aproximar (zoom +)",
+    alejar: "Afastar (zoom \u2212)",
+    carril: "Carril: percorrer a curva com A/D, zoom com W/S (Shift = precis\xE3o)",
+    seleccionarEcuacion: (n) => `Selecionar equa\xE7\xE3o ${n}`,
+    solucionesSistema: "Solu\xE7\xF5es do sistema",
+    resumenNotables: "Resumo dos pontos not\xE1veis",
+    parametros: "Cursores de par\xE2metros",
+    resumenIntegral: "Sobre este integral",
+    resumenDerivada: "O que diz a derivada de f",
+    original: "Original",
+    verFormula: "Ver a f\xF3rmula",
+    cerrarFormula: "Ocultar a f\xF3rmula",
+    editarBloque: "Editar o bloco",
+    transformaciones: "Transforma\xE7\xF5es",
+    cerrarMenu: "Fechar menu",
+    reproducir: "Reproduzir (percorrer o c\xEDrculo)",
+    pausar: "Pausar",
+    despejarY: "Isolar y",
+    operador: "Operador",
+    derivadaEvaluada: "Derivada avaliada",
+    derivada: "Derivada",
+    operadorYDerivada: "Operador e derivada",
+    primitivaEvaluada: "Primitiva avaliada",
+    primitiva: "Primitiva",
+    operadorYPrimitiva: "Operador e primitiva"
   },
-  "Indeterminada": {
-    etiqueta: "Indeterminate",
-    detalle: "The expression produces an indeterminate form."
+  solucion: {
+    sinSistema: "N\xE3o h\xE1 nenhum sistema. Escreve pelo menos duas equa\xE7\xF5es (uma por linha).",
+    sistemaIncompleto: "Sistema incompleto: falta pelo menos uma equa\xE7\xE3o. Um sistema precisa de, no m\xEDnimo, duas equa\xE7\xF5es e duas inc\xF3gnitas.",
+    infinitasCoinciden: "Infinitas solu\xE7\xF5es: as curvas coincidem num tro\xE7o (s\xE3o a mesma).",
+    infinitasPeriodico: "Infinitas solu\xE7\xF5es: o sistema \xE9 peri\xF3dico (as solu\xE7\xF5es repetem-se sem fim).",
+    sinSolucion: "As curvas n\xE3o se intersetam.",
+    unaSolucion: "Solu\xE7\xE3o:",
+    nSoluciones: (n) => `Solu\xE7\xF5es (${n}):`,
+    yMas: (n) => `\u2026 e mais ${n}`,
+    enIntervalo: (min3, max3) => `Procuradas em ${min3} \u2264 x \u2264 ${max3}.`,
+    noResoluble: "Este sistema n\xE3o pode ser resolvido de forma exata; n\xE3o se enumeram solu\xE7\xF5es."
   },
-  "Integral divergente": {
-    etiqueta: "Divergent integral",
-    detalle: "The integral does not converge: the function is unbounded on the interval."
+  resumen: {
+    interseccionesYInfinitas: "Interse\xE7\xF5es com o eixo Y: infinitas",
+    interseccionesYDemasiadas: "Interse\xE7\xF5es com o eixo Y: demasiadas para mostrar",
+    interseccionY: (y) => `Interse\xE7\xE3o Y: (0, ${y})`,
+    noCortaY: "N\xE3o interseta o eixo Y",
+    raicesInfinitas: "Ra\xEDzes: infinitas",
+    raicesDemasiadas: "Ra\xEDzes: demasiadas para mostrar",
+    raicesPrefijo: "Ra\xEDzes: ",
+    noRaices: "N\xE3o h\xE1 ra\xEDzes reais",
+    verticesInfinitos: "V\xE9rtices: infinitos",
+    verticesDemasiados: "V\xE9rtices: demasiados para mostrar",
+    noVertices: "N\xE3o h\xE1 v\xE9rtices",
+    vertice: (x, y) => `V\xE9rtice: (${x}, ${y})`,
+    interseccionYCero: "Interse\xE7\xE3o Y: (0, 0)",
+    identicamenteCero: "Todos os valores de x s\xE3o ra\xEDzes (fun\xE7\xE3o identicamente nula).",
+    interseccionYNoDefinida: "Interse\xE7\xE3o Y: n\xE3o definida (descontinuidade em x=0)",
+    verticeMin: (x, y) => `V\xE9rtice m\xEDnimo: (${x}, ${y})`,
+    verticeMax: (x, y) => `V\xE9rtice m\xE1ximo: (${x}, ${y})`,
+    enVista: "Na vista atual."
   },
-  "Fuera de dominio": {
-    etiqueta: "Out of domain",
-    detalle: "The integration interval falls outside the function's real domain."
+  polar: {
+    titulo: "Curva polar",
+    periodo: (p) => `Repete-se a cada ${p}`,
+    ordenRotacional: (n) => `Simetria rotacional de ordem ${n}`,
+    simetriasPrefijo: "Simetria: ",
+    simetriaPolo: "em rela\xE7\xE3o ao polo",
+    simetriaEjePolar: "em rela\xE7\xE3o ao eixo polar",
+    simetriaVertical: "em rela\xE7\xE3o a \u03B8 = \u03C0/2",
+    rangoRadial: (min3, max3) => `Raio: ${min3} \u2264 r \u2264 ${max3}`,
+    radioConstante: (r) => `Raio constante r = ${r}`,
+    cambiaSigno: "r muda de sinal: a curva passa para o lado oposto do polo",
+    extremosEn: (thetaMax, thetaMin) => `M\xE1ximo em \u03B8 = ${thetaMax}, m\xEDnimo em \u03B8 = ${thetaMin}`,
+    masMultiplos: (texto, periodo) => `${texto} (+ k\xB7${periodo})`,
+    pasaPorPolo: (angulos) => `Passa pelo polo em \u03B8 = ${angulos}`,
+    noPasaPorPolo: "N\xE3o passa pelo polo",
+    poloDemasiados: "Passa pelo polo muitas vezes",
+    areaBarrida: (area, intervalo) => `\xC1rea varrida em ${intervalo}: ${area}`,
+    patron: {
+      circunferenciaCentrada: "circunfer\xEAncia centrada no polo",
+      circunferenciaPorPolo: "circunfer\xEAncia que passa pelo polo",
+      rosa: (petalos) => `ros\xE1cea de ${petalos} p\xE9talas`,
+      cardioide: "cardioide",
+      limaconLazo: "lima\xE7on com la\xE7o interior",
+      limaconHoyuelo: "lima\xE7on com covinha",
+      limaconConvexo: "lima\xE7on convexo"
+    }
   },
-  "L\xEDmites no num\xE9ricos": {
-    etiqueta: "Non-numeric limits",
-    detalle: "The integration limits do not evaluate to a real number."
+  parametrica: {
+    titulo: "Curva param\xE9trica",
+    intervalo: (a, b) => `${a} \u2264 t \u2264 ${b}`,
+    cerrada: "fechada",
+    periodo: (p) => `per\xEDodo ${p}`,
+    periodoExcede: (p) => `per\xEDodo ${p}: s\xF3 se desenha uma parte da curva`,
+    caja: (xMin, xMax, yMin, yMax) => `${xMin} \u2264 x \u2264 ${xMax},  ${yMin} \u2264 y \u2264 ${yMax}`,
+    pasaPorOrigen: "Passa pela origem",
+    simetriasPrefijo: "Simetria: ",
+    simetriaOrigen: "em rela\xE7\xE3o \xE0 origem",
+    simetriaEjeX: "em rela\xE7\xE3o ao eixo x",
+    simetriaEjeY: "em rela\xE7\xE3o ao eixo y",
+    autointersecciones: (n) => `Autointerse\xE7\xF5es: ${n}`,
+    sinAutointersecciones: "N\xE3o se interseta a si mesma",
+    longitud: (l) => `Comprimento: ${l}`,
+    areaAlgebraica: (a) => `\xC1rea alg\xE9brica: ${a}`,
+    familia: {
+      lissajous: (a, b, desfase) => `Lissajous ${a}:${b}, desfasamento ${desfase}`,
+      elipse: "elipse",
+      circunferencia: "circunfer\xEAncia"
+    }
+  },
+  integral: {
+    titulo: "Integral definido",
+    impropia: (variable, x) => `impr\xF3prio em ${variable} = ${x}, converge`,
+    intervalo: (a, b, variable) => `${a} \u2264 ${variable} \u2264 ${b}`,
+    intervaloVacio: "Intervalo vazio: o integral \xE9 0 por defini\xE7\xE3o",
+    limitesInvertidos: "Os limites est\xE3o escritos ao contr\xE1rio: o valor muda de sinal",
+    valorPrefijo: "Valor: ",
+    valorEsArea: "a \xE1rea sob a curva",
+    valorBajoEje: "a curva fica abaixo do eixo, por isso o valor \xE9 negativo",
+    valorFirmado: "\xE1rea com sinal: o que fica abaixo do eixo subtrai",
+    integrandoNulo: "O integrando \xE9 nulo em todo o intervalo",
+    cruces: (variable, lista) => `Interseta o eixo em ${variable} = ${lista}`,
+    crucesMuchos: "Interseta o eixo muitas vezes",
+    areaPositiva: (area) => `\xC1rea positiva: ${area}`,
+    areaNegativa: (area) => `\xC1rea negativa: ${area}`,
+    promedio: (v) => `Valor m\xE9dio: ${v}`
+  },
+  derivada: {
+    titulo: "Derivada",
+    pendienteEn0: (m) => `Declive em x = 0: ${m}`,
+    criticoUno: (item) => `Ponto cr\xEDtico: ${item}`,
+    criticosPrefijo: "Pontos cr\xEDticos:",
+    criticoItem: (x, tipo) => `x = ${x} (${tipo})`,
+    tipo: {
+      maximo: "m\xE1ximo local",
+      minimo: "m\xEDnimo local",
+      estacionario: "ponto estacion\xE1rio",
+      esquina: "bico",
+      cuspide: "c\xFAspide",
+      tangenteVertical: "tangente vertical"
+    },
+    criticosInfinitos: "Infinitos pontos cr\xEDticos (peri\xF3dica)",
+    criticosDemasiados: "Demasiados pontos cr\xEDticos para listar",
+    creciente: (intervalo) => `Crescente em ${intervalo}`,
+    decreciente: (intervalo) => `Decrescente em ${intervalo}`,
+    inflexionUna: (x) => `Ponto de inflex\xE3o: x = ${x}`,
+    inflexionesPrefijo: "Pontos de inflex\xE3o:",
+    inflexionesInfinitas: "Infinitos pontos de inflex\xE3o (peri\xF3dica)",
+    inflexionesDemasiadas: "Demasiados pontos de inflex\xE3o para listar",
+    noDerivableUno: (x) => `N\xE3o deriv\xE1vel em x = ${x}`,
+    noDerivablesPrefijo: "N\xE3o deriv\xE1vel em:",
+    punto: (x) => `x = ${x}`,
+    rangoAnalisis: (a, b) => `Analisado em ${a} \u2264 x \u2264 ${b}`
+  },
+  parametros: {
+    mando: (nombre) => `Valor de ${nombre}`
+  },
+  velo: {
+    simboloNoSoportado: "S\xEDmbolo n\xE3o suportado",
+    simbolosNoSoportados: "S\xEDmbolos n\xE3o suportados",
+    simboloDetalle: (lista) => `O motor n\xE3o reconhece ${lista}. Reescreve a express\xE3o sem esse s\xEDmbolo (ou usa o equivalente: \\cdot, \\times, \\div, \\pm, \\sqrt, \\frac\u2026).`,
+    restriccionAjena: (escrita, propia) => ({
+      etiqueta: "Restri\xE7\xE3o sobre outra vari\xE1vel",
+      detalle: `A restri\xE7\xE3o de dom\xEDnio limita ${escrita}, mas este bloco \xE9 desenhado em ${propia}. Escreve o intervalo em ${propia}, ou n\xE3o fica nada para desenhar.`
+    }),
+    restriccionIlegible: (texto) => ({
+      etiqueta: "Restri\xE7\xE3o de dom\xEDnio ileg\xEDvel",
+      detalle: `${texto} n\xE3o \xE9 um intervalo que este bloco saiba ler. Escreve-o como {a \u2264 x \u2264 b}, {x \u2265 a} ou {x \u2264 b}, com n\xFAmeros ou constantes com nome (\\pi, e, \\infty) nos extremos.`
+    }),
+    restriccionVacia: (variable, min3, max3) => ({
+      etiqueta: "Intervalo vazio",
+      detalle: `A restri\xE7\xE3o pede ${variable} \u2265 ${min3} e ${variable} \u2264 ${max3} ao mesmo tempo, por isso n\xE3o fica nenhum ponto. Se os extremos est\xE3o trocados, inverte-os.`
+    }),
+    integrandoNoValido: {
+      etiqueta: "Integrando n\xE3o v\xE1lido",
+      detalle: "O integrando deve ser uma fun\xE7\xE3o de x. Uma equa\xE7\xE3o (curva impl\xEDcita, com `=` ou com `y`) n\xE3o se integra: representa-a num bloco obs-graph."
+    },
+    sinIntegral: {
+      etiqueta: "Sem integral",
+      detalle: "Escreve um integral definido em LaTeX, p. ex. \\int_{a}^{b} f(x)\\,dx."
+    },
+    sinSistema: {
+      etiqueta: "Sem sistema",
+      detalle: "Escreve um sistema de equa\xE7\xF5es, uma por linha (m\xEDnimo duas)."
+    },
+    sistemaIncompleto: {
+      etiqueta: "Sistema incompleto",
+      detalle: "Falta pelo menos uma equa\xE7\xE3o: um sistema precisa de, no m\xEDnimo, duas equa\xE7\xF5es e duas inc\xF3gnitas."
+    },
+    sinFuncion: {
+      etiqueta: "Sem fun\xE7\xE3o",
+      detalle: "Escreve uma express\xE3o matem\xE1tica para representar."
+    },
+    sinVector: {
+      etiqueta: "Sem vetor",
+      detalle: "Escreve um vetor por linha, por exemplo v = (3, 2)."
+    },
+    nadaQueDibujar: {
+      etiqueta: "Nada para desenhar",
+      detalle: "O que escreveste \xE9 tipografado acima. Para desenhar uma seta \xE9 preciso um vetor com componentes num\xE9ricas, como v = (3, 2)."
+    }
+  },
+  vector: {
+    vistas: {
+      escrito: "O que o bloco declara",
+      entrePuntos: "Vetor entre os pontos",
+      opciones: "Vetor entre os pontos"
+    },
+    info: {
+      chip: "Detalhes dos vetores",
+      entre: (a, b) => `Entre ${a} e ${b}`,
+      modulo: "Norma",
+      direccion: "Dire\xE7\xE3o",
+      // Não «Quadrante»: os mesmos oito valores cobrem quadrantes E semieixos, tal como no
+      // círculo, de onde são tomados já traduzidos.
+      posicion: "Posi\xE7\xE3o",
+      unitario: "Vetor unit\xE1rio",
+      escalar: "Produto escalar",
+      angulo: "\xC2ngulo",
+      determinante: "Determinante",
+      areaParalelogramo: "\xC1rea do paralelogramo",
+      areaTriangulo: "\xC1rea do tri\xE2ngulo",
+      perpendiculares: "Perpendiculares",
+      paralelos: "Paralelos",
+      distancia: "Dist\xE2ncia",
+      puntoMedio: "Ponto m\xE9dio"
+    }
+  },
+  trig: {
+    anguloNoValido: (expr) => `N\xE3o \xE9 um \xE2ngulo v\xE1lido: \xAB${expr}\xBB`,
+    // As abreviaturas NÃO se traduzem: `sin`, `cos` e `tan` são as mesmas nos três idiomas e
+    // são as que aparecem na tabela, no painel ⓘ e em qualquer livro.
+    componentes: {
+      chip: "Componentes",
+      seno: "sin (y)",
+      coseno: "cos (x)",
+      tangente: "tan"
+    },
+    info: {
+      chip: "Detalhes do \xE2ngulo",
+      seccionRazones: "As seis raz\xF5es",
+      seccionMedida: "Medida do \xE2ngulo",
+      seccionPosicion: "Posi\xE7\xE3o na circunfer\xEAncia",
+      seccionRelacionados: "\xC2ngulos relacionados",
+      grados: "Graus",
+      radianes: "Radianos",
+      ladoTerminal: "Lado terminal",
+      posicion: {
+        "I": "Quadrante I",
+        "II": "Quadrante II",
+        "III": "Quadrante III",
+        "IV": "Quadrante IV",
+        "ejeX+": "Eixo X positivo",
+        "ejeX-": "Eixo X negativo",
+        "ejeY+": "Eixo Y positivo",
+        "ejeY-": "Eixo Y negativo"
+      },
+      referencia: "\xC2ngulo de refer\xEAncia",
+      vueltas: "Voltas completas",
+      coterminal: "Coterminal principal",
+      arco: "Comprimento de arco",
+      sector: "\xC1rea do setor",
+      complementario: "Complementar",
+      suplementario: "Suplementar",
+      opuesto: "Oposto",
+      antipoda: "Ant\xEDpoda",
+      pitagorica: "sin\xB2\u03B8 + cos\xB2\u03B8",
+      pitagoricaNota: "verifica\xE7\xE3o num\xE9rica",
+      noDefinida: "n\xE3o definida"
+    }
   }
 };
+var VELO_NUCLEO_PT = {
+  "Indefinida": {
+    etiqueta: "Indefinida",
+    detalle: "A express\xE3o n\xE3o est\xE1 definida em \u211D."
+  },
+  "No definida en \u211D": {
+    etiqueta: "N\xE3o definida em \u211D",
+    detalle: "A express\xE3o produz valores complexos e n\xE3o pode ser representada no plano real."
+  },
+  "Indeterminada": {
+    etiqueta: "Indeterminada",
+    detalle: "A express\xE3o produz uma forma indeterminada."
+  },
+  "Integral divergente": {
+    etiqueta: "Integral divergente",
+    detalle: "O integral n\xE3o converge: a fun\xE7\xE3o n\xE3o \xE9 limitada no intervalo."
+  },
+  "Fuera de dominio": {
+    etiqueta: "Fora do dom\xEDnio",
+    detalle: "O intervalo de integra\xE7\xE3o cai fora do dom\xEDnio real da fun\xE7\xE3o."
+  },
+  "L\xEDmites no num\xE9ricos": {
+    etiqueta: "Limites n\xE3o num\xE9ricos",
+    detalle: "Os limites de integra\xE7\xE3o n\xE3o avaliam para um n\xFAmero real."
+  }
+};
+
+// src/i18n/index.ts
+var IDIOMAS = ["en", "es", "pt"];
+var IDIOMA_POR_DEFECTO = "en";
+var RECURSOS = { en: EN, es: ES, pt: PT };
 var idiomaActual = IDIOMA_POR_DEFECTO;
 function fijarIdioma(id) {
-  idiomaActual = IDIOMAS.includes(id != null ? id : "") ? id : IDIOMA_POR_DEFECTO;
+  idiomaActual = IDIOMAS.includes(id ?? "") ? id : IDIOMA_POR_DEFECTO;
 }
 function t() {
   return RECURSOS[idiomaActual];
 }
 function localizarVelo(velo) {
-  var _a;
   if (idiomaActual === "es")
     return velo;
-  return (_a = VELO_NUCLEO_EN[velo.etiqueta]) != null ? _a : velo;
+  const mapa = idiomaActual === "pt" ? VELO_NUCLEO_PT : VELO_NUCLEO_EN;
+  return mapa[velo.etiqueta] ?? velo;
 }
 
 // src/host-obsidian/ajustes.ts
@@ -59632,6 +59523,14 @@ var PestanaAjustesLMath = class extends import_obsidian2.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
+    /** La fila del selector de idioma, mientras está montada. Ver la nota en su `render`. */
+    this.filaIdioma = null;
+  }
+  /** Escribe el rótulo y la descripción de la fila del idioma en el idioma ACTIVO. */
+  escribirFilaIdioma() {
+    const T = t();
+    this.filaIdioma?.setName(T.ajustes.idioma.nombre);
+    this.filaIdioma?.setDesc(T.ajustes.idioma.desc);
   }
   /**
    * Definición declarativa de la pestaña. Los `key` son las propias claves de
@@ -59641,7 +59540,27 @@ var PestanaAjustesLMath = class extends import_obsidian2.PluginSettingTab {
   getSettingDefinitions() {
     const txt = t();
     return [
-      // Idioma PRIMERO: cambiarlo repinta la pestaña (via update()) en el nuevo idioma.
+      // Idioma PRIMERO: cambiarlo reescribe el texto de TODA la pestaña, la suya incluida.
+      //
+      // Es la única fila que se monta de forma IMPERATIVA (`render`) en vez de declarativa, por
+      // un motivo medido: Obsidian REUTILIZA la fila ya renderizada cuando su `name` no cambia,
+      // y entonces no reescribe su `desc`. Con esta fila eso es un problema real, porque su
+      // rótulo se traduce a sí mismo:
+      //
+      //     en → "Language"   ·   es → "Idioma"   ·   pt → "Idioma"
+      //
+      // Entre inglés y español el rótulo cambia, la fila se reconstruye y todo cuadra. Entre
+      // español y portugués es BYTE A BYTE EL MISMO, así que la fila se reaprovechaba y la
+      // descripción se quedaba en el idioma anterior. El síntoma parecía «el portugués no
+      // funciona» cuando en realidad era «esta fila no se repinta si el rótulo coincide».
+      //
+      // Cambiar la palabra portuguesa lo habría tapado, pero por casualidad: volvería a romperse
+      // con el próximo idioma que también diga «Idioma». Con `render` guardamos el `Setting` y le
+      // reescribimos rótulo y descripción a mano en `setControlValue`, y deja de importar cómo
+      // decida Obsidian reutilizar las filas.
+      //
+      // Se conservan `name` y `desc` en la definición porque son los que indexa el BUSCADOR de
+      // ajustes; lo que pinta la fila es el `render`.
       {
         type: "group",
         heading: txt.ajustes.idioma.seccion,
@@ -59649,13 +59568,22 @@ var PestanaAjustesLMath = class extends import_obsidian2.PluginSettingTab {
           {
             name: txt.ajustes.idioma.nombre,
             desc: txt.ajustes.idioma.desc,
-            control: {
-              type: "dropdown",
-              key: "idioma",
-              options: {
-                en: txt.ajustes.idioma.opcionEn,
-                es: txt.ajustes.idioma.opcionEs
-              }
+            render: (setting) => {
+              this.filaIdioma = setting;
+              this.escribirFilaIdioma();
+              setting.addDropdown((dd) => {
+                const T = t();
+                dd.addOption("en", T.ajustes.idioma.opcionEn);
+                dd.addOption("es", T.ajustes.idioma.opcionEs);
+                dd.addOption("pt", T.ajustes.idioma.opcionPt);
+                dd.setValue(this.plugin.ajustes.idioma);
+                dd.onChange((v) => {
+                  void this.setControlValue("idioma", v);
+                });
+              });
+              return () => {
+                this.filaIdioma = null;
+              };
             }
           }
         ]
@@ -59740,15 +59668,23 @@ var PestanaAjustesLMath = class extends import_obsidian2.PluginSettingTab {
    * textos ya traducidos dentro: sin esa llamada la pestaña se queda escrita en el idioma
    * anterior hasta que se cierra y se vuelve a abrir. `update()` es API de 1.13.0, así que
    * hasta esta versión (`minAppVersion` 1.12.7) referenciarla era `no-unsupported-api`.
+   *
+   * Y al final, SIEMPRE, el aviso a los bloques. Es lo que hace que un ajuste se vea en el
+   * momento: antes la pestaña se repintaba al instante pero los bloques ya renderizados se
+   * quedaban con el idioma, la unidad y las transformaciones con las que nacieron, y había que
+   * tocar la nota para verlos cambiar. Va aquí, en el único sitio por el que pasan todos los
+   * controles, y no en cada `case`: un ajuste nuevo lo hereda sin que nadie se acuerde de él.
    */
   async setControlValue(key, value) {
     switch (key) {
       case "idioma": {
-        const idioma = value === "es" ? "es" : "en";
+        const idioma = IDIOMAS.includes(value) ? value : IDIOMA_POR_DEFECTO;
         this.plugin.ajustes.idioma = idioma;
         fijarIdioma(idioma);
         await this.plugin.guardarAjustes();
         this.update();
+        this.escribirFilaIdioma();
+        this.plugin.notificarCambioDeAjustes();
         return;
       }
       case "despejarAuto":
@@ -59770,13 +59706,3151 @@ var PestanaAjustesLMath = class extends import_obsidian2.PluginSettingTab {
         return;
     }
     await this.plugin.guardarAjustes();
+    this.plugin.notificarCambioDeAjustes();
   }
 };
 
-// src/host-obsidian/plataforma.ts
+// src/host-obsidian/analysis/clasificacion.ts
+function clasificarBloque(ecuaciones, rasgos, source = "") {
+  const admiteRestriccion = !rasgos.derivada && !rasgos.integral;
+  const noSoportados = comandosNoSoportados(
+    admiteRestriccion ? sinRestricciones(source) : source
+  );
+  if (admiteRestriccion) {
+    const ilegible = restriccionIlegible(source);
+    if (ilegible)
+      return ilegible;
+    const vacia = restriccionVacia(source);
+    if (vacia)
+      return vacia;
+    const ajena = restriccionAjena(ecuaciones);
+    if (ajena)
+      return ajena;
+  }
+  if (noSoportados.length > 0) {
+    return {
+      etiqueta: noSoportados.length === 1 ? t().velo.simboloNoSoportado : t().velo.simbolosNoSoportados,
+      detalle: t().velo.simboloDetalle(noSoportados.join(", "))
+    };
+  }
+  if (rasgos.integral && ecuaciones.length === 0) {
+    if (/\\int/.test(source)) {
+      return { ...t().velo.integrandoNoValido };
+    }
+    return { ...t().velo.sinIntegral };
+  }
+  if (rasgos.integral) {
+    const etiqueta = etiquetaIntegral(source);
+    if (etiqueta)
+      return etiqueta;
+  }
+  if (rasgos.sistema) {
+    if (ecuaciones.length === 0) {
+      return { ...t().velo.sinSistema };
+    }
+    if (ecuaciones.length === 1) {
+      return { ...t().velo.sistemaIncompleto };
+    }
+    return null;
+  }
+  if (ecuaciones.length === 0) {
+    return { ...t().velo.sinFuncion };
+  }
+  return degeneradaDeEcuacion(ecuaciones[0]);
+}
+function degeneradaDeEcuacion(ec) {
+  const comp = funcionDelParametro(ec);
+  if (comp) {
+    const enX = renombrarParametroAX(insertarProductoImplicito(normalizarEntrada(comp.expr.trim())));
+    try {
+      return clasificarDegenerada(compilarFuncion(enX, "x"));
+    } catch {
+      return null;
+    }
+  }
+  const partes = ec.split("=");
+  let expr = null;
+  if (partes.length === 1)
+    expr = partes[0];
+  else if (partes.length === 2) {
+    if (normalizarEntrada(partes[0].trim()) === "y")
+      expr = partes[1];
+    else if (normalizarEntrada(partes[1].trim()) === "y")
+      expr = partes[0];
+  }
+  if (expr === null)
+    return null;
+  if (expr.trim() === "") {
+    return { ...t().velo.sinFuncion };
+  }
+  try {
+    const norm3 = insertarProductoImplicito(normalizarEntrada(expr.trim()));
+    if (contieneYLibre(norm3))
+      return null;
+    const evalX = compilarFuncion(norm3, "x");
+    return clasificarDegenerada(evalX);
+  } catch {
+    return null;
+  }
+}
+function restriccionAjena(ecuaciones) {
+  for (const ec of ecuaciones) {
+    const r = separarRestriccion(ec).restriccion;
+    if (!r)
+      continue;
+    let objeto;
+    try {
+      objeto = construirObjeto(ec, "aviso");
+    } catch {
+      continue;
+    }
+    if (objeto.avisoRestriccion !== "variableAjena")
+      continue;
+    const propia = objeto.variables.join(" / ");
+    return t().velo.restriccionAjena(r.variable, propia);
+  }
+  return null;
+}
+function restriccionIlegible(source) {
+  for (const linea of lineasDeEcuacion(source)) {
+    const texto = separarRestriccion(linea).ilegible;
+    if (texto)
+      return t().velo.restriccionIlegible(texto);
+  }
+  return null;
+}
+function restriccionVacia(source) {
+  for (const linea of lineasDeEcuacion(source)) {
+    const r = separarRestriccion(linea).restriccion;
+    if (!r || r.min <= r.max)
+      continue;
+    const [izq, , der] = r.piezas;
+    const [a, b] = r.signos[0] === "le" ? [izq, der] : [der, izq];
+    return t().velo.restriccionVacia(r.variable, a, b);
+  }
+  return null;
+}
+function exprExplicita(ecuaciones, sistema) {
+  if (sistema || ecuaciones.length === 0)
+    return null;
+  if (separarRestriccion(ecuaciones[0]).restriccion !== null)
+    return null;
+  let tipo;
+  try {
+    tipo = construirObjeto(ecuaciones[0], "info").tipo;
+  } catch {
+    return null;
+  }
+  if (tipo !== "explicita")
+    return null;
+  const comp = funcionDelParametro(ecuaciones[0]);
+  if (comp) {
+    if (comp.eje === "x")
+      return null;
+    const enX = renombrarParametroAX(insertarProductoImplicito(normalizarEntrada(comp.expr.trim())));
+    return enX === "" ? null : enX;
+  }
+  const partes = ecuaciones[0].split("=");
+  let expr = null;
+  if (partes.length === 1)
+    expr = partes[0];
+  else if (partes.length === 2) {
+    if (normalizarEntrada(partes[0].trim()) === "y")
+      expr = partes[1];
+    else if (normalizarEntrada(partes[1].trim()) === "y")
+      expr = partes[0];
+  }
+  if (expr === null)
+    return null;
+  const norm3 = insertarProductoImplicito(normalizarEntrada(expr.trim()));
+  return norm3 === "" ? null : norm3;
+}
+
+// src/host-obsidian/ui/reparto.ts
+var ALTO_CONTROLES_TRIG = 86;
+var SEMI_Y_VECTOR = 7;
+var ALTO_PANEL = 261;
+var PAD_SUP_PANEL = 32;
+var PAD_LADO_PANEL = 8;
+var HUECO_TARJETAS = 10;
+var ALTO_TARJETA = (ALTO_PANEL - PAD_SUP_PANEL - PAD_LADO_PANEL - HUECO_TARJETAS) / 2;
+var ALTO_TARJETA_MAX = ALTO_PANEL - 2 * PAD_SUP_PANEL;
+var ALTO_MANDO_PARAMETRO = 18;
+function altoPanelPorTarjetas(n) {
+  const pedido = PAD_SUP_PANEL + n * ALTO_TARJETA + (n - 1) * HUECO_TARJETAS + PAD_LADO_PANEL;
+  return Math.max(ALTO_PANEL, Math.min(2 * ALTO_PANEL, pedido));
+}
+var ANCHO_MINIMO_COLUMNAS = 520;
+var PROPORCION_PLANO_FLOTANTE = 0.82;
+var ALTO_PANEL_FLOTANTE = 180;
+var MARGEN_FLOTANTE = 8;
+function ladoChip(tactil) {
+  return tactil ? 30 : 22;
+}
+function ladoIcono(lado) {
+  return Math.round(lado * 0.66);
+}
+function huecoChips(lado) {
+  return MARGEN_FLOTANTE + lado + MARGEN_FLOTANTE;
+}
+function aplicarCajaPanel(reparto) {
+  const panel = reparto.panel;
+  if (!panel)
+    return;
+  const suelo = huecoChips(reparto.ladoChip) + (reparto.huecoInferior ?? 0);
+  panel.style.cssText = reparto.estrecho ? `position:absolute; z-index:6; box-sizing:border-box; display:${reparto.abierto ? "flex" : "none"}; left:${MARGEN_FLOTANTE}px; right:${MARGEN_FLOTANTE}px; bottom:${suelo}px; width:auto; height:${ALTO_PANEL_FLOTANTE}px; padding:0; overflow:hidden; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:12px; box-shadow:var(--lmath-sombra-flotante);` : `position:relative; width:50%; height:${reparto.alto ?? ALTO_PANEL}px; padding:0; overflow:hidden;`;
+}
+function esTemaOscuro(el) {
+  return el.doc.body.classList.contains("theme-dark");
+}
+
+// src/host-obsidian/ui/scrollerLatex.ts
 var import_obsidian3 = require("obsidian");
+function crearScrollerLatex(plugin, contenedor, ctx, limpieza, reparto) {
+  const panelLatex = contenedor.createDiv({ cls: "lmath-latex" });
+  reparto.panel = panelLatex;
+  aplicarCajaPanel(reparto);
+  const zona = panelLatex.createDiv();
+  zona.setCssStyles({
+    position: "absolute",
+    inset: "0",
+    display: "flex",
+    flexDirection: "column",
+    boxSizing: "border-box"
+  });
+  const TOLERANCIA_SCROLL = 3;
+  let formulasVisibles = 1;
+  const tarjetasLlenan = () => formulasVisibles > 1 || reparto.estrecho;
+  const aplicarGeometriaZona = () => {
+    const llenan = tarjetasLlenan();
+    zona.style.padding = llenan ? `${PAD_SUP_PANEL}px ${PAD_LADO_PANEL}px ${PAD_LADO_PANEL}px ${PAD_LADO_PANEL}px` : `${PAD_LADO_PANEL}px`;
+    zona.style.gap = `${HUECO_TARJETAS}px`;
+    zona.style.justifyContent = llenan ? "flex-start" : "center";
+  };
+  aplicarGeometriaZona();
+  const observadorZona = new ResizeObserver(() => aplicarGeometriaZona());
+  observadorZona.observe(zona);
+  limpieza.register(() => observadorZona.disconnect());
+  const crearArea = (padre, estilo, compartirAlto) => {
+    const enmarcado = estilo === "enmarcado";
+    const llenar = () => compartirAlto || reparto.estrecho;
+    const flexMarco = llenar() ? "flex:1 1 0;" : `flex:0 0 auto; height:${ALTO_TARJETA}px;`;
+    const marco = padre.createDiv();
+    marco.style.cssText = "position:relative; overflow:hidden; min-height:0; " + flexMarco + (enmarcado ? " border:1px solid var(--lmath-borde); border-radius:12px; background:var(--lmath-superficie);" : "");
+    const area = marco.createDiv({ cls: "lmath-latex" });
+    area.style.cssText = `width:100%; height:100%; box-sizing:border-box; padding:${enmarcado ? "8px 24px" : "24px"}; display:flex; align-items:safe center; justify-content:safe center; overflow-x:hidden; overflow-y:hidden;`;
+    area.setCssStyles({ scrollbarWidth: "thin", scrollbarColor: "var(--lmath-borde) transparent" });
+    const fadeOverlay = marco.createDiv();
+    fadeOverlay.style.cssText = "position:absolute; inset:0; pointer-events:none; overflow:hidden; " + (enmarcado ? "border-radius:12px;" : "");
+    const fadeColor = "var(--lmath-superficie)";
+    const fadeIzq = fadeOverlay.createDiv();
+    fadeIzq.style.cssText = `position:absolute; top:0; bottom:0; left:0; width:32px; opacity:0; transition:opacity 0.15s ease; background:linear-gradient(to right, ${fadeColor}, transparent);`;
+    const fadeDer = fadeOverlay.createDiv();
+    fadeDer.style.cssText = `position:absolute; top:0; bottom:0; right:0; width:32px; opacity:0; transition:opacity 0.15s ease; background:linear-gradient(to left, ${fadeColor}, transparent);`;
+    const actualizarFade = () => {
+      const max3 = area.scrollWidth - area.clientWidth;
+      const desborda = max3 > TOLERANCIA_SCROLL;
+      area.style.overflowX = desborda ? "auto" : "hidden";
+      const sl = area.scrollLeft;
+      fadeIzq.style.opacity = desborda && sl > 0 ? "1" : "0";
+      fadeDer.style.opacity = desborda && sl < max3 - 1 ? "1" : "0";
+    };
+    area.addEventListener("scroll", actualizarFade);
+    const ajustarAlto = () => {
+      if (llenar()) {
+        marco.setCssStyles({ flex: "1 1 0", height: "" });
+      } else {
+        marco.setCssStyles({ flex: "0 0 auto" });
+        const hijo = area.firstElementChild;
+        const padV = enmarcado ? 16 : 48;
+        const necesario = (hijo?.scrollHeight ?? 0) + padV + 2;
+        const alto = necesario > ALTO_TARJETA + TOLERANCIA_SCROLL ? Math.min(ALTO_TARJETA_MAX, necesario) : ALTO_TARJETA;
+        marco.style.height = `${alto}px`;
+      }
+      area.style.overflowY = area.scrollHeight - area.clientHeight > TOLERANCIA_SCROLL ? "auto" : "hidden";
+    };
+    const refrescar = () => {
+      ajustarAlto();
+      actualizarFade();
+    };
+    const onWheel = (e3) => {
+      if (area.scrollWidth - area.clientWidth <= TOLERANCIA_SCROLL)
+        return;
+      e3.preventDefault();
+      const desplazamiento = e3.deltaY + e3.deltaX;
+      area.scrollLeft += Math.max(-40, Math.min(40, desplazamiento));
+    };
+    area.addEventListener("wheel", onWheel, { passive: false });
+    window.addEventListener("resize", refrescar);
+    const observador = new ResizeObserver(() => refrescar());
+    observador.observe(area);
+    const soltar = () => {
+      window.removeEventListener("resize", refrescar);
+      observador.disconnect();
+    };
+    return { area, actualizarFade: refrescar, soltar };
+  };
+  let soltarAreas = () => {
+  };
+  limpieza.register(() => soltarAreas());
+  const renderLatex = async (latex) => {
+    soltarAreas();
+    zona.empty();
+    const formulas = typeof latex === "string" ? [latex] : latex;
+    const compartirAlto = formulas.length > 1;
+    formulasVisibles = formulas.length;
+    aplicarGeometriaZona();
+    const areas = [];
+    const disposers = [];
+    for (const formula of formulas) {
+      const a = crearArea(zona, "enmarcado", compartirAlto);
+      areas.push(a);
+      disposers.push(a.soltar);
+      await import_obsidian3.MarkdownRenderer.render(
+        plugin.app,
+        "$$" + formula + "$$",
+        a.area,
+        ctx.sourcePath,
+        limpieza
+      );
+      a.area.scrollLeft = 0;
+    }
+    soltarAreas = () => disposers.forEach((d) => d());
+    window.requestAnimationFrame(
+      () => areas.forEach((a) => {
+        a.actualizarFade();
+        const maxY = a.area.scrollHeight - a.area.clientHeight;
+        if (maxY > TOLERANCIA_SCROLL)
+          a.area.scrollTop = maxY / 2;
+      })
+    );
+  };
+  return { panelLatex, zona, renderLatex };
+}
+
+// src/host-obsidian/ui/menu.ts
+function crearMenuDesplegable(panelLatex) {
+  const barra = panelLatex.createDiv();
+  barra.style.cssText = "position:absolute; top:8px; left:0; right:0; z-index:6; display:flex; gap:6px; justify-content:center; pointer-events:none;";
+  const menu = panelLatex.createDiv();
+  menu.style.cssText = "position:absolute; top:36px; left:0; right:0; z-index:7; display:none; flex-direction:column; align-items:center; pointer-events:none;";
+  const caja = menu.createDiv();
+  caja.style.cssText = 'pointer-events:auto; display:flex; flex-direction:column; gap:2px; padding:4px; border-radius:10px; background:var(--lmath-panel); border:1px solid var(--lmath-borde); box-shadow:var(--lmath-sombra-flotante); font-family:"Lora", var(--font-interface);';
+  const itemEstilo = (el, habilitado) => {
+    el.style.cssText = "padding:5px 14px; font-size:11px; line-height:1.15; user-select:none; border-radius:6px; white-space:nowrap; text-align:center; transition:background 0.12s ease, color 0.12s ease; " + (habilitado ? "color:var(--lmath-texto); cursor:pointer; pointer-events:auto;" : "color:var(--lmath-texto-apagado); cursor:default; pointer-events:none;");
+  };
+  return { barra, menu, caja, itemEstilo };
+}
+function cerrarMenuAlPulsarFuera(barra, caja, limpieza, cerrar) {
+  const onDocDown = (e3) => {
+    if (!barra.contains(e3.target) && !caja.contains(e3.target))
+      cerrar();
+  };
+  document.addEventListener("mousedown", onDocDown);
+  limpieza.register(() => document.removeEventListener("mousedown", onDocDown));
+}
+
+// src/host-obsidian/ui/estilos.ts
+function chromeBotonPanel(activo) {
+  return activo ? "color:var(--lmath-texto); background:var(--lmath-chip-activo); border:1px solid var(--lmath-borde-activo); box-shadow:var(--lmath-sombra);" : "color:var(--lmath-texto-tenue); background:var(--lmath-chip); border:1px solid var(--lmath-borde); box-shadow:var(--lmath-sombra);";
+}
+function estiloBotonPanel(b, activo) {
+  b.style.cssText = 'pointer-events:auto; padding:3px 10px; font-size:11px; line-height:1.15; cursor:pointer; user-select:none; border-radius:8px; white-space:nowrap; font-family:"Lora", var(--font-interface); transition:background 0.12s ease, color 0.12s ease; ' + chromeBotonPanel(activo);
+}
+function estiloBotonOpciones(b, activo) {
+  b.style.cssText = "pointer-events:auto; box-sizing:border-box; width:26px; height:22px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; cursor:pointer; user-select:none; border-radius:7px; transition:background 0.12s ease, color 0.12s ease; " + chromeBotonPanel(activo);
+}
+function estiloChipInfo(lado) {
+  return `position:absolute; bottom:8px; right:8px; width:${lado}px; height:${lado}px; display:flex; align-items:center; justify-content:center; line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; user-select:none; z-index:5;`;
+}
+function estiloPopoverInfo(lado) {
+  const bajo = 8 + lado + 6;
+  return `position:absolute; bottom:${bajo}px; right:8px; display:none; max-width:min(260px, calc(100% - 16px)); max-height:min(200px, calc(100% - ${bajo + 8}px)); overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:6px; font-size:11px; line-height:1.5; color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);`;
+}
+
+// src/host-obsidian/ui/controles.ts
+var import_obsidian4 = require("obsidian");
+
+// src/host-obsidian/ui/iconos.ts
+var ICONO = {
+  inicio: "M220-180h150v-250h220v250h150v-390L480-765 220-570v390Zm-60 60v-480l320-240 320 240v480H530v-250H430v250H160Zm320-353Z",
+  acercar: "M450-450H200v-60h250v-250h60v250h250v60H510v250h-60v-250Z",
+  alejar: "M200-450v-60h560v60H200Z",
+  carril: "M450-42v-75q-137-14-228-105T117-450H42v-60h75q14-137 105-228t228-105v-75h60v75q137 14 228 105t105 228h75v60h-75q-14 137-105 228T510-117v75h-60Zm244.5-223.5Q784-355 784-480t-89.5-214.5Q605-784 480-784t-214.5 89.5Q176-605 176-480t89.5 214.5Q355-176 480-176t214.5-89.5Zm-321-108Q330-417 330-480t43.5-106.5Q417-630 480-630t106.5 43.5Q630-543 630-480t-43.5 106.5Q543-330 480-330t-106.5-43.5ZM544-416q26-26 26-64t-26-64q-26-26-64-26t-64 26q-26 26-26 64t26 64q26 26 64 26t64-26Zm-64-64Z",
+  info: "M453-280h60v-240h-60v240Zm50.5-323.2q9.5-9.2 9.5-22.8 0-14.45-9.48-24.22-9.48-9.78-23.5-9.78t-23.52 9.78Q447-640.45 447-626q0 13.6 9.48 22.8 9.48 9.2 23.5 9.2t23.52-9.2ZM480.27-80q-82.74 0-155.5-31.5Q252-143 197.5-197.5t-86-127.34Q80-397.68 80-480.5t31.5-155.66Q143-709 197.5-763t127.34-85.5Q397.68-880 480.5-880t155.66 31.5Q709-817 763-763t85.5 127Q880-563 880-480.27q0 82.74-31.5 155.5Q817-252 763-197.68q-54 54.31-127 86Q563-80 480.27-80Zm.23-60Q622-140 721-239.5t99-241Q820-622 721.19-721T480-820q-141 0-240.5 98.81T140-480q0 141 99.5 240.5t241 99.5Zm-.5-340Z",
+  menu: "M120-240v-60h720v60H120Zm0-210v-60h720v60H120Zm0-210v-60h720v60H120Z",
+  reproducir: "M320-200v-560l440 280-440 280Z",
+  pausar: "M520-200v-560h240v560H520Zm-320 0v-560h240v560H200Z",
+  cerrar: "m249-207-42-42 231-231-231-231 42-42 231 231 231-231 42 42-231 231 231 231-42 42-231-231-231 231Z",
+  // Editar el bloque: en móvil no existe el botón `</>` de Obsidian —aparece al pasar el
+  // ratón, y no hay ratón—, así que el bloque se queda sin puerta a su propio código.
+  editar: "M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h405l-60 60H180v600h600v-348l60-60v408q0 24-18 42t-42 18H180Zm300-360ZM360-360v-170l382-382q9-9 20-13t22-4q11 0 22.32 4.5Q817.63-920 827-911l83 84q8.61 8.96 13.3 19.78 4.7 10.83 4.7 22.02 0 11.2-4.5 22.7T910-742L530-360H360Zm508-425-84-84 84 84ZM420-420h85l253-253-43-42-43-42-252 251v86Zm295-295-43-42 43 42 43 42-43-42Z",
+  // Los mandos de los parámetros declarados: una píldora con su manija, que es exactamente lo
+  // que abre el botón.
+  deslizadores: "M201-360q-53 0-86.5-33.5T81-480q0-53 33.5-86.5T201-600h558q53 0 86.5 33.5T879-480q0 53-33.5 86.5T759-360H201Zm365-60h197q26 0 43-17t17-43q0-34-17-47t-43-13H566v120Z"
+};
+var THETA = "M151.4 -272.1C198.2 -272.1 233.2 -211.2 229.5 -136.1C225.8 -60.9 184.9 0 138.1 0C91.3 0 56.3 -60.9 60 -136.1C63.7 -211.2 104.6 -272.1 151.4 -272.1ZM150.4 -251.9C123.4 -251.9 98.9 -200 95.8 -136.1C92.6 -72.1 112 -20.2 139.1 -20.2C166.1 -20.2 190.6 -72.1 193.7 -136.1C196.9 -200 177.5 -251.9 150.4 -251.9ZM60.6 -148.5L230.1 -148.5L228.9 -123.6L59.4 -123.6Z";
+var CAJA_UNIDAD = "30 -302 363 378";
+var GLIFO_UNIDAD = {
+  degrees: { caja: CAJA_UNIDAD, d: THETA + "M290.9 -79.5Q306.5 -79.5 319.2 -76.1Q331.9 -72.7 341 -65.4Q350.1 -58.2 355 -47.3Q360 -36.4 360 -21.4Q360 -8.3 355.6 3.8Q351.2 15.8 342.3 25.3Q333.5 34.8 320.2 40.3Q306.8 45.9 289.1 45.9L242.8 45.9L243.2 40Q250 39.6 252.7 36.8Q255.3 34.1 255.9 29.2Q256.4 24.2 256.6 18L260.9 -59.3Q261.2 -62.9 261.5 -66.2Q261.8 -69.5 262.1 -72.2Q258.7 -72 255.5 -71.8Q252.3 -71.6 248.9 -71.4L249.4 -79.3L290.9 -79.5ZM289.9 -72.9Q283.1 -72.9 280.1 -70.7Q277.2 -68.6 276.4 -64.1Q275.5 -59.6 275.2 -52.7L271.1 24.8Q270.9 29.6 270.5 33Q270.2 36.4 269.8 38.7Q273.8 38.9 277 39Q280.2 39.1 283.1 39.1Q286.1 39.1 289 39.1Q305.2 39.1 317.4 30.9Q329.6 22.8 336.4 8.9Q343.3 -4.9 343.3 -22.1Q343.3 -45.1 330.3 -59Q317.2 -72.9 289.9 -72.9Z" },
+  radians: { caja: CAJA_UNIDAD, d: THETA + "M297.2 -79.7Q314.5 -79.5 324.8 -75.2Q335.1 -70.9 339.5 -63.7Q343.9 -56.4 343.3 -46.9Q343 -40.1 340 -33.1Q337.1 -26 329.7 -20.3Q322.4 -14.6 308.6 -11.7Q311.5 -8.5 312.9 -7Q314.4 -5.5 315.2 -4.5Q316.1 -3.5 317.2 -1.7Q318.3 0.1 320.4 3.8L331.5 23Q334.4 27.8 337 31.7Q339.6 35.5 343.2 37.7Q346.9 40 352.4 40L352.1 45.9L330.3 45.9Q326.3 42.5 322.7 37.2Q319 31.9 315.4 26L304.5 6.9Q302.4 3 299.7 -1.9Q297 -6.7 293.4 -10.1Q291.8 -9.9 288.9 -9.9Q285.9 -9.9 283.4 -10Q280.9 -10.1 280.4 -10.1L278.6 24.6Q278.4 29.4 278.1 32.9Q277.7 36.4 277.3 38.7Q279.5 38.5 281.6 38.5Q283.8 38.4 285.9 38.2Q288.1 38 290.2 38L289.9 45.9L250.3 45.9L250.7 40Q257.5 39.6 260.2 36.8Q262.9 34.1 263.4 29.2Q263.9 24.2 264.1 18L268.2 -59.3Q268.4 -62.9 268.8 -66.2Q269.1 -69.5 269.5 -72.2Q266.2 -72 262.9 -71.8Q259.6 -71.6 256.4 -71.4L257 -79.3Q267 -79.5 276.9 -79.7Q286.8 -79.8 297.2 -79.7ZM296.1 -72.9Q289.9 -72.9 287.2 -70.4Q284.5 -67.9 283.8 -63.3Q283.1 -58.7 282.7 -52.3L280.7 -17.1Q283.6 -16.9 286.2 -16.7Q288.8 -16.5 291.8 -16.7Q301.7 -17.1 309.3 -19.9Q317 -22.8 321.6 -29.1Q326.2 -35.3 326.7 -45.5Q327.1 -52.3 325.4 -57.4Q323.7 -62.5 320 -66Q316.3 -69.5 310.3 -71.2Q304.3 -72.9 296.1 -72.9Z" },
+  gradians: { caja: CAJA_UNIDAD, d: THETA + "M297.2 48.7Q279.3 48.7 266.2 41.2Q253 33.7 246.3 19.6Q239.6 5.5 240.7 -14Q241.4 -26.7 245.8 -38.8Q250.2 -50.9 258.2 -60.7Q266.2 -70.5 278.1 -76.4Q290 -82.2 305.6 -82.2Q312 -82.2 318.6 -81Q325.1 -79.8 331.2 -77.7Q337.2 -75.6 342.1 -72.5L341.7 -80.9L351.5 -80.9L349.4 -40L343 -40Q342.8 -51.2 338 -59Q333.1 -66.8 324.9 -70.9Q316.7 -75 306.3 -75Q296.8 -75 288.2 -70.8Q279.7 -66.6 273 -59Q266.4 -51.4 262.3 -41Q258.2 -30.7 257.5 -18.1Q256.6 -1.3 262 11.9Q267.3 25.1 277.8 32.6Q288.2 40.2 302.4 40.2Q307.2 40.2 312.6 39.3Q317.9 38.4 323.3 36.3Q328.7 34.2 333.5 31.2L334.6 10.3Q334.9 5.6 335.1 1.2Q335.3 -3.3 335.5 -7.8Q332.4 -7.6 329.2 -7.4Q326 -7.2 322.9 -7.1L323.3 -14.9L363.2 -14.9L362.8 -9Q357.8 -9 355 -6.4Q352.3 -3.8 351 -0.2Q349.8 3.5 349.4 7Q349 10.5 348.9 12.3L347.4 39.4L343.1 39.4Q340.3 39.4 335.3 40.5Q330.3 41.6 323.7 44.1Q318.1 46.2 310.6 47.5Q303.1 48.7 297.2 48.7Z" }
+};
+var CICLO_UNIDAD = ["degrees", "radians", "gradians"];
+
+// src/host-obsidian/ui/controles.ts
+function ponerTooltip(el, texto) {
+  (0, import_obsidian4.setTooltip)(el, texto, { placement: "top" });
+}
+function ponerEtiquetaAccesible(el, texto) {
+  el.setAttribute("aria-label", texto);
+  el.setAttribute("data-tooltip-position", "top");
+}
+function crearBotonOpciones(barra, titulo) {
+  const b = barra.createDiv();
+  iconoBotonOpciones(b, false, titulo);
+  return b;
+}
+function iconoBotonOpciones(b, abierto, titulo) {
+  const nombre = abierto ? "cerrar" : "menu";
+  if (b.dataset.icono === nombre)
+    return;
+  b.dataset.icono = nombre;
+  b.empty();
+  montarIcono(b, nombre, 18);
+  ponerTooltip(b, abierto ? t().botones.cerrarMenu : titulo);
+}
+function montarIcono(el, nombre, px2) {
+  const svg = el.createSvg("svg", {
+    attr: { viewBox: "0 -960 960 960", width: px2, height: px2, fill: "currentColor" }
+  });
+  svg.createSvg("path", { attr: { d: ICONO[nombre] } });
+}
+function montarGlifoUnidad(el, unidad, px2) {
+  const { caja, d } = GLIFO_UNIDAD[unidad];
+  const [, , ancho, alto] = caja.split(" ").map(Number);
+  const escala2 = px2 / Math.max(ancho, alto);
+  const svg = el.createSvg("svg", {
+    attr: {
+      viewBox: caja,
+      width: Math.round(ancho * escala2),
+      height: Math.round(alto * escala2),
+      fill: "currentColor"
+    }
+  });
+  svg.createSvg("path", { attr: { d } });
+}
+function montarEtiquetaMath(plugin, el, tex, ctx) {
+  el.empty();
+  const hijo = new import_obsidian4.MarkdownRenderChild(el);
+  ctx.addChild(hijo);
+  void import_obsidian4.MarkdownRenderer.render(plugin.app, `$${tex}$`, el, ctx.sourcePath, hijo).then(() => {
+    const p = el.querySelector("p");
+    if (p) {
+      while (p.firstChild)
+        el.appendChild(p.firstChild);
+      p.remove();
+    }
+  });
+}
+
+// src/host-obsidian/ui/deslizador.ts
+function montarDeslizador(padre, op) {
+  const ALTO = op.alto ?? 22;
+  const MARGEN = Math.max(2, Math.round(ALTO * 3 / 22));
+  const LADO = ALTO - 2 * MARGEN;
+  const raiz = padre.createDiv({ cls: "lmath-slider" });
+  raiz.tabIndex = 0;
+  raiz.setAttribute("role", "slider");
+  ponerEtiquetaAccesible(raiz, op.etiqueta);
+  raiz.setAttribute("aria-valuemin", String(op.min));
+  raiz.setAttribute("aria-valuemax", String(op.max));
+  raiz.setCssProps({
+    "--lmath-slider-alto": `${ALTO}px`,
+    "--lmath-slider-manija": `${LADO}px`
+  });
+  raiz.createDiv({ cls: "lmath-slider-pista" });
+  const manija = raiz.createDiv({ cls: "lmath-slider-manija" });
+  let valor = op.valor;
+  const acotar2 = (v) => Math.max(op.min, Math.min(op.max, v));
+  const fijarValor = (v) => {
+    valor = acotar2(v);
+    const u = op.max === op.min ? 0 : (valor - op.min) / (op.max - op.min);
+    manija.setCssProps({
+      "--lmath-slider-x": `calc(${MARGEN}px + ${u} * (100% - ${LADO + 2 * MARGEN}px))`
+    });
+    raiz.setAttribute("aria-valuenow", valor.toFixed(op.decimales ?? 0));
+  };
+  fijarValor(op.valor);
+  const emitir = (v) => {
+    const rejilla = Math.round(acotar2(v) / op.paso) * op.paso;
+    const redondeado = Number(rejilla.toFixed(op.decimales ?? 0));
+    fijarValor(redondeado);
+    op.alCambiar(redondeado);
+  };
+  const valorEn = (clientX) => {
+    const caja = raiz.getBoundingClientRect();
+    const util = Math.max(1, caja.width - LADO - 2 * MARGEN);
+    const u = (clientX - caja.left - MARGEN - LADO / 2) / util;
+    return op.min + Math.max(0, Math.min(1, u)) * (op.max - op.min);
+  };
+  let arrastrando = false;
+  raiz.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0)
+      return;
+    arrastrando = true;
+    raiz.setPointerCapture(ev.pointerId);
+    raiz.focus();
+    emitir(valorEn(ev.clientX));
+  });
+  raiz.addEventListener("pointermove", (ev) => {
+    if (arrastrando)
+      emitir(valorEn(ev.clientX));
+  });
+  const soltar = (ev) => {
+    if (!arrastrando)
+      return;
+    arrastrando = false;
+    if (raiz.hasPointerCapture?.(ev.pointerId))
+      raiz.releasePointerCapture(ev.pointerId);
+  };
+  raiz.addEventListener("pointerup", soltar);
+  raiz.addEventListener("pointercancel", soltar);
+  raiz.addEventListener("keydown", (ev) => {
+    const salto = ev.shiftKey ? op.pasoGrande : op.paso;
+    let nuevo = null;
+    if (ev.key === "ArrowRight" || ev.key === "ArrowUp")
+      nuevo = valor + salto;
+    else if (ev.key === "ArrowLeft" || ev.key === "ArrowDown")
+      nuevo = valor - salto;
+    else if (ev.key === "Home")
+      nuevo = op.min;
+    else if (ev.key === "End")
+      nuevo = op.max;
+    if (nuevo === null)
+      return;
+    ev.preventDefault();
+    emitir(nuevo);
+  });
+  return { fijarValor };
+}
+function montarCajaMandos(plugin, panelLatex, parametros, ctx, alCambiar) {
+  const caja = panelLatex.createDiv({ cls: "lmath-parametros" });
+  for (const p of parametros) {
+    const fila = caja.createDiv({ cls: "lmath-parametro" });
+    const nombre = fila.createDiv({ cls: "lmath-parametro-nombre" });
+    montarEtiquetaMath(plugin, nombre, p.escrito, ctx);
+    const r = recorridoDe(p.valor);
+    const lectura = fila.createDiv({ cls: "lmath-parametro-valor" });
+    lectura.setText(p.valor.toFixed(r.decimales));
+    montarDeslizador(fila, {
+      min: r.min,
+      max: r.max,
+      valor: p.valor,
+      etiqueta: t().parametros.mando(p.escrito),
+      paso: r.paso,
+      pasoGrande: r.pasoGrande,
+      decimales: r.decimales,
+      alto: ALTO_MANDO_PARAMETRO,
+      alCambiar: (v) => {
+        lectura.setText(v.toFixed(r.decimales));
+        alCambiar(p.nombre, v);
+      }
+    });
+  }
+  return caja;
+}
+
+// src/host-obsidian/analysis/transformaciones.ts
+function baseAutomatica(ecuaciones, ajustes) {
+  let base = ecuaciones;
+  if (ajustes.despejarAuto) {
+    try {
+      base = despejarEcuaciones(base);
+    } catch {
+    }
+  }
+  try {
+    base = simplificarEcuaciones(base);
+  } catch {
+  }
+  return base;
+}
+
+// src/host-obsidian/ui/paneles.ts
+async function montarPanelVistas(motor, contenedor, ctx, limpieza, reparto, config4) {
+  const { panelLatex, renderLatex } = crearScrollerLatex(motor.plugin, contenedor, ctx, limpieza, reparto);
+  const enLista = (f) => typeof f === "string" ? [f] : f;
+  const operador = enLista(config4.operador);
+  const resultado = enLista(config4.resultado);
+  const latexDe = (v) => v === "operador" ? operador : v === "resultado" ? resultado : [...operador, ...resultado];
+  const firmaDe = (v) => latexDe(v).join(" ");
+  const { barra, menu, caja, itemEstilo } = crearMenuDesplegable(panelLatex);
+  const btnOriginal = barra.createDiv();
+  ponerTooltip(btnOriginal, config4.tooltipOperador);
+  montarEtiquetaMath(motor.plugin, btnOriginal, config4.glifoOperador, ctx);
+  const btnOpciones = crearBotonOpciones(barra, config4.tooltipOpciones);
+  const items = config4.opciones.map((o) => {
+    const el = caja.createDiv();
+    ponerTooltip(el, o.etiqueta);
+    montarEtiquetaMath(motor.plugin, el, o.tex, ctx);
+    return el;
+  });
+  let vista = "operador";
+  let abierto = false;
+  const sincronizar = () => {
+    estiloBotonPanel(btnOriginal, vista === "operador");
+    estiloBotonOpciones(btnOpciones, vista !== "operador" || abierto);
+    iconoBotonOpciones(btnOpciones, abierto, config4.tooltipOpciones);
+    const actual = firmaDe(vista);
+    items.forEach((el, i2) => itemEstilo(el, firmaDe(config4.opciones[i2].vista) !== actual));
+    menu.style.display = abierto ? "flex" : "none";
+  };
+  const aplicar = async (i2) => {
+    abierto = false;
+    const v = config4.opciones[i2].vista;
+    if (firmaDe(v) !== firmaDe(vista)) {
+      vista = v;
+      await renderLatex(latexDe(vista));
+    }
+    sincronizar();
+  };
+  btnOriginal.addEventListener("click", () => void (async () => {
+    abierto = false;
+    if (vista !== "operador") {
+      vista = "operador";
+      await renderLatex(operador);
+    }
+    sincronizar();
+  })());
+  btnOpciones.addEventListener("click", (e3) => {
+    e3.stopPropagation();
+    abierto = !abierto;
+    sincronizar();
+  });
+  items.forEach((el, i2) => el.addEventListener("click", () => void aplicar(i2)));
+  cerrarMenuAlPulsarFuera(barra, caja, limpieza, () => {
+    if (!abierto)
+      return;
+    abierto = false;
+    sincronizar();
+  });
+  sincronizar();
+  await renderLatex(operador);
+}
+async function montarPanelLatex(motor, contenedor, ecuaciones, ctx, limpieza, reparto, mandos) {
+  const { panelLatex, zona, renderLatex } = crearScrollerLatex(motor.plugin, contenedor, ctx, limpieza, reparto);
+  const cajaMandos = mandos && mandos.parametros.length > 0 ? montarCajaMandos(motor.plugin, panelLatex, mandos.parametros, ctx, mandos.alCambiar) : null;
+  const ajustes = motor.obtenerAjustes();
+  const base = baseAutomatica(ecuaciones, ajustes);
+  const original = bloqueALatex(base, motor.sistema);
+  const todas = [
+    // `etiqueta` = título accesible; `tex` = glifo matemático RENDERIZADO en el botón.
+    { etiqueta: t().botones.despejarY, tex: "y=f(x)", auto: ajustes.despejarAuto, fn: despejarEcuaciones }
+  ];
+  const transformaciones = todas.filter((t2) => !t2.auto);
+  const hayTransformaciones = ecuaciones.length > 0 && transformaciones.length > 0;
+  if (hayTransformaciones || cajaMandos) {
+    let estado = base;
+    const { barra, menu, caja, itemEstilo } = crearMenuDesplegable(panelLatex);
+    const estiloBoton = (b, activo) => estiloBotonPanel(b, activo);
+    const btnOriginal = barra.createDiv();
+    ponerTooltip(btnOriginal, t().botones.original);
+    montarEtiquetaMath(
+      motor.plugin,
+      btnOriginal,
+      motor.sistema ? "\\scriptscriptstyle\\begin{cases}~\\\\[1.1ex]~\\end{cases}" : "f(x)",
+      ctx
+    );
+    const btnMandos = cajaMandos ? barra.createDiv() : null;
+    if (btnMandos) {
+      ponerTooltip(btnMandos, t().botones.parametros);
+      montarIcono(btnMandos, "deslizadores", 16);
+    }
+    let enMandos = false;
+    const verMandos = (si) => {
+      enMandos = si;
+      zona.setCssStyles({ display: si ? "none" : "flex" });
+      cajaMandos?.setCssStyles({ display: si ? "flex" : "none" });
+    };
+    const btnOpciones = hayTransformaciones ? crearBotonOpciones(barra, t().botones.transformaciones) : null;
+    const items = transformaciones.map((t2) => {
+      const el = caja.createDiv();
+      ponerTooltip(el, t2.etiqueta);
+      montarEtiquetaMath(motor.plugin, el, t2.tex, ctx);
+      return el;
+    });
+    let abierto = false;
+    const esOriginal = () => bloqueALatex(estado) === original;
+    const sincronizar = () => {
+      estiloBoton(btnOriginal, !enMandos && esOriginal());
+      if (btnMandos)
+        estiloBotonOpciones(btnMandos, enMandos);
+      if (btnOpciones) {
+        estiloBotonOpciones(btnOpciones, !enMandos && !esOriginal() || abierto);
+        iconoBotonOpciones(btnOpciones, abierto, t().botones.transformaciones);
+      }
+      const actual = bloqueALatex(estado);
+      items.forEach((el, i2) => itemEstilo(el, bloqueALatex(transformaciones[i2].fn(estado)) !== actual));
+      menu.style.display = abierto ? "flex" : "none";
+    };
+    const aplicar = async (i2) => {
+      abierto = false;
+      verMandos(false);
+      const nuevo = transformaciones[i2].fn(estado);
+      if (bloqueALatex(nuevo) !== bloqueALatex(estado)) {
+        estado = nuevo;
+        await renderLatex(bloqueALatex(estado));
+      }
+      sincronizar();
+    };
+    btnOriginal.addEventListener("click", () => void (async () => {
+      abierto = false;
+      verMandos(false);
+      if (!esOriginal()) {
+        estado = base;
+        await renderLatex(original);
+      }
+      sincronizar();
+    })());
+    btnMandos?.addEventListener("click", () => {
+      abierto = false;
+      verMandos(!enMandos);
+      sincronizar();
+    });
+    btnOpciones?.addEventListener("click", (e3) => {
+      e3.stopPropagation();
+      abierto = !abierto;
+      sincronizar();
+    });
+    items.forEach((el, i2) => el.addEventListener("click", () => void aplicar(i2)));
+    cerrarMenuAlPulsarFuera(barra, caja, limpieza, () => {
+      if (!abierto)
+        return;
+      abierto = false;
+      sincronizar();
+    });
+    sincronizar();
+  }
+  await renderLatex(original);
+}
+async function montarPanelDerivada(motor, contenedor, ecuaciones, ctx, limpieza, reparto) {
+  const operadorSimp = derivadaOperadorSimplificadoLatex(ecuaciones);
+  const operador = operadorSimp ?? derivadaOperadorLatex(ecuaciones);
+  await montarPanelVistas(motor, contenedor, ctx, limpieza, reparto, {
+    operador,
+    resultado: derivadaLatex(ecuaciones),
+    glifoOperador: "\\frac{d}{dx}\\left(f(x)\\right)",
+    tooltipOperador: t().botones.operador,
+    tooltipOpciones: t().botones.derivadaEvaluada,
+    opciones: [
+      { etiqueta: t().botones.derivada, tex: "f'(x)", vista: "resultado" },
+      // Vista combinada: su glifo APILA el operador sobre la derivada (representa que
+      // muestra ambas expresiones a la vez, una debajo de la otra).
+      {
+        etiqueta: t().botones.operadorYDerivada,
+        tex: "\\begin{matrix}\\frac{d}{dx}\\left(f(x)\\right)\\\\ f'\\left(x\\right)\\end{matrix}",
+        vista: "ambas"
+      }
+    ]
+  });
+}
+async function montarPanelIntegral(motor, contenedor, source, ctx, limpieza, reparto) {
+  const operador = integralOperadorLatex(source);
+  const { cuerpo, conector } = cuerpoAreaLatexExacto(source);
+  const barrow = integralPrimitivaLatex(source);
+  const resultado = cuerpo === null ? barrow ?? operador : barrow ? `${barrow} ${conector} ${cuerpo}` : integralValorLatex(source, cuerpo, conector);
+  await montarPanelVistas(motor, contenedor, ctx, limpieza, reparto, {
+    operador,
+    resultado,
+    // Glifo del botón principal: el operador integral (`∫ₐᵇ f dx`), análogo al `d/dx(f(x))`
+    // del botón "Operador" de obs-derivate.
+    glifoOperador: "\\int_a^b f(x)\\,dx",
+    tooltipOperador: t().botones.operador,
+    tooltipOpciones: t().botones.primitivaEvaluada,
+    opciones: [
+      // La PRIMITIVA evaluada (glifo `[F(x)]_a^b`) y AMBAS (operador apilado sobre
+      // primitiva). Espejo de "Derivada" / "Operador y derivada" de obs-derivate.
+      { etiqueta: t().botones.primitiva, tex: "\\left[F(x)\\right]_a^b", vista: "resultado" },
+      {
+        etiqueta: t().botones.operadorYPrimitiva,
+        tex: "\\begin{matrix}\\int_a^b f\\,dx\\\\ \\left[F(x)\\right]_a^b\\end{matrix}",
+        vista: "ambas"
+      }
+    ]
+  });
+}
+
+// src/host-obsidian/analysis/lineasAnalisis.ts
+var MAX_LISTA_DERIVADA = 6;
+function nombrePatron(p) {
+  const P4 = t().polar.patron;
+  switch (p.tipo) {
+    case "circunferenciaCentrada":
+      return P4.circunferenciaCentrada;
+    case "circunferenciaPorPolo":
+      return P4.circunferenciaPorPolo;
+    case "rosa":
+      return P4.rosa(String(p.petalos));
+    case "cardioide":
+      return P4.cardioide;
+    case "limaconLazo":
+      return P4.limaconLazo;
+    case "limaconHoyuelo":
+      return P4.limaconHoyuelo;
+    case "limaconConvexo":
+      return P4.limaconConvexo;
+  }
+}
+function lineasPolar(a) {
+  const T = t().polar;
+  const lineas = [];
+  const familia = a.patron ? nombrePatron(a.patron) : null;
+  lineas.push(familia ? `${T.titulo} \xB7 ${familia}` : T.titulo);
+  const periodoInformativo = a.periodoR !== null && (a.ordenRotacional !== null || a.periodoR > 2 * Math.PI + 1e-6);
+  if (periodoInformativo && a.periodoR !== null) {
+    const trozos = [T.periodo(numeroATexto(a.periodoR))];
+    if (a.ordenRotacional !== null)
+      trozos.push(T.ordenRotacional(String(a.ordenRotacional)));
+    lineas.push(trozos.join(" \xB7 "));
+  }
+  if (a.simetrias.length > 0) {
+    const nombres = a.simetrias.map((s) => s === "polo" ? T.simetriaPolo : s === "ejePolar" ? T.simetriaEjePolar : T.simetriaVertical);
+    lineas.push(T.simetriasPrefijo + nombres.join(", "));
+  }
+  const radioConstante = Math.abs(a.rMax - a.rMin) < 1e-9;
+  if (radioConstante) {
+    lineas.push(T.radioConstante(numeroATexto(a.rMax)));
+  } else {
+    lineas.push(T.rangoRadial(numeroATexto(a.rMin), numeroATexto(a.rMax)));
+    if (a.cambiaSigno)
+      lineas.push(T.cambiaSigno);
+    const extremos = T.extremosEn(
+      numeroATexto(a.thetaRMax),
+      numeroATexto(a.thetaRMin)
+    );
+    lineas.push(
+      a.ordenRotacional !== null && a.periodoR !== null ? T.masMultiplos(extremos, numeroATexto(a.periodoR)) : extremos
+    );
+  }
+  if (a.angulosPolo === null)
+    lineas.push(T.poloDemasiados);
+  else if (a.angulosPolo.length === 0)
+    lineas.push(T.noPasaPorPolo);
+  else
+    lineas.push(T.pasaPorPolo(a.angulosPolo.map(numeroATexto).join(", ")));
+  if (a.areaBarrida !== null)
+    lineas.push(T.areaBarrida(
+      numeroATexto(a.areaBarrida),
+      numeroATexto(a.intervaloArea)
+    ));
+  return lineas;
+}
+function nombreFamilia(f) {
+  const F = t().parametrica.familia;
+  switch (f.tipo) {
+    case "circunferencia":
+      return F.circunferencia;
+    case "elipse":
+      return F.elipse;
+    case "lissajous":
+      return F.lissajous(String(f.a), String(f.b), numeroATexto(f.desfase));
+  }
+}
+function lineasParametricas(a) {
+  const T = t().parametrica;
+  const lineas = [];
+  const familia = a.familia ? nombreFamilia(a.familia) : null;
+  lineas.push(familia ? `${T.titulo} \xB7 ${familia}` : T.titulo);
+  const trozos = [T.intervalo(numeroATexto(a.tMin), numeroATexto(a.tMax))];
+  if (a.cerrada)
+    trozos.push(T.cerrada);
+  if (a.periodo !== null) {
+    trozos.push(a.periodoExcedeDominio ? T.periodoExcede(numeroATexto(a.periodo)) : T.periodo(numeroATexto(a.periodo)));
+  }
+  lineas.push(trozos.join(" \xB7 "));
+  lineas.push(T.caja(
+    numeroATexto(a.xMin),
+    numeroATexto(a.xMax),
+    numeroATexto(a.yMin),
+    numeroATexto(a.yMax)
+  ));
+  if (a.pasaPorOrigen)
+    lineas.push(T.pasaPorOrigen);
+  if (a.simetrias.length > 0) {
+    const nombres = a.simetrias.map((s) => s === "origen" ? T.simetriaOrigen : s === "ejeX" ? T.simetriaEjeX : T.simetriaEjeY);
+    lineas.push(T.simetriasPrefijo + nombres.join(", "));
+  }
+  if (a.autointersecciones !== null) {
+    lineas.push(a.autointersecciones === 0 ? T.sinAutointersecciones : T.autointersecciones(String(a.autointersecciones)));
+  }
+  const cierre = [];
+  if (a.longitud !== null)
+    cierre.push(T.longitud(numeroATexto(a.longitud)));
+  if (a.areaAlgebraica !== null)
+    cierre.push(T.areaAlgebraica(numeroATexto(a.areaAlgebraica)));
+  if (cierre.length > 0)
+    lineas.push(cierre.join(" \xB7 "));
+  return lineas;
+}
+function intervaloATexto(a, b) {
+  const n = (v) => v === Infinity ? "\u221E" : v === -Infinity ? "-\u221E" : numeroATexto(v);
+  return `(${n(a)}, ${n(b)})`;
+}
+function lineasDerivada(A, esTrig) {
+  const T = t().derivada;
+  const lineas = [{ texto: T.titulo }];
+  const push = (texto, sangrado) => lineas.push({ texto, sangrado });
+  if (A.pendienteEn0 !== null)
+    push(T.pendienteEn0(numeroATexto(A.pendienteEn0)));
+  const nombreTipo = (tipo) => T.tipo[tipo];
+  const estCriticos = estadoGrupo(A.criticos.length, esTrig);
+  if (estCriticos === "infinitas")
+    push(T.criticosInfinitos);
+  else if (estCriticos === "demasiadas" || A.criticos.length > MAX_LISTA_DERIVADA) {
+    if (A.criticos.length > 0)
+      push(T.criticosDemasiados);
+  } else if (A.criticos.length === 1) {
+    push(T.criticoUno(
+      T.criticoItem(numeroATexto(A.criticos[0].x), nombreTipo(A.criticos[0].tipo))
+    ));
+  } else if (A.criticos.length > 1) {
+    push(T.criticosPrefijo);
+    for (const c of A.criticos)
+      push(T.criticoItem(numeroATexto(c.x), nombreTipo(c.tipo)), true);
+  }
+  if (A.monotonia !== null)
+    for (const tramo of A.monotonia)
+      push((tramo.creciente ? T.creciente : T.decreciente)(
+        intervaloATexto(tramo.a, tramo.b)
+      ));
+  const estInflex = estadoGrupo(A.inflexiones.length, esTrig);
+  if (estInflex === "infinitas")
+    push(T.inflexionesInfinitas);
+  else if (estInflex === "demasiadas" || A.inflexiones.length > MAX_LISTA_DERIVADA) {
+    if (A.inflexiones.length > 0)
+      push(T.inflexionesDemasiadas);
+  } else if (A.inflexiones.length === 1) {
+    push(T.inflexionUna(numeroATexto(A.inflexiones[0])));
+  } else if (A.inflexiones.length > 1) {
+    push(T.inflexionesPrefijo);
+    for (const x of A.inflexiones)
+      push(T.punto(numeroATexto(x)), true);
+  }
+  if (A.noDerivables !== null && A.noDerivables.length > 0) {
+    if (A.noDerivables.length === 1)
+      push(T.noDerivableUno(numeroATexto(A.noDerivables[0])));
+    else {
+      push(T.noDerivablesPrefijo);
+      for (const x of A.noDerivables)
+        push(T.punto(numeroATexto(x)), true);
+    }
+  }
+  if (A.acotadoPorRango)
+    push(T.rangoAnalisis(numeroATexto(A.rango[0]), numeroATexto(A.rango[1])));
+  return lineas;
+}
+function lineasIntegral(A, variable, source) {
+  const T = t().integral;
+  const lineas = [];
+  const cabecera = [T.titulo];
+  if (A.impropia && A.singularidades.length > 0)
+    cabecera.push(T.impropia(variable, A.singularidades.map(numeroATexto).join(", ")));
+  lineas.push({ texto: cabecera.join(" \xB7 ") });
+  if (A.a === A.b) {
+    lineas.push({ texto: T.intervaloVacio });
+    return lineas;
+  }
+  lineas.push({
+    texto: T.intervalo(
+      numeroATexto(Math.min(A.a, A.b)),
+      numeroATexto(Math.max(A.a, A.b)),
+      variable
+    )
+  });
+  if (A.invertido)
+    lineas.push({ texto: T.limitesInvertidos });
+  const { cuerpo, conector } = cuerpoAreaLatexExacto(source);
+  const tex = cuerpo ? conector === "=" ? cuerpo : `\\approx ${cuerpo}` : numeroALatex(A.valor);
+  const nota = A.invertido ? null : A.signo === 1 ? T.valorEsArea : A.signo === -1 ? T.valorBajoEje : A.signo === 0 ? T.integrandoNulo : T.valorFirmado;
+  lineas.push({ texto: T.valorPrefijo, tex, cola: nota ? ` \xB7 ${nota}` : void 0 });
+  if (A.signo === null) {
+    if (A.cruces === null)
+      lineas.push({ texto: T.crucesMuchos });
+    else if (A.cruces.length > 0)
+      lineas.push({ texto: T.cruces(variable, A.cruces.map(numeroATexto).join(", ")) });
+  }
+  if (A.areaPositiva !== null && A.areaNegativa !== null) {
+    lineas.push({ texto: T.areaPositiva(numeroATexto(A.areaPositiva)) });
+    lineas.push({ texto: T.areaNegativa(numeroATexto(A.areaNegativa)) });
+  }
+  if (A.promedio !== null)
+    lineas.push({ texto: T.promedio(numeroATexto(A.promedio)) });
+  return lineas;
+}
+
+// src/core/analysis/analisisDerivada.ts
+var RANGO2 = { min: -10, max: 10, pasos: 1e3 };
+var MAX_TRAMOS = 4;
+var MAX_CANDIDATOS = 40;
+var SALTO_RELATIVO = 0.5;
+var H_LEJOS = 1e-3;
+var H_CERCA = 1e-5;
+var PERSISTENCIA = 0.3;
+function clasificarQuiebre(df, x) {
+  const lLejos = df(x - H_LEJOS), rLejos = df(x + H_LEJOS);
+  const lCerca = df(x - H_CERCA), rCerca = df(x + H_CERCA);
+  if ([lLejos, rLejos, lCerca, rCerca].some(Number.isNaN))
+    return null;
+  const diverge = (cerca3, lejos2) => !Number.isFinite(cerca3) || Math.abs(cerca3) > 3 * Math.abs(lejos2) + 1;
+  const divIzq = diverge(lCerca, lLejos), divDer = diverge(rCerca, rLejos);
+  if (divIzq || divDer) {
+    if (!divIzq || !divDer)
+      return "cuspide";
+    return lCerca > 0 === rCerca > 0 ? "tangenteVertical" : "cuspide";
+  }
+  const lejos = Math.abs(lLejos - rLejos), cerca2 = Math.abs(lCerca - rCerca);
+  const escala2 = 1 + Math.max(Math.abs(lCerca), Math.abs(rCerca));
+  if (cerca2 < 1e-3 * escala2)
+    return null;
+  if (cerca2 < PERSISTENCIA * lejos)
+    return null;
+  return "esquina";
+}
+function continuaEn(f, x) {
+  const izq = f(x - H_CERCA), der = f(x + H_CERCA);
+  if (!Number.isFinite(izq) || !Number.isFinite(der) || !Number.isFinite(f(x)))
+    return false;
+  return Math.abs(izq - der) < 1e-3 * (1 + Math.max(Math.abs(izq), Math.abs(der)));
+}
+function detectarNoDerivables(f, df, xs, fv, dv) {
+  const celdas = [];
+  for (let i2 = 0; i2 + 1 < xs.length; i2++) {
+    if (!Number.isFinite(fv[i2]) || !Number.isFinite(fv[i2 + 1]))
+      continue;
+    const a = dv[i2], b = dv[i2 + 1];
+    const finA = Number.isFinite(a), finB = Number.isFinite(b);
+    if (finA && finB) {
+      const escala2 = 1 + Math.max(Math.abs(a), Math.abs(b));
+      if (Math.abs(a - b) <= SALTO_RELATIVO * escala2)
+        continue;
+    }
+    if (!finA && !finB)
+      continue;
+    celdas.push([xs[i2], xs[i2 + 1]]);
+    if (celdas.length > MAX_CANDIDATOS)
+      return null;
+  }
+  const puntos = [];
+  for (const [x1, x2] of celdas) {
+    let lo = x1, hi = x2;
+    for (let i2 = 0; i2 < 50; i2++) {
+      const m = (lo + hi) / 2;
+      const dm = df(m), dlo = df(lo);
+      const rotoIzq = !Number.isFinite(dm) || !Number.isFinite(dlo) || Math.abs(dm - dlo) > SALTO_RELATIVO * (1 + Math.max(Math.abs(dm), Math.abs(dlo)));
+      if (rotoIzq)
+        hi = m;
+      else
+        lo = m;
+    }
+    const x = (lo + hi) / 2;
+    const limpio = Math.abs(x) < 1e-9 ? 0 : Math.round(x * 1e9) / 1e9;
+    if (puntos.some((p) => Math.abs(p.x - limpio) < 1e-4))
+      continue;
+    if (!continuaEn(f, limpio))
+      continue;
+    const tipo = clasificarQuiebre(df, limpio);
+    if (!tipo)
+      continue;
+    puntos.push({ x: limpio, tipo });
+  }
+  return puntos.sort((p, q) => p.x - q.x);
+}
+function tipoDeCero(df, x, paso) {
+  let izq = 0, der = 0;
+  for (let h = paso; h > paso / 1e3; h /= 10) {
+    const a = df(x - h), b = df(x + h);
+    if (!Number.isFinite(a) || !Number.isFinite(b))
+      continue;
+    if (izq === 0 && Math.abs(a) > 1e-12)
+      izq = a > 0 ? 1 : -1;
+    if (der === 0 && Math.abs(b) > 1e-12)
+      der = b > 0 ? 1 : -1;
+    if (izq !== 0 && der !== 0)
+      break;
+  }
+  if (izq === 0 || der === 0 || izq === der)
+    return "estacionario";
+  return izq > 0 ? "maximo" : "minimo";
+}
+function nadaContradiceInfinito(f, df, signo3, positivo) {
+  let x = signo3 * 100;
+  for (let i2 = 0; i2 < 15; i2++) {
+    const fv = f(x), dvv = df(x);
+    if (Number.isNaN(fv))
+      return false;
+    if (Number.isFinite(dvv) && dvv !== 0 && dvv > 0 !== positivo)
+      return false;
+    x *= 10;
+  }
+  return true;
+}
+function frontera(pred, xDentro, xFuera) {
+  let dentro2 = xDentro, fuera = xFuera;
+  for (let i2 = 0; i2 < 60; i2++) {
+    const m = (dentro2 + fuera) / 2;
+    if (pred(m))
+      dentro2 = m;
+    else
+      fuera = m;
+  }
+  return (dentro2 + fuera) / 2;
+}
+function detectarMonotonia(f, df, xs, fv, dv) {
+  const tramos = [];
+  let inicio = -1, signo3 = 0;
+  const cerrar = (i2) => {
+    if (inicio < 0 || signo3 === 0)
+      return;
+    tramos.push({ a: xs[inicio], b: xs[i2], creciente: signo3 > 0 });
+    inicio = -1;
+    signo3 = 0;
+  };
+  for (let i2 = 0; i2 < xs.length; i2++) {
+    const vivo = Number.isFinite(fv[i2]) && Number.isFinite(dv[i2]);
+    const s = vivo && dv[i2] !== 0 ? dv[i2] > 0 ? 1 : -1 : 0;
+    if (!vivo) {
+      cerrar(i2 > 0 ? i2 - 1 : 0);
+      continue;
+    }
+    if (s === 0)
+      continue;
+    if (signo3 === 0) {
+      inicio = i2;
+      signo3 = s;
+      continue;
+    }
+    if (s !== signo3) {
+      cerrar(i2 - 1);
+      inicio = i2;
+      signo3 = s;
+    }
+  }
+  cerrar(xs.length - 1);
+  if (tramos.length === 0 || tramos.length > MAX_TRAMOS)
+    return tramos.length === 0 ? [] : null;
+  const dentro2 = (x) => Number.isFinite(f(x)) && Number.isFinite(df(x));
+  const paso = (RANGO2.max - RANGO2.min) / RANGO2.pasos;
+  const refinados = tramos.map((t2) => {
+    let a = t2.a, b = t2.b;
+    const mismoSigno = (x) => dentro2(x) && df(x) > 0 === t2.creciente;
+    if (a > RANGO2.min + paso / 2)
+      a = frontera(mismoSigno, a, a - paso);
+    if (b < RANGO2.max - paso / 2)
+      b = frontera(mismoSigno, b, b + paso);
+    return { a, b, creciente: t2.creciente };
+  });
+  const ultimo = refinados.length - 1;
+  if (refinados[0].a <= RANGO2.min + paso / 2 && nadaContradiceInfinito(f, df, -1, refinados[0].creciente))
+    refinados[0] = { ...refinados[0], a: -Infinity };
+  if (refinados[ultimo].b >= RANGO2.max - paso / 2 && nadaContradiceInfinito(f, df, 1, refinados[ultimo].creciente))
+    refinados[ultimo] = { ...refinados[ultimo], b: Infinity };
+  return refinados;
+}
+function analizarDerivada(f, df) {
+  const { min: min3, max: max3, pasos } = RANGO2;
+  const delta = (max3 - min3) / pasos;
+  const xs = new Array(pasos + 1);
+  const fv = new Array(pasos + 1);
+  const dv = new Array(pasos + 1);
+  for (let i2 = 0; i2 <= pasos; i2++) {
+    const x = min3 + i2 * delta;
+    xs[i2] = x;
+    fv[i2] = f(x);
+    dv[i2] = df(x);
+  }
+  const dfDom = (x) => Number.isFinite(f(x)) ? df(x) : NaN;
+  const analisis = analizarFuncion(dfDom);
+  const quiebres = detectarNoDerivables(f, df, xs, fv, dv);
+  const ceros = analisis.intervalosRaiz.length > 0 ? [] : analisis.raices.filter(
+    (x) => !(quiebres ?? []).some((p) => Math.abs(p.x - x) < 1e-4)
+  );
+  const criticos = [
+    ...ceros.map((x) => ({ x, tipo: tipoDeCero(df, x, delta) })),
+    ...(quiebres ?? []).map((p) => ({ x: p.x, tipo: p.tipo }))
+  ].sort((p, q) => p.x - q.x);
+  const inflexiones = analisis.vertices.map((v) => v.x).sort((p, q) => p - q);
+  const d0 = Number.isFinite(f(0)) ? df(0) : NaN;
+  const monotonia = detectarMonotonia(f, df, xs, fv, dv);
+  const acotadoPorRango = monotonia !== null && monotonia.length > 0 && (monotonia[0].a <= min3 + delta / 2 && monotonia[0].a !== -Infinity || monotonia[monotonia.length - 1].b >= max3 - delta / 2 && monotonia[monotonia.length - 1].b !== Infinity);
+  return {
+    pendienteEn0: Number.isFinite(d0) ? d0 : null,
+    criticos,
+    monotonia,
+    inflexiones,
+    noDerivables: quiebres === null ? null : quiebres.map((p) => p.x),
+    acotadoPorRango,
+    rango: [min3, max3]
+  };
+}
+
+// src/core/analysis/analisisIntegral.ts
+var MUESTRAS2 = 1024;
+var MAX_CRUCES = 6;
+var ITERS_BISECCION = 60;
+function raizEntre(g, x1, x2) {
+  let lo = x1, hi = x2;
+  let flo = g(lo);
+  for (let i2 = 0; i2 < ITERS_BISECCION; i2++) {
+    const m = (lo + hi) / 2;
+    const fm = g(m);
+    if (fm === 0 || !Number.isFinite(fm))
+      return m;
+    if (fm > 0 === flo > 0) {
+      lo = m;
+      flo = fm;
+    } else {
+      hi = m;
+    }
+  }
+  return (lo + hi) / 2;
+}
+function barrerSignos(g, lo, hi) {
+  const paso = (hi - lo) / MUESTRAS2;
+  const cruces = [];
+  let xPrev = NaN, sPrev = 0;
+  let vioPositivo = false, vioNegativo = false;
+  for (let i2 = 0; i2 <= MUESTRAS2; i2++) {
+    const x = i2 === MUESTRAS2 ? hi : lo + paso * i2;
+    const v = g(x);
+    if (!Number.isFinite(v) || v === 0)
+      continue;
+    const s = v > 0 ? 1 : -1;
+    if (s > 0)
+      vioPositivo = true;
+    else
+      vioNegativo = true;
+    if (sPrev !== 0 && s !== sPrev) {
+      cruces.push(raizEntre(g, xPrev, x));
+      if (cruces.length > MAX_CRUCES)
+        return { cruces: null, signo: null };
+    }
+    xPrev = x;
+    sPrev = s;
+  }
+  if (cruces.length > 0)
+    return { cruces, signo: null };
+  const signo3 = vioPositivo ? 1 : vioNegativo ? -1 : 0;
+  return { cruces, signo: signo3 };
+}
+function descomponer(f, lo, hi, cruces, total, impropia) {
+  const cortes = [lo, ...cruces, hi];
+  let positiva = 0, negativa = 0;
+  for (let i2 = 0; i2 + 1 < cortes.length; i2++) {
+    const r = areaDefinida(f, cortes[i2], cortes[i2 + 1]);
+    if (r.tipo !== "valor")
+      return null;
+    if (r.valor >= 0)
+      positiva += r.valor;
+    else
+      negativa += r.valor;
+  }
+  const tol = impropia ? 1e-3 : 1e-6;
+  if (Math.abs(positiva + negativa - total) > tol * (1 + Math.abs(total)))
+    return null;
+  return { positiva, negativa };
+}
+function analizarIntegral(f, a, b) {
+  if (!Number.isFinite(a) || !Number.isFinite(b))
+    return null;
+  const area = areaDefinida(f, a, b);
+  if (area.tipo !== "valor")
+    return null;
+  const invertido = a > b;
+  const lo = Math.min(a, b), hi = Math.max(a, b);
+  const g = (x) => f.eval(x);
+  if (lo === hi) {
+    return {
+      a,
+      b,
+      valor: 0,
+      impropia: false,
+      singularidades: [],
+      invertido,
+      signo: null,
+      cruces: [],
+      areaPositiva: null,
+      areaNegativa: null,
+      promedio: null
+    };
+  }
+  const singularidades = area.impropia ? [lo, hi].filter((x) => !Number.isFinite(g(x))) : [];
+  const { cruces, signo: signo3 } = barrerSignos(g, lo, hi);
+  let areaPositiva = null;
+  let areaNegativa = null;
+  if (cruces !== null && cruces.length > 0) {
+    const partes = descomponer(f, lo, hi, cruces, invertido ? -area.valor : area.valor, area.impropia);
+    if (partes) {
+      areaPositiva = partes.positiva;
+      areaNegativa = partes.negativa;
+    }
+  }
+  return {
+    a,
+    b,
+    valor: area.valor,
+    impropia: area.impropia,
+    singularidades,
+    invertido,
+    signo: signo3,
+    cruces,
+    areaPositiva,
+    areaNegativa,
+    // Valor medio: ∫ₐᵇf/(b−a). Con los límites al revés se invierten numerador y
+    // denominador a la vez, así que el promedio sale igual (y correcto) sin caso aparte.
+    promedio: area.valor / (b - a)
+  };
+}
+
+// src/host-obsidian/info/botones.ts
+function montarBotonInfoDerivada(motor, wrap, fExpr, dfExpr, lado, exclusion) {
+  let f;
+  let df;
+  try {
+    const fc = compilarFuncion(insertarProductoImplicito(normalizarEntrada(fExpr)), "x");
+    const dc = compilarFuncion(dfExpr, "x");
+    f = (x) => {
+      const v = fc(x);
+      return typeof v === "number" ? v : NaN;
+    };
+    df = (x) => {
+      const v = dc(x);
+      return typeof v === "number" ? v : NaN;
+    };
+  } catch {
+    return false;
+  }
+  const btnInfo = wrap.createDiv();
+  ponerTooltip(btnInfo, t().botones.resumenDerivada);
+  btnInfo.style.cssText = estiloChipInfo(lado);
+  montarIcono(btnInfo, "info", ladoIcono(lado));
+  const pop = wrap.createDiv();
+  pop.style.cssText = estiloPopoverInfo(lado);
+  exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
+  const esTrig = tieneTrigonometria(dfExpr);
+  let montado = false;
+  const rellenar = () => {
+    if (montado)
+      return;
+    montado = true;
+    let A = null;
+    try {
+      A = analizarDerivada(f, df);
+    } catch {
+    }
+    if (!A)
+      return;
+    for (const l of lineasDerivada(A, esTrig)) {
+      const div2 = pop.createDiv({ text: l.texto });
+      if (l.sangrado)
+        div2.setCssStyles({ paddingLeft: "10px" });
+    }
+  };
+  btnInfo.addEventListener("click", (e3) => {
+    e3.stopPropagation();
+    const abierto = pop.style.display !== "none";
+    if (!abierto) {
+      exclusion.alAbrir();
+      rellenar();
+    }
+    pop.setCssStyles({ display: abierto ? "none" : "block" });
+  });
+  return true;
+}
+function montarBotonInfoIntegral(motor, wrap, source, ctx, lado, exclusion) {
+  const it = extraerIntegral(source);
+  if (!it)
+    return false;
+  const a = evaluarLimite(it.a), b = evaluarLimite(it.b);
+  if (a === null || b === null)
+    return false;
+  const btnInfo = wrap.createDiv();
+  ponerTooltip(btnInfo, t().botones.resumenIntegral);
+  btnInfo.style.cssText = estiloChipInfo(lado);
+  montarIcono(btnInfo, "info", ladoIcono(lado));
+  const pop = wrap.createDiv();
+  pop.style.cssText = estiloPopoverInfo(lado);
+  exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
+  let montado = false;
+  const rellenar = () => {
+    if (montado)
+      return;
+    montado = true;
+    let A = null;
+    try {
+      A = analizarIntegral(
+        crearFuncionReal(insertarProductoImplicito(normalizarEntrada(it.integrando))),
+        a,
+        b
+      );
+    } catch {
+    }
+    if (!A)
+      return;
+    for (const l of lineasIntegral(A, it.variable, source)) {
+      const div2 = pop.createDiv({ text: l.texto });
+      if (l.tex)
+        montarEtiquetaMath(motor.plugin, div2.createSpan(), l.tex, ctx);
+      if (l.cola)
+        div2.createSpan({ text: l.cola });
+    }
+  };
+  btnInfo.addEventListener("click", (e3) => {
+    e3.stopPropagation();
+    const abierto = pop.style.display !== "none";
+    if (!abierto) {
+      exclusion.alAbrir();
+      rellenar();
+    }
+    pop.setCssStyles({ display: abierto ? "none" : "block" });
+  });
+  return true;
+}
+function montarBotonInfo(motor, wrap, expr, ctx, lado, exclusion) {
+  let evalX;
+  try {
+    const evalXRaw = compilarFuncion(expr, "x");
+    evalX = (x) => {
+      const v = evalXRaw(x);
+      return typeof v === "number" ? v : NaN;
+    };
+  } catch {
+    return;
+  }
+  const analisis = analizarFuncion(evalX);
+  const interseccionY = evalX(0);
+  const esTrig = tieneTrigonometria(expr);
+  const estadoRaices = estadoGrupo(
+    analisis.raices.length + analisis.intervalosRaiz.length,
+    esTrig
+  );
+  const estadoVertices = estadoGrupo(analisis.vertices.length, esTrig);
+  let id\u00E9nticamenteCero = false;
+  try {
+    id\u00E9nticamenteCero = simplify(expr).toString() === "0";
+  } catch {
+  }
+  const T = t().resumen;
+  const lineas = [];
+  if (id\u00E9nticamenteCero) {
+    lineas.push({ texto: T.interseccionYCero });
+    lineas.push({ texto: T.identicamenteCero });
+  } else {
+    lineas.push({
+      texto: Number.isFinite(interseccionY) ? T.interseccionY(numeroATexto(interseccionY)) : T.interseccionYNoDefinida
+    });
+    if (estadoRaices === "infinitas")
+      lineas.push({ texto: T.raicesInfinitas });
+    else if (estadoRaices === "demasiadas")
+      lineas.push({ texto: T.raicesDemasiadas });
+    else if (analisis.intervalosRaiz.length > 0)
+      lineas.push({ texto: T.raicesPrefijo, tex: raicesALatex(analisis.intervalosRaiz, analisis.raices) });
+    else if (analisis.raices.length > 0)
+      lineas.push({ texto: T.raicesPrefijo + analisis.raices.map(numeroATexto).join(", ") });
+    else
+      lineas.push({ texto: T.noRaices });
+    if (estadoVertices === "infinitas")
+      lineas.push({ texto: T.verticesInfinitos });
+    else if (estadoVertices === "demasiadas")
+      lineas.push({ texto: T.verticesDemasiados });
+    else if (analisis.vertices.length > 0)
+      for (const v of analisis.vertices)
+        lineas.push({
+          texto: (v.tipo === "min" ? T.verticeMin : T.verticeMax)(
+            numeroATexto(v.x),
+            numeroATexto(v.y)
+          )
+        });
+    else
+      lineas.push({ texto: T.noVertices });
+  }
+  const btnInfo = wrap.createDiv();
+  ponerTooltip(btnInfo, t().botones.resumenNotables);
+  btnInfo.style.cssText = estiloChipInfo(lado);
+  montarIcono(btnInfo, "info", ladoIcono(lado));
+  const pop = wrap.createDiv();
+  pop.style.cssText = estiloPopoverInfo(lado);
+  exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
+  for (const l of lineas) {
+    const div2 = pop.createDiv({ text: l.texto });
+    if (l.tex)
+      montarEtiquetaMath(motor.plugin, div2.createSpan(), l.tex, ctx);
+  }
+  btnInfo.addEventListener("click", (e3) => {
+    e3.stopPropagation();
+    const abierto = pop.style.display !== "none";
+    if (!abierto)
+      exclusion.alAbrir();
+    pop.setCssStyles({ display: abierto ? "none" : "block" });
+  });
+}
+
+// src/core/analysis/analisisPolar.ts
+var DOS_PI2 = 2 * Math.PI;
+var MUESTRAS3 = 4096;
+var TOL_REL2 = 1e-6;
+var MAX_ANGULOS_POLO = 12;
+function refinarExtremo(g, a, b, buscarMaximo) {
+  let lo = a, hi = b;
+  for (let i2 = 0; i2 < 80; i2++) {
+    const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3;
+    const v1 = g(m1), v2 = g(m2);
+    const peor1 = !Number.isFinite(v1);
+    const peor2 = !Number.isFinite(v2);
+    if (peor1 && peor2)
+      break;
+    const mejor2 = peor1 || !peor2 && (buscarMaximo ? v2 > v1 : v2 < v1);
+    if (mejor2)
+      lo = m1;
+    else
+      hi = m2;
+  }
+  const t2 = (lo + hi) / 2;
+  return { t: t2, v: g(t2) };
+}
+function refinarCero(g, a, b) {
+  let lo = a, hi = b;
+  const fLo = g(lo);
+  for (let i2 = 0; i2 < 60; i2++) {
+    const m = (lo + hi) / 2;
+    const fm = g(m);
+    if (!Number.isFinite(fm))
+      break;
+    if (fm === 0)
+      return m;
+    if (fLo * fm < 0)
+      hi = m;
+    else
+      lo = m;
+  }
+  return (lo + hi) / 2;
+}
+function simetriaValida(g, P4, periodica, reflejar, signo3, escala2) {
+  let comprobadas = 0;
+  for (let i2 = 0; i2 < 64; i2++) {
+    const th = (i2 + 0.5) * (P4 / 64);
+    let espejo = reflejar(th);
+    if (periodica)
+      espejo = (espejo % P4 + P4) % P4;
+    else if (espejo < 0 || espejo > P4)
+      return false;
+    const a = signo3 * g(th), b = g(espejo);
+    if (!Number.isFinite(a) || !Number.isFinite(b))
+      continue;
+    if (Math.abs(a - b) > TOL_REL2 * Math.max(1, escala2))
+      return false;
+    comprobadas++;
+  }
+  return comprobadas >= 16;
+}
+function clasificarPatron(g) {
+  const N = 512;
+  const KMAX = 24;
+  const rs = new Array(N);
+  for (let i2 = 0; i2 < N; i2++) {
+    const v = g(i2 * DOS_PI2 / N);
+    if (!Number.isFinite(v))
+      return null;
+    rs[i2] = v;
+  }
+  const a0 = rs.reduce((s, v) => s + v, 0) / N;
+  let energia = rs.reduce((s, v) => s + (v - a0) * (v - a0), 0) / N;
+  let mejorK = 0, mejorAmp = 0;
+  for (let k = 1; k <= KMAX; k++) {
+    let A = 0, B = 0;
+    for (let i2 = 0; i2 < N; i2++) {
+      const th = i2 * DOS_PI2 / N;
+      A += rs[i2] * Math.cos(k * th);
+      B += rs[i2] * Math.sin(k * th);
+    }
+    const amp = 2 / N * Math.hypot(A, B);
+    if (amp > mejorAmp) {
+      mejorAmp = amp;
+      mejorK = k;
+    }
+  }
+  const escala2 = Math.max(Math.abs(a0), mejorAmp);
+  if (escala2 < 1e-9)
+    return null;
+  energia -= mejorAmp * mejorAmp / 2;
+  const residuo = Math.sqrt(Math.max(0, energia)) / escala2;
+  if (residuo > 0.01)
+    return null;
+  const casiCero = (v) => Math.abs(v) < 0.01 * escala2;
+  if (casiCero(mejorAmp))
+    return { tipo: "circunferenciaCentrada" };
+  if (casiCero(a0)) {
+    if (mejorK === 1)
+      return { tipo: "circunferenciaPorPolo" };
+    return { tipo: "rosa", petalos: mejorK % 2 === 1 ? mejorK : 2 * mejorK };
+  }
+  if (mejorK !== 1)
+    return null;
+  const a = Math.abs(a0);
+  if (Math.abs(a - mejorAmp) < 0.01 * escala2)
+    return { tipo: "cardioide" };
+  if (a < mejorAmp)
+    return { tipo: "limaconLazo" };
+  if (a < 2 * mejorAmp)
+    return { tipo: "limaconHoyuelo" };
+  return { tipo: "limaconConvexo" };
+}
+function analizarPolar(exprR) {
+  let g;
+  try {
+    const crudo = compilarFuncion(exprR, "theta");
+    g = (t2) => {
+      const v = crudo(t2);
+      return typeof v === "number" ? v : NaN;
+    };
+  } catch {
+    return null;
+  }
+  const [, periodoCurva] = dominioPolar(exprR);
+  const periodoR = periodoDeR(exprR);
+  const paso = periodoCurva / MUESTRAS3;
+  const ths = new Array(MUESTRAS3 + 1);
+  const rs = new Array(MUESTRAS3 + 1);
+  let finitas = 0;
+  for (let i2 = 0; i2 <= MUESTRAS3; i2++) {
+    ths[i2] = i2 * paso;
+    rs[i2] = g(ths[i2]);
+    if (Number.isFinite(rs[i2]))
+      finitas++;
+  }
+  if (finitas < 8)
+    return null;
+  let iMin = -1, iMax = -1;
+  for (let i2 = 0; i2 <= MUESTRAS3; i2++) {
+    if (!Number.isFinite(rs[i2]))
+      continue;
+    if (iMin < 0 || rs[i2] < rs[iMin])
+      iMin = i2;
+    if (iMax < 0 || rs[i2] > rs[iMax])
+      iMax = i2;
+  }
+  const vecindad = (i2) => [
+    ths[Math.max(0, i2 - 1)],
+    ths[Math.min(MUESTRAS3, i2 + 1)]
+  ];
+  const [aMin, bMin] = vecindad(iMin);
+  const [aMax, bMax] = vecindad(iMax);
+  const extMin = refinarExtremo(g, aMin, bMin, false);
+  const extMax = refinarExtremo(g, aMax, bMax, true);
+  const mejoraMin = Number.isFinite(extMin.v) && extMin.v < rs[iMin];
+  const rMin = mejoraMin ? extMin.v : rs[iMin];
+  const thetaRMin = mejoraMin ? extMin.t : ths[iMin];
+  const mejoraMax = Number.isFinite(extMax.v) && extMax.v > rs[iMax];
+  const rMax = mejoraMax ? extMax.v : rs[iMax];
+  const thetaRMax = mejoraMax ? extMax.t : ths[iMax];
+  const escala2 = Math.max(Math.abs(rMin), Math.abs(rMax));
+  const cerosPolo = [];
+  let demasiadosCeros = false;
+  for (let i2 = 0; i2 < MUESTRAS3 && !demasiadosCeros; i2++) {
+    const a = rs[i2], b = rs[i2 + 1];
+    if (!Number.isFinite(a) || !Number.isFinite(b))
+      continue;
+    if (a !== 0 && a * b >= 0)
+      continue;
+    const raiz = a === 0 ? ths[i2] : refinarCero(g, ths[i2], ths[i2 + 1]);
+    const repetido = cerosPolo.some(
+      (t2) => Math.abs(t2 - raiz) < paso || periodoR !== null && Math.abs(((raiz - t2) % periodoR + periodoR) % periodoR) < paso
+    );
+    if (!repetido)
+      cerosPolo.push(raiz);
+    if (cerosPolo.length > MAX_ANGULOS_POLO)
+      demasiadosCeros = true;
+  }
+  const angulosPolo = demasiadosCeros ? null : cerosPolo;
+  let periodicaEnDominio = true;
+  for (let i2 = 0; i2 < 16 && periodicaEnDominio; i2++) {
+    const th = (i2 + 0.5) * (periodoCurva / 16);
+    const a = g(th), b = g(th + periodoCurva);
+    if (!Number.isFinite(a) || !Number.isFinite(b))
+      continue;
+    if (Math.abs(a - b) > TOL_REL2 * Math.max(1, escala2))
+      periodicaEnDominio = false;
+  }
+  const sim = (reflejar, signo3) => simetriaValida(g, periodoCurva, periodicaEnDominio, reflejar, signo3, escala2);
+  const simetrias = [];
+  if (sim((t2) => t2 + Math.PI, 1))
+    simetrias.push("polo");
+  if (sim((t2) => -t2, 1) || sim((t2) => Math.PI - t2, -1))
+    simetrias.push("ejePolar");
+  if (sim((t2) => Math.PI - t2, 1) || sim((t2) => -t2, -1))
+    simetrias.push("vertical");
+  let areaBarrida = null;
+  if (finitas === MUESTRAS3 + 1) {
+    let suma3 = rs[0] * rs[0] + rs[MUESTRAS3] * rs[MUESTRAS3];
+    for (let i2 = 1; i2 < MUESTRAS3; i2++)
+      suma3 += (i2 % 2 === 1 ? 4 : 2) * rs[i2] * rs[i2];
+    const integral = suma3 * paso / 3;
+    if (Number.isFinite(integral))
+      areaBarrida = integral / 2;
+  }
+  let ordenRotacional = null;
+  if (periodoR !== null && periodoR > 0) {
+    const n = DOS_PI2 / periodoR;
+    const redondeado = Math.round(n);
+    if (redondeado >= 2 && Math.abs(n - redondeado) < 1e-6)
+      ordenRotacional = redondeado;
+  }
+  return {
+    periodoR,
+    ordenRotacional,
+    simetrias,
+    rMin,
+    rMax,
+    thetaRMin,
+    thetaRMax,
+    cambiaSigno: rMin < 0 && rMax > 0,
+    angulosPolo,
+    areaBarrida,
+    intervaloArea: periodoCurva,
+    patron: clasificarPatron(g)
+  };
+}
+
+// src/core/analysis/analisisParametrico.ts
+var DOS_PI3 = 2 * Math.PI;
+var MUESTRAS4 = 2e3;
+var TOL_REL3 = 1e-6;
+var MAX_AUTOINTERSECCIONES = 200;
+function refinarExtremo2(g, a, b, buscarMaximo) {
+  let lo = a, hi = b;
+  for (let i2 = 0; i2 < 60; i2++) {
+    const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3;
+    const v1 = g(m1), v2 = g(m2);
+    const malo1 = !Number.isFinite(v1), malo2 = !Number.isFinite(v2);
+    if (malo1 && malo2)
+      break;
+    const mejor2 = malo1 || !malo2 && (buscarMaximo ? v2 > v1 : v2 < v1);
+    if (mejor2)
+      lo = m1;
+    else
+      hi = m2;
+  }
+  return g((lo + hi) / 2);
+}
+function corteSegmentos(a, b, c, d) {
+  const r = { x: b.x - a.x, y: b.y - a.y };
+  const s = { x: d.x - c.x, y: d.y - c.y };
+  const den = r.x * s.y - r.y * s.x;
+  if (Math.abs(den) < 1e-15)
+    return null;
+  const t2 = ((c.x - a.x) * s.y - (c.y - a.y) * s.x) / den;
+  const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / den;
+  const EPS3 = 1e-9;
+  if (t2 < -EPS3 || t2 > 1 + EPS3 || u < -EPS3 || u > 1 + EPS3)
+    return null;
+  return { x: a.x + t2 * r.x, y: a.y + t2 * r.y };
+}
+function armonicaDominante(vs) {
+  const N = vs.length;
+  const KMAX = 16;
+  const media = vs.reduce((s, v) => s + v, 0) / N;
+  let energia = vs.reduce((s, v) => s + (v - media) * (v - media), 0) / N;
+  if (energia < 1e-18)
+    return null;
+  let mejorK = 0, mejorA = 0, mejorB = 0, mejorAmp = 0;
+  for (let k = 1; k <= KMAX; k++) {
+    let A = 0, B = 0;
+    for (let i2 = 0; i2 < N; i2++) {
+      const th = i2 * DOS_PI3 / N;
+      A += vs[i2] * Math.sin(k * th);
+      B += vs[i2] * Math.cos(k * th);
+    }
+    A *= 2 / N;
+    B *= 2 / N;
+    const amp = Math.hypot(A, B);
+    if (amp > mejorAmp) {
+      mejorAmp = amp;
+      mejorK = k;
+      mejorA = A;
+      mejorB = B;
+    }
+  }
+  if (mejorK === 0 || mejorAmp < 1e-9)
+    return null;
+  energia -= mejorAmp * mejorAmp / 2;
+  const residuo = Math.sqrt(Math.max(0, energia)) / mejorAmp;
+  return { k: mejorK, amplitud: mejorAmp, fase: Math.atan2(mejorB, mejorA), residuo };
+}
+function analizarParametrico(exprX, exprY, tMin, tMax, muestras = MUESTRAS4) {
+  const MUESTRAS6 = muestras;
+  let gx;
+  let gy;
+  try {
+    const cx = compilarFuncion(exprX, "t");
+    const cy = compilarFuncion(exprY, "t");
+    gx = (t2) => {
+      const v = cx(t2);
+      return typeof v === "number" ? v : NaN;
+    };
+    gy = (t2) => {
+      const v = cy(t2);
+      return typeof v === "number" ? v : NaN;
+    };
+  } catch {
+    return null;
+  }
+  const largo = tMax - tMin;
+  const paso = largo / MUESTRAS6;
+  const ts = new Array(MUESTRAS6 + 1);
+  const pts = new Array(MUESTRAS6 + 1);
+  let finitos = 0;
+  for (let i2 = 0; i2 <= MUESTRAS6; i2++) {
+    const t2 = tMin + i2 * paso;
+    ts[i2] = t2;
+    pts[i2] = { x: gx(t2), y: gy(t2) };
+    if (Number.isFinite(pts[i2].x) && Number.isFinite(pts[i2].y))
+      finitos++;
+  }
+  if (finitos < 8)
+    return null;
+  let iXMin = -1, iXMax = -1, iYMin = -1, iYMax = -1;
+  for (let i2 = 0; i2 <= MUESTRAS6; i2++) {
+    const p = pts[i2];
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y))
+      continue;
+    if (iXMin < 0 || p.x < pts[iXMin].x)
+      iXMin = i2;
+    if (iXMax < 0 || p.x > pts[iXMax].x)
+      iXMax = i2;
+    if (iYMin < 0 || p.y < pts[iYMin].y)
+      iYMin = i2;
+    if (iYMax < 0 || p.y > pts[iYMax].y)
+      iYMax = i2;
+  }
+  const alrededor = (i2) => [ts[Math.max(0, i2 - 1)], ts[Math.min(MUESTRAS6, i2 + 1)]];
+  const mejor = (i2, g, max3, base) => {
+    const [a, b] = alrededor(i2);
+    const v = refinarExtremo2(g, a, b, max3);
+    if (!Number.isFinite(v))
+      return base;
+    return max3 ? Math.max(v, base) : Math.min(v, base);
+  };
+  const xMin = mejor(iXMin, gx, false, pts[iXMin].x);
+  const xMax = mejor(iXMax, gx, true, pts[iXMax].x);
+  const yMin = mejor(iYMin, gy, false, pts[iYMin].y);
+  const yMax = mejor(iYMax, gy, true, pts[iYMax].y);
+  const escala2 = Math.max(xMax - xMin, yMax - yMin, 1e-9);
+  const pIni = pts[0], pFin = pts[MUESTRAS6];
+  const cerrada = Number.isFinite(pIni.x) && Number.isFinite(pFin.x) && Math.hypot(pFin.x - pIni.x, pFin.y - pIni.y) < TOL_REL3 * escala2;
+  const px2 = periodoDeExpresion(exprX, "t");
+  const py2 = periodoDeExpresion(exprY, "t");
+  let periodo = null;
+  if (px2 !== null && py2 !== null)
+    periodo = periodoComun(px2, py2);
+  else if (px2 !== null && py2 === null)
+    periodo = null;
+  else if (px2 === null && py2 !== null)
+    periodo = null;
+  const periodoExcedeDominio = periodo !== null && periodo > largo * (1 + 1e-9);
+  let distMin = Infinity;
+  for (let i2 = 0; i2 < MUESTRAS6; i2++) {
+    const a = pts[i2], b = pts[i2 + 1];
+    if (!Number.isFinite(a.x) || !Number.isFinite(b.x))
+      continue;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    const s = len2 < 1e-18 ? 0 : Math.max(0, Math.min(1, -(a.x * dx + a.y * dy) / len2));
+    distMin = Math.min(distMin, Math.hypot(a.x + s * dx, a.y + s * dy));
+  }
+  const pasaPorOrigen = distMin < 1e-4 * escala2;
+  const celda = escala2 / 200;
+  const rejilla = /* @__PURE__ */ new Map();
+  const clave = (x, y) => `${Math.round(x / celda)},${Math.round(y / celda)}`;
+  for (const p of pts) {
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y))
+      continue;
+    const k = clave(p.x, p.y);
+    const lista = rejilla.get(k);
+    if (lista)
+      lista.push(p);
+    else
+      rejilla.set(k, [p]);
+  }
+  const enLaCurva = (x, y) => {
+    const cx = Math.round(x / celda), cy = Math.round(y / celda);
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -1; dy <= 1; dy++)
+        for (const p of rejilla.get(`${cx + dx},${cy + dy}`) ?? [])
+          if (Math.hypot(p.x - x, p.y - y) < 2 * celda)
+            return true;
+    return false;
+  };
+  const simetriaVale = (refl) => {
+    let comprobados = 0;
+    for (let i2 = 0; i2 <= MUESTRAS6; i2 += 7) {
+      const p = pts[i2];
+      if (!Number.isFinite(p.x) || !Number.isFinite(p.y))
+        continue;
+      const q = refl(p);
+      if (!enLaCurva(q.x, q.y))
+        return false;
+      comprobados++;
+    }
+    return comprobados >= 16;
+  };
+  const simetrias = [];
+  if (simetriaVale((p) => ({ x: -p.x, y: -p.y })))
+    simetrias.push("origen");
+  if (simetriaVale((p) => ({ x: p.x, y: -p.y })))
+    simetrias.push("ejeX");
+  if (simetriaVale((p) => ({ x: -p.x, y: p.y })))
+    simetrias.push("ejeY");
+  const celdaCorte = 1e-3 * escala2;
+  const vistos = /* @__PURE__ */ new Set();
+  const yaContado = (p) => {
+    const cx = Math.round(p.x / celdaCorte), cy = Math.round(p.y / celdaCorte);
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -1; dy <= 1; dy++)
+        if (vistos.has(`${cx + dx},${cy + dy}`))
+          return true;
+    return false;
+  };
+  let demasiadosCortes = false;
+  let nCortes = 0;
+  for (let i2 = 0; i2 < MUESTRAS6 && !demasiadosCortes; i2++) {
+    const a = pts[i2], b = pts[i2 + 1];
+    if (!Number.isFinite(a.x) || !Number.isFinite(b.x))
+      continue;
+    const minAx = Math.min(a.x, b.x), maxAx = Math.max(a.x, b.x);
+    const minAy = Math.min(a.y, b.y), maxAy = Math.max(a.y, b.y);
+    for (let j = i2 + 2; j < MUESTRAS6; j++) {
+      if (i2 === 0 && j === MUESTRAS6 - 1 && cerrada)
+        continue;
+      const c = pts[j], d = pts[j + 1];
+      if (!Number.isFinite(c.x) || !Number.isFinite(d.x))
+        continue;
+      if (Math.min(c.x, d.x) > maxAx || Math.max(c.x, d.x) < minAx || Math.min(c.y, d.y) > maxAy || Math.max(c.y, d.y) < minAy)
+        continue;
+      const p = corteSegmentos(a, b, c, d);
+      if (p === null || yaContado(p))
+        continue;
+      vistos.add(`${Math.round(p.x / celdaCorte)},${Math.round(p.y / celdaCorte)}`);
+      nCortes++;
+      if (nCortes > MAX_AUTOINTERSECCIONES) {
+        demasiadosCortes = true;
+        break;
+      }
+    }
+  }
+  const autointersecciones = demasiadosCortes ? null : nCortes;
+  let longitud = 0;
+  for (let i2 = 0; i2 < MUESTRAS6; i2++) {
+    const a = pts[i2], b = pts[i2 + 1];
+    if (!Number.isFinite(a.x) || !Number.isFinite(b.x) || !Number.isFinite(a.y) || !Number.isFinite(b.y)) {
+      longitud = null;
+      break;
+    }
+    longitud += Math.hypot(b.x - a.x, b.y - a.y);
+  }
+  let areaAlgebraica = null;
+  if (cerrada && finitos === MUESTRAS6 + 1) {
+    let suma3 = 0;
+    for (let i2 = 0; i2 < MUESTRAS6; i2++) {
+      const a = pts[i2], b = pts[i2 + 1];
+      suma3 += a.x * b.y - b.x * a.y;
+    }
+    areaAlgebraica = suma3 / 2;
+  }
+  let familia = null;
+  if (periodo !== null && !periodoExcedeDominio) {
+    const N = 512;
+    const xs = [], ys = [];
+    let evaluables = true;
+    for (let i2 = 0; i2 < N && evaluables; i2++) {
+      const t2 = tMin + i2 * periodo / N;
+      const vx = gx(t2), vy = gy(t2);
+      if (!Number.isFinite(vx) || !Number.isFinite(vy))
+        evaluables = false;
+      xs.push(vx);
+      ys.push(vy);
+    }
+    const hx = evaluables ? armonicaDominante(xs) : null;
+    const hy = evaluables ? armonicaDominante(ys) : null;
+    if (hx && hy && hx.residuo < 0.01 && hy.residuo < 0.01) {
+      const mcd8 = (m, n) => n === 0 ? m : mcd8(n, m % n);
+      const g = mcd8(hx.k, hy.k);
+      const a = hx.k / g, b = hy.k / g;
+      let desfase = hx.fase - hx.k / hy.k * hy.fase;
+      desfase = (desfase % DOS_PI3 + DOS_PI3) % DOS_PI3;
+      if (desfase > Math.PI)
+        desfase -= DOS_PI3;
+      if (a === 1 && b === 1) {
+        const redonda = Math.abs(hx.amplitud - hy.amplitud) < 0.01 * hx.amplitud && Math.abs(Math.abs(desfase) - Math.PI / 2) < 0.01;
+        familia = redonda ? { tipo: "circunferencia" } : { tipo: "elipse" };
+      } else {
+        familia = { tipo: "lissajous", a, b, desfase };
+      }
+    }
+  }
+  return {
+    tMin,
+    tMax,
+    cerrada,
+    periodo,
+    periodoExcedeDominio,
+    xMin,
+    xMax,
+    yMin,
+    yMax,
+    pasaPorOrigen,
+    simetrias,
+    autointersecciones,
+    longitud,
+    areaAlgebraica,
+    familia
+  };
+}
+
+// src/math/racional.ts
+function mcd6(a, b) {
+  let x = a < 0n ? -a : a;
+  let y = b < 0n ? -b : b;
+  while (y) {
+    const t2 = x % y;
+    x = y;
+    y = t2;
+  }
+  return x;
+}
+function rac(n, d = 1n) {
+  if (d === 0n)
+    throw new Error("racional con denominador cero");
+  let nn = n, dd = d;
+  if (dd < 0n) {
+    nn = -nn;
+    dd = -dd;
+  }
+  const g = mcd6(nn, dd);
+  if (g > 1n) {
+    nn /= g;
+    dd /= g;
+  }
+  return { n: nn, d: dd };
+}
+var CERO = { n: 0n, d: 1n };
+var UNO = { n: 1n, d: 1n };
+var esCero2 = (a) => a.n === 0n;
+var signo2 = (a) => a.n < 0n ? -1 : a.n > 0n ? 1 : 0;
+var suma = (a, b) => rac(a.n * b.d + b.n * a.d, a.d * b.d);
+var resta = (a, b) => rac(a.n * b.d - b.n * a.d, a.d * b.d);
+var producto2 = (a, b) => rac(a.n * b.n, a.d * b.d);
+var negado = (a) => ({ n: -a.n, d: a.d });
+function cociente(a, b) {
+  if (esCero2(b))
+    throw new Error("divisi\xF3n racional por cero");
+  return rac(a.n * b.d, a.d * b.n);
+}
+function comparar(a, b) {
+  const izq = a.n * b.d, der = b.n * a.d;
+  return izq < der ? -1 : izq > der ? 1 : 0;
+}
+var absoluto = (a) => a.n < 0n ? negado(a) : a;
+function aNumero3(a) {
+  const n = Number(a.n), d = Number(a.d);
+  if (Number.isFinite(n) && Number.isFinite(d))
+    return n / d;
+  const entero2 = a.n / a.d;
+  const resto = a.n % a.d;
+  return Number(entero2) + Number(resto) / Number(a.d);
+}
+function desdeNumero(x) {
+  if (!Number.isFinite(x))
+    throw new Error("racional desde un n\xFAmero no finito");
+  if (Number.isInteger(x))
+    return rac(BigInt(x));
+  let num = x, den = 1n;
+  for (let i2 = 0; i2 < 1100 && !Number.isInteger(num); i2++) {
+    num *= 2;
+    den *= 2n;
+  }
+  return rac(BigInt(num), den);
+}
+function desdeDecimal(texto) {
+  const m = /^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(texto.trim());
+  if (!m || m[2] === "" && (m[3] ?? "") === "")
+    return null;
+  const sig = m[1] === "-" ? -1n : 1n;
+  const enteros = m[2] === "" ? "0" : m[2];
+  const decimales = m[3] ?? "";
+  let n = BigInt(enteros + decimales) * sig;
+  let d = 10n ** BigInt(decimales.length);
+  const exp3 = m[4] ? Number(m[4]) : 0;
+  if (exp3 > 0)
+    n *= 10n ** BigInt(exp3);
+  else if (exp3 < 0)
+    d *= 10n ** BigInt(-exp3);
+  return rac(n, d);
+}
+function aTexto(a) {
+  return a.d === 1n ? String(a.n) : `${a.n}/${a.d}`;
+}
+
+// src/math/polinomio.ts
+var NULO = [];
+function normalizar(p) {
+  let n = p.length;
+  while (n > 0 && esCero2(p[n - 1]))
+    n--;
+  return n === p.length ? p : p.slice(0, n);
+}
+var grado = (p) => normalizar(p).length - 1;
+var esNulo = (p) => normalizar(p).length === 0;
+function sumaPol(a, b) {
+  const out = [];
+  for (let i2 = 0; i2 < Math.max(a.length, b.length); i2++)
+    out.push(suma(a[i2] ?? CERO, b[i2] ?? CERO));
+  return normalizar(out);
+}
+function restaPol(a, b) {
+  const out = [];
+  for (let i2 = 0; i2 < Math.max(a.length, b.length); i2++)
+    out.push(resta(a[i2] ?? CERO, b[i2] ?? CERO));
+  return normalizar(out);
+}
+function productoPol(a, b) {
+  const A = normalizar(a), B = normalizar(b);
+  if (A.length === 0 || B.length === 0)
+    return NULO;
+  const out = new Array(A.length + B.length - 1).fill(CERO);
+  for (let i2 = 0; i2 < A.length; i2++)
+    for (let j = 0; j < B.length; j++)
+      out[i2 + j] = suma(out[i2 + j], producto2(A[i2], B[j]));
+  return normalizar(out);
+}
+function derivada(p) {
+  const q = normalizar(p);
+  if (q.length <= 1)
+    return NULO;
+  const out = [];
+  for (let i2 = 1; i2 < q.length; i2++)
+    out.push(producto2(q[i2], rac(BigInt(i2))));
+  return normalizar(out);
+}
+function evaluar(p, x) {
+  const q = normalizar(p);
+  let acc = CERO;
+  for (let i2 = q.length - 1; i2 >= 0; i2--)
+    acc = suma(producto2(acc, x), q[i2]);
+  return acc;
+}
+function dividir(a, b) {
+  const B = normalizar(b);
+  if (B.length === 0)
+    throw new Error("divisi\xF3n polin\xF3mica por el polinomio nulo");
+  let R = [...normalizar(a)];
+  const gb = B.length - 1;
+  const lb = B[gb];
+  const coc = [];
+  while (R.length - 1 >= gb && R.length > 0) {
+    const gr = R.length - 1;
+    const factor = cociente(R[gr], lb);
+    coc[gr - gb] = factor;
+    for (let i2 = 0; i2 <= gb; i2++)
+      R[gr - gb + i2] = resta(R[gr - gb + i2], producto2(factor, B[i2]));
+    R = [...normalizar(R)];
+  }
+  for (let i2 = 0; i2 < coc.length; i2++)
+    coc[i2] = coc[i2] ?? CERO;
+  return { coc: normalizar(coc), resto: normalizar(R) };
+}
+function mcdPol(a, b) {
+  let A = normalizar(a), B = normalizar(b);
+  while (B.length > 0) {
+    const { resto } = dividir(A, B);
+    A = B;
+    B = normalizar(resto);
+  }
+  if (A.length === 0)
+    return NULO;
+  return monico(A);
+}
+function monico(p) {
+  const q = normalizar(p);
+  if (q.length === 0)
+    return NULO;
+  const lc = q[q.length - 1];
+  return q.map((c) => cociente(c, lc));
+}
+function libreDeCuadrados(p) {
+  const q = normalizar(p);
+  if (q.length <= 1)
+    return q;
+  const g = mcdPol(q, derivada(q));
+  if (grado(g) <= 0)
+    return monico(q);
+  return monico(dividir(q, g).coc);
+}
+function sucesionSturm(p) {
+  const p0 = normalizar(p);
+  if (p0.length === 0)
+    return [];
+  const suc = [p0];
+  const p1 = derivada(p0);
+  if (esNulo(p1))
+    return suc;
+  suc.push(p1);
+  for (let k = 0; k < p0.length + 2; k++) {
+    const a = suc[suc.length - 2], b = suc[suc.length - 1];
+    if (grado(b) <= 0)
+      break;
+    const { resto } = dividir(a, b);
+    if (esNulo(resto))
+      break;
+    suc.push(normalizar(resto.map(negado)));
+  }
+  return suc;
+}
+function cambiosDeSigno(suc, x) {
+  let previo = 0, cambios = 0;
+  for (const q of suc) {
+    const s = signo2(evaluar(q, x));
+    if (s === 0)
+      continue;
+    if (previo !== 0 && s !== previo)
+      cambios++;
+    previo = s;
+  }
+  return cambios;
+}
+function cotaCauchy(p) {
+  const q = normalizar(p);
+  if (q.length <= 1)
+    return UNO;
+  const lc = q[q.length - 1];
+  let max3 = CERO;
+  for (let i2 = 0; i2 < q.length - 1; i2++) {
+    const c = absoluto(cociente(q[i2], lc));
+    if (comparar(c, max3) > 0)
+      max3 = c;
+  }
+  return suma(UNO, max3);
+}
+var MAX_BISECCIONES = 200;
+function raicesRacionales(p) {
+  const q = normalizar(p);
+  if (q.length < 2)
+    return [];
+  let mcm2 = 1n;
+  for (const c of q)
+    mcm2 = mcm2 * c.d / mcdEnteros2(mcm2, c.d);
+  const enteros = q.map((c) => c.n * mcm2 / c.d);
+  const a0 = enteros[0] < 0n ? -enteros[0] : enteros[0];
+  const an = enteros[enteros.length - 1] < 0n ? -enteros[enteros.length - 1] : enteros[enteros.length - 1];
+  if (a0 === 0n) {
+    const sinX = normalizar(q.slice(1));
+    return [CERO, ...raicesRacionales(sinX)];
+  }
+  const TOPE = 100000n;
+  if (a0 > TOPE || an > TOPE)
+    return [];
+  const divisores = (n) => {
+    const out2 = [];
+    for (let d = 1n; d * d <= n; d++) {
+      if (n % d === 0n) {
+        out2.push(d);
+        if (d * d !== n)
+          out2.push(n / d);
+      }
+    }
+    return out2;
+  };
+  const out = [];
+  for (const dp of divisores(a0)) {
+    for (const dq of divisores(an)) {
+      for (const s of [1n, -1n]) {
+        const cand = rac(s * dp, dq);
+        if (esCero2(evaluar(q, cand)) && !out.some((r) => comparar(r, cand) === 0))
+          out.push(cand);
+      }
+    }
+  }
+  return out;
+}
+function mcdEnteros2(a, b) {
+  let x = a < 0n ? -a : a, y = b < 0n ? -b : b;
+  while (y) {
+    const t2 = x % y;
+    x = y;
+    y = t2;
+  }
+  return x;
+}
+function raicesReales(p) {
+  const libre = libreDeCuadrados(p);
+  if (grado(libre) < 1)
+    return [];
+  const exactas = raicesRacionales(libre);
+  const suc = sucesionSturm(libre);
+  const cota = cotaCauchy(libre);
+  const total = Math.max(0, cambiosDeSigno(suc, negado(cota)) - cambiosDeSigno(suc, cota));
+  if (total === 0)
+    return [];
+  const aislados = [];
+  const cola = [
+    { a: negado(cota), b: cota, n: total }
+  ];
+  let vueltas = 0;
+  while (cola.length > 0 && vueltas++ < MAX_BISECCIONES * 8) {
+    const it = cola.shift();
+    if (!it)
+      break;
+    if (it.n === 0)
+      continue;
+    if (it.n === 1) {
+      aislados.push({ a: it.a, b: it.b });
+      continue;
+    }
+    const m = cociente(suma(it.a, it.b), rac(2n));
+    const cm = cambiosDeSigno(suc, m);
+    const izq = Math.max(0, cambiosDeSigno(suc, it.a) - cm);
+    const der = Math.max(0, cm - cambiosDeSigno(suc, it.b));
+    if (izq === it.n && der === 0) {
+      cola.push({ a: it.a, b: m, n: izq });
+      continue;
+    }
+    if (der === it.n && izq === 0) {
+      cola.push({ a: m, b: it.b, n: der });
+      continue;
+    }
+    if (izq > 0)
+      cola.push({ a: it.a, b: m, n: izq });
+    if (der > 0)
+      cola.push({ a: m, b: it.b, n: der });
+  }
+  const salida = aislados.map(({ a, b }) => {
+    const exacto = exactas.find((e3) => comparar(e3, a) > 0 && comparar(e3, b) <= 0) ?? null;
+    if (exacto)
+      return { a: exacto, b: exacto, valor: aNumero3(exacto), exacto };
+    const r = refinar(libre, a, b);
+    return { a: r.a, b: r.b, valor: r.valor, exacto: null };
+  });
+  salida.sort((u, v) => u.valor - v.valor);
+  return salida;
+}
+function refinar(p, a0, b0) {
+  let a = a0, b = b0;
+  const sa = signo2(evaluar(p, a));
+  if (sa === 0)
+    return { valor: aNumero3(a), a, b: a };
+  if (signo2(evaluar(p, b)) === 0)
+    return { valor: aNumero3(b), a: b, b };
+  let signoA = sa;
+  for (let i2 = 0; i2 < MAX_BISECCIONES; i2++) {
+    const m = cociente(suma(a, b), rac(2n));
+    const sm = signo2(evaluar(p, m));
+    if (sm === 0)
+      return { valor: aNumero3(m), a: m, b: m };
+    if (sm === signoA) {
+      a = m;
+      signoA = sm;
+    } else {
+      b = m;
+    }
+    const na = aNumero3(a), nb = aNumero3(b);
+    if (na === nb)
+      return { valor: na, a, b };
+  }
+  return { valor: (aNumero3(a) + aNumero3(b)) / 2, a, b };
+}
+function potenciaPol(p, k) {
+  let r = [UNO];
+  for (let i2 = 0; i2 < k; i2++)
+    r = productoPol(r, p);
+  return r;
+}
+
+// src/math/polinomio2.ts
+var NULO2 = [];
+function normalizar2(p) {
+  let n = p.length;
+  while (n > 0 && esNulo(p[n - 1]))
+    n--;
+  return (n === p.length ? p : p.slice(0, n)).map(normalizar);
+}
+var gradoY = (p) => normalizar2(p).length - 1;
+function gradoX(p) {
+  let g = -1;
+  for (const c of normalizar2(p))
+    g = Math.max(g, grado(c));
+  return g;
+}
+var esNulo2 = (p) => normalizar2(p).length === 0;
+var constante2 = (k) => esCero2(k) ? NULO2 : [[k]];
+var X2 = [[CERO, UNO]];
+var Y2 = [NULO, [UNO]];
+function suma2(a, b) {
+  const out = [];
+  for (let j = 0; j < Math.max(a.length, b.length); j++)
+    out.push(sumaPol(a[j] ?? NULO, b[j] ?? NULO));
+  return normalizar2(out);
+}
+function resta2(a, b) {
+  const out = [];
+  for (let j = 0; j < Math.max(a.length, b.length); j++)
+    out.push(restaPol(a[j] ?? NULO, b[j] ?? NULO));
+  return normalizar2(out);
+}
+function producto22(a, b) {
+  const A = normalizar2(a), B = normalizar2(b);
+  if (A.length === 0 || B.length === 0)
+    return NULO2;
+  const out = new Array(A.length + B.length - 1).fill(NULO);
+  for (let i2 = 0; i2 < A.length; i2++)
+    for (let j = 0; j < B.length; j++)
+      out[i2 + j] = sumaPol(out[i2 + j], productoPol(A[i2], B[j]));
+  return normalizar2(out);
+}
+function negado2(p) {
+  return normalizar2(p.map((c) => c.map(negado)));
+}
+function potencia2(p, k) {
+  let r = constante2(UNO);
+  for (let i2 = 0; i2 < k; i2++)
+    r = producto22(r, p);
+  return r;
+}
+function sustituirY(p, f) {
+  const P4 = normalizar2(p);
+  let acc = NULO;
+  for (let j = P4.length - 1; j >= 0; j--)
+    acc = sumaPol(productoPol(acc, f), P4[j]);
+  return normalizar(acc);
+}
+function sustituirX(p, x) {
+  const P4 = normalizar2(p);
+  const out = [];
+  for (const c of P4) {
+    let acc = CERO;
+    for (let i2 = c.length - 1; i2 >= 0; i2--)
+      acc = suma(producto2(acc, x), c[i2]);
+    out.push(acc);
+  }
+  return normalizar(out);
+}
+function evaluarNum2(p, x, y) {
+  const P4 = normalizar2(p);
+  let acc = 0;
+  for (let j = P4.length - 1; j >= 0; j--) {
+    let cx = 0;
+    const c = P4[j];
+    for (let i2 = c.length - 1; i2 >= 0; i2--)
+      cx = cx * x + Number(c[i2].n) / Number(c[i2].d);
+    acc = acc * y + cx;
+  }
+  return acc;
+}
+function resultanteY(p, q) {
+  const A = normalizar2(p), B = normalizar2(q);
+  const m = gradoY(A), n = gradoY(B);
+  if (m < 0 || n < 0)
+    return NULO;
+  if (m === 0)
+    return potenciaPol(A[0], n);
+  if (n === 0)
+    return potenciaPol(B[0], m);
+  const dim = m + n;
+  const M = [];
+  for (let i2 = 0; i2 < n; i2++) {
+    const fila = new Array(dim).fill(NULO);
+    for (let j = 0; j <= m; j++)
+      fila[i2 + j] = A[m - j];
+    M.push(fila);
+  }
+  for (let i2 = 0; i2 < m; i2++) {
+    const fila = new Array(dim).fill(NULO);
+    for (let j = 0; j <= n; j++)
+      fila[i2 + j] = B[n - j];
+    M.push(fila);
+  }
+  return determinanteBareiss(M, dim);
+}
+function determinanteBareiss(M, dim) {
+  let signoDet = 1;
+  let anterior = [UNO];
+  for (let k = 0; k < dim - 1; k++) {
+    if (esNulo(M[k][k])) {
+      let cambio = -1;
+      for (let i2 = k + 1; i2 < dim; i2++)
+        if (!esNulo(M[i2][k])) {
+          cambio = i2;
+          break;
+        }
+      if (cambio === -1)
+        return NULO;
+      const t2 = M[k];
+      M[k] = M[cambio];
+      M[cambio] = t2;
+      signoDet = -signoDet;
+    }
+    for (let i2 = k + 1; i2 < dim; i2++) {
+      for (let j = k + 1; j < dim; j++) {
+        const num = restaPol(productoPol(M[i2][j], M[k][k]), productoPol(M[i2][k], M[k][j]));
+        M[i2][j] = esNulo(anterior) ? num : dividir(num, anterior).coc;
+      }
+      M[i2][k] = NULO;
+    }
+    anterior = M[k][k];
+  }
+  const det2 = M[dim - 1][dim - 1];
+  return signoDet === 1 ? normalizar(det2) : normalizar(det2.map(negado));
+}
+function compartenComponente(p, q) {
+  const A = normalizar2(p), B = normalizar2(q);
+  if (esNulo2(A) || esNulo2(B))
+    return false;
+  if (gradoY(A) === 0 && gradoY(B) === 0) {
+    const { resto } = dividir(A[0], B[0]);
+    return esNulo(resto) || esNulo(dividir(B[0], A[0]).resto);
+  }
+  if (gradoY(A) === 0 || gradoY(B) === 0)
+    return false;
+  return esNulo(resultanteY(A, B));
+}
+
+// src/math/extraer.ts
+var entera = (p) => ({ num: p, den: constante2(UNO) });
+var GRADO_MAXIMO = 8;
+function desParen4(n) {
+  return n.type === "ParenthesisNode" ? desParen4(n.content) : n;
+}
+function constanteDe(n) {
+  if (n.type !== "ConstantNode")
+    return null;
+  const v = n.value;
+  if (typeof v !== "number" || !Number.isFinite(v))
+    return null;
+  return desdeDecimal(String(v)) ?? desdeNumero(v);
+}
+function exponenteEntero2(n) {
+  const e3 = desParen4(n);
+  if (e3.type === "ConstantNode" && Number.isInteger(e3.value))
+    return e3.value;
+  if (e3.type === "OperatorNode" && e3.op === "-" && e3.args.length === 1) {
+    const dentro2 = desParen4(e3.args[0]);
+    if (dentro2.type === "ConstantNode" && Number.isInteger(dentro2.value))
+      return -dentro2.value;
+  }
+  return null;
+}
+function fraccionDe(n) {
+  const nodo = desParen4(n);
+  switch (nodo.type) {
+    case "ConstantNode": {
+      const k = constanteDe(nodo);
+      return k === null ? null : entera(constante2(k));
+    }
+    case "SymbolNode":
+      if (nodo.name === "x")
+        return entera(X2);
+      if (nodo.name === "y")
+        return entera(Y2);
+      return null;
+    case "OperatorNode": {
+      if (nodo.op === "-" && nodo.args.length === 1) {
+        const a2 = fraccionDe(nodo.args[0]);
+        return a2 === null ? null : { num: negado2(a2.num), den: a2.den };
+      }
+      if (nodo.args.length !== 2)
+        return null;
+      const a = fraccionDe(nodo.args[0]);
+      if (a === null)
+        return null;
+      if (nodo.op === "^") {
+        const k = exponenteEntero2(nodo.args[1]);
+        if (k === null)
+          return null;
+        if (k >= 0)
+          return { num: potencia2(a.num, k), den: potencia2(a.den, k) };
+        if (esNulo2(a.num))
+          return null;
+        return { num: potencia2(a.den, -k), den: potencia2(a.num, -k) };
+      }
+      const b = fraccionDe(nodo.args[1]);
+      if (b === null)
+        return null;
+      switch (nodo.op) {
+        case "+":
+          return {
+            num: suma2(producto22(a.num, b.den), producto22(b.num, a.den)),
+            den: producto22(a.den, b.den)
+          };
+        case "-":
+          return {
+            num: resta2(producto22(a.num, b.den), producto22(b.num, a.den)),
+            den: producto22(a.den, b.den)
+          };
+        case "*":
+          return { num: producto22(a.num, b.num), den: producto22(a.den, b.den) };
+        case "/":
+          if (esNulo2(b.num))
+            return null;
+          return { num: producto22(a.num, b.den), den: producto22(a.den, b.num) };
+        default:
+          return null;
+      }
+    }
+    default:
+      return null;
+  }
+}
+function ecuacionAPolinomio(ecuacion) {
+  const partes = ecuacion.split("=");
+  if (partes.length > 2)
+    return null;
+  const preparar = (s) => {
+    const limpio = s.trim();
+    if (limpio === "")
+      return null;
+    try {
+      return parse2(insertarProductoImplicito(normalizarEntrada(limpio)));
+    } catch {
+      return null;
+    }
+  };
+  let izquierda;
+  let derecha;
+  if (partes.length === 2) {
+    const a = preparar(partes[0]), b = preparar(partes[1]);
+    if (!a || !b)
+      return null;
+    izquierda = fraccionDe(a);
+    derecha = fraccionDe(b);
+  } else {
+    const a = preparar(partes[0]);
+    if (!a)
+      return null;
+    izquierda = entera(Y2);
+    derecha = fraccionDe(a);
+  }
+  if (!izquierda || !derecha)
+    return null;
+  const p = resta2(producto22(izquierda.num, derecha.den), producto22(derecha.num, izquierda.den));
+  const denominador = producto22(izquierda.den, derecha.den);
+  if (esNulo2(p)) {
+    return null;
+  }
+  if (Math.max(gradoX(p), gradoY(p)) > GRADO_MAXIMO)
+    return null;
+  return { p, denominador };
+}
+
+// src/math/numerico.ts
+var DOMINIO_X = [-100, 100];
+var MUESTRAS5 = 4e4;
+function funcionExplicita(ecuacion) {
+  const partes = ecuacion.split("=");
+  let derecha;
+  if (partes.length === 1)
+    derecha = partes[0];
+  else if (partes.length === 2) {
+    const izq = partes[0].trim();
+    const der = partes[1].trim();
+    if (izq === "y")
+      derecha = der;
+    else if (der === "y")
+      derecha = izq;
+    else
+      return null;
+  } else
+    return null;
+  try {
+    const f = compilarFuncion(insertarProductoImplicito(normalizarEntrada(derecha)), "x");
+    return (x) => {
+      const v = f(x);
+      return typeof v === "number" ? v : NaN;
+    };
+  } catch {
+    return null;
+  }
+}
+function bisecar(h, a, b) {
+  let lo = a, hi = b;
+  let flo = h(lo);
+  if (!Number.isFinite(flo))
+    return null;
+  for (let i2 = 0; i2 < 80; i2++) {
+    const m2 = (lo + hi) / 2;
+    const fm2 = h(m2);
+    if (!Number.isFinite(fm2))
+      return null;
+    if (fm2 === 0)
+      return m2;
+    if (flo * fm2 < 0) {
+      hi = m2;
+    } else {
+      lo = m2;
+      flo = fm2;
+    }
+    if (hi === lo || hi - lo <= Math.abs(m2) * Number.EPSILON)
+      break;
+  }
+  const m = (lo + hi) / 2;
+  const fm = h(m);
+  if (!Number.isFinite(fm))
+    return null;
+  const escala2 = Math.max(1, Math.abs(h(m + 1e-6)), Math.abs(h(m - 1e-6)));
+  return Math.abs(fm) < 1e-6 * escala2 || Math.abs(fm) < 1e-9 ? m : null;
+}
+function pulir(h, x0) {
+  let x = x0;
+  for (let i2 = 0; i2 < 6; i2++) {
+    const paso = Math.max(1e-10, Math.abs(x) * 1e-10);
+    const d = (h(x + paso) - h(x - paso)) / (2 * paso);
+    if (!Number.isFinite(d) || d === 0)
+      break;
+    const nx = x - h(x) / d;
+    if (!Number.isFinite(nx) || Math.abs(nx - x) > Math.max(1, Math.abs(x)))
+      break;
+    if (nx === x)
+      break;
+    x = nx;
+  }
+  return Math.abs(h(x)) <= Math.abs(h(x0)) ? x : x0;
+}
+function resolverNumerico(ecuacionA, ecuacionB) {
+  const f = funcionExplicita(ecuacionA);
+  const g = funcionExplicita(ecuacionB);
+  if (!f || !g)
+    return { tipo: "noResoluble" };
+  const h = (x) => f(x) - g(x);
+  const [x0, x1] = DOMINIO_X;
+  const paso = (x1 - x0) / MUESTRAS5;
+  const crudas = [];
+  let xPrev = x0;
+  let hPrev = h(xPrev);
+  for (let i2 = 1; i2 <= MUESTRAS5; i2++) {
+    const x = x0 + i2 * paso;
+    const hx = h(x);
+    if (Number.isFinite(hPrev) && Number.isFinite(hx)) {
+      if (hx === 0)
+        crudas.push(x);
+      else if (hPrev * hx < 0) {
+        const r = bisecar(h, xPrev, x);
+        if (r !== null)
+          crudas.push(r);
+      }
+    }
+    xPrev = x;
+    hPrev = hx;
+  }
+  const puntos = [];
+  for (const cruda of crudas) {
+    const x = pulir(h, cruda);
+    const y = f(x);
+    if (!Number.isFinite(x) || !Number.isFinite(y))
+      continue;
+    if (puntos.some((p) => Math.abs(p.x - x) <= 10 * paso))
+      continue;
+    puntos.push({ x, y });
+  }
+  puntos.sort((a, b) => a.x - b.x);
+  return { tipo: "puntos", puntos };
+}
+
+// src/math/resolverSistema.ts
+var TOL_REL4 = 1e-9;
+function dX(p) {
+  return normalizar2(p.map((c) => {
+    const out = [];
+    for (let i2 = 1; i2 < c.length; i2++)
+      out.push({ n: c[i2].n * BigInt(i2), d: c[i2].d });
+    return normalizar(out);
+  }));
+}
+function dY(p) {
+  const P4 = normalizar2(p);
+  const out = [];
+  for (let j = 1; j < P4.length; j++)
+    out.push(normalizar(P4[j].map((c) => ({ n: c.n * BigInt(j), d: c.d }))));
+  return normalizar2(out);
+}
+function pulirNewton(p, q, x0, y0) {
+  const px2 = dX(p), py2 = dY(p), qx = dX(q), qy = dY(q);
+  let x = x0, y = y0;
+  for (let i2 = 0; i2 < 12; i2++) {
+    const fp = evaluarNum2(p, x, y), fq = evaluarNum2(q, x, y);
+    if (!Number.isFinite(fp) || !Number.isFinite(fq))
+      return { x: x0, y: y0 };
+    if (fp === 0 && fq === 0)
+      break;
+    const a = evaluarNum2(px2, x, y), b = evaluarNum2(py2, x, y);
+    const c = evaluarNum2(qx, x, y), d = evaluarNum2(qy, x, y);
+    const det2 = a * d - b * c;
+    if (!Number.isFinite(det2) || det2 === 0)
+      break;
+    const nx = x - (fp * d - fq * b) / det2;
+    const ny = y - (a * fq - c * fp) / det2;
+    if (!Number.isFinite(nx) || !Number.isFinite(ny))
+      break;
+    if (nx === x && ny === y)
+      break;
+    x = nx;
+    y = ny;
+  }
+  const antes = Math.abs(evaluarNum2(p, x0, y0)) + Math.abs(evaluarNum2(q, x0, y0));
+  const ahora = Math.abs(evaluarNum2(p, x, y)) + Math.abs(evaluarNum2(q, x, y));
+  return ahora <= antes ? { x, y } : { x: x0, y: y0 };
+}
+function escala(p, x, y) {
+  let s = 1;
+  for (const c of p)
+    for (const k of c)
+      s = Math.max(s, Math.abs(aNumero3(k)));
+  const m = Math.max(1, Math.abs(x), Math.abs(y));
+  return s * m ** Math.max(1, gradoY(p) + 1);
+}
+function verificar(p, q, denP, denQ, x, y) {
+  if (!Number.isFinite(x) || !Number.isFinite(y))
+    return false;
+  const rp = Math.abs(evaluarNum2(p, x, y)), rq = Math.abs(evaluarNum2(q, x, y));
+  if (!(rp <= TOL_REL4 * escala(p, x, y)) || !(rq <= TOL_REL4 * escala(q, x, y)))
+    return false;
+  for (const d of [denP, denQ]) {
+    if (esNulo2(d))
+      return false;
+    const v = Math.abs(evaluarNum2(d, x, y));
+    if (v <= 1e-12 * escala(d, x, y))
+      return false;
+  }
+  return true;
+}
+function ordenadasDe(p, q, xExacta, xr) {
+  const py2 = sustituirX(p, xr);
+  const qy = sustituirX(q, xr);
+  if (esNulo(py2) && esNulo(qy))
+    return [];
+  if (xExacta !== null) {
+    if (esNulo(py2))
+      return raicesReales(qy).map((r) => ({ y: r.valor, exacta: r.exacto }));
+    if (esNulo(qy))
+      return raicesReales(py2).map((r) => ({ y: r.valor, exacta: r.exacto }));
+    const g = mcdPol(py2, qy);
+    if (grado(g) < 1)
+      return [];
+    return raicesReales(g).map((r) => ({ y: r.valor, exacta: r.exacto }));
+  }
+  const rp = raicesReales(py2), rq = raicesReales(qy);
+  const out = [];
+  for (const a of rp) {
+    for (const b of rq) {
+      const tol = 1e-6 * Math.max(1, Math.abs(a.valor));
+      if (Math.abs(a.valor - b.valor) <= tol)
+        out.push({ y: (a.valor + b.valor) / 2, exacta: null });
+    }
+  }
+  return out;
+}
+function ordenarYUnificar(puntos) {
+  const orden = [...puntos].sort((a, b) => a.x - b.x || a.y - b.y);
+  const out = [];
+  for (const s of orden) {
+    const repetido = out.some((o) => {
+      const escalaXY = Math.max(1, Math.abs(o.x), Math.abs(o.y));
+      return Math.abs(o.x - s.x) <= 1e-9 * escalaXY && Math.abs(o.y - s.y) <= 1e-9 * escalaXY;
+    });
+    if (!repetido)
+      out.push(s);
+  }
+  return out;
+}
+function resolverSistema(ecuacionA, ecuacionB) {
+  const A = ecuacionAPolinomio(ecuacionA);
+  const B = ecuacionAPolinomio(ecuacionB);
+  if (!A || !B)
+    return { tipo: "noResoluble" };
+  const p = A.p, q = B.p;
+  if (compartenComponente(p, q))
+    return { tipo: "solape" };
+  const explicita2 = despejarY(p) ?? despejarY(q);
+  const otra = despejarY(p) !== null ? q : p;
+  const enX = explicita2 !== null ? sustituirY(otra, explicita2) : resultanteY(p, q);
+  if (esNulo(enX))
+    return { tipo: "solape" };
+  const raices2 = raicesReales(enX);
+  const puntos = [];
+  for (const r of raices2) {
+    const xr = r.exacto ?? r.b;
+    for (const cand of ordenadasDe(p, q, r.exacto, xr)) {
+      const pulido = r.exacto !== null && cand.exacta !== null ? { x: r.valor, y: cand.y } : pulirNewton(p, q, r.valor, cand.y);
+      if (!verificar(p, q, A.denominador, B.denominador, pulido.x, pulido.y))
+        continue;
+      puntos.push({
+        x: pulido.x,
+        y: pulido.y,
+        exactoX: r.exacto,
+        exactoY: cand.exacta
+      });
+    }
+  }
+  return { tipo: "puntos", puntos: ordenarYUnificar(puntos) };
+}
+function resolverBloque(ecuaciones) {
+  if (ecuaciones.length < 2)
+    return { tipo: "noResoluble", puntos: [], aproximado: false };
+  const partes = ecuaciones.map((ec) => separarRestriccion(ec));
+  const todos = [];
+  let aproximado = false;
+  let algunaResuelta = false;
+  for (let i2 = 0; i2 < partes.length; i2++) {
+    for (let j = i2 + 1; j < partes.length; j++) {
+      const a = partes[i2], b = partes[j];
+      const recortes = [a.restriccion, b.restriccion];
+      const admitir = (p) => enDominio(p, recortes);
+      const exacto = resolverSistema(a.expr, b.expr);
+      if (exacto.tipo === "solape")
+        return { tipo: "solape", puntos: [], aproximado: false };
+      if (exacto.tipo === "puntos") {
+        algunaResuelta = true;
+        todos.push(...exacto.puntos.filter(admitir));
+        continue;
+      }
+      const numerico = resolverNumerico(a.expr, b.expr);
+      if (numerico.tipo === "noResoluble")
+        continue;
+      algunaResuelta = true;
+      aproximado = true;
+      for (const p of numerico.puntos)
+        if (admitir(p))
+          todos.push({ ...p, exactoX: null, exactoY: null });
+    }
+  }
+  if (!algunaResuelta)
+    return { tipo: "noResoluble", puntos: [], aproximado: false };
+  return { tipo: "puntos", puntos: ordenarYUnificar(todos), aproximado };
+}
+function enDominio(p, recortes) {
+  for (const r of recortes) {
+    if (!r)
+      continue;
+    if (r.variable === "x" && !dentro(r, p.x))
+      return false;
+    if (r.variable === "y" && !dentro(r, p.y))
+      return false;
+  }
+  return true;
+}
+function despejarY(p) {
+  const P4 = normalizar2(p);
+  if (gradoY(P4) !== 1)
+    return null;
+  const coef = P4[1];
+  if (grado(coef) !== 0)
+    return null;
+  const k = coef[0];
+  if (esCero2(k))
+    return null;
+  return normalizar(P4[0].map((c) => ({ n: -c.n * k.d, d: c.d * k.n })).map(
+    (c) => c.d < 0n ? { n: -c.n, d: -c.d } : c
+  )).map((c) => rac(c.n, c.d));
+}
+
+// src/host-obsidian/info/plano.ts
+function montarInfoSistema(wrap, lado, iconoChip, exclusion, visibles, paraMotor) {
+  const btnSolucion = wrap.createDiv();
+  ponerTooltip(btnSolucion, t().botones.solucionesSistema);
+  btnSolucion.style.cssText = estiloChipInfo(lado);
+  montarIcono(btnSolucion, "info", iconoChip);
+  const popSolucion = wrap.createDiv();
+  popSolucion.style.cssText = estiloPopoverInfo(lado);
+  exclusion.registrar(() => popSolucion.setCssStyles({ display: "none" }));
+  const sistemaPeriodico = visibles.some((ec) => ec.split("=").some((lado2) => tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado2.trim())))));
+  const MIN_PERIODICO = 3;
+  const MAX_LISTA = 20;
+  const refrescarSolucion = () => {
+    popSolucion.empty();
+    if (visibles.length === 0) {
+      popSolucion.createDiv({ text: t().solucion.sinSistema });
+      return;
+    }
+    if (visibles.length === 1) {
+      popSolucion.createDiv({ text: t().solucion.sistemaIncompleto });
+      return;
+    }
+    const r = resolverBloque(visibles.map(paraMotor));
+    if (r.tipo === "solape") {
+      popSolucion.createDiv({ text: t().solucion.infinitasCoinciden });
+      return;
+    }
+    if (r.tipo === "noResoluble") {
+      popSolucion.createDiv({ text: t().solucion.noResoluble });
+      return;
+    }
+    const pts = r.puntos;
+    if (r.aproximado && sistemaPeriodico && pts.length >= MIN_PERIODICO) {
+      popSolucion.createDiv({ text: t().solucion.infinitasPeriodico });
+      return;
+    }
+    if (pts.length === 0) {
+      popSolucion.createDiv({ text: t().solucion.sinSolucion });
+      return;
+    }
+    popSolucion.createDiv({
+      text: pts.length === 1 ? t().solucion.unaSolucion : t().solucion.nSoluciones(pts.length),
+      attr: { style: "font-weight:600; margin-bottom:4px;" }
+    });
+    for (const p of pts.slice(0, MAX_LISTA)) {
+      const x = p.exactoX !== null ? aTexto(p.exactoX) : formatearNumero(p.x);
+      const y = p.exactoY !== null ? aTexto(p.exactoY) : formatearNumero(p.y);
+      popSolucion.createDiv({ text: `(${x}, ${y})` });
+    }
+    if (pts.length > MAX_LISTA) {
+      popSolucion.createDiv({
+        text: t().solucion.yMas(pts.length - MAX_LISTA),
+        attr: { style: "opacity:0.6;" }
+      });
+    }
+    if (r.aproximado) {
+      popSolucion.createDiv({
+        text: t().solucion.enIntervalo(String(DOMINIO_X[0]), String(DOMINIO_X[1])),
+        attr: { style: "margin-top:4px; opacity:0.6;" }
+      });
+    }
+  };
+  const alRecalcularFinal = () => {
+    if (popSolucion.style.display !== "none")
+      refrescarSolucion();
+  };
+  btnSolucion.addEventListener("click", (e3) => {
+    e3.stopPropagation();
+    const abierto = popSolucion.style.display !== "none";
+    if (!abierto) {
+      exclusion.alAbrir();
+      refrescarSolucion();
+    }
+    popSolucion.setCssStyles({ display: abierto ? "none" : "block" });
+  });
+  return alRecalcularFinal;
+}
+function montarInfoGeometrico(wrap, lado, iconoChip, exclusion, graficadas, parametros, escenaViva, camaraViva) {
+  let tipo;
+  try {
+    tipo = construirObjeto(graficadas[0], "info").tipo;
+  } catch {
+    tipo = "";
+  }
+  const acotadaPorPeriodo = tipo === "parametrica" || tipo === "polar";
+  const exprPolar = tipo === "polar" && parametros.length === 0 ? expresionPolar(graficadas[0]) : null;
+  const infoPolar = exprPolar ? analizarPolar(exprPolar) : null;
+  const compsParam = tipo === "parametrica" ? expresionesParametricas(graficadas[0]) : null;
+  let infoParam = null;
+  let paramCalculado = false;
+  const analisisParametrico = () => {
+    if (paramCalculado || !compsParam)
+      return infoParam;
+    paramCalculado = true;
+    let dominio = [0, 2 * Math.PI];
+    try {
+      const obj = construirObjeto(graficadas[0], "info");
+      if (obj.tipo === "parametrica")
+        dominio = obj.p.dominio;
+    } catch {
+    }
+    infoParam = analizarParametrico(
+      compsParam[0],
+      compsParam[1],
+      dominio[0],
+      dominio[1]
+    );
+    return infoParam;
+  };
+  const esTrig = !acotadaPorPeriodo && graficadas[0].split("=").some((lado2) => tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado2.trim()))));
+  const btnInfo = wrap.createDiv();
+  ponerTooltip(btnInfo, t().botones.resumenNotables);
+  btnInfo.style.cssText = estiloChipInfo(lado);
+  montarIcono(btnInfo, "info", iconoChip);
+  const pop = wrap.createDiv();
+  pop.style.cssText = estiloPopoverInfo(lado);
+  exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
+  const refrescarInfo = () => {
+    pop.empty();
+    if (infoPolar) {
+      for (const linea of lineasPolar(infoPolar))
+        pop.createDiv({ text: linea });
+      return;
+    }
+    const param = analisisParametrico();
+    if (param) {
+      for (const linea of lineasParametricas(param))
+        pop.createDiv({ text: linea });
+      return;
+    }
+    const r = escenaViva().resumenNotables(camaraViva().viewport());
+    const lineas = [];
+    const T = t().resumen;
+    const estIY = estadoGrupo(r.interseccionesY.length, esTrig);
+    if (estIY === "infinitas")
+      lineas.push(T.interseccionesYInfinitas);
+    else if (estIY === "demasiadas")
+      lineas.push(T.interseccionesYDemasiadas);
+    else if (r.interseccionesY.length > 0)
+      for (const p of r.interseccionesY)
+        lineas.push(T.interseccionY(numeroATexto(p.punto.y)));
+    else
+      lineas.push(T.noCortaY);
+    const estR = estadoGrupo(r.raices.length, esTrig);
+    if (estR === "infinitas")
+      lineas.push(T.raicesInfinitas);
+    else if (estR === "demasiadas")
+      lineas.push(T.raicesDemasiadas);
+    else if (r.raices.length > 0)
+      lineas.push(T.raicesPrefijo + r.raices.map((p) => numeroATexto(p.punto.x)).join(", "));
+    else
+      lineas.push(T.noRaices);
+    const estV = estadoGrupo(r.vertices.length, esTrig);
+    if (estV === "infinitas")
+      lineas.push(T.verticesInfinitos);
+    else if (estV === "demasiadas")
+      lineas.push(T.verticesDemasiados);
+    else if (r.vertices.length > 0)
+      for (const v of r.vertices)
+        lineas.push(T.vertice(numeroATexto(v.punto.x), numeroATexto(v.punto.y)));
+    else
+      lineas.push(T.noVertices);
+    for (const linea of lineas)
+      pop.createDiv({ text: linea });
+    pop.createDiv({
+      text: T.enVista,
+      attr: { style: "margin-top:4px; opacity:0.6;" }
+    });
+  };
+  const alRecalcularFinal = () => {
+    if (pop.style.display !== "none")
+      refrescarInfo();
+  };
+  btnInfo.addEventListener("click", (e3) => {
+    e3.stopPropagation();
+    const abierto = pop.style.display !== "none";
+    if (!abierto) {
+      exclusion.alAbrir();
+      refrescarInfo();
+    }
+    pop.setCssStyles({ display: abierto ? "none" : "block" });
+  });
+  return alRecalcularFinal;
+}
+
+// src/host-obsidian/blocks/trig.ts
+var import_obsidian6 = require("obsidian");
+
+// src/host-obsidian/plataforma.ts
+var import_obsidian5 = require("obsidian");
 function esTactil() {
-  return import_obsidian3.Platform.isMobile;
+  return import_obsidian5.Platform.isMobile;
 }
 
 // src/trig/modeloTrig.ts
@@ -59909,10 +62983,10 @@ function indiceNotable(rad) {
   const k = Math.round(rad / PASO_NOTABLE);
   return Math.abs(rad - k * PASO_NOTABLE) < 1e-9 ? k : null;
 }
-function conSigno(v, signo2) {
+function conSigno(v, signo3) {
   if (v === null)
     return null;
-  if (signo2 > 0 || v.txt === "0")
+  if (signo3 > 0 || v.txt === "0")
     return v;
   return v.compuesto ? { tex: `-\\left(${v.tex}\\right)`, txt: `\u2212(${v.txt})` } : { tex: `-${v.tex}`, txt: `\u2212${v.txt}` };
 }
@@ -59946,9 +63020,9 @@ function radianesExactoTexto(rad) {
     return null;
   if (f.num === 0)
     return "0";
-  const signo2 = f.signo === "-" ? "\u2212" : "";
+  const signo3 = f.signo === "-" ? "\u2212" : "";
   const cuerpo = f.num === 1 ? "\u03C0" : `${f.num}\u03C0`;
-  return f.den === 1 ? `${signo2}${cuerpo}` : `${signo2}${cuerpo}/${f.den}`;
+  return f.den === 1 ? `${signo3}${cuerpo}` : `${signo3}${cuerpo}/${f.den}`;
 }
 function fraccionDePi(rad) {
   const k = indiceNotable(rad);
@@ -59958,8 +63032,8 @@ function fraccionDePi(rad) {
     return { signo: "", num: 0, den: 1 };
   let num = Math.abs(k);
   let den = 12;
-  const mcd6 = (a, b) => b === 0 ? a : mcd6(b, a % b);
-  const g = mcd6(num, den);
+  const mcd8 = (a, b) => b === 0 ? a : mcd8(b, a % b);
+  const g = mcd8(num, den);
   num /= g;
   den /= g;
   return { signo: k < 0 ? "-" : "", num, den };
@@ -59971,17 +63045,7 @@ function fuenteSimbolica(expr) {
 // src/trig/bloqueTrig.ts
 var ANGULO_POR_DEFECTO = aRadianes(30);
 var ETIQUETA_POR_DEFECTO = "\u03B8";
-function evaluarAngulo(expr) {
-  const limpio = expr.trim();
-  if (!limpio)
-    return null;
-  try {
-    const valor = compilarExpresion(insertarProductoImplicito(normalizarEntrada(limpio)))({});
-    return typeof valor === "number" && Number.isFinite(valor) ? valor : null;
-  } catch (e3) {
-    return null;
-  }
-}
+var evaluarAngulo = evaluarConstante;
 var FUNCION_COMPONENTE = [
   ["sin", "seno"],
   ["cos", "coseno"],
@@ -59991,7 +63055,7 @@ function argumentoConstante(arg2) {
   try {
     const v = compilarExpresion(arg2)({});
     return typeof v === "number" && Number.isFinite(v);
-  } catch (e3) {
+  } catch {
     return false;
   }
 }
@@ -60002,7 +63066,7 @@ function componenteNombrada(expr) {
   let norma;
   try {
     norma = insertarProductoImplicito(normalizarEntrada(limpio));
-  } catch (e3) {
+  } catch {
     return null;
   }
   for (const [fn, componente] of FUNCION_COMPONENTE) {
@@ -60256,7 +63320,6 @@ function dibujarRadios(ctx, e3) {
 }
 var esClasico = (grados) => grados % 30 === 0 || grados % 45 === 0;
 function dibujarNotables(ctx, e3, unidad, anguloActivo) {
-  var _a;
   if (e3.R < RADIO_PARA_ROTULOS)
     return;
   const dieciseis = e3.R >= RADIO_PARA_LOS_DIECISEIS;
@@ -60277,7 +63340,7 @@ function dibujarNotables(ctx, e3, unidad, anguloActivo) {
     const a = g * Math.PI / 180;
     const x = e3.cx + (e3.R + 15) * Math.cos(a);
     const y = e3.cy - (e3.R + 15) * Math.sin(a);
-    const rad = (_a = radianesExactoTexto(a)) != null ? _a : "";
+    const rad = radianesExactoTexto(a) ?? "";
     if (doble) {
       ctx.font = `10px ${FUENTE}`;
       ctx.fillText(`${g}\xB0`, x, y - 6);
@@ -60416,63 +63479,1415 @@ function indiceMasCercano(angulos, anguloPuntero) {
   return mejor;
 }
 
-// src/host-obsidian/MotorExperimental.ts
-var ALTO_CONTROLES_TRIG = 78;
-var ALTO_PANEL = 261;
-var ANCHO_MINIMO_COLUMNAS = 520;
-var PROPORCION_PLANO_FLOTANTE = 0.82;
-var ALTO_PANEL_FLOTANTE = 180;
-var MARGEN_FLOTANTE = 8;
-var MAX_LISTA_DERIVADA = 6;
-function ladoChip(tactil) {
-  return tactil ? 30 : 22;
-}
-function ladoIcono(lado) {
-  return Math.round(lado * 0.66);
-}
-function huecoChips(lado) {
-  return MARGEN_FLOTANTE + lado + MARGEN_FLOTANTE;
-}
-function aplicarCajaPanel(reparto) {
-  var _a;
-  const panel = reparto.panel;
-  if (!panel)
-    return;
-  const suelo = huecoChips(reparto.ladoChip) + ((_a = reparto.huecoInferior) != null ? _a : 0);
-  panel.style.cssText = reparto.estrecho ? `position:absolute; z-index:6; box-sizing:border-box; display:${reparto.abierto ? "flex" : "none"}; left:${MARGEN_FLOTANTE}px; right:${MARGEN_FLOTANTE}px; bottom:${suelo}px; width:auto; height:${ALTO_PANEL_FLOTANTE}px; padding:0; overflow:hidden; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:12px; box-shadow:var(--lmath-sombra-flotante);` : `position:relative; width:50%; height:${ALTO_PANEL}px; padding:0; overflow:hidden;`;
-}
-function esTemaOscuro(el) {
-  return el.doc.body.classList.contains("theme-dark");
-}
-var ICONO = {
-  inicio: "M220-180h150v-250h220v250h150v-390L480-765 220-570v390Zm-60 60v-480l320-240 320 240v480H530v-250H430v250H160Zm320-353Z",
-  acercar: "M450-450H200v-60h250v-250h60v250h250v60H510v250h-60v-250Z",
-  alejar: "M200-450v-60h560v60H200Z",
-  carril: "M450-42v-75q-137-14-228-105T117-450H42v-60h75q14-137 105-228t228-105v-75h60v75q137 14 228 105t105 228h75v60h-75q-14 137-105 228T510-117v75h-60Zm244.5-223.5Q784-355 784-480t-89.5-214.5Q605-784 480-784t-214.5 89.5Q176-605 176-480t89.5 214.5Q355-176 480-176t214.5-89.5Zm-321-108Q330-417 330-480t43.5-106.5Q417-630 480-630t106.5 43.5Q630-543 630-480t-43.5 106.5Q543-330 480-330t-106.5-43.5ZM544-416q26-26 26-64t-26-64q-26-26-64-26t-64 26q-26 26-26 64t26 64q26 26 64 26t64-26Zm-64-64Z",
-  info: "M453-280h60v-240h-60v240Zm50.5-323.2q9.5-9.2 9.5-22.8 0-14.45-9.48-24.22-9.48-9.78-23.5-9.78t-23.52 9.78Q447-640.45 447-626q0 13.6 9.48 22.8 9.48 9.2 23.5 9.2t23.52-9.2ZM480.27-80q-82.74 0-155.5-31.5Q252-143 197.5-197.5t-86-127.34Q80-397.68 80-480.5t31.5-155.66Q143-709 197.5-763t127.34-85.5Q397.68-880 480.5-880t155.66 31.5Q709-817 763-763t85.5 127Q880-563 880-480.27q0 82.74-31.5 155.5Q817-252 763-197.68q-54 54.31-127 86Q563-80 480.27-80Zm.23-60Q622-140 721-239.5t99-241Q820-622 721.19-721T480-820q-141 0-240.5 98.81T140-480q0 141 99.5 240.5t241 99.5Zm-.5-340Z",
-  menu: "M120-240v-60h720v60H120Zm0-210v-60h720v60H120Zm0-210v-60h720v60H120Z",
-  reproducir: "M320-200v-560l440 280-440 280Z",
-  pausar: "M520-200v-560h240v560H520Zm-320 0v-560h240v560H200Z",
-  cerrar: "m249-207-42-42 231-231-231-231 42-42 231 231 231-231 42 42-231 231 231 231-42 42-231-231-231 231Z",
-  // Editar el bloque: en móvil no existe el botón `</>` de Obsidian —aparece al pasar el
-  // ratón, y no hay ratón—, así que el bloque se queda sin puerta a su propio código.
-  editar: "M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h405l-60 60H180v600h600v-348l60-60v408q0 24-18 42t-42 18H180Zm300-360ZM360-360v-170l382-382q9-9 20-13t22-4q11 0 22.32 4.5Q817.63-920 827-911l83 84q8.61 8.96 13.3 19.78 4.7 10.83 4.7 22.02 0 11.2-4.5 22.7T910-742L530-360H360Zm508-425-84-84 84 84ZM420-420h85l253-253-43-42-43-42-252 251v86Zm295-295-43-42 43 42 43 42-43-42Z"
-};
-var GLIFO_UNIDAD = {
-  degrees: {
-    caja: "30 -648 900 336",
-    d: "M94-342V-618H246Q274-618 294-598T315-549V-411Q315-382 294-362T246-342H94ZM163-393H246V-567H163V-393ZM372-342V-618H579V-567H441V-505H556V-455H441V-393H579V-342ZM866-618H705A69 69 0 0 0 636-549V-411A69 69 0 0 0 705-342H797A69 69 0 0 0 866-411V-505H751V-455H797V-393H705V-567H866Z"
-  },
-  radians: {
-    caja: "30 -648 900 336",
-    d: "M60-342V-618H214Q242-618 258-602T274-558V-495Q274-462 244-446L279-342H217L186-434H129V-342H60ZM129-485H214V-567H129V-485ZM337-342L443-618H516L622-342H555L535-397H424L404-342H337ZM443-448H516L481-551H478L443-448ZM679-342V-618H831Q860-618 880-598T900-549V-411Q900-382 880-362T831-342H679ZM748-393H831V-567H748V-393Z"
-  },
-  gradians: {
-    caja: "30 -613 900 266",
-    d: "M231-583H111A51 51 0 0 0 60-531V-429A51 51 0 0 0 111-377H180A51 51 0 0 0 231-429V-499H146V-461H180V-415H111V-545H231ZM274-377V-583H389Q409-583 421-571T433-538V-491Q433-466 411-454L438-377H391L368-446H325V-377H274ZM325-483H389V-545H325V-483ZM480-377L559-583H614L693-377H643L628-418H546L530-377H480ZM559-456H614L587-533H586L559-456ZM736-377V-583H849Q870-583 885-568T900-531V-429Q900-407 885-392T849-377H736ZM787-415H849V-545H787V-415Z"
+// src/host-obsidian/blocks/trig.ts
+async function procesarTrig(motor, source, el, ctx) {
+  const contenedor = el.createDiv({ cls: "lmath-container" });
+  const limpieza = new import_obsidian6.MarkdownRenderChild(contenedor);
+  ctx.addChild(limpieza);
+  motor.registrarRecarga(limpieza, source, el, ctx);
+  const revelar = () => contenedor.setCssStyles({ visibility: "visible" });
+  contenedor.setCssStyles({ visibility: "hidden" });
+  const redDeSeguridad = window.setTimeout(revelar, 2e3);
+  limpieza.register(() => window.clearTimeout(redDeSeguridad));
+  const bloque = parsearBloqueTrig(source);
+  const crudos = bloque.angulos.map((a) => a.radianes);
+  const mostrados = [...crudos];
+  const modelos = mostrados.map((r) => modeloDeAngulo(r));
+  let activo = 0;
+  const ajustesTrig = motor.obtenerAjustes();
+  const imanActivo = ajustesTrig.imanTrig;
+  let unidad = ajustesTrig.unidadAngulo;
+  const derechoExacto = bloque.angulos.map((a) => a.simbolico);
+  const gradosEscritos = bloque.angulos.map((a) => aGrados(a.radianes));
+  const recorrido = rangoDeslizador(gradosEscritos);
+  const fijarAngulo = (crudo, conIman) => {
+    const acotado = acotarARecorrido(crudo, recorrido);
+    crudos[activo] = acotado;
+    mostrados[activo] = conIman ? imantar(acotado) : acotado;
+    modelos[activo] = modeloDeAngulo(mostrados[activo]);
+    derechoExacto[activo] = true;
+  };
+  const tactil = esTactil();
+  const reparto = {
+    estrecho: false,
+    abierto: false,
+    panel: null,
+    ladoChip: ladoChip(tactil)
+  };
+  const panelTrig = contenedor.createDiv({ cls: "lmath-latex" });
+  reparto.panel = panelTrig;
+  reparto.huecoInferior = ALTO_CONTROLES_TRIG;
+  aplicarCajaPanel(reparto);
+  const columna = panelTrig.createDiv();
+  columna.style.cssText = "position:absolute; inset:0; display:flex; flex-direction:column; gap:9px; padding:13px 14px; box-sizing:border-box; overflow:hidden; font-size:12px; line-height:1.45; color:var(--lmath-texto);";
+  const tarjeta = columna.createDiv();
+  tarjeta.style.cssText = "flex:0 0 auto; border:1px solid var(--lmath-borde); border-radius:12px; background:var(--lmath-superficie); padding:9px 10px; text-align:center;";
+  montarEtiquetaMath(motor.plugin, tarjeta.createDiv(), "x^2 + y^2 = 1", ctx);
+  const puntoVivo = tarjeta.createDiv();
+  puntoVivo.style.cssText = "margin-top:7px; padding-top:7px; border-top:1px solid var(--lmath-borde); font-size:11.5px; line-height:1.35; color:var(--lmath-texto-tenue);";
+  const lectura = columna.createDiv({ cls: "lmath-trig-lectura" });
+  const controles = columna.createDiv();
+  controles.setCssProps({ "--lmath-trig-alto-controles": `${ALTO_CONTROLES_TRIG}px` });
+  if (bloque.avisos.length > 0) {
+    const tira = columna.createDiv();
+    columna.insertBefore(tira, lectura);
+    tira.style.cssText = "flex:0 0 auto; display:flex; flex-direction:column; gap:2px; font-size:10px; line-height:1.3; text-align:center; color:var(--lmath-aviso);";
+    const redactar = (a) => t().trig.anguloNoValido(a.texto);
+    const MAX = 3;
+    for (const a of bloque.avisos.slice(0, MAX))
+      tira.createDiv({ text: redactar(a) });
+    if (bloque.avisos.length > MAX) {
+      tira.createDiv({ text: `+${bloque.avisos.length - MAX}` });
+    }
   }
-};
-var CICLO_UNIDAD = ["degrees", "radians", "gradians"];
+  const wrap = contenedor.createDiv({ cls: "lmath-grafica" });
+  wrap.style.cssText = `position:relative; width:100%; height:${ALTO_PANEL}px;`;
+  let anchoAplicado = -1;
+  const aplicarReparto = () => {
+    const ancho = contenedor.clientWidth;
+    if (ancho <= 0)
+      return;
+    const estrecho = ancho < ANCHO_MINIMO_COLUMNAS;
+    if (estrecho === reparto.estrecho && ancho === anchoAplicado)
+      return;
+    anchoAplicado = ancho;
+    reparto.estrecho = estrecho;
+    if (!estrecho)
+      reparto.abierto = false;
+    contenedor.toggleClass("lmath-estrecho", estrecho);
+    aplicarCajaPanel(reparto);
+    sincronizarBotonFormula();
+    wrap.style.height = estrecho ? `${ancho}px` : `${ALTO_PANEL}px`;
+    if (estrecho)
+      wrap.append(controles);
+    else
+      columna.append(controles);
+    controles.toggleClass("lmath-trig-controles-pie", estrecho);
+    controles.toggleClass("lmath-trig-controles", !estrecho);
+    if (lienzoColocado)
+      lienzoColocado(estrecho);
+  };
+  let sincronizarBotonFormula = () => {
+  };
+  let lienzoColocado = null;
+  aplicarReparto();
+  const canvas = wrap.createEl("canvas");
+  canvas.setCssStyles({
+    position: "absolute",
+    top: "0",
+    left: "0",
+    width: "100%",
+    height: "100%",
+    // El dedo sobre el lienzo mueve el ÁNGULO, así que el navegador no se queda ningún gesto
+    // que empiece aquí. Igual que en los demás bloques: lo que empieza fuera del lienzo sigue
+    // desplazando la nota con normalidad.
+    touchAction: "none"
+  });
+  const anclajesAbajo = [];
+  const chipsAbajo = {
+    push: (el2) => anclajesAbajo.push({ el: el2, base: 8 })
+  };
+  const sueloChips = () => 8 + (reparto.estrecho ? ALTO_CONTROLES_TRIG : 0);
+  lienzoColocado = (estrecho) => {
+    canvas.style.height = estrecho ? `calc(100% - ${ALTO_CONTROLES_TRIG}px)` : "100%";
+    const extra = estrecho ? ALTO_CONTROLES_TRIG : 0;
+    for (const { el: el2, base } of anclajesAbajo)
+      el2.style.bottom = `${base + extra}px`;
+  };
+  lienzoColocado(reparto.estrecho);
+  canvas.tabIndex = 0;
+  const ctx2d = canvas.getContext("2d");
+  if (!ctx2d) {
+    wrap.createEl("p", { text: t().canvasNoDisponible });
+    revelar();
+    return;
+  }
+  const colorDe2 = (i2) => {
+    const c = colorCurva(i2);
+    return `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)}, ${c[3]})`;
+  };
+  const componentes = /* @__PURE__ */ new Set();
+  const nombrada = bloque.angulos[activo].componente;
+  if (nombrada)
+    componentes.add(nombrada);
+  let W = 0, Hcss = 0, dprPrev = 0;
+  const disposicion = () => encuadreTrig(W, Hcss);
+  const pintar = () => {
+    fijarTemaPlano(esTemaOscuro(wrap));
+    dibujarTrig(ctx2d, disposicion(), modelos, W, Hcss, {
+      activo,
+      colorDe: colorDe2,
+      puedeExacto: derechoExacto[activo],
+      unidad,
+      componentes
+    });
+    refrescarInfo();
+    actualizarPanel();
+  };
+  let actualizarPanel = () => {
+  };
+  let refrescarInfo = () => {
+  };
+  let animando = false;
+  let detenerAnimacion = () => {
+  };
+  const redimensionar = () => {
+    const caja = canvas.getBoundingClientRect();
+    const ancho = Math.max(1, Math.round(caja.width || wrap.clientWidth || 320));
+    const alto = Math.max(1, Math.round(caja.height || ALTO_PANEL));
+    const dpr = Math.ceil(window.devicePixelRatio || 1);
+    if (ancho === W && alto === Hcss && dpr === dprPrev)
+      return;
+    W = ancho;
+    Hcss = alto;
+    dprPrev = dpr;
+    canvas.width = ancho * dpr;
+    canvas.height = alto * dpr;
+    ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pintar();
+  };
+  redimensionar();
+  const observador = new ResizeObserver(() => redimensionar());
+  observador.observe(wrap);
+  limpieza.register(() => observador.disconnect());
+  const observadorReparto = new ResizeObserver(() => aplicarReparto());
+  observadorReparto.observe(contenedor);
+  limpieza.register(() => observadorReparto.disconnect());
+  window.addEventListener("resize", redimensionar);
+  limpieza.register(() => window.removeEventListener("resize", redimensionar));
+  const refTema = motor.plugin.app.workspace.on("css-change", () => pintar());
+  limpieza.register(() => motor.plugin.app.workspace.offref(refTema));
+  const agarrePx = tactil ? AGARRE_PX_TACTIL : AGARRE_PX;
+  let arrastrando = false;
+  let anguloPrevio = 0;
+  const repintar = () => window.requestAnimationFrame(pintar);
+  canvas.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0)
+      return;
+    const e3 = disposicion();
+    if (!agarraCircunferencia(e3, ev.offsetX, ev.offsetY, agarrePx))
+      return;
+    detenerAnimacion();
+    const ap = anguloDePuntero(e3, ev.offsetX, ev.offsetY);
+    activo = indiceMasCercano(mostrados, ap);
+    arrastrando = true;
+    anguloPrevio = ap;
+    canvas.setPointerCapture(ev.pointerId);
+    canvas.setCssStyles({ cursor: "pointer" });
+    canvas.focus();
+    repintar();
+  });
+  canvas.addEventListener("pointermove", (ev) => {
+    const e3 = disposicion();
+    if (!arrastrando) {
+      canvas.setCssStyles({
+        cursor: agarraCircunferencia(e3, ev.offsetX, ev.offsetY, agarrePx) ? "pointer" : "default"
+      });
+      return;
+    }
+    const ap = anguloDePuntero(e3, ev.offsetX, ev.offsetY);
+    fijarAngulo(
+      crudos[activo] + deltaAngular(anguloPrevio, ap),
+      imanVigente(imanActivo, ev.altKey)
+    );
+    anguloPrevio = ap;
+    repintar();
+  });
+  const soltar = (ev) => {
+    if (!arrastrando)
+      return;
+    arrastrando = false;
+    if (canvas.hasPointerCapture?.(ev.pointerId))
+      canvas.releasePointerCapture(ev.pointerId);
+    canvas.setCssStyles({ cursor: "pointer" });
+  };
+  canvas.addEventListener("pointerup", soltar);
+  canvas.addEventListener("pointercancel", soltar);
+  canvas.addEventListener("keydown", (ev) => {
+    const paso = ev.shiftKey ? PASO_IMAN : PASO_IMAN / 15;
+    let nuevo = null;
+    if (ev.key === "ArrowRight")
+      nuevo = crudos[activo] + paso;
+    else if (ev.key === "ArrowLeft")
+      nuevo = crudos[activo] - paso;
+    else if (ev.key === "PageUp")
+      nuevo = (Math.floor(crudos[activo] / PASO_IMAN) + 1) * PASO_IMAN;
+    else if (ev.key === "PageDown")
+      nuevo = (Math.ceil(crudos[activo] / PASO_IMAN) - 1) * PASO_IMAN;
+    else if (ev.key === "Home")
+      nuevo = 0;
+    else if (ev.key === "Tab" && mostrados.length > 1) {
+      activo = (activo + 1) % mostrados.length;
+      ev.preventDefault();
+      repintar();
+      return;
+    }
+    if (nuevo === null)
+      return;
+    ev.preventDefault();
+    fijarAngulo(nuevo, false);
+    repintar();
+  });
+  {
+    const fila = controles.createDiv({ cls: "lmath-trig-componentes" });
+    fila.setAttribute("role", "group");
+    ponerEtiquetaAccesible(fila, t().trig.componentes.chip);
+    const botones = /* @__PURE__ */ new Map();
+    const sincronizarBotones = () => {
+      for (const [c, b] of botones) {
+        const activo2 = componentes.has(c);
+        b.setAttribute("aria-pressed", String(activo2));
+        const color = colorComponente(c);
+        b.style.cssText = "flex:1 1 0; display:flex; align-items:center; justify-content:center; gap:5px; padding:5px 4px; font-size:11px; line-height:1.1; border-radius:7px; cursor:pointer; user-select:none; white-space:nowrap; transition:color 0.12s ease, background 0.12s ease, border-color 0.12s ease; " + (activo2 ? `color:var(--lmath-texto); background:var(--lmath-panel); border:1px solid ${color};` : "color:var(--lmath-texto-apagado); background:transparent; border:1px solid var(--lmath-borde);");
+        const muestra = b.firstElementChild;
+        if (muestra instanceof HTMLElement) {
+          muestra.style.cssText = `width:11px; height:3px; border-radius:2px; flex:0 0 auto; background:${color}; opacity:${activo2 ? "1" : "0.45"};`;
+        }
+      }
+    };
+    for (const c of COMPONENTES) {
+      const b = fila.createDiv();
+      b.createDiv();
+      b.createSpan({ text: t().trig.componentes[c] });
+      botones.set(c, b);
+      b.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (!componentes.delete(c))
+          componentes.add(c);
+        sincronizarBotones();
+        pintar();
+      });
+    }
+    const filaValor = controles.createDiv({ cls: "lmath-trig-valor" });
+    filaValor.createDiv({ text: ETIQUETA_POR_DEFECTO });
+    const valorVivo = filaValor.createDiv({ cls: "lmath-trig-valor-vivo" });
+    const { fijarValor } = montarDeslizador(controles, {
+      min: recorrido.min,
+      max: recorrido.max,
+      valor: gradosEscritos[activo],
+      etiqueta: ETIQUETA_POR_DEFECTO,
+      paso: 1,
+      pasoGrande: 15,
+      alCambiar: (grados) => {
+        detenerAnimacion();
+        fijarAngulo(aRadianes(grados), false);
+        pintar();
+      }
+    });
+    const tabla = lectura.createDiv();
+    const celdas = [];
+    const nombresRazon = [];
+    for (const nombre of ["sin", "cos", "tan"]) {
+      const f = tabla.createDiv({ cls: "lmath-trig-razon" });
+      nombresRazon.push(f.createDiv({ text: nombre }));
+      nombresRazon[nombresRazon.length - 1].setCssStyles({
+        width: "26px",
+        flex: "0 0 auto"
+      });
+      const exacto = f.createDiv();
+      exacto.setCssStyles({ flex: "1 1 auto", textAlign: "right" });
+      const aprox = f.createDiv();
+      aprox.setCssStyles({
+        color: "var(--lmath-texto-apagado)",
+        width: "62px",
+        flex: "0 0 auto",
+        textAlign: "right"
+      });
+      celdas.push({ exacto, aprox });
+    }
+    const grande = lectura.createDiv();
+    const grandeTitulo = grande.createDiv();
+    grandeTitulo.setCssStyles({ color: "var(--lmath-texto-tenue)", fontSize: "11px" });
+    const grandeValor = grande.createDiv();
+    grandeValor.setCssStyles({
+      fontSize: "21px",
+      lineHeight: "1.35",
+      color: "var(--lmath-texto)"
+    });
+    const grandeAprox = grande.createDiv();
+    grandeAprox.setCssStyles({ color: "var(--lmath-texto-apagado)", fontSize: "11px" });
+    const decimal = (v) => Math.abs(v - Math.round(v)) < 1e-12 ? String(Math.round(v)) : Math.abs(v) >= 1e4 ? v.toExponential(2) : v.toFixed(4);
+    actualizarPanel = () => {
+      const m = modelos[activo];
+      const ex = derechoExacto[activo] ? razonesExactas(mostrados[activo]) : null;
+      const grados = aGrados(mostrados[activo]);
+      const textoAng = textoAngulo(m, unidad);
+      const noDefinida = t().trig.info.noDefinida;
+      fijarValor(grados);
+      valorVivo.setText(textoAng);
+      const punto = derechoExacto[activo] ? puntoExactoTexto(mostrados[activo]) : null;
+      puntoVivo.setText(
+        `P(${textoAng}) = ${punto ?? `(${decimal(m.punto.x)}, ${decimal(m.punto.y)})`}`
+      );
+      const unica = componentes.size === 1 ? [...componentes][0] : null;
+      tabla.setCssStyles({ display: unica === null ? "block" : "none" });
+      grande.setCssStyles({ display: unica === null ? "none" : "block" });
+      if (unica === null) {
+        const valores = [
+          [m.razones.sin, ex?.sin ?? null],
+          [m.razones.cos, ex?.cos ?? null],
+          [m.razones.tan, ex?.tan ?? null]
+        ];
+        valores.forEach(([valor, exacto], i2) => {
+          celdas[i2].exacto.setText(
+            valor === null ? noDefinida : exacto ? exacto.txt : decimal(valor)
+          );
+          celdas[i2].aprox.setText(valor !== null && exacto ? `\u2248 ${decimal(valor)}` : "");
+        });
+      } else {
+        const nombre = unica === "seno" ? "sin" : unica === "coseno" ? "cos" : "tan";
+        const valor = unica === "seno" ? m.razones.sin : unica === "coseno" ? m.razones.cos : m.razones.tan;
+        const exacto = ex === null ? null : unica === "seno" ? ex.sin : unica === "coseno" ? ex.cos : ex.tan;
+        grandeTitulo.setText(`${nombre} ${textoAng}`);
+        grandeTitulo.setCssStyles({ color: colorComponente(unica) });
+        grandeValor.setText(valor === null ? noDefinida : exacto ? exacto.txt : decimal(valor));
+        grandeAprox.setText(valor !== null && exacto ? `\u2248 ${decimal(valor)}` : "");
+      }
+    };
+    const sincronizarColores = () => {
+      sincronizarBotones();
+      COMPONENTES.forEach((c, i2) => nombresRazon[i2].setCssStyles({ color: colorComponente(c) }));
+    };
+    sincronizarColores();
+    const refTemaBotones = motor.plugin.app.workspace.on("css-change", () => sincronizarColores());
+    limpieza.register(() => motor.plugin.app.workspace.offref(refTemaBotones));
+  }
+  {
+    const altoU = reparto.ladoChip;
+    const anchoU = altoU;
+    const btnUnidad = wrap.createDiv();
+    btnUnidad.style.cssText = `position:absolute; top:6px; right:8px; width:${anchoU}px; height:${altoU}px; display:flex; align-items:center; justify-content:center; line-height:1; border-radius:${altoU / 2}px; cursor:pointer; user-select:none; z-index:5; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde);`;
+    const sincronizarUnidad = () => {
+      btnUnidad.empty();
+      montarGlifoUnidad(btnUnidad, unidad, Math.round(altoU * 0.78));
+      const nombre = unidad === "degrees" ? t().ajustes.trig.opcionGrados : unidad === "radians" ? t().ajustes.trig.opcionRadianes : t().ajustes.trig.opcionGradianes;
+      ponerTooltip(btnUnidad, `${t().ajustes.trig.unidad.etiqueta}: ${nombre}`);
+    };
+    sincronizarUnidad();
+    btnUnidad.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      unidad = CICLO_UNIDAD[(CICLO_UNIDAD.indexOf(unidad) + 1) % CICLO_UNIDAD.length];
+      sincronizarUnidad();
+      pintar();
+    });
+    const refIdioma = motor.plugin.app.workspace.on("css-change", () => sincronizarUnidad());
+    limpieza.register(() => motor.plugin.app.workspace.offref(refIdioma));
+  }
+  {
+    const ladoP = reparto.ladoChip;
+    const velocidad = aRadianes(60);
+    const btnPlay = wrap.createDiv();
+    chipsAbajo.push(btnPlay);
+    btnPlay.style.cssText = `position:absolute; bottom:8px; left:${8 + ladoP + 6}px; width:${ladoP}px; height:${ladoP}px; display:flex; align-items:center; justify-content:center; line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; user-select:none; z-index:5;`;
+    const sincronizarPlay = () => {
+      btnPlay.empty();
+      montarIcono(btnPlay, animando ? "pausar" : "reproducir", ladoIcono(ladoP));
+      ponerTooltip(btnPlay, animando ? t().botones.pausar : t().botones.reproducir);
+    };
+    sincronizarPlay();
+    let rafAnim = null;
+    let tPrev = 0;
+    let enPantalla = true;
+    const marco = (t2) => {
+      rafAnim = null;
+      if (!animando || !enPantalla)
+        return;
+      const dt = tPrev === 0 ? 0 : (t2 - tPrev) / 1e3;
+      tPrev = t2;
+      fijarAngulo(pasoAnimacion(crudos[activo], velocidad, dt), false);
+      pintar();
+      rafAnim = window.requestAnimationFrame(marco);
+    };
+    const arrancarBucle = () => {
+      if (rafAnim !== null)
+        return;
+      tPrev = 0;
+      rafAnim = window.requestAnimationFrame(marco);
+    };
+    const pararBucle = () => {
+      if (rafAnim !== null)
+        window.cancelAnimationFrame(rafAnim);
+      rafAnim = null;
+    };
+    detenerAnimacion = () => {
+      if (!animando)
+        return;
+      animando = false;
+      pararBucle();
+      sincronizarPlay();
+    };
+    btnPlay.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      animando = !animando;
+      if (animando)
+        arrancarBucle();
+      else
+        pararBucle();
+      sincronizarPlay();
+      pintar();
+    });
+    const observadorVista = new IntersectionObserver((entradas) => {
+      enPantalla = entradas.some((e3) => e3.isIntersecting);
+      if (animando && enPantalla)
+        arrancarBucle();
+      else if (!enPantalla)
+        pararBucle();
+    });
+    observadorVista.observe(wrap);
+    limpieza.register(() => observadorVista.disconnect());
+    limpieza.register(pararBucle);
+  }
+  {
+    const ladoF = reparto.ladoChip;
+    const btnFormula = wrap.createDiv({ text: "f(x)" });
+    ponerTooltip(btnFormula, t().botones.verFormula);
+    const estiloFormula = () => {
+      btnFormula.style.cssText = `position:absolute; bottom:${sueloChips()}px; left:8px; width:${ladoF}px; height:${ladoF}px; display:flex; align-items:center; justify-content:center; font-size:10px; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; font-family:"Lora", var(--font-interface); ` + (reparto.abierto ? "color:var(--lmath-acento-contraste); background:var(--lmath-acento); border:1px solid var(--lmath-acento);" : "color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde);") + (reparto.estrecho ? "" : "display:none;");
+    };
+    estiloFormula();
+    sincronizarBotonFormula = estiloFormula;
+    btnFormula.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      reparto.abierto = !reparto.abierto;
+      aplicarCajaPanel(reparto);
+      estiloFormula();
+      pintar();
+    });
+  }
+  {
+    const ladoI = reparto.ladoChip;
+    const btnInfo = wrap.createDiv();
+    chipsAbajo.push(btnInfo);
+    ponerTooltip(btnInfo, t().trig.info.chip);
+    btnInfo.style.cssText = estiloChipInfo(ladoI);
+    montarIcono(btnInfo, "info", ladoIcono(ladoI));
+    const pop = wrap.createDiv();
+    pop.style.cssText = estiloPopoverInfo(ladoI);
+    anclajesAbajo.push({ el: pop, base: 8 + ladoI + 6 });
+    let visible = false;
+    const abiertas = /* @__PURE__ */ new Set([0]);
+    const dec = (v, n = 6) => {
+      return Math.abs(v - Math.round(v)) < 1e-12 ? String(Math.round(v)) : v.toFixed(n);
+    };
+    const grados = (rad) => textoGradosDe(rad);
+    const construir = () => {
+      pop.empty();
+      const m = modelos[activo];
+      const T = t().trig.info;
+      const ex = derechoExacto[activo] ? razonesExactas(mostrados[activo]) : null;
+      const radExacto = derechoExacto[activo] ? radianesExactoTexto(mostrados[activo]) : null;
+      const razon = (valor, exacto) => {
+        if (valor === null)
+          return T.noDefinida;
+        return exacto ? `${exacto.txt}  \u2248 ${dec(valor)}` : dec(valor);
+      };
+      const secciones = [
+        {
+          // Primera, y por tanto la ABIERTA por defecto: es la única sección cuya mayoría
+          // (csc, sec, cot) no aparece en ningún otro sitio de la interfaz.
+          titulo: T.seccionRazones,
+          filas: [
+            // El orden empareja recíprocas por posición (1↔4, 2↔5, 3↔6) y es el mismo de la
+            // tarjeta y del chip de componentes: el ojo aprende un orden, no dos.
+            ["sin", razon(m.razones.sin, ex?.sin)],
+            ["cos", razon(m.razones.cos, ex?.cos)],
+            ["tan", razon(m.razones.tan, ex?.tan)],
+            ["csc", razon(m.razones.csc, ex?.csc)],
+            ["sec", razon(m.razones.sec, ex?.sec)],
+            ["cot", razon(m.razones.cot, ex?.cot)],
+            // Cierre de la sección, despegado del resto: no es una razón más, es la invariante
+            // que las liga —y la ecuación de la propia circunferencia unidad—, así que vive con
+            // sus operandos. Comprobación NUMÉRICA, y se dice que lo es: no hay álgebra detrás.
+            [
+              T.pitagorica,
+              `${dec(m.razones.sin ** 2 + m.razones.cos ** 2)} (${T.pitagoricaNota})`,
+              true
+            ]
+          ]
+        },
+        {
+          // Cadena de derivación: cada fila se calcula de la anterior. Que `Radianes` y
+          // `Longitud de arco` salgan con el mismo número no es un descuido — es el hecho que
+          // DEFINE el radián (r = 1 ⇒ s = θ), y solo se lee como tal si van seguidas. Separadas
+          // por dos secciones, como estaban, la coincidencia parecía un error.
+          titulo: T.seccionMedida,
+          filas: [
+            [T.grados, grados(m.radianes)],
+            [T.radianes, radExacto ? `${radExacto}  \u2248 ${dec(m.radianes)}` : dec(m.radianes)],
+            [T.arco, dec(m.arco)],
+            [T.sector, dec(m.sector)]
+          ]
+        },
+        {
+          // De grueso a fino: dónde cae el lado terminal da el SIGNO de las razones, el
+          // coterminal y las vueltas reconstruyen θ = coterminal + n·2π leídos seguidos, y el
+          // ángulo de referencia cierra dando su MAGNITUD. Es el método del ángulo de
+          // referencia, en orden.
+          titulo: T.seccionPosicion,
+          filas: [
+            // Con etiqueta, y esa: los ocho valores son cuadrantes Y semiejes, así que
+            // «cuadrante» mentiría en la mitad de los casos.
+            [T.ladoTerminal, T.posicion[m.posicion]],
+            [T.coterminal, grados(m.coterminal)],
+            [T.vueltas, String(m.vueltas)],
+            [T.referencia, grados(m.referencia)]
+          ]
+        },
+        {
+          // Todas las filas son OTRO ángulo, ordenadas por la constante de la que salen
+          // (0−θ, 90−θ, 180−θ, 180+θ): así cada par contiguo comparte estructura.
+          titulo: T.seccionRelacionados,
+          filas: [
+            [T.opuesto, grados(-m.radianes)],
+            [T.complementario, grados(Math.PI / 2 - m.radianes)],
+            [T.suplementario, grados(Math.PI - m.radianes)],
+            [T.antipoda, grados(m.radianes + Math.PI)]
+          ]
+        }
+      ];
+      secciones.forEach((s, i2) => {
+        const cab = pop.createDiv({ text: `${abiertas.has(i2) ? "\u25BE" : "\u25B8"} ${s.titulo}` });
+        cab.style.cssText = "cursor:pointer; user-select:none; font-weight:600; padding:3px 0; " + (i2 > 0 ? "border-top:1px solid var(--lmath-borde); margin-top:3px;" : "");
+        cab.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          if (abiertas.has(i2))
+            abiertas.delete(i2);
+          else
+            abiertas.add(i2);
+          construir();
+        });
+        if (!abiertas.has(i2))
+          return;
+        for (const [etiqueta, valor, separada] of s.filas) {
+          const fila = pop.createDiv();
+          fila.style.cssText = "display:flex; justify-content:space-between; gap:10px; padding:1px 0;" + // El mismo filete que separa secciones, pero sin cabecera detrás y con el aire
+          // repartido a los dos lados: se lee como un cierre DENTRO de la sección abierta,
+          // no como el principio de otra.
+          (separada ? " border-top:1px solid var(--lmath-borde); margin-top:5px; padding-top:5px;" : "");
+          fila.createDiv({ text: etiqueta }).setCssStyles({ color: "var(--lmath-texto-tenue)" });
+          fila.createDiv({ text: valor }).setCssStyles({ textAlign: "right" });
+        }
+      });
+    };
+    refrescarInfo = () => {
+      if (visible)
+        construir();
+    };
+    btnInfo.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      visible = !visible;
+      if (visible)
+        construir();
+      pop.setCssStyles({ display: visible ? "block" : "none" });
+    });
+  }
+  lienzoColocado(reparto.estrecho);
+  redimensionar();
+  pintar();
+  revelar();
+}
+
+// src/host-obsidian/blocks/vector.ts
+var import_obsidian7 = require("obsidian");
+
+// src/vector/bloqueVector.ts
+var NOMBRE = /^[A-Za-z][A-Za-z0-9]*(?:_(?:\{[A-Za-z0-9+-]*\}|[A-Za-z0-9]))?'*$/;
+var DELIMITADORES = [["(", ")"], ["[", "]"]];
+var evaluarComponente = evaluarConstante;
+function separarPar(texto) {
+  const s = texto.replace(/\\left|\\right/g, "").trim();
+  const par = DELIMITADORES.find(([a, b]) => s.startsWith(a) && s.endsWith(b));
+  if (!par || s.length < 4)
+    return null;
+  let prof = 0;
+  let coma = -1;
+  for (let i2 = 0; i2 < s.length; i2++) {
+    const c = s[i2];
+    if (c === "(" || c === "[" || c === "{")
+      prof++;
+    else if (c === ")" || c === "]" || c === "}") {
+      if (--prof === 0 && i2 < s.length - 1)
+        return null;
+    } else if (c === "," && prof === 1) {
+      if (coma !== -1)
+        return null;
+      coma = i2;
+    }
+  }
+  if (coma === -1)
+    return null;
+  const x = s.slice(1, coma).trim();
+  const y = s.slice(coma + 1, -1).trim();
+  return x && y ? [x, y] : null;
+}
+function construirPar(x, y) {
+  const vx = evaluarComponente(x);
+  const vy = evaluarComponente(y);
+  return { x, y, valor: vx !== null && vy !== null ? [vx, vy] : null };
+}
+function generoDeNombre(nombre) {
+  return /^[A-Z]/.test(nombre) ? "punto" : "vector";
+}
+var desnudarFlecha = (s) => s.replace(/^\\(?:vec|overrightarrow)\s*\{([^{}]*)\}$/, "$1").trim();
+function leerNombre(lhs) {
+  const crudo = lhs.trim();
+  const s = desnudarFlecha(crudo);
+  const conFlecha2 = s !== crudo;
+  const abre = s.indexOf("(");
+  if (abre === -1)
+    return NOMBRE.test(s) ? { nombre: s, parametros: [], conFlecha: conFlecha2 } : null;
+  if (!s.endsWith(")"))
+    return null;
+  const nombre = s.slice(0, abre).trim();
+  if (!NOMBRE.test(nombre))
+    return null;
+  const parametros = s.slice(abre + 1, -1).split(",").map((p) => p.trim());
+  if (parametros.some((p) => p === "" || !NOMBRE.test(p)))
+    return null;
+  return { nombre, parametros, conFlecha: conFlecha2 };
+}
+var FLECHA_ENTRE = /^([A-Za-z][A-Za-z0-9]*)\s*(?:->|→|\\to)\s*([A-Za-z][A-Za-z0-9]*)$/;
+function leerExtremos(linea) {
+  const desnudo = desnudarFlecha(linea);
+  const flecha = FLECHA_ENTRE.exec(desnudo);
+  if (flecha)
+    return [flecha[1], flecha[2]];
+  if (/^[A-Z][A-Z]$/.test(desnudo))
+    return [desnudo[0], desnudo[1]];
+  return null;
+}
+function parDiferencia(desde, hasta) {
+  if (desde.valor && hasta.valor) {
+    const dx = hasta.valor[0] - desde.valor[0];
+    const dy = hasta.valor[1] - desde.valor[1];
+    return { x: numeroATexto(dx), y: numeroATexto(dy), valor: [dx, dy] };
+  }
+  return construirPar(`(${hasta.x})-(${desde.x})`, `(${hasta.y})-(${desde.y})`);
+}
+function parsearBloqueVector(source) {
+  const lineas = source.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== "");
+  const puntos = /* @__PURE__ */ new Map();
+  const declarado = [];
+  for (let i2 = 0; i2 < lineas.length; i2++) {
+    const corte = lineas[i2].indexOf("=");
+    if (corte < 0)
+      continue;
+    const cabeza = leerNombre(lineas[i2].slice(0, corte));
+    if (!cabeza)
+      continue;
+    const componentes = separarPar(lineas[i2].slice(corte + 1));
+    if (!componentes)
+      continue;
+    const par = construirPar(componentes[0], componentes[1]);
+    const genero = cabeza.parametros.length > 0 ? "campo" : cabeza.conFlecha ? "vector" : generoDeNombre(cabeza.nombre);
+    if (genero === "punto")
+      puntos.set(cabeza.nombre, par);
+    declarado.push({
+      indice: i2,
+      entrada: { tipo: "declaracion", genero, nombre: cabeza.nombre, parametros: cabeza.parametros, par }
+    });
+  }
+  const porIndice = new Map(declarado.map((d) => [d.indice, d.entrada]));
+  const entradas = [];
+  for (let i2 = 0; i2 < lineas.length; i2++) {
+    const yaLeida = porIndice.get(i2);
+    if (yaLeida) {
+      entradas.push(yaLeida);
+      continue;
+    }
+    const extremos = leerExtremos(lineas[i2]);
+    const desde = extremos ? puntos.get(extremos[0]) : void 0;
+    const hasta = extremos ? puntos.get(extremos[1]) : void 0;
+    if (extremos && desde && hasta) {
+      entradas.push({
+        tipo: "diferencia",
+        desde: extremos[0],
+        hasta: extremos[1],
+        par: parDiferencia(desde, hasta)
+      });
+      continue;
+    }
+    entradas.push({ tipo: "libre", texto: lineas[i2] });
+  }
+  return { entradas };
+}
+var ORIGEN = [0, 0];
+function dibujoDeBloque(bloque) {
+  const flechas = [];
+  const marcas = [];
+  bloque.entradas.forEach((e3, rol) => {
+    if (e3.tipo === "libre")
+      return;
+    if (e3.tipo === "diferencia") {
+      const desde = puntoDeclarado(bloque, e3.desde);
+      const hasta = puntoDeclarado(bloque, e3.hasta);
+      if (desde && hasta) {
+        flechas.push({ desde, hasta, etiqueta: `${e3.desde}${e3.hasta}`, rol });
+      }
+      return;
+    }
+    if (!e3.par.valor)
+      return;
+    if (e3.genero === "vector") {
+      flechas.push({ desde: ORIGEN, hasta: e3.par.valor, etiqueta: e3.nombre, rol });
+    } else if (e3.genero === "punto") {
+      marcas.push({ en: e3.par.valor, etiqueta: e3.nombre, rol });
+    }
+  });
+  return { flechas, marcas };
+}
+function puntoDeclarado(bloque, nombre) {
+  let ultimo = null;
+  for (const e3 of bloque.entradas) {
+    if (e3.tipo === "declaracion" && e3.genero === "punto" && e3.nombre === nombre && e3.par.valor)
+      ultimo = e3.par.valor;
+  }
+  return ultimo;
+}
+function hayDibujo(d) {
+  return d.flechas.length > 0 || d.marcas.length > 0;
+}
+
+// src/vector/latexVector.ts
+var VACIO = "\\text{[...]}";
+var PLANTILLA_VACIA = `\\vec{v}=${VACIO}`;
+function trozoALatex(texto) {
+  const s = texto.trim();
+  if (s === "")
+    return VACIO;
+  return comandosNoSoportados(s).length > 0 ? s : exprALatex(s);
+}
+function parALatex(par) {
+  return `\\left(${trozoALatex(par.x)},\\ ${trozoALatex(par.y)}\\right)`;
+}
+function conFlecha(nombre) {
+  const base = nombre.split("_")[0] ?? nombre;
+  const letras = (base.match(/[A-Za-z]/g) ?? []).length;
+  return letras > 1 ? `\\overrightarrow{${nombre}}` : `\\vec{${nombre}}`;
+}
+function nombreALatex(entrada) {
+  if (entrada.genero === "campo")
+    return `${entrada.nombre}\\left(${entrada.parametros.join(",")}\\right)`;
+  return entrada.genero === "vector" ? conFlecha(entrada.nombre) : entrada.nombre;
+}
+function rotuloALatex(entrada) {
+  switch (entrada.tipo) {
+    case "declaracion":
+      return entrada.genero === "campo" ? null : nombreALatex(entrada);
+    case "diferencia":
+      return conFlecha(`${entrada.desde}${entrada.hasta}`);
+    case "libre":
+      return null;
+  }
+}
+function entradaALatex(entrada) {
+  switch (entrada.tipo) {
+    case "declaracion":
+      return `${nombreALatex(entrada)}=${parALatex(entrada.par)}`;
+    case "diferencia":
+      return `${conFlecha(`${entrada.desde}${entrada.hasta}`)}=${parALatex(entrada.par)}`;
+    case "libre": {
+      const s = entrada.texto;
+      if (comandosNoSoportados(s).length === 0 && s.split("=").length === 2)
+        return ecuacionALatex(s);
+      return trozoALatex(s);
+    }
+  }
+}
+function bloqueVectorALatex(bloque) {
+  if (bloque.entradas.length === 0)
+    return [PLANTILLA_VACIA];
+  return bloque.entradas.map(entradaALatex);
+}
+
+// src/vector/renderVector.ts
+var GROSOR_PX = 2.5;
+var PUNTA_PX = 11;
+var PUNTA_ANCHO_PX = 4.5;
+var RADIO_MARCA_PX = 3.5;
+var ROTULO_PX = 12;
+var LIM_PX2 = 1e6;
+var acotar = (v) => v < -LIM_PX2 ? -LIM_PX2 : v > LIM_PX2 ? LIM_PX2 : v;
+var css2 = (c) => `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)}, ${c[3]})`;
+function aPantalla(vp, p) {
+  return [acotar(aPantallaX(vp, p[0])), acotar(aPantallaY(vp, p[1]))];
+}
+function geometriaFlecha(vp, f) {
+  const [x0, y0] = aPantalla(vp, f.desde);
+  const [x1, y1] = aPantalla(vp, f.hasta);
+  const dx = x1 - x0, dy = y1 - y0;
+  const largo = Math.hypot(dx, dy);
+  if (largo < 0.5)
+    return { x0, y0, x1, y1, largo, ux: 0, uy: 0, nx: 0, ny: 0 };
+  const ux = dx / largo, uy = dy / largo;
+  const [nx, ny] = uy > 0 ? [uy, -ux] : [-uy, ux];
+  return { x0, y0, x1, y1, largo, ux, uy, nx, ny };
+}
+function dibujarFlecha(ctx, vp, f) {
+  const color = css2(colorCurva(f.rol));
+  const g = geometriaFlecha(vp, f);
+  if (g.largo < 0.5) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(g.x1, g.y1, RADIO_MARCA_PX, 0, 2 * Math.PI);
+    ctx.fill();
+    return;
+  }
+  const punta = Math.min(PUNTA_PX, g.largo * 0.5);
+  const bx = g.x1 - g.ux * punta, by = g.y1 - g.uy * punta;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = GROSOR_PX;
+  ctx.lineCap = "butt";
+  ctx.beginPath();
+  ctx.moveTo(g.x0, g.y0);
+  ctx.lineTo(bx, by);
+  ctx.stroke();
+  const ancho = PUNTA_ANCHO_PX * punta / PUNTA_PX;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(g.x1, g.y1);
+  ctx.lineTo(bx + g.nx * ancho, by + g.ny * ancho);
+  ctx.lineTo(bx - g.nx * ancho, by - g.ny * ancho);
+  ctx.closePath();
+  ctx.fill();
+}
+function dibujarMarca(ctx, vp, m) {
+  const [x, y] = aPantalla(vp, m.en);
+  ctx.fillStyle = css2(colorCurva(m.rol));
+  ctx.beginPath();
+  ctx.arc(x, y, RADIO_MARCA_PX, 0, 2 * Math.PI);
+  ctx.fill();
+}
+function rotulosDeDibujo(vp, dibujo) {
+  const rotulos = [];
+  for (const f of dibujo.flechas) {
+    const g = geometriaFlecha(vp, f);
+    const [x, y] = g.largo < 0.5 ? [g.x1 + ROTULO_PX, g.y1 - ROTULO_PX] : [(g.x0 + g.x1) / 2 + g.nx * ROTULO_PX, (g.y0 + g.y1) / 2 + g.ny * ROTULO_PX];
+    rotulos.push({ rol: f.rol, x, y, color: css2(colorCurva(f.rol)) });
+  }
+  for (const m of dibujo.marcas) {
+    const [x, y] = aPantalla(vp, m.en);
+    rotulos.push({ rol: m.rol, x: x + ROTULO_PX, y: y - ROTULO_PX, color: css2(colorCurva(m.rol)) });
+  }
+  return rotulos;
+}
+function dibujarVectores(ctx, vp, dibujo) {
+  new Overlay(ctx).dibujar(vp);
+  ctx.save();
+  ctx.lineJoin = "round";
+  for (const f of dibujo.flechas)
+    dibujarFlecha(ctx, vp, f);
+  for (const m of dibujo.marcas)
+    dibujarMarca(ctx, vp, m);
+  ctx.restore();
+}
+function encuadreDeDibujo(dibujo, semiYDefecto, aspecto) {
+  let maxX = 0, maxY = 0;
+  const mirar = (p) => {
+    if (!Number.isFinite(p[0]) || !Number.isFinite(p[1]))
+      return;
+    maxX = Math.max(maxX, Math.abs(p[0]));
+    maxY = Math.max(maxY, Math.abs(p[1]));
+  };
+  for (const f of dibujo.flechas) {
+    mirar(f.desde);
+    mirar(f.hasta);
+  }
+  for (const m of dibujo.marcas)
+    mirar(m.en);
+  if (maxX === 0 && maxY === 0)
+    return null;
+  const MARGEN = 1.25;
+  const necesario = Math.max(maxY, maxX / Math.max(aspecto, 1e-6)) * MARGEN;
+  if (!Number.isFinite(necesario) || necesario <= 0)
+    return null;
+  if (necesario <= semiYDefecto && necesario >= semiYDefecto / 3)
+    return null;
+  return necesario;
+}
+
+// src/vector/analisisVector.ts
+var DOS_PI5 = 2 * Math.PI;
+var EPS_REL = 1e-12;
+var entero = (v) => Number.isFinite(v) && Number.isInteger(v);
+var mcd7 = (a, b) => b === 0 ? a || 1 : mcd7(b, a % b);
+function raizTexto(n) {
+  if (!entero(n) || n < 0)
+    return null;
+  if (n === 0)
+    return "0";
+  let fuera = 1, dentro2 = n;
+  for (let k = 2; k * k <= dentro2; k++) {
+    while (dentro2 % (k * k) === 0) {
+      dentro2 /= k * k;
+      fuera *= k;
+    }
+  }
+  if (dentro2 === 1)
+    return String(fuera);
+  return fuera === 1 ? `\u221A${dentro2}` : `${fuera}\u221A${dentro2}`;
+}
+function racionalTexto(num, den) {
+  if (!entero(num) || !entero(den) || den === 0)
+    return null;
+  const g = mcd7(Math.abs(num), Math.abs(den));
+  const n = num / g, d = den / g;
+  return d === 1 ? String(n) : `${n}/${d}`;
+}
+function componentesDe(f) {
+  return [f.hasta[0] - f.desde[0], f.hasta[1] - f.desde[1]];
+}
+function analizarFlecha(f) {
+  const [x, y] = componentesDe(f);
+  const valor = Math.hypot(x, y);
+  const modulo = {
+    valor,
+    exacto: entero(x) && entero(y) ? raizTexto(x * x + y * y) : null
+  };
+  if (!(valor > 0) || !Number.isFinite(valor)) {
+    return {
+      rol: f.rol,
+      componentes: [x, y],
+      modulo,
+      direccion: null,
+      posicion: null,
+      unitario: null
+    };
+  }
+  const direccion = (Math.atan2(y, x) + DOS_PI5) % DOS_PI5;
+  return {
+    rol: f.rol,
+    componentes: [x, y],
+    modulo,
+    direccion,
+    posicion: posicionDe(direccion),
+    unitario: [x / valor, y / valor]
+  };
+}
+function analizarPar(a, b) {
+  const [ax, ay] = a.componentes;
+  const [bx, by] = b.componentes;
+  const exacto = entero(ax) && entero(ay) && entero(bx) && entero(by);
+  const escalarV = ax * bx + ay * by;
+  const detV = ax * by - ay * bx;
+  const producto3 = a.modulo.valor * b.modulo.valor;
+  const angulo = producto3 > 0 ? Math.atan2(Math.abs(detV), escalarV) : null;
+  return {
+    rolA: a.rol,
+    rolB: b.rol,
+    escalar: { valor: escalarV, exacto: exacto ? String(escalarV) : null },
+    determinante: { valor: detV, exacto: exacto ? String(detV) : null },
+    angulo,
+    areaParalelogramo: {
+      valor: Math.abs(detV),
+      exacto: exacto ? String(Math.abs(detV)) : null
+    },
+    areaTriangulo: {
+      valor: Math.abs(detV) / 2,
+      exacto: exacto ? racionalTexto(Math.abs(detV), 2) : null
+    },
+    relacion: producto3 === 0 ? null : Math.abs(escalarV) <= EPS_REL * producto3 ? "perpendicular" : Math.abs(detV) <= EPS_REL * producto3 ? "paralelo" : null
+  };
+}
+function analizarPuntos(a, b) {
+  const [ax, ay] = a.en;
+  const [bx, by] = b.en;
+  const dx = bx - ax, dy = by - ay;
+  const exacto = entero(ax) && entero(ay) && entero(bx) && entero(by);
+  const mx = racionalTexto(ax + bx, 2), my = racionalTexto(ay + by, 2);
+  return {
+    rolA: a.rol,
+    rolB: b.rol,
+    distancia: {
+      valor: Math.hypot(dx, dy),
+      exacto: exacto ? raizTexto(dx * dx + dy * dy) : null
+    },
+    medio: [(ax + bx) / 2, (ay + by) / 2],
+    medioExacto: exacto && mx !== null && my !== null ? [mx, my] : null
+  };
+}
+function analizarDibujo(dibujo) {
+  if (dibujo.flechas.length === 0 && dibujo.marcas.length === 0)
+    return null;
+  const vectores = dibujo.flechas.map(analizarFlecha);
+  const [v0, v1] = vectores;
+  const [m0, m1] = dibujo.marcas;
+  return {
+    vectores,
+    par: vectores.length === 2 && v0 && v1 ? analizarPar(v0, v1) : null,
+    puntos: dibujo.marcas.length === 2 && m0 && m1 ? analizarPuntos(m0, m1) : null
+  };
+}
+
+// src/host-obsidian/blocks/vector.ts
+async function procesarVector(motor, source, el, ctx) {
+  const contenedor = el.createDiv({ cls: "lmath-container" });
+  const limpieza = new import_obsidian7.MarkdownRenderChild(contenedor);
+  ctx.addChild(limpieza);
+  motor.registrarRecarga(limpieza, source, el, ctx);
+  const revelar = () => contenedor.setCssStyles({ visibility: "visible" });
+  contenedor.setCssStyles({ visibility: "hidden" });
+  const redDeSeguridad = window.setTimeout(revelar, 2e3);
+  limpieza.register(() => window.clearTimeout(redDeSeguridad));
+  const bloque = parsearBloqueVector(source);
+  const formulas = bloqueVectorALatex(bloque);
+  const dibujo = dibujoDeBloque(bloque);
+  const conPlano = hayDibujo(dibujo);
+  const esDiferencia = (i2) => bloque.entradas[i2]?.tipo === "diferencia";
+  const declaradas = formulas.filter((_, i2) => !esDiferencia(i2));
+  const deducidas = formulas.filter((_, i2) => esDiferencia(i2));
+  const conVistas = declaradas.length > 0 && deducidas.length > 0;
+  const tactil = esTactil();
+  const alto = altoPanelPorTarjetas(
+    conVistas ? Math.max(declaradas.length, deducidas.length) : formulas.length
+  );
+  const reparto = {
+    estrecho: false,
+    abierto: false,
+    panel: null,
+    ladoChip: ladoChip(tactil),
+    alto
+  };
+  const montarPanel = async () => {
+    if (conVistas) {
+      await montarPanelVistas(motor, contenedor, ctx, limpieza, reparto, {
+        operador: declaradas,
+        resultado: deducidas,
+        glifoOperador: "\\vec{v}=(x,\\ y)",
+        tooltipOperador: t().vector.vistas.escrito,
+        tooltipOpciones: t().vector.vistas.opciones,
+        opciones: [
+          {
+            etiqueta: t().vector.vistas.entrePuntos,
+            tex: "\\overrightarrow{AB}",
+            vista: "resultado"
+          }
+        ]
+      });
+      return;
+    }
+    const { renderLatex } = crearScrollerLatex(motor.plugin, contenedor, ctx, limpieza, reparto);
+    await renderLatex(formulas);
+  };
+  await montarPanel();
+  const wrap = contenedor.createDiv({ cls: "lmath-grafica" });
+  wrap.style.cssText = `position:relative; width:100%; height:${alto}px;`;
+  let sincronizarBotonFormula = () => {
+  };
+  let anchoAplicado = -1;
+  const aplicarReparto = () => {
+    const ancho = contenedor.clientWidth;
+    if (ancho <= 0)
+      return;
+    const estrecho = ancho < ANCHO_MINIMO_COLUMNAS;
+    if (estrecho === reparto.estrecho && ancho === anchoAplicado)
+      return;
+    anchoAplicado = ancho;
+    reparto.estrecho = estrecho;
+    if (!estrecho)
+      reparto.abierto = false;
+    contenedor.toggleClass("lmath-estrecho", estrecho);
+    aplicarCajaPanel(reparto);
+    sincronizarBotonFormula();
+    wrap.style.height = estrecho ? `${Math.round(ancho * PROPORCION_PLANO_FLOTANTE)}px` : `${alto}px`;
+  };
+  aplicarReparto();
+  const canvas = wrap.createEl("canvas");
+  canvas.setCssStyles({
+    position: "absolute",
+    top: "0",
+    left: "0",
+    width: "100%",
+    height: "100%",
+    // Mismo trato que el plano de obs-graph: con ratón se oculta el cursor del sistema y el
+    // motor pinta el suyo (`Crosshair.dibujarCursorCruz`); con el dedo no hay cursor que
+    // sustituir, así que se deja el de siempre. Ver la nota larga en `process`.
+    cursor: tactil ? "default" : "none"
+  });
+  const ctx2d = canvas.getContext("2d");
+  if (!ctx2d) {
+    wrap.createEl("p", { text: t().canvasNoDisponible });
+    revelar();
+    return;
+  }
+  const crosshair = new Crosshair(ctx2d);
+  let W = 0, Hcss = 0, dprPrev = 0;
+  let camara;
+  const vpActual = () => camara.viewport();
+  const capaRotulos = wrap.createDiv({ cls: "lmath-rotulos" });
+  const nodosRotulo = [];
+  const colocarRotulos = () => {
+    rotulosDeDibujo(vpActual(), dibujo).forEach((r, i2) => {
+      let nodo = nodosRotulo[i2];
+      if (!nodo) {
+        nodo = capaRotulos.createSpan({ cls: "lmath-rotulo" });
+        nodosRotulo[i2] = nodo;
+        const entrada = bloque.entradas[r.rol];
+        const tex = entrada ? rotuloALatex(entrada) : null;
+        if (tex !== null)
+          montarEtiquetaMath(motor.plugin, nodo, tex, ctx);
+      }
+      nodo.setCssProps({
+        "--lmath-rotulo-x": `${r.x}px`,
+        "--lmath-rotulo-y": `${r.y}px`,
+        "--lmath-rotulo-color": r.color
+      });
+    });
+  };
+  const pintar = () => {
+    fijarTemaPlano(esTemaOscuro(wrap));
+    dibujarVectores(ctx2d, vpActual(), dibujo);
+    colocarRotulos();
+    const mx = camara.cursorPx(), my = camara.cursorPy();
+    if (mx !== null && my !== null)
+      crosshair.dibujarCursorCruz(mx, my);
+  };
+  let framePendiente = 0;
+  const programarPintado = () => {
+    if (framePendiente)
+      return;
+    framePendiente = window.requestAnimationFrame(() => {
+      framePendiente = 0;
+      pintar();
+    });
+  };
+  limpieza.register(() => {
+    if (framePendiente)
+      window.cancelAnimationFrame(framePendiente);
+  });
+  camara = new Camara(canvas, alto, {
+    onViewport: () => programarPintado(),
+    onCursor: () => programarPintado()
+  }, { seguirCursor: !tactil });
+  limpieza.register(() => camara.destruir());
+  if (!tactil) {
+    const nav = new Navegacion(canvas, camara, {
+      y: () => null,
+      avanzarArco: () => null,
+      hayVecina: () => false,
+      tieneAsintotasVerticales: () => false
+    }, () => pintar());
+    limpieza.register(() => nav.destruir());
+  }
+  const redimensionar = () => {
+    const caja = canvas.getBoundingClientRect();
+    const ancho = Math.max(1, Math.round(caja.width || wrap.clientWidth || 320));
+    const altoPx = Math.max(1, Math.round(caja.height || alto));
+    const dpr = Math.ceil(window.devicePixelRatio || 1);
+    if (ancho === W && altoPx === Hcss && dpr === dprPrev)
+      return;
+    const primera = W === 0;
+    W = ancho;
+    Hcss = altoPx;
+    dprPrev = dpr;
+    camara.redimensionar(ancho, altoPx, dpr);
+    canvas.width = ancho * dpr;
+    canvas.height = altoPx * dpr;
+    ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (primera) {
+      const semiY = encuadreDeDibujo(dibujo, SEMI_Y_VECTOR, ancho / altoPx) ?? SEMI_Y_VECTOR;
+      camara.fijarEncuadreBase(semiY);
+    }
+    pintar();
+  };
+  redimensionar();
+  const observador = new ResizeObserver(() => redimensionar());
+  observador.observe(wrap);
+  limpieza.register(() => observador.disconnect());
+  const observadorReparto = new ResizeObserver(() => aplicarReparto());
+  observadorReparto.observe(contenedor);
+  limpieza.register(() => observadorReparto.disconnect());
+  window.addEventListener("resize", redimensionar);
+  limpieza.register(() => window.removeEventListener("resize", redimensionar));
+  const refTema = motor.plugin.app.workspace.on("css-change", () => pintar());
+  limpieza.register(() => motor.plugin.app.workspace.offref(refTema));
+  const ladoV = reparto.ladoChip;
+  const iconoChipV = ladoIcono(ladoV);
+  const escalonV = ladoV + 4;
+  const estiloZoomV = (arriba) => `position:absolute; right:8px; top:${arriba}px; width:${ladoV}px; height:${ladoV}px; display:flex; align-items:center; justify-content:center; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; color:var(--lmath-texto-tenue); background:var(--lmath-chip); border:1px solid var(--lmath-borde);`;
+  const btnInicioV = wrap.createDiv();
+  ponerTooltip(btnInicioV, t().botones.vistaInicial);
+  btnInicioV.style.cssText = estiloZoomV(6);
+  montarIcono(btnInicioV, "inicio", iconoChipV);
+  const btnMasV = wrap.createDiv();
+  ponerTooltip(btnMasV, t().botones.acercar);
+  btnMasV.style.cssText = estiloZoomV(6 + escalonV);
+  montarIcono(btnMasV, "acercar", iconoChipV);
+  const btnMenosV = wrap.createDiv();
+  ponerTooltip(btnMenosV, t().botones.alejar);
+  btnMenosV.style.cssText = estiloZoomV(6 + 2 * escalonV);
+  montarIcono(btnMenosV, "alejar", iconoChipV);
+  const columnaZoomV = [btnInicioV, btnMasV, btnMenosV];
+  btnInicioV.addEventListener("click", () => camara.volverAVistaBase());
+  const CADENCIA_ZOOM_MS_V = 100;
+  const zoomMantenidoV = (btn, acercar) => {
+    let timer = null;
+    const parar = () => {
+      if (timer !== null) {
+        window.clearInterval(timer);
+        timer = null;
+      }
+    };
+    btn.addEventListener("pointerdown", (e3) => {
+      if (e3.button !== 0)
+        return;
+      btn.setPointerCapture(e3.pointerId);
+      camara.zoomCentrado(acercar);
+      parar();
+      timer = window.setInterval(() => camara.zoomCentrado(acercar), CADENCIA_ZOOM_MS_V);
+    });
+    btn.addEventListener("pointerup", parar);
+    btn.addEventListener("pointercancel", parar);
+    limpieza.register(parar);
+  };
+  zoomMantenidoV(btnMasV, true);
+  zoomMantenidoV(btnMenosV, false);
+  let cerrarInfo = () => {
+  };
+  {
+    const ladoF = reparto.ladoChip;
+    const btnFormula = wrap.createDiv({ text: "f(x)" });
+    ponerTooltip(btnFormula, t().botones.verFormula);
+    const estiloFormula = () => {
+      btnFormula.style.cssText = `position:absolute; bottom:8px; left:8px; width:${ladoF}px; height:${ladoF}px; display:flex; align-items:center; justify-content:center; font-size:10px; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; font-family:"Lora", var(--font-interface); ` + (reparto.abierto ? "color:var(--lmath-acento-contraste); background:var(--lmath-acento); border:1px solid var(--lmath-acento);" : "color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde);") + (reparto.estrecho ? "" : "display:none;");
+      for (const b of columnaZoomV)
+        b.setCssStyles({ display: reparto.abierto ? "none" : "flex" });
+    };
+    estiloFormula();
+    sincronizarBotonFormula = estiloFormula;
+    btnFormula.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      reparto.abierto = !reparto.abierto;
+      if (reparto.abierto)
+        cerrarInfo();
+      aplicarCajaPanel(reparto);
+      estiloFormula();
+      pintar();
+    });
+  }
+  if (!conPlano) {
+    const etiqueta = bloque.entradas.length === 0 ? t().velo.sinVector : t().velo.nadaQueDibujar;
+    const velo = wrap.createDiv({ cls: "lmath-velo-vector" });
+    const msg = wrap.createDiv({ cls: "lmath-velo-mensaje" });
+    msg.createDiv({ text: etiqueta.etiqueta, cls: "lmath-velo-titulo" });
+    msg.createDiv({ text: etiqueta.detalle, cls: "lmath-velo-detalle" });
+    velo.setCssProps({ "--lmath-velo-z": "4" });
+  }
+  cerrarInfo = montarBotonInfoVector(motor, wrap, dibujo, reparto.ladoChip, () => {
+    if (!reparto.abierto)
+      return;
+    reparto.abierto = false;
+    aplicarCajaPanel(reparto);
+    sincronizarBotonFormula();
+    pintar();
+  });
+  revelar();
+}
+function montarBotonInfoVector(motor, wrap, dibujo, lado, alAbrir) {
+  const A = analizarDibujo(dibujo);
+  if (!A)
+    return () => {
+    };
+  const btnInfo = wrap.createDiv();
+  ponerTooltip(btnInfo, t().vector.info.chip);
+  btnInfo.style.cssText = estiloChipInfo(lado);
+  montarIcono(btnInfo, "info", ladoIcono(lado));
+  const pop = wrap.createDiv();
+  pop.style.cssText = estiloPopoverInfo(lado);
+  let visible = false;
+  const abiertas = /* @__PURE__ */ new Set([0]);
+  const T = t().vector.info;
+  const unidad = motor.obtenerAjustes().unidadAngulo;
+  const angulo = (rad) => textoAngulo(modeloDeAngulo(rad), unidad);
+  const medida = (m) => m.exacto !== null && m.exacto !== numeroATexto(m.valor) ? `${m.exacto}  \u2248 ${numeroATexto(m.valor)}` : m.exacto ?? numeroATexto(m.valor);
+  const par = (x, y) => `(${numeroATexto(x)}, ${numeroATexto(y)})`;
+  const construir = () => {
+    pop.empty();
+    const secciones = [];
+    A.vectores.forEach((v, i2) => {
+      const filas = [
+        ["x", numeroATexto(v.componentes[0])],
+        ["y", numeroATexto(v.componentes[1])],
+        [T.modulo, medida(v.modulo)]
+      ];
+      if (v.direccion !== null)
+        filas.push([T.direccion, angulo(v.direccion)]);
+      if (v.posicion !== null)
+        filas.push([T.posicion, t().trig.info.posicion[v.posicion]]);
+      if (v.unitario)
+        filas.push([T.unitario, par(v.unitario[0], v.unitario[1])]);
+      secciones.push({ titulo: dibujo.flechas[i2]?.etiqueta ?? "", filas });
+    });
+    if (A.par) {
+      const a = dibujo.flechas.find((f) => f.rol === A.par?.rolA)?.etiqueta ?? "";
+      const b = dibujo.flechas.find((f) => f.rol === A.par?.rolB)?.etiqueta ?? "";
+      const filas = [[T.escalar, medida(A.par.escalar)]];
+      if (A.par.angulo !== null)
+        filas.push([T.angulo, angulo(A.par.angulo)]);
+      filas.push([T.determinante, medida(A.par.determinante)]);
+      filas.push([T.areaParalelogramo, medida(A.par.areaParalelogramo)]);
+      filas.push([T.areaTriangulo, medida(A.par.areaTriangulo)]);
+      if (A.par.relacion !== null) {
+        filas.push([
+          "",
+          A.par.relacion === "perpendicular" ? T.perpendiculares : T.paralelos,
+          true
+        ]);
+      }
+      secciones.push({ titulo: T.entre(a, b), filas });
+    }
+    if (A.puntos) {
+      const a = dibujo.marcas.find((m) => m.rol === A.puntos?.rolA)?.etiqueta ?? "";
+      const b = dibujo.marcas.find((m) => m.rol === A.puntos?.rolB)?.etiqueta ?? "";
+      secciones.push({
+        titulo: T.entre(a, b),
+        filas: [
+          [T.distancia, medida(A.puntos.distancia)],
+          [
+            T.puntoMedio,
+            A.puntos.medioExacto ? `(${A.puntos.medioExacto[0]}, ${A.puntos.medioExacto[1]})` : par(A.puntos.medio[0], A.puntos.medio[1])
+          ]
+        ]
+      });
+    }
+    secciones.forEach((s, i2) => {
+      const cab = pop.createDiv({ text: `${abiertas.has(i2) ? "\u25BE" : "\u25B8"} ${s.titulo}` });
+      cab.style.cssText = "cursor:pointer; user-select:none; font-weight:600; padding:3px 0; " + (i2 > 0 ? "border-top:1px solid var(--lmath-borde); margin-top:3px;" : "");
+      cab.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (abiertas.has(i2))
+          abiertas.delete(i2);
+        else
+          abiertas.add(i2);
+        construir();
+      });
+      if (!abiertas.has(i2))
+        return;
+      for (const [etiqueta, valor, separada] of s.filas) {
+        const fila = pop.createDiv();
+        fila.style.cssText = "display:flex; justify-content:space-between; gap:10px; padding:1px 0;" + (separada ? " border-top:1px solid var(--lmath-borde); margin-top:5px; padding-top:5px;" : "");
+        fila.createDiv({ text: etiqueta }).setCssStyles({ color: "var(--lmath-texto-tenue)" });
+        fila.createDiv({ text: valor }).setCssStyles({ textAlign: "right" });
+      }
+    });
+  };
+  const cerrar = () => {
+    visible = false;
+    pop.setCssStyles({ display: "none" });
+  };
+  btnInfo.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    visible = !visible;
+    if (visible) {
+      alAbrir();
+      construir();
+    }
+    pop.setCssStyles({ display: visible ? "block" : "none" });
+  });
+  return cerrar;
+}
+
+// src/host-obsidian/MotorExperimental.ts
 var MotorExperimental = class {
   // `obtenerAjustes`: getter de las preferencias VIVAS del plugin (no una foto), para que
   // un cambio en la pestaña de configuración afecte a los bloques que se re-rendericen.
@@ -60481,6 +64896,34 @@ var MotorExperimental = class {
     this.plugin = plugin;
     this.modo = modo;
     this.obtenerAjustes = obtenerAjustes;
+  }
+  /**
+   * Ata un bloque YA MONTADO a los cambios de ajustes: cuando cambia cualquiera, el bloque se
+   * desmonta y se vuelve a montar desde su fuente.
+   *
+   * Rehacerlo entero, y no repintar lo que se pueda, es deliberado. Un ajuste puede cambiar
+   * cualquier cosa —el idioma de cada rótulo, la unidad de los ángulos, si el panel muestra la
+   * ecuación despejada, si el plano pinta los puntos notables, si la vista se acerca sola—, y
+   * varias de ellas no son presentación sino resultado: `despejarAuto` cambia la fórmula que se
+   * compone y `encuadreAuto` la vista con la que nace el bloque. Una ruta "aplicar en vivo" por
+   * cada ajuste serían seis caminos que mantener y que se olvidarían uno a uno; el remontaje es
+   * UNO y no puede quedarse a medias. Lo que cuesta es el estado interactivo: el zoom, el
+   * encuadre movido a mano y el ángulo que se estuviera arrastrando vuelven a su punto de
+   * partida, igual que si se hubiera vuelto a abrir la nota.
+   *
+   * El orden importa: primero la BAJA (este montaje deja de existir, y sin ella el bloque nuevo
+   * y el viejo estarían los dos suscritos), después `unload()` —que corre TODAS las limpiezas
+   * registradas: observadores de tamaño, oyentes del documento, referencias del workspace, y sin
+   * él cada cambio de ajustes dejaría un juego más de fugas— y solo entonces se vuelve a montar.
+   */
+  registrarRecarga(limpieza, source, el, ctx) {
+    const baja = this.plugin.alCambiarAjustes(() => {
+      baja();
+      limpieza.unload();
+      el.empty();
+      void this.process(source, el, ctx);
+    });
+    limpieza.register(baja);
   }
   // Los tres rasgos que el cuerpo del adaptador consulta, DERIVADOS del modo en lugar de
   // almacenados: son preguntas sobre el bloque ("¿es un sistema?"), no estado, y como getters
@@ -60495,24 +64938,32 @@ var MotorExperimental = class {
     return this.modo === "integral";
   }
   async process(source, el, ctx) {
-    var _a;
     if (this.modo === "trig")
-      return this.procesarTrig(source, el, ctx);
+      return procesarTrig(this, source, el, ctx);
+    if (this.modo === "vector")
+      return procesarVector(this, source, el, ctx);
     const contenedor = el.createDiv({ cls: "lmath-container" });
-    const limpieza = new import_obsidian4.MarkdownRenderChild(contenedor);
+    const limpieza = new import_obsidian8.MarkdownRenderChild(contenedor);
     ctx.addChild(limpieza);
+    this.registrarRecarga(limpieza, source, el, ctx);
     const revelar = () => contenedor.setCssStyles({ visibility: "visible" });
     contenedor.setCssStyles({ visibility: "hidden" });
     const redDeSeguridad = window.setTimeout(revelar, 2e3);
     limpieza.register(() => window.clearTimeout(redDeSeguridad));
-    const ecuaciones = dividirEcuaciones(source);
+    const admiteParametros = !this.derivada && !this.integral;
+    const separado = admiteParametros ? separarParametros(source) : { parametros: [], source };
+    const { parametros, source: escrito } = separado;
+    const valores = new Map(parametros.map((p) => [p.nombre, p.valor]));
+    const paraMotor = (s) => sustituirParametros(s, parametros, valores);
+    const ecuaciones = dividirEcuaciones(escrito);
     const visibles = this.sistema ? ecuaciones : ecuaciones.slice(0, 1);
     const funcionEscrita = this.derivada && visibles.length ? extraerFuncion(visibles[0]) : null;
-    const degeneradaOrigen = funcionEscrita ? this.degeneradaDeEcuacion(funcionEscrita) : null;
+    const degeneradaOrigen = funcionEscrita ? degeneradaDeEcuacion(funcionEscrita) : null;
     const derivadaExpr = this.derivada && visibles.length && !degeneradaOrigen ? derivarEcuacion(visibles[0]) : null;
-    const integralDatos = this.integral ? extraerIntegral(source) : null;
-    const graficadas = this.integral ? integralDatos ? [integralDatos.integrando] : [] : this.derivada ? derivadaExpr ? [derivadaExpr] : [] : visibles;
-    const fuenteGrafico = this.integral ? (_a = integralDatos == null ? void 0 : integralDatos.integrando) != null ? _a : "" : this.derivada ? derivadaExpr != null ? derivadaExpr : "" : source;
+    const integralDatos = this.integral ? extraerIntegral(escrito) : null;
+    const graficadas = (this.integral ? integralDatos ? [integralDatos.integrando] : [] : this.derivada ? derivadaExpr ? [derivadaExpr] : [] : visibles).map(paraMotor);
+    const fuenteEscrita = this.integral ? integralDatos?.integrando ?? "" : this.derivada ? derivadaExpr ?? "" : escrito;
+    const fuenteGrafico = paraMotor(fuenteEscrita);
     const tactil = esTactil();
     const reparto = {
       estrecho: false,
@@ -60520,12 +64971,18 @@ var MotorExperimental = class {
       panel: null,
       ladoChip: ladoChip(tactil)
     };
+    let aplicarParametro = () => {
+    };
     if (this.integral)
-      await this.montarPanelIntegral(contenedor, source, ctx, limpieza, reparto);
+      await montarPanelIntegral(this, contenedor, escrito, ctx, limpieza, reparto);
     else if (this.derivada)
-      await this.montarPanelDerivada(contenedor, visibles, ctx, limpieza, reparto);
-    else
-      await this.montarPanelLatex(contenedor, visibles, ctx, limpieza, reparto);
+      await montarPanelDerivada(this, contenedor, visibles, ctx, limpieza, reparto);
+    else {
+      await montarPanelLatex(this, contenedor, visibles, ctx, limpieza, reparto, {
+        parametros,
+        alCambiar: (nombre, v) => aplicarParametro(nombre, v)
+      });
+    }
     const H = ALTO_PANEL;
     const wrap = contenedor.createDiv({ cls: "lmath-grafica" });
     wrap.style.cssText = `position:relative; width:100%; height:${H}px;`;
@@ -60578,13 +65035,17 @@ var MotorExperimental = class {
       revelar();
       return;
     }
-    const escena = this.sistema ? crearMotorSistema(ctx2d, source) : crearMotor(ctx2d, fuenteGrafico);
+    let escena = this.sistema ? crearMotorSistema(ctx2d, paraMotor(escrito)) : crearMotor(ctx2d, fuenteGrafico);
     if (this.integral && integralDatos) {
       const a = evaluarLimite(integralDatos.a), b = evaluarLimite(integralDatos.b);
       if (a !== null && b !== null)
         escena.fijarIntegral(a, b);
     }
-    const degeneradaCruda = degeneradaOrigen != null ? degeneradaOrigen : this.clasificarBloque(graficadas, source);
+    const degeneradaCruda = degeneradaOrigen ?? clasificarBloque(
+      graficadas,
+      { sistema: this.sistema, derivada: this.derivada, integral: this.integral },
+      paraMotor(escrito)
+    );
     const degenerada = degeneradaCruda ? localizarVelo(degeneradaCruda) : null;
     if (degenerada) {
       const velo = wrap.createDiv();
@@ -60596,15 +65057,29 @@ var MotorExperimental = class {
       const detalle = msg.createDiv({ text: degenerada.detalle });
       detalle.style.cssText = "font-size:12px; line-height:1.4; max-width:320px; color:var(--lmath-texto-tenue);";
     }
-    const exprGraph = this.exprExplicita(graficadas);
+    const exprGraph = parametros.length > 0 ? null : exprExplicita(graficadas, this.sistema);
     let hayChipInfo = false;
     if (exprGraph && !degenerada) {
       if (this.integral)
-        hayChipInfo = this.montarBotonInfoIntegral(wrap, source, ctx, reparto.ladoChip, exclusion);
+        hayChipInfo = montarBotonInfoIntegral(
+          this,
+          wrap,
+          escrito,
+          ctx,
+          reparto.ladoChip,
+          exclusion
+        );
       else if (this.derivada && funcionEscrita)
-        hayChipInfo = this.montarBotonInfoDerivada(wrap, funcionEscrita, exprGraph, reparto.ladoChip, exclusion);
+        hayChipInfo = montarBotonInfoDerivada(
+          this,
+          wrap,
+          funcionEscrita,
+          exprGraph,
+          reparto.ladoChip,
+          exclusion
+        );
       else {
-        this.montarBotonInfo(wrap, exprGraph, ctx, reparto.ladoChip, exclusion);
+        montarBotonInfo(this, wrap, exprGraph, ctx, reparto.ladoChip, exclusion);
         hayChipInfo = true;
       }
     }
@@ -60616,7 +65091,7 @@ var MotorExperimental = class {
       escena.mostrarNotables(this.obtenerAjustes().puntosNotables);
       const mx = camara.cursorPx();
       const my = camara.cursorPy();
-      if (navegacion == null ? void 0 : navegacion.railOn) {
+      if (navegacion?.railOn) {
         escena.pintar(vp, aPantallaX(vp, navegacion.railX), true, navegacion.railY, mx, my);
       } else {
         escena.pintar(vp, mx, false, void 0, mx, my);
@@ -60650,7 +65125,7 @@ var MotorExperimental = class {
         timerFinal = null;
         escena.actualizar(camara.viewport(), "final");
         pintar();
-        alRecalcularFinal == null ? void 0 : alRecalcularFinal();
+        alRecalcularFinal?.();
       }, 150);
     };
     limpieza.register(() => {
@@ -60730,6 +65205,12 @@ var MotorExperimental = class {
         pintar();
       }
     }
+    aplicarParametro = (nombre, v) => {
+      valores.set(nombre, v);
+      escena = this.sistema ? crearMotorSistema(ctx2d, paraMotor(escrito)) : crearMotor(ctx2d, paraMotor(fuenteEscrita));
+      programarRedibujo();
+      programarFinal();
+    };
     const observador = new ResizeObserver(() => redimensionar());
     observador.observe(wrap);
     limpieza.register(() => observador.disconnect());
@@ -60744,17 +65225,17 @@ var MotorExperimental = class {
     const escalonZoom = lado + 4;
     const estiloZoom = (arriba) => `position:absolute; right:8px; top:${arriba}px; width:${lado}px; height:${lado}px; display:flex; align-items:center; justify-content:center; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; color:var(--lmath-texto-tenue); background:var(--lmath-chip); border:1px solid var(--lmath-borde);`;
     const btnInicio = wrap.createDiv();
-    this.ponerTooltip(btnInicio, t().botones.vistaInicial);
+    ponerTooltip(btnInicio, t().botones.vistaInicial);
     btnInicio.style.cssText = estiloZoom(6);
-    this.montarIcono(btnInicio, "inicio", iconoChip);
+    montarIcono(btnInicio, "inicio", iconoChip);
     const btnMas = wrap.createDiv();
-    this.ponerTooltip(btnMas, t().botones.acercar);
+    ponerTooltip(btnMas, t().botones.acercar);
     btnMas.style.cssText = estiloZoom(6 + escalonZoom);
-    this.montarIcono(btnMas, "acercar", iconoChip);
+    montarIcono(btnMas, "acercar", iconoChip);
     const btnMenos = wrap.createDiv();
-    this.ponerTooltip(btnMenos, t().botones.alejar);
+    ponerTooltip(btnMenos, t().botones.alejar);
     btnMenos.style.cssText = estiloZoom(6 + 2 * escalonZoom);
-    this.montarIcono(btnMenos, "alejar", iconoChip);
+    montarIcono(btnMenos, "alejar", iconoChip);
     const columnaZoom = [btnInicio, btnMas, btnMenos];
     btnInicio.addEventListener("click", () => camara.volverAVistaBase());
     const CADENCIA_ZOOM_MS = 100;
@@ -60784,12 +65265,12 @@ var MotorExperimental = class {
     };
     if (!tactil) {
       const btnCarril = wrap.createDiv();
-      this.ponerTooltip(btnCarril, t().botones.carril);
+      ponerTooltip(btnCarril, t().botones.carril);
       const estiloBtn = (activo) => {
         btnCarril.style.cssText = `position:absolute; bottom:8px; left:8px; width:${lado}px; height:${lado}px; display:flex; align-items:center; justify-content:center; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; ` + (activo ? "color:var(--lmath-acento-contraste); background:var(--lmath-acento); border:1px solid var(--lmath-acento);" : "color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde);");
       };
       estiloBtn(false);
-      this.montarIcono(btnCarril, "carril", iconoChip);
+      montarIcono(btnCarril, "carril", iconoChip);
       btnCarril.addEventListener("click", () => {
         if (!navegacion)
           return;
@@ -60798,7 +65279,7 @@ var MotorExperimental = class {
       });
       sincronizarCarril = () => {
         const recorrible = escena.curvaRecorrible();
-        if (!recorrible && (navegacion == null ? void 0 : navegacion.railOn)) {
+        if (!recorrible && navegacion?.railOn) {
           navegacion.alternarCarril();
           estiloBtn(false);
         }
@@ -60813,7 +65294,7 @@ var MotorExperimental = class {
       const inicioSel = tactil ? 8 : 8 + lado + 8;
       colores.forEach((c, i2) => {
         const b = wrap.createDiv();
-        this.ponerTooltip(b, t().botones.seleccionarEcuacion(i2 + 1));
+        ponerTooltip(b, t().botones.seleccionarEcuacion(i2 + 1));
         const rgb = `rgb(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)})`;
         const estilo = (sel) => {
           b.style.cssText = `position:absolute; bottom:${bajoSel}px; left:${inicioSel + i2 * (ladoSel + 6)}px; width:${ladoSel}px; height:${ladoSel}px; border-radius:50%; cursor:pointer; user-select:none; z-index:5; box-sizing:border-box; background:${rgb}; ` + (sel ? "border:2px solid var(--lmath-texto);" : "border:2px solid var(--lmath-borde);");
@@ -60835,183 +65316,29 @@ var MotorExperimental = class {
     sincronizarControles();
     if (this.sistema) {
       hayChipInfo = true;
-      const btnSolucion = wrap.createDiv();
-      this.ponerTooltip(btnSolucion, t().botones.solucionesSistema);
-      btnSolucion.style.cssText = this.estiloChipInfo(lado);
-      this.montarIcono(btnSolucion, "info", iconoChip);
-      const popSolucion = wrap.createDiv();
-      popSolucion.style.cssText = this.estiloPopoverInfo(lado);
-      exclusion.registrar(() => popSolucion.setCssStyles({ display: "none" }));
-      const sistemaPeriodico = visibles.some((ec) => ec.split("=").some((lado2) => tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado2.trim())))));
-      const MIN_PERIODICO = 3;
-      const MAX_LISTA = 20;
-      const refrescarSolucion = () => {
-        popSolucion.empty();
-        if (visibles.length === 0) {
-          popSolucion.createDiv({ text: t().solucion.sinSistema });
-          return;
-        }
-        if (visibles.length === 1) {
-          popSolucion.createDiv({ text: t().solucion.sistemaIncompleto });
-          return;
-        }
-        if (escena.solucionesInfinitas()) {
-          popSolucion.createDiv({ text: t().solucion.infinitasCoinciden });
-          return;
-        }
-        const pts = escena.intersecciones();
-        if (sistemaPeriodico && (escena.interseccionesSaturadas() || pts.length >= MIN_PERIODICO)) {
-          popSolucion.createDiv({ text: t().solucion.infinitasPeriodico });
-          return;
-        }
-        if (escena.interseccionesSaturadas()) {
-          popSolucion.createDiv({ text: t().solucion.demasiadas });
-          return;
-        }
-        if (pts.length === 0) {
-          popSolucion.createDiv({ text: t().solucion.sinSolucion });
-          return;
-        }
-        popSolucion.createDiv({
-          text: pts.length === 1 ? t().solucion.unaSolucion : t().solucion.nSoluciones(pts.length),
-          attr: { style: "font-weight:600; margin-bottom:4px;" }
-        });
-        for (const p of pts.slice(0, MAX_LISTA)) {
-          popSolucion.createDiv({
-            text: `(${formatearNumero(p.x)}, ${formatearNumero(p.y)})`
-          });
-        }
-        if (pts.length > MAX_LISTA) {
-          popSolucion.createDiv({
-            text: t().solucion.yMas(pts.length - MAX_LISTA),
-            attr: { style: "opacity:0.6;" }
-          });
-        }
-        popSolucion.createDiv({
-          text: t().solucion.enVista,
-          attr: { style: "margin-top:4px; opacity:0.6;" }
-        });
-      };
-      alRecalcularFinal = () => {
-        if (popSolucion.style.display !== "none")
-          refrescarSolucion();
-      };
-      btnSolucion.addEventListener("click", (e3) => {
-        e3.stopPropagation();
-        const abierto = popSolucion.style.display !== "none";
-        if (!abierto) {
-          exclusion.alAbrir();
-          refrescarSolucion();
-        }
-        popSolucion.setCssStyles({ display: abierto ? "none" : "block" });
-      });
+      alRecalcularFinal = montarInfoSistema(
+        wrap,
+        lado,
+        iconoChip,
+        exclusion,
+        visibles,
+        paraMotor
+      );
     }
     if (!this.sistema && !degenerada && graficadas.length > 0 && !exprGraph) {
       hayChipInfo = true;
-      let tipo;
-      try {
-        tipo = construirObjeto(graficadas[0], "info").tipo;
-      } catch (e3) {
-        tipo = "";
-      }
-      const acotadaPorPeriodo = tipo === "parametrica" || tipo === "polar";
-      const exprPolar = tipo === "polar" ? expresionPolar(graficadas[0]) : null;
-      const infoPolar = exprPolar ? analizarPolar(exprPolar) : null;
-      const compsParam = tipo === "parametrica" ? expresionesParametricas(graficadas[0]) : null;
-      let infoParam = null;
-      let paramCalculado = false;
-      const analisisParametrico = () => {
-        if (paramCalculado || !compsParam)
-          return infoParam;
-        paramCalculado = true;
-        let dominio = [0, 2 * Math.PI];
-        try {
-          const obj = construirObjeto(graficadas[0], "info");
-          if (obj.tipo === "parametrica")
-            dominio = obj.p.dominio;
-        } catch (e3) {
-        }
-        infoParam = analizarParametrico(
-          compsParam[0],
-          compsParam[1],
-          dominio[0],
-          dominio[1]
-        );
-        return infoParam;
-      };
-      const esTrig = !acotadaPorPeriodo && graficadas[0].split("=").some((lado2) => tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado2.trim()))));
-      const btnInfo = wrap.createDiv();
-      this.ponerTooltip(btnInfo, t().botones.resumenNotables);
-      btnInfo.style.cssText = this.estiloChipInfo(lado);
-      this.montarIcono(btnInfo, "info", iconoChip);
-      const pop = wrap.createDiv();
-      pop.style.cssText = this.estiloPopoverInfo(lado);
-      exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
-      const refrescarInfo = () => {
-        pop.empty();
-        if (infoPolar) {
-          for (const linea of this.lineasPolar(infoPolar))
-            pop.createDiv({ text: linea });
-          return;
-        }
-        const param = analisisParametrico();
-        if (param) {
-          for (const linea of this.lineasParametricas(param))
-            pop.createDiv({ text: linea });
-          return;
-        }
-        const r = escena.resumenNotables(camara.viewport());
-        const lineas = [];
-        const T = t().resumen;
-        const estIY = estadoGrupo(r.interseccionesY.length, esTrig);
-        if (estIY === "infinitas")
-          lineas.push(T.interseccionesYInfinitas);
-        else if (estIY === "demasiadas")
-          lineas.push(T.interseccionesYDemasiadas);
-        else if (r.interseccionesY.length > 0)
-          for (const p of r.interseccionesY)
-            lineas.push(T.interseccionY(numeroATexto(p.punto.y)));
-        else
-          lineas.push(T.noCortaY);
-        const estR = estadoGrupo(r.raices.length, esTrig);
-        if (estR === "infinitas")
-          lineas.push(T.raicesInfinitas);
-        else if (estR === "demasiadas")
-          lineas.push(T.raicesDemasiadas);
-        else if (r.raices.length > 0)
-          lineas.push(T.raicesPrefijo + r.raices.map((p) => numeroATexto(p.punto.x)).join(", "));
-        else
-          lineas.push(T.noRaices);
-        const estV = estadoGrupo(r.vertices.length, esTrig);
-        if (estV === "infinitas")
-          lineas.push(T.verticesInfinitos);
-        else if (estV === "demasiadas")
-          lineas.push(T.verticesDemasiados);
-        else if (r.vertices.length > 0)
-          for (const v of r.vertices)
-            lineas.push(T.vertice(numeroATexto(v.punto.x), numeroATexto(v.punto.y)));
-        else
-          lineas.push(T.noVertices);
-        for (const linea of lineas)
-          pop.createDiv({ text: linea });
-        pop.createDiv({
-          text: T.enVista,
-          attr: { style: "margin-top:4px; opacity:0.6;" }
-        });
-      };
-      alRecalcularFinal = () => {
-        if (pop.style.display !== "none")
-          refrescarInfo();
-      };
-      btnInfo.addEventListener("click", (e3) => {
-        e3.stopPropagation();
-        const abierto = pop.style.display !== "none";
-        if (!abierto) {
-          exclusion.alAbrir();
-          refrescarInfo();
-        }
-        pop.setCssStyles({ display: abierto ? "none" : "block" });
-      });
+      alRecalcularFinal = montarInfoGeometrico(
+        wrap,
+        lado,
+        iconoChip,
+        exclusion,
+        graficadas,
+        parametros,
+        // Accesores, no valores: `escena` se rehace al mover un mando y `camara` se
+        // construye más arriba. Ver la nota de cabecera de `info/plano.ts`.
+        () => escena,
+        () => camara
+      );
     }
     const btnFormula = wrap.createDiv();
     const derechaFormula = MARGEN_FLOTANTE + (hayChipInfo ? lado + MARGEN_FLOTANTE : 0);
@@ -61025,10 +65352,10 @@ var MotorExperimental = class {
       btnFormula.dataset.glifo = nombre;
       btnFormula.empty();
       if (reparto.abierto)
-        this.montarIcono(btnFormula, "cerrar", iconoChip);
+        montarIcono(btnFormula, "cerrar", iconoChip);
       else
-        this.montarEtiquetaMath(btnFormula, "f(x)", ctx);
-      this.ponerTooltip(
+        montarEtiquetaMath(this.plugin, btnFormula, "f(x)", ctx);
+      ponerTooltip(
         btnFormula,
         reparto.abierto ? t().botones.cerrarFormula : t().botones.verFormula
       );
@@ -61037,7 +65364,7 @@ var MotorExperimental = class {
     sincronizarBotonFormula = () => {
       estiloBotonFormula();
       pintarGlifoFormula();
-      btnEditar == null ? void 0 : btnEditar.setCssStyles({ display: reparto.abierto ? "none" : "flex" });
+      btnEditar?.setCssStyles({ display: reparto.abierto ? "none" : "flex" });
       for (const b of columnaZoom)
         b.setCssStyles({ display: reparto.abierto ? "none" : "flex" });
     };
@@ -61074,9 +65401,9 @@ var MotorExperimental = class {
     });
     if (tactil) {
       btnEditar = wrap.createDiv();
-      this.ponerTooltip(btnEditar, t().botones.editarBloque);
+      ponerTooltip(btnEditar, t().botones.editarBloque);
       btnEditar.style.cssText = `position:absolute; top:6px; left:${MARGEN_FLOTANTE}px; width:${lado}px; height:${lado}px; display:flex; align-items:center; justify-content:center; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:7; color:var(--lmath-texto-tenue); background:var(--lmath-chip); border:1px solid var(--lmath-borde);`;
-      this.montarIcono(btnEditar, "editar", iconoChip);
+      montarIcono(btnEditar, "editar", iconoChip);
       btnEditar.addEventListener("click", (e3) => {
         e3.stopPropagation();
         this.editarBloque(contenedor, ctx);
@@ -61102,19 +65429,15 @@ var MotorExperimental = class {
    * algo por delante de lo que ya hay.
    */
   editarBloque(el, ctx) {
-    var _a;
     const seccion = ctx.getSectionInfo(el);
     if (!seccion)
       return;
-    const vista = this.plugin.app.workspace.getActiveViewOfType(import_obsidian4.MarkdownView);
-    if (!vista || ((_a = vista.file) == null ? void 0 : _a.path) !== ctx.sourcePath)
+    const vista = this.plugin.app.workspace.getActiveViewOfType(import_obsidian8.MarkdownView);
+    if (!vista || vista.file?.path !== ctx.sourcePath)
       return;
     const finDelCuerpo = () => {
       const editor = vista.editor;
-      const esValla = (n) => {
-        var _a2, _b;
-        return (_b = (_a2 = editor.getLine(n)) == null ? void 0 : _a2.trimStart().startsWith("```")) != null ? _b : false;
-      };
+      const esValla = (n) => editor.getLine(n)?.trimStart().startsWith("```") ?? false;
       const ultima = esValla(seccion.lineEnd) ? seccion.lineEnd - 1 : seccion.lineEnd;
       if (ultima <= seccion.lineStart)
         return { line: seccion.lineStart + 1, ch: 0 };
@@ -61131,1841 +65454,6 @@ var MotorExperimental = class {
     } else {
       irAlBloque();
     }
-  }
-  /**
-   * Crea el "scroller" del panel izquierdo (portado del GraphEngine): contenedor
-   * posicionado que aloja una o varias ÁREAS de scroll horizontal, cada una con su
-   * overlay de fade en los bordes. El overlay tiene que ser HERMANO del área
-   * scrolleable (no hijo): un elemento absolute dentro de un scroller se desplaza
-   * junto al contenido y el fade "viajaría". Devuelve `panelLatex` (para colgar la
-   * barra de toggle encima) y `renderLatex` (pinta uno o varios LaTeX).
-   *
-   * Regla de presentación UNIFICADA (todos los bloques): **una expresión = una
-   * tarjeta**. `renderLatex` crea un área INDEPENDIENTE por fórmula —cada una con su
-   * PROPIA scrollbar, fades, centrado, rueda y observador de tamaño—, enmarcada en una
-   * caja redondeada un punto más oscura que el panel. Con una fórmula, esa única
-   * tarjeta ocupa el panel (obs-graph, obs-system, y los operadores/valores simples de
-   * obs-derivate/obs-integral); con varias (vistas "ambas"), se apilan en columna y se
-   * desplaza una sin mover la otra. No depende del NÚMERO de fórmulas: el estilo de
-   * tarjeta es fijo ("enmarcado"). Común a `montarPanelLatex` (toggle
-   * Original/Opciones), `montarPanelDerivada` y `montarPanelIntegral`.
-   */
-  crearScrollerLatex(contenedor, ctx, limpieza, reparto) {
-    const PAD_SUP = 32;
-    const PAD_LADO = 8;
-    const HUECO = 10;
-    const ALTO_TARJETA = (ALTO_PANEL - PAD_SUP - PAD_LADO - HUECO) / 2;
-    const ALTO_TARJETA_MAX = ALTO_PANEL - 2 * PAD_SUP;
-    const panelLatex = contenedor.createDiv({ cls: "lmath-latex" });
-    reparto.panel = panelLatex;
-    aplicarCajaPanel(reparto);
-    const zona = panelLatex.createDiv();
-    zona.setCssStyles({
-      position: "absolute",
-      inset: "0",
-      display: "flex",
-      flexDirection: "column",
-      boxSizing: "border-box"
-    });
-    const TOLERANCIA_SCROLL = 3;
-    let formulasVisibles = 1;
-    const tarjetasLlenan = () => formulasVisibles > 1 || reparto.estrecho;
-    const aplicarGeometriaZona = () => {
-      const llenan = tarjetasLlenan();
-      zona.style.padding = llenan ? `${PAD_SUP}px ${PAD_LADO}px ${PAD_LADO}px ${PAD_LADO}px` : `${PAD_LADO}px`;
-      zona.style.gap = `${HUECO}px`;
-      zona.style.justifyContent = llenan ? "flex-start" : "center";
-    };
-    aplicarGeometriaZona();
-    const observadorZona = new ResizeObserver(() => aplicarGeometriaZona());
-    observadorZona.observe(zona);
-    limpieza.register(() => observadorZona.disconnect());
-    const crearArea = (padre, estilo, compartirAlto) => {
-      const enmarcado = estilo === "enmarcado";
-      const llenar = () => compartirAlto || reparto.estrecho;
-      const flexMarco = llenar() ? "flex:1 1 0;" : `flex:0 0 auto; height:${ALTO_TARJETA}px;`;
-      const marco = padre.createDiv();
-      marco.style.cssText = "position:relative; overflow:hidden; min-height:0; " + flexMarco + (enmarcado ? " border:1px solid var(--lmath-borde); border-radius:12px; background:var(--lmath-superficie);" : "");
-      const area = marco.createDiv({ cls: "lmath-latex" });
-      area.style.cssText = `width:100%; height:100%; box-sizing:border-box; padding:${enmarcado ? "8px 24px" : "24px"}; display:flex; align-items:safe center; justify-content:safe center; overflow-x:hidden; overflow-y:hidden;`;
-      area.setCssStyles({ scrollbarWidth: "thin", scrollbarColor: "var(--lmath-borde) transparent" });
-      const fadeOverlay = marco.createDiv();
-      fadeOverlay.style.cssText = "position:absolute; inset:0; pointer-events:none; overflow:hidden; " + (enmarcado ? "border-radius:12px;" : "");
-      const fadeColor = "var(--lmath-superficie)";
-      const fadeIzq = fadeOverlay.createDiv();
-      fadeIzq.style.cssText = `position:absolute; top:0; bottom:0; left:0; width:32px; opacity:0; transition:opacity 0.15s ease; background:linear-gradient(to right, ${fadeColor}, transparent);`;
-      const fadeDer = fadeOverlay.createDiv();
-      fadeDer.style.cssText = `position:absolute; top:0; bottom:0; right:0; width:32px; opacity:0; transition:opacity 0.15s ease; background:linear-gradient(to left, ${fadeColor}, transparent);`;
-      const actualizarFade = () => {
-        const max3 = area.scrollWidth - area.clientWidth;
-        const desborda = max3 > TOLERANCIA_SCROLL;
-        area.style.overflowX = desborda ? "auto" : "hidden";
-        const sl = area.scrollLeft;
-        fadeIzq.style.opacity = desborda && sl > 0 ? "1" : "0";
-        fadeDer.style.opacity = desborda && sl < max3 - 1 ? "1" : "0";
-      };
-      area.addEventListener("scroll", actualizarFade);
-      const ajustarAlto = () => {
-        var _a;
-        if (llenar()) {
-          marco.setCssStyles({ flex: "1 1 0", height: "" });
-        } else {
-          marco.setCssStyles({ flex: "0 0 auto" });
-          const hijo = area.firstElementChild;
-          const padV = enmarcado ? 16 : 48;
-          const necesario = ((_a = hijo == null ? void 0 : hijo.scrollHeight) != null ? _a : 0) + padV + 2;
-          const alto = necesario > ALTO_TARJETA + TOLERANCIA_SCROLL ? Math.min(ALTO_TARJETA_MAX, necesario) : ALTO_TARJETA;
-          marco.style.height = `${alto}px`;
-        }
-        area.style.overflowY = area.scrollHeight - area.clientHeight > TOLERANCIA_SCROLL ? "auto" : "hidden";
-      };
-      const refrescar = () => {
-        ajustarAlto();
-        actualizarFade();
-      };
-      const onWheel = (e3) => {
-        if (area.scrollWidth - area.clientWidth <= TOLERANCIA_SCROLL)
-          return;
-        e3.preventDefault();
-        const desplazamiento = e3.deltaY + e3.deltaX;
-        area.scrollLeft += Math.max(-40, Math.min(40, desplazamiento));
-      };
-      area.addEventListener("wheel", onWheel, { passive: false });
-      window.addEventListener("resize", refrescar);
-      const observador = new ResizeObserver(() => refrescar());
-      observador.observe(area);
-      const soltar = () => {
-        window.removeEventListener("resize", refrescar);
-        observador.disconnect();
-      };
-      return { area, actualizarFade: refrescar, soltar };
-    };
-    let soltarAreas = () => {
-    };
-    limpieza.register(() => soltarAreas());
-    const renderLatex = async (latex) => {
-      soltarAreas();
-      zona.empty();
-      const formulas = typeof latex === "string" ? [latex] : latex;
-      const compartirAlto = formulas.length > 1;
-      formulasVisibles = formulas.length;
-      aplicarGeometriaZona();
-      const areas = [];
-      const disposers = [];
-      for (const formula of formulas) {
-        const a = crearArea(zona, "enmarcado", compartirAlto);
-        areas.push(a);
-        disposers.push(a.soltar);
-        await import_obsidian4.MarkdownRenderer.render(
-          this.plugin.app,
-          "$$" + formula + "$$",
-          a.area,
-          ctx.sourcePath,
-          limpieza
-        );
-        a.area.scrollLeft = 0;
-      }
-      soltarAreas = () => disposers.forEach((d) => d());
-      window.requestAnimationFrame(
-        () => areas.forEach((a) => {
-          a.actualizarFade();
-          const maxY = a.area.scrollHeight - a.area.clientHeight;
-          if (maxY > TOLERANCIA_SCROLL)
-            a.area.scrollTop = maxY / 2;
-        })
-      );
-    };
-    return { panelLatex, renderLatex };
-  }
-  /** Resaltado compartido (color, fondo, borde, sombra) de los botones de la barra del
-   *  panel según estén ACTIVOS (resaltado) o no (atenuado). Lo comparten el botón de
-   *  texto (`estiloBotonPanel`) y el botón-icono de opciones (`estiloBotonOpciones`). */
-  chromeBotonPanel(activo) {
-    return activo ? "color:var(--lmath-texto); background:var(--lmath-chip-activo); border:1px solid var(--lmath-borde-activo); box-shadow:var(--lmath-sombra);" : "color:var(--lmath-texto-tenue); background:var(--lmath-chip); border:1px solid var(--lmath-borde); box-shadow:var(--lmath-sombra);";
-  }
-  /** Estilo compartido de los botones de TEXTO de la barra (Original, Derivada): activo =
-   *  resaltado; inactivo = atenuado. Texto en Lora. */
-  estiloBotonPanel(b, activo) {
-    b.style.cssText = 'pointer-events:auto; padding:3px 10px; font-size:11px; line-height:1.15; cursor:pointer; user-select:none; border-radius:8px; white-space:nowrap; font-family:"Lora", var(--font-interface); transition:background 0.12s ease, color 0.12s ease; ' + this.chromeBotonPanel(activo);
-  }
-  /** Estilo del botón-icono de menú que abre las opciones: CUADRADO de esquinas suaves,
-   *  mismo resaltado activo/inactivo que los de texto. El icono usa `fill:currentColor`, así
-   *  que sigue el color del botón (se aviva al activarse). */
-  estiloBotonOpciones(b, activo) {
-    b.style.cssText = "pointer-events:auto; box-sizing:border-box; width:26px; height:22px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; cursor:pointer; user-select:none; border-radius:7px; transition:background 0.12s ease, color 0.12s ease; " + this.chromeBotonPanel(activo);
-  }
-  /**
-   * Chip ⓘ de la esquina inferior derecha del plano. Los tres bloques que lo tienen (resumen
-   * de una explícita, resumen geométrico y soluciones del sistema) son excluyentes entre sí y
-   * comparten sitio, tamaño y acento: un único estilo evita que se separen al retocar uno.
-   */
-  estiloChipInfo(lado) {
-    return `position:absolute; bottom:8px; right:8px; width:${lado}px; height:${lado}px; display:flex; align-items:center; justify-content:center; line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; user-select:none; z-index:5;`;
-  }
-  /**
-   * Popover del ⓘ: se abre HACIA ARRIBA desde su chip, así que su borde inferior sube con la
-   * fila de chips. Los topes son relativos al PLANO (`min(...)` contra el 100%): en el móvil
-   * el plano mide ~321×263 y un cuadro de 260×200 anclado abajo se saldría por arriba en
-   * cuanto el chip creciera; en escritorio el plano es mayor y los topes fijos siguen mandando.
-   */
-  estiloPopoverInfo(lado) {
-    const bajo = 8 + lado + 6;
-    return `position:absolute; bottom:${bajo}px; right:8px; display:none; max-width:min(260px, calc(100% - 16px)); max-height:min(200px, calc(100% - ${bajo + 8}px)); overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:6px; font-size:11px; line-height:1.5; color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);`;
-  }
-  /**
-   * Deslizador propio, hecho con dos `div` en vez de un `<input type="range">`.
-   *
-   * Se intentó dos veces con el control nativo y las dos se quedó la manija descolocada. El
-   * motivo es estructural, no un descuido: la manija y la pista de un `range` son
-   * PSEUDOELEMENTOS (`::-webkit-slider-thumb`), no nodos del DOM, así que no se pueden estilar en
-   * línea y hay que ganarle la especificidad a `app.css` de Obsidian desde una hoja que además
-   * solo se relee al recargar el plugin. Y encima WebKit alinea la manija con el borde SUPERIOR
-   * de la pista, de modo que centrarla exige un `margin-top` calculado a partir de un alto de
-   * pista que cualquiera puede cambiar por debajo.
-   *
-   * Con dos divs no hay nada que negociar: `top:50%` + `translateY(-50%)` centra por definición,
-   * el estilo va en línea y gana siempre, y de paso el control queda a la misma altura que el
-   * resto del cromo de este motor, que también se estila así.
-   *
-   * Lo que el control nativo daba gratis y aquí hay que poner a mano —y se pone— es el teclado y
-   * la semántica: `role="slider"`, `aria-valuemin/max/now`, foco visible y las flechas. Un mando
-   * que solo responde al ratón no es un mando, es un adorno.
-   */
-  montarDeslizador(padre, op) {
-    const LADO = 14;
-    const raiz = padre.createDiv({ cls: "lmath-slider" });
-    raiz.tabIndex = 0;
-    raiz.setAttribute("role", "slider");
-    raiz.setAttribute("aria-label", op.etiqueta);
-    raiz.setAttribute("aria-valuemin", String(op.min));
-    raiz.setAttribute("aria-valuemax", String(op.max));
-    raiz.style.cssText = `position:relative; width:100%; height:${LADO}px; flex:0 0 auto; touch-action:none; cursor:pointer; user-select:none;`;
-    const linea = raiz.createDiv();
-    linea.style.cssText = "position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); height:4px; border-radius:3px; background:var(--lmath-borde); pointer-events:none;";
-    const manija = raiz.createDiv();
-    manija.style.cssText = `position:absolute; top:50%; transform:translateY(-50%); width:${LADO}px; height:${LADO}px; border-radius:50%; background:var(--lmath-acento); pointer-events:none;`;
-    let valor = op.valor;
-    const acotar = (v) => Math.max(op.min, Math.min(op.max, v));
-    const fijarValor = (v) => {
-      valor = acotar(v);
-      const u = op.max === op.min ? 0 : (valor - op.min) / (op.max - op.min);
-      manija.style.left = `calc(${u * 100}% - ${u * LADO}px)`;
-      raiz.setAttribute("aria-valuenow", String(Math.round(valor)));
-    };
-    fijarValor(op.valor);
-    const emitir = (v) => {
-      const redondeado = Math.round(acotar(v) / op.paso) * op.paso;
-      fijarValor(redondeado);
-      op.alCambiar(redondeado);
-    };
-    const valorEn = (clientX) => {
-      const caja = raiz.getBoundingClientRect();
-      const util = Math.max(1, caja.width - LADO);
-      const u = (clientX - caja.left - LADO / 2) / util;
-      return op.min + Math.max(0, Math.min(1, u)) * (op.max - op.min);
-    };
-    let arrastrando = false;
-    raiz.addEventListener("pointerdown", (ev) => {
-      if (ev.button !== 0)
-        return;
-      arrastrando = true;
-      raiz.setPointerCapture(ev.pointerId);
-      raiz.focus();
-      emitir(valorEn(ev.clientX));
-    });
-    raiz.addEventListener("pointermove", (ev) => {
-      if (arrastrando)
-        emitir(valorEn(ev.clientX));
-    });
-    const soltar = (ev) => {
-      var _a;
-      if (!arrastrando)
-        return;
-      arrastrando = false;
-      if ((_a = raiz.hasPointerCapture) == null ? void 0 : _a.call(raiz, ev.pointerId))
-        raiz.releasePointerCapture(ev.pointerId);
-    };
-    raiz.addEventListener("pointerup", soltar);
-    raiz.addEventListener("pointercancel", soltar);
-    raiz.addEventListener("keydown", (ev) => {
-      const salto = ev.shiftKey ? op.pasoGrande : op.paso;
-      let nuevo = null;
-      if (ev.key === "ArrowRight" || ev.key === "ArrowUp")
-        nuevo = valor + salto;
-      else if (ev.key === "ArrowLeft" || ev.key === "ArrowDown")
-        nuevo = valor - salto;
-      else if (ev.key === "Home")
-        nuevo = op.min;
-      else if (ev.key === "End")
-        nuevo = op.max;
-      if (nuevo === null)
-        return;
-      ev.preventDefault();
-      emitir(nuevo);
-    });
-    return { fijarValor };
-  }
-  /** Tooltip ÚNICO y consistente para los controles del motor: el de Obsidian (oscuro),
-   *  anclado ARRIBA para que el cursor no lo tape. Usa `setTooltip` (API de Obsidian), que NO
-   *  pone `title` → sin el tooltip NATIVO del navegador que antes lo duplicaba. */
-  ponerTooltip(el, texto) {
-    (0, import_obsidian4.setTooltip)(el, texto, { placement: "top" });
-  }
-  /** Crea el botón-icono de opciones dentro de la barra dada y lo devuelve. Reemplaza al
-   *  antiguo "Opciones ▾"; común a los tres bloques. `titulo` es su tooltip CERRADO (lo que
-   *  despliega, distinto en cada bloque). El icono (☰/✕) lo pone `iconoBotonOpciones`; el
-   *  resaltado, `estiloBotonOpciones` (ambos en cada `sincronizar`). */
-  crearBotonOpciones(barra, titulo) {
-    const b = barra.createDiv();
-    this.iconoBotonOpciones(b, false, titulo);
-    return b;
-  }
-  /** Pone en el botón de opciones el glifo que corresponde a su estado: ☰ cuando el menú
-   *  está CERRADO (pulsar abre) y ✕ cuando está ABIERTO (pulsar cierra), con el tooltip
-   *  describiendo esa acción —`titulo` es el del estado cerrado—. `sincronizar` lo llama en
-   *  cada clic, así que solo repinta cuando el glifo CAMBIA (`dataset.icono` = el actual). */
-  iconoBotonOpciones(b, abierto, titulo) {
-    const nombre = abierto ? "cerrar" : "menu";
-    if (b.dataset.icono === nombre)
-      return;
-    b.dataset.icono = nombre;
-    b.empty();
-    this.montarIcono(b, nombre, 18);
-    this.ponerTooltip(b, abierto ? t().botones.cerrarMenu : titulo);
-  }
-  /** Pinta un icono de `ICONO` (lado `px`) como <svg> hijo de `el`, heredando el color vía
-   *  `fill:currentColor`. Sin `innerHTML`: usa la API DOM de Obsidian (createSvg). */
-  montarIcono(el, nombre, px2) {
-    const svg = el.createSvg("svg", {
-      attr: { viewBox: "0 -960 960 960", width: px2, height: px2, fill: "currentColor" }
-    });
-    svg.createSvg("path", { attr: { d: ICONO[nombre] } });
-  }
-  /**
-   * Pinta el glifo de una unidad (DEG / RAD / GRAD) ajustado A LO ANCHO de `px`.
-   *
-   * No pasa por `montarIcono` porque estos glifos no son cuadrados: se les da el ancho y el alto
-   * sale de su propia caja, así que la palabra ocupa todo el diámetro del chip en vez de dos
-   * tercios. Es lo que la deja del mismo cuerpo que el texto que había antes en ese botón; con el
-   * factor 0,66 del resto de iconos se quedaría en cuatro píxeles de alto.
-   */
-  montarGlifoUnidad(el, unidad, px2) {
-    const { caja, d } = GLIFO_UNIDAD[unidad];
-    const [, , ancho, alto] = caja.split(" ").map(Number);
-    const svg = el.createSvg("svg", {
-      attr: {
-        viewBox: caja,
-        width: px2,
-        height: Math.round(px2 * alto / ancho),
-        fill: "currentColor"
-      }
-    });
-    svg.createSvg("path", { attr: { d } });
-  }
-  /** Renderiza LaTeX INLINE como ETIQUETA de un botón/opción del toggle (glifo matemático
-   *  en vez de texto): limpia `el`, pinta `$tex$` con KaTeX (mismo pipeline que el panel) y
-   *  desenvuelve el `<p>` para que quede en línea. El color lo hereda del botón (KaTeX no
-   *  fuerza color), así sigue el resaltado activo/inactivo. Async (no bloquea el montaje). */
-  montarEtiquetaMath(el, tex, ctx) {
-    el.empty();
-    const hijo = new import_obsidian4.MarkdownRenderChild(el);
-    ctx.addChild(hijo);
-    void import_obsidian4.MarkdownRenderer.render(this.plugin.app, `$${tex}$`, el, ctx.sourcePath, hijo).then(() => {
-      const p = el.querySelector("p");
-      if (p) {
-        while (p.firstChild)
-          el.appendChild(p.firstChild);
-        p.remove();
-      }
-    });
-  }
-  /**
-   * Aplica las transformaciones AUTOMÁTICAS activas (ajustes del plugin) al bloque, en el
-   * orden formal despejar → simplificar, y devuelve el resultado que el panel muestra por
-   * defecto. Reutiliza el MISMO pipeline que los botones (despejarEcuaciones/
-   * simplificarEcuaciones): sin lógica duplicada. Si una transformación FALLA (lanza), se
-   * conserva el resultado anterior —nunca rompe el render—.
-   */
-  baseAutomatica(ecuaciones, ajustes) {
-    let base = ecuaciones;
-    if (ajustes.despejarAuto) {
-      try {
-        base = despejarEcuaciones(base);
-      } catch (e3) {
-      }
-    }
-    try {
-      base = simplificarEcuaciones(base);
-    } catch (e3) {
-    }
-    return base;
-  }
-  /**
-   * Bloque obs-trig: el círculo trigonométrico. Camino propio y completo, sin `Camara`, sin
-   * `Escena` y sin proveedores de geometría: aquí no hay curva que muestrear, sino una figura
-   * analítica que se redibuja entera en cada cambio de caja (unas decenas de puntos: el bloque
-   * más barato del plugin). Lo que sí comparte con los demás es el marco —contenedor, panel de
-   * la fórmula con KaTeX, reparto en columnas o flotante, paleta y ciclo de vida—, que es
-   * justamente lo que hace que se vea como parte de LMath y no como un widget aparte.
-   */
-  async procesarTrig(source, el, ctx) {
-    const contenedor = el.createDiv({ cls: "lmath-container" });
-    const limpieza = new import_obsidian4.MarkdownRenderChild(contenedor);
-    ctx.addChild(limpieza);
-    const revelar = () => contenedor.setCssStyles({ visibility: "visible" });
-    contenedor.setCssStyles({ visibility: "hidden" });
-    const redDeSeguridad = window.setTimeout(revelar, 2e3);
-    limpieza.register(() => window.clearTimeout(redDeSeguridad));
-    const bloque = parsearBloqueTrig(source);
-    const crudos = bloque.angulos.map((a) => a.radianes);
-    const mostrados = [...crudos];
-    const modelos = mostrados.map((r) => modeloDeAngulo(r));
-    let activo = 0;
-    const ajustesTrig = this.obtenerAjustes();
-    const imanActivo = ajustesTrig.imanTrig;
-    let unidad = ajustesTrig.unidadAngulo;
-    const derechoExacto = bloque.angulos.map((a) => a.simbolico);
-    const gradosEscritos = bloque.angulos.map((a) => aGrados(a.radianes));
-    const recorrido = rangoDeslizador(gradosEscritos);
-    const fijarAngulo = (crudo, conIman) => {
-      const acotado = acotarARecorrido(crudo, recorrido);
-      crudos[activo] = acotado;
-      mostrados[activo] = conIman ? imantar(acotado) : acotado;
-      modelos[activo] = modeloDeAngulo(mostrados[activo]);
-      derechoExacto[activo] = true;
-    };
-    const tactil = esTactil();
-    const reparto = {
-      estrecho: false,
-      abierto: false,
-      panel: null,
-      ladoChip: ladoChip(tactil)
-    };
-    const panelTrig = contenedor.createDiv({ cls: "lmath-latex" });
-    reparto.panel = panelTrig;
-    reparto.huecoInferior = ALTO_CONTROLES_TRIG;
-    aplicarCajaPanel(reparto);
-    const columna = panelTrig.createDiv();
-    columna.style.cssText = "position:absolute; inset:0; display:flex; flex-direction:column; gap:9px; padding:13px 14px; box-sizing:border-box; overflow:hidden; font-size:12px; line-height:1.45; color:var(--lmath-texto);";
-    const tarjeta = columna.createDiv();
-    tarjeta.style.cssText = "flex:0 0 auto; border:1px solid var(--lmath-borde); border-radius:12px; background:var(--lmath-superficie); padding:9px 10px; text-align:center;";
-    this.montarEtiquetaMath(tarjeta.createDiv(), "x^2 + y^2 = 1", ctx);
-    const puntoVivo = tarjeta.createDiv();
-    puntoVivo.style.cssText = "margin-top:7px; padding-top:7px; border-top:1px solid var(--lmath-borde); font-size:11.5px; line-height:1.35; color:var(--lmath-texto-tenue);";
-    const lectura = columna.createDiv({ cls: "lmath-trig-lectura" });
-    const controles = columna.createDiv();
-    controles.setCssProps({ "--lmath-trig-alto-controles": `${ALTO_CONTROLES_TRIG}px` });
-    if (bloque.avisos.length > 0) {
-      const tira = columna.createDiv();
-      columna.insertBefore(tira, lectura);
-      tira.style.cssText = "flex:0 0 auto; display:flex; flex-direction:column; gap:2px; font-size:10px; line-height:1.3; text-align:center; color:var(--lmath-aviso);";
-      const redactar = (a) => t().trig.anguloNoValido(a.texto);
-      const MAX = 3;
-      for (const a of bloque.avisos.slice(0, MAX))
-        tira.createDiv({ text: redactar(a) });
-      if (bloque.avisos.length > MAX) {
-        tira.createDiv({ text: `+${bloque.avisos.length - MAX}` });
-      }
-    }
-    const wrap = contenedor.createDiv({ cls: "lmath-grafica" });
-    wrap.style.cssText = `position:relative; width:100%; height:${ALTO_PANEL}px;`;
-    let anchoAplicado = -1;
-    const aplicarReparto = () => {
-      const ancho = contenedor.clientWidth;
-      if (ancho <= 0)
-        return;
-      const estrecho = ancho < ANCHO_MINIMO_COLUMNAS;
-      if (estrecho === reparto.estrecho && ancho === anchoAplicado)
-        return;
-      anchoAplicado = ancho;
-      reparto.estrecho = estrecho;
-      if (!estrecho)
-        reparto.abierto = false;
-      contenedor.toggleClass("lmath-estrecho", estrecho);
-      aplicarCajaPanel(reparto);
-      sincronizarBotonFormula();
-      wrap.style.height = estrecho ? `${ancho}px` : `${ALTO_PANEL}px`;
-      if (estrecho)
-        wrap.append(controles);
-      else
-        columna.append(controles);
-      controles.toggleClass("lmath-trig-controles-pie", estrecho);
-      controles.toggleClass("lmath-trig-controles", !estrecho);
-      if (lienzoColocado)
-        lienzoColocado(estrecho);
-    };
-    let sincronizarBotonFormula = () => {
-    };
-    let lienzoColocado = null;
-    aplicarReparto();
-    const canvas = wrap.createEl("canvas");
-    canvas.setCssStyles({
-      position: "absolute",
-      top: "0",
-      left: "0",
-      width: "100%",
-      height: "100%",
-      // El dedo sobre el lienzo mueve el ÁNGULO, así que el navegador no se queda ningún gesto
-      // que empiece aquí. Igual que en los demás bloques: lo que empieza fuera del lienzo sigue
-      // desplazando la nota con normalidad.
-      touchAction: "none"
-    });
-    const anclajesAbajo = [];
-    const chipsAbajo = {
-      push: (el2) => anclajesAbajo.push({ el: el2, base: 8 })
-    };
-    const sueloChips = () => 8 + (reparto.estrecho ? ALTO_CONTROLES_TRIG : 0);
-    lienzoColocado = (estrecho) => {
-      canvas.style.height = estrecho ? `calc(100% - ${ALTO_CONTROLES_TRIG}px)` : "100%";
-      const extra = estrecho ? ALTO_CONTROLES_TRIG : 0;
-      for (const { el: el2, base } of anclajesAbajo)
-        el2.style.bottom = `${base + extra}px`;
-    };
-    lienzoColocado(reparto.estrecho);
-    canvas.tabIndex = 0;
-    const ctx2d = canvas.getContext("2d");
-    if (!ctx2d) {
-      wrap.createEl("p", { text: t().canvasNoDisponible });
-      revelar();
-      return;
-    }
-    const colorDe2 = (i2) => {
-      const c = colorCurva(i2);
-      return `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)}, ${c[3]})`;
-    };
-    const componentes = /* @__PURE__ */ new Set();
-    const nombrada = bloque.angulos[activo].componente;
-    if (nombrada)
-      componentes.add(nombrada);
-    let W = 0, Hcss = 0, dprPrev = 0;
-    const disposicion = () => encuadreTrig(W, Hcss);
-    const pintar = () => {
-      fijarTemaPlano(esTemaOscuro(wrap));
-      dibujarTrig(ctx2d, disposicion(), modelos, W, Hcss, {
-        activo,
-        colorDe: colorDe2,
-        puedeExacto: derechoExacto[activo],
-        unidad,
-        componentes
-      });
-      refrescarInfo();
-      actualizarPanel();
-    };
-    let actualizarPanel = () => {
-    };
-    let refrescarInfo = () => {
-    };
-    let animando = false;
-    let detenerAnimacion = () => {
-    };
-    const redimensionar = () => {
-      const caja = canvas.getBoundingClientRect();
-      const ancho = Math.max(1, Math.round(caja.width || wrap.clientWidth || 320));
-      const alto = Math.max(1, Math.round(caja.height || ALTO_PANEL));
-      const dpr = Math.ceil(window.devicePixelRatio || 1);
-      if (ancho === W && alto === Hcss && dpr === dprPrev)
-        return;
-      W = ancho;
-      Hcss = alto;
-      dprPrev = dpr;
-      canvas.width = ancho * dpr;
-      canvas.height = alto * dpr;
-      ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
-      pintar();
-    };
-    redimensionar();
-    const observador = new ResizeObserver(() => redimensionar());
-    observador.observe(wrap);
-    limpieza.register(() => observador.disconnect());
-    const observadorReparto = new ResizeObserver(() => aplicarReparto());
-    observadorReparto.observe(contenedor);
-    limpieza.register(() => observadorReparto.disconnect());
-    window.addEventListener("resize", redimensionar);
-    limpieza.register(() => window.removeEventListener("resize", redimensionar));
-    const refTema = this.plugin.app.workspace.on("css-change", () => pintar());
-    limpieza.register(() => this.plugin.app.workspace.offref(refTema));
-    const agarrePx = tactil ? AGARRE_PX_TACTIL : AGARRE_PX;
-    let arrastrando = false;
-    let anguloPrevio = 0;
-    const repintar = () => window.requestAnimationFrame(pintar);
-    canvas.addEventListener("pointerdown", (ev) => {
-      if (ev.button !== 0)
-        return;
-      const e3 = disposicion();
-      if (!agarraCircunferencia(e3, ev.offsetX, ev.offsetY, agarrePx))
-        return;
-      detenerAnimacion();
-      const ap = anguloDePuntero(e3, ev.offsetX, ev.offsetY);
-      activo = indiceMasCercano(mostrados, ap);
-      arrastrando = true;
-      anguloPrevio = ap;
-      canvas.setPointerCapture(ev.pointerId);
-      canvas.setCssStyles({ cursor: "pointer" });
-      canvas.focus();
-      repintar();
-    });
-    canvas.addEventListener("pointermove", (ev) => {
-      const e3 = disposicion();
-      if (!arrastrando) {
-        canvas.setCssStyles({
-          cursor: agarraCircunferencia(e3, ev.offsetX, ev.offsetY, agarrePx) ? "pointer" : "default"
-        });
-        return;
-      }
-      const ap = anguloDePuntero(e3, ev.offsetX, ev.offsetY);
-      fijarAngulo(
-        crudos[activo] + deltaAngular(anguloPrevio, ap),
-        imanVigente(imanActivo, ev.altKey)
-      );
-      anguloPrevio = ap;
-      repintar();
-    });
-    const soltar = (ev) => {
-      var _a;
-      if (!arrastrando)
-        return;
-      arrastrando = false;
-      if ((_a = canvas.hasPointerCapture) == null ? void 0 : _a.call(canvas, ev.pointerId))
-        canvas.releasePointerCapture(ev.pointerId);
-      canvas.setCssStyles({ cursor: "pointer" });
-    };
-    canvas.addEventListener("pointerup", soltar);
-    canvas.addEventListener("pointercancel", soltar);
-    canvas.addEventListener("keydown", (ev) => {
-      const paso = ev.shiftKey ? PASO_IMAN : PASO_IMAN / 15;
-      let nuevo = null;
-      if (ev.key === "ArrowRight")
-        nuevo = crudos[activo] + paso;
-      else if (ev.key === "ArrowLeft")
-        nuevo = crudos[activo] - paso;
-      else if (ev.key === "PageUp")
-        nuevo = (Math.floor(crudos[activo] / PASO_IMAN) + 1) * PASO_IMAN;
-      else if (ev.key === "PageDown")
-        nuevo = (Math.ceil(crudos[activo] / PASO_IMAN) - 1) * PASO_IMAN;
-      else if (ev.key === "Home")
-        nuevo = 0;
-      else if (ev.key === "Tab" && mostrados.length > 1) {
-        activo = (activo + 1) % mostrados.length;
-        ev.preventDefault();
-        repintar();
-        return;
-      }
-      if (nuevo === null)
-        return;
-      ev.preventDefault();
-      fijarAngulo(nuevo, false);
-      repintar();
-    });
-    {
-      const fila = controles.createDiv({ cls: "lmath-trig-componentes" });
-      fila.setAttribute("role", "group");
-      fila.setAttribute("aria-label", t().trig.componentes.chip);
-      const botones = /* @__PURE__ */ new Map();
-      const sincronizarBotones = () => {
-        for (const [c, b] of botones) {
-          const activo2 = componentes.has(c);
-          b.setAttribute("aria-pressed", String(activo2));
-          const color = colorComponente(c);
-          b.style.cssText = "flex:1 1 0; display:flex; align-items:center; justify-content:center; gap:5px; padding:5px 4px; font-size:11px; line-height:1.1; border-radius:7px; cursor:pointer; user-select:none; white-space:nowrap; transition:color 0.12s ease, background 0.12s ease, border-color 0.12s ease; " + (activo2 ? `color:var(--lmath-texto); background:var(--lmath-panel); border:1px solid ${color};` : "color:var(--lmath-texto-apagado); background:transparent; border:1px solid var(--lmath-borde);");
-          const muestra = b.firstElementChild;
-          if (muestra instanceof HTMLElement) {
-            muestra.style.cssText = `width:11px; height:3px; border-radius:2px; flex:0 0 auto; background:${color}; opacity:${activo2 ? "1" : "0.45"};`;
-          }
-        }
-      };
-      for (const c of COMPONENTES) {
-        const b = fila.createDiv();
-        b.createDiv();
-        b.createSpan({ text: t().trig.componentes[c] });
-        botones.set(c, b);
-        b.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          if (!componentes.delete(c))
-            componentes.add(c);
-          sincronizarBotones();
-          pintar();
-        });
-      }
-      const filaValor = controles.createDiv({ cls: "lmath-trig-valor" });
-      filaValor.createDiv({ text: ETIQUETA_POR_DEFECTO });
-      const valorVivo = filaValor.createDiv({ cls: "lmath-trig-valor-vivo" });
-      const { fijarValor } = this.montarDeslizador(controles, {
-        min: recorrido.min,
-        max: recorrido.max,
-        valor: gradosEscritos[activo],
-        etiqueta: ETIQUETA_POR_DEFECTO,
-        paso: 1,
-        pasoGrande: 15,
-        alCambiar: (grados) => {
-          detenerAnimacion();
-          fijarAngulo(aRadianes(grados), false);
-          pintar();
-        }
-      });
-      const tabla = lectura.createDiv();
-      const celdas = [];
-      const nombresRazon = [];
-      for (const nombre of ["sin", "cos", "tan"]) {
-        const f = tabla.createDiv({ cls: "lmath-trig-razon" });
-        nombresRazon.push(f.createDiv({ text: nombre }));
-        nombresRazon[nombresRazon.length - 1].setCssStyles({
-          width: "26px",
-          flex: "0 0 auto"
-        });
-        const exacto = f.createDiv();
-        exacto.setCssStyles({ flex: "1 1 auto", textAlign: "right" });
-        const aprox = f.createDiv();
-        aprox.setCssStyles({
-          color: "var(--lmath-texto-apagado)",
-          width: "62px",
-          flex: "0 0 auto",
-          textAlign: "right"
-        });
-        celdas.push({ exacto, aprox });
-      }
-      const grande = lectura.createDiv();
-      const grandeTitulo = grande.createDiv();
-      grandeTitulo.setCssStyles({ color: "var(--lmath-texto-tenue)", fontSize: "11px" });
-      const grandeValor = grande.createDiv();
-      grandeValor.setCssStyles({
-        fontSize: "21px",
-        lineHeight: "1.35",
-        color: "var(--lmath-texto)"
-      });
-      const grandeAprox = grande.createDiv();
-      grandeAprox.setCssStyles({ color: "var(--lmath-texto-apagado)", fontSize: "11px" });
-      const decimal = (v) => Math.abs(v - Math.round(v)) < 1e-12 ? String(Math.round(v)) : Math.abs(v) >= 1e4 ? v.toExponential(2) : v.toFixed(4);
-      actualizarPanel = () => {
-        var _a, _b, _c;
-        const m = modelos[activo];
-        const ex = derechoExacto[activo] ? razonesExactas(mostrados[activo]) : null;
-        const grados = aGrados(mostrados[activo]);
-        const textoAng = textoAngulo(m, unidad);
-        const noDefinida = t().trig.info.noDefinida;
-        fijarValor(grados);
-        valorVivo.setText(textoAng);
-        const punto = derechoExacto[activo] ? puntoExactoTexto(mostrados[activo]) : null;
-        puntoVivo.setText(
-          `P(${textoAng}) = ${punto != null ? punto : `(${decimal(m.punto.x)}, ${decimal(m.punto.y)})`}`
-        );
-        const unica = componentes.size === 1 ? [...componentes][0] : null;
-        tabla.setCssStyles({ display: unica === null ? "block" : "none" });
-        grande.setCssStyles({ display: unica === null ? "none" : "block" });
-        if (unica === null) {
-          const valores = [
-            [m.razones.sin, (_a = ex == null ? void 0 : ex.sin) != null ? _a : null],
-            [m.razones.cos, (_b = ex == null ? void 0 : ex.cos) != null ? _b : null],
-            [m.razones.tan, (_c = ex == null ? void 0 : ex.tan) != null ? _c : null]
-          ];
-          valores.forEach(([valor, exacto], i2) => {
-            celdas[i2].exacto.setText(
-              valor === null ? noDefinida : exacto ? exacto.txt : decimal(valor)
-            );
-            celdas[i2].aprox.setText(valor !== null && exacto ? `\u2248 ${decimal(valor)}` : "");
-          });
-        } else {
-          const nombre = unica === "seno" ? "sin" : unica === "coseno" ? "cos" : "tan";
-          const valor = unica === "seno" ? m.razones.sin : unica === "coseno" ? m.razones.cos : m.razones.tan;
-          const exacto = ex === null ? null : unica === "seno" ? ex.sin : unica === "coseno" ? ex.cos : ex.tan;
-          grandeTitulo.setText(`${nombre} ${textoAng}`);
-          grandeTitulo.setCssStyles({ color: colorComponente(unica) });
-          grandeValor.setText(valor === null ? noDefinida : exacto ? exacto.txt : decimal(valor));
-          grandeAprox.setText(valor !== null && exacto ? `\u2248 ${decimal(valor)}` : "");
-        }
-      };
-      const sincronizarColores = () => {
-        sincronizarBotones();
-        COMPONENTES.forEach((c, i2) => nombresRazon[i2].setCssStyles({ color: colorComponente(c) }));
-      };
-      sincronizarColores();
-      const refTemaBotones = this.plugin.app.workspace.on("css-change", () => sincronizarColores());
-      limpieza.register(() => this.plugin.app.workspace.offref(refTemaBotones));
-    }
-    {
-      const altoU = reparto.ladoChip;
-      const anchoU = Math.round(altoU * 1.7);
-      const btnUnidad = wrap.createDiv();
-      btnUnidad.style.cssText = `position:absolute; top:6px; right:8px; width:${anchoU}px; height:${altoU}px; display:flex; align-items:center; justify-content:center; line-height:1; border-radius:${altoU / 2}px; cursor:pointer; user-select:none; z-index:5; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde);`;
-      const sincronizarUnidad = () => {
-        btnUnidad.empty();
-        this.montarGlifoUnidad(btnUnidad, unidad, anchoU - 8);
-        const nombre = unidad === "degrees" ? t().ajustes.trig.opcionGrados : unidad === "radians" ? t().ajustes.trig.opcionRadianes : t().ajustes.trig.opcionGradianes;
-        this.ponerTooltip(btnUnidad, `${t().ajustes.trig.unidad.etiqueta}: ${nombre}`);
-      };
-      sincronizarUnidad();
-      btnUnidad.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        unidad = CICLO_UNIDAD[(CICLO_UNIDAD.indexOf(unidad) + 1) % CICLO_UNIDAD.length];
-        sincronizarUnidad();
-        pintar();
-      });
-      const refIdioma = this.plugin.app.workspace.on("css-change", () => sincronizarUnidad());
-      limpieza.register(() => this.plugin.app.workspace.offref(refIdioma));
-    }
-    {
-      const ladoP = reparto.ladoChip;
-      const velocidad = aRadianes(60);
-      const btnPlay = wrap.createDiv();
-      chipsAbajo.push(btnPlay);
-      btnPlay.style.cssText = `position:absolute; bottom:8px; left:${8 + ladoP + 6}px; width:${ladoP}px; height:${ladoP}px; display:flex; align-items:center; justify-content:center; line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; user-select:none; z-index:5;`;
-      const sincronizarPlay = () => {
-        btnPlay.empty();
-        this.montarIcono(btnPlay, animando ? "pausar" : "reproducir", ladoIcono(ladoP));
-        this.ponerTooltip(btnPlay, animando ? t().botones.pausar : t().botones.reproducir);
-      };
-      sincronizarPlay();
-      let rafAnim = null;
-      let tPrev = 0;
-      let enPantalla = true;
-      const marco = (t2) => {
-        rafAnim = null;
-        if (!animando || !enPantalla)
-          return;
-        const dt = tPrev === 0 ? 0 : (t2 - tPrev) / 1e3;
-        tPrev = t2;
-        fijarAngulo(pasoAnimacion(crudos[activo], velocidad, dt), false);
-        pintar();
-        rafAnim = window.requestAnimationFrame(marco);
-      };
-      const arrancarBucle = () => {
-        if (rafAnim !== null)
-          return;
-        tPrev = 0;
-        rafAnim = window.requestAnimationFrame(marco);
-      };
-      const pararBucle = () => {
-        if (rafAnim !== null)
-          window.cancelAnimationFrame(rafAnim);
-        rafAnim = null;
-      };
-      detenerAnimacion = () => {
-        if (!animando)
-          return;
-        animando = false;
-        pararBucle();
-        sincronizarPlay();
-      };
-      btnPlay.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        animando = !animando;
-        if (animando)
-          arrancarBucle();
-        else
-          pararBucle();
-        sincronizarPlay();
-        pintar();
-      });
-      const observadorVista = new IntersectionObserver((entradas) => {
-        enPantalla = entradas.some((e3) => e3.isIntersecting);
-        if (animando && enPantalla)
-          arrancarBucle();
-        else if (!enPantalla)
-          pararBucle();
-      });
-      observadorVista.observe(wrap);
-      limpieza.register(() => observadorVista.disconnect());
-      limpieza.register(pararBucle);
-    }
-    {
-      const ladoF = reparto.ladoChip;
-      const btnFormula = wrap.createDiv({ text: "f(x)" });
-      this.ponerTooltip(btnFormula, t().botones.verFormula);
-      const estiloFormula = () => {
-        btnFormula.style.cssText = `position:absolute; bottom:${sueloChips()}px; left:8px; width:${ladoF}px; height:${ladoF}px; display:flex; align-items:center; justify-content:center; font-size:10px; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; font-family:"Lora", var(--font-interface); ` + (reparto.abierto ? "color:var(--lmath-acento-contraste); background:var(--lmath-acento); border:1px solid var(--lmath-acento);" : "color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde);") + (reparto.estrecho ? "" : "display:none;");
-      };
-      estiloFormula();
-      sincronizarBotonFormula = estiloFormula;
-      btnFormula.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        reparto.abierto = !reparto.abierto;
-        aplicarCajaPanel(reparto);
-        estiloFormula();
-        pintar();
-      });
-    }
-    {
-      const ladoI = reparto.ladoChip;
-      const btnInfo = wrap.createDiv();
-      chipsAbajo.push(btnInfo);
-      this.ponerTooltip(btnInfo, t().trig.info.chip);
-      btnInfo.style.cssText = this.estiloChipInfo(ladoI);
-      this.montarIcono(btnInfo, "info", ladoIcono(ladoI));
-      const pop = wrap.createDiv();
-      pop.style.cssText = this.estiloPopoverInfo(ladoI);
-      anclajesAbajo.push({ el: pop, base: 8 + ladoI + 6 });
-      let visible = false;
-      const abiertas = /* @__PURE__ */ new Set([0]);
-      const dec = (v, n = 6) => {
-        return Math.abs(v - Math.round(v)) < 1e-12 ? String(Math.round(v)) : v.toFixed(n);
-      };
-      const grados = (rad) => textoGradosDe(rad);
-      const construir = () => {
-        pop.empty();
-        const m = modelos[activo];
-        const T = t().trig.info;
-        const ex = derechoExacto[activo] ? razonesExactas(mostrados[activo]) : null;
-        const radExacto = derechoExacto[activo] ? radianesExactoTexto(mostrados[activo]) : null;
-        const razon = (valor, exacto) => {
-          if (valor === null)
-            return T.noDefinida;
-          return exacto ? `${exacto.txt}  \u2248 ${dec(valor)}` : dec(valor);
-        };
-        const secciones = [
-          {
-            // Primera, y por tanto la ABIERTA por defecto: es la única sección cuya mayoría
-            // (csc, sec, cot) no aparece en ningún otro sitio de la interfaz.
-            titulo: T.seccionRazones,
-            filas: [
-              // El orden empareja recíprocas por posición (1↔4, 2↔5, 3↔6) y es el mismo de la
-              // tarjeta y del chip de componentes: el ojo aprende un orden, no dos.
-              ["sin", razon(m.razones.sin, ex == null ? void 0 : ex.sin)],
-              ["cos", razon(m.razones.cos, ex == null ? void 0 : ex.cos)],
-              ["tan", razon(m.razones.tan, ex == null ? void 0 : ex.tan)],
-              ["csc", razon(m.razones.csc, ex == null ? void 0 : ex.csc)],
-              ["sec", razon(m.razones.sec, ex == null ? void 0 : ex.sec)],
-              ["cot", razon(m.razones.cot, ex == null ? void 0 : ex.cot)],
-              // Cierre de la sección, despegado del resto: no es una razón más, es la invariante
-              // que las liga —y la ecuación de la propia circunferencia unidad—, así que vive con
-              // sus operandos. Comprobación NUMÉRICA, y se dice que lo es: no hay álgebra detrás.
-              [
-                T.pitagorica,
-                `${dec(m.razones.sin ** 2 + m.razones.cos ** 2)} (${T.pitagoricaNota})`,
-                true
-              ]
-            ]
-          },
-          {
-            // Cadena de derivación: cada fila se calcula de la anterior. Que `Radianes` y
-            // `Longitud de arco` salgan con el mismo número no es un descuido — es el hecho que
-            // DEFINE el radián (r = 1 ⇒ s = θ), y solo se lee como tal si van seguidas. Separadas
-            // por dos secciones, como estaban, la coincidencia parecía un error.
-            titulo: T.seccionMedida,
-            filas: [
-              [T.grados, grados(m.radianes)],
-              [T.radianes, radExacto ? `${radExacto}  \u2248 ${dec(m.radianes)}` : dec(m.radianes)],
-              [T.arco, dec(m.arco)],
-              [T.sector, dec(m.sector)]
-            ]
-          },
-          {
-            // De grueso a fino: dónde cae el lado terminal da el SIGNO de las razones, el
-            // coterminal y las vueltas reconstruyen θ = coterminal + n·2π leídos seguidos, y el
-            // ángulo de referencia cierra dando su MAGNITUD. Es el método del ángulo de
-            // referencia, en orden.
-            titulo: T.seccionPosicion,
-            filas: [
-              // Con etiqueta, y esa: los ocho valores son cuadrantes Y semiejes, así que
-              // «cuadrante» mentiría en la mitad de los casos.
-              [T.ladoTerminal, T.posicion[m.posicion]],
-              [T.coterminal, grados(m.coterminal)],
-              [T.vueltas, String(m.vueltas)],
-              [T.referencia, grados(m.referencia)]
-            ]
-          },
-          {
-            // Todas las filas son OTRO ángulo, ordenadas por la constante de la que salen
-            // (0−θ, 90−θ, 180−θ, 180+θ): así cada par contiguo comparte estructura.
-            titulo: T.seccionRelacionados,
-            filas: [
-              [T.opuesto, grados(-m.radianes)],
-              [T.complementario, grados(Math.PI / 2 - m.radianes)],
-              [T.suplementario, grados(Math.PI - m.radianes)],
-              [T.antipoda, grados(m.radianes + Math.PI)]
-            ]
-          }
-        ];
-        secciones.forEach((s, i2) => {
-          const cab = pop.createDiv({ text: `${abiertas.has(i2) ? "\u25BE" : "\u25B8"} ${s.titulo}` });
-          cab.style.cssText = "cursor:pointer; user-select:none; font-weight:600; padding:3px 0; " + (i2 > 0 ? "border-top:1px solid var(--lmath-borde); margin-top:3px;" : "");
-          cab.addEventListener("click", (ev) => {
-            ev.stopPropagation();
-            if (abiertas.has(i2))
-              abiertas.delete(i2);
-            else
-              abiertas.add(i2);
-            construir();
-          });
-          if (!abiertas.has(i2))
-            return;
-          for (const [etiqueta, valor, separada] of s.filas) {
-            const fila = pop.createDiv();
-            fila.style.cssText = "display:flex; justify-content:space-between; gap:10px; padding:1px 0;" + // El mismo filete que separa secciones, pero sin cabecera detrás y con el aire
-            // repartido a los dos lados: se lee como un cierre DENTRO de la sección abierta,
-            // no como el principio de otra.
-            (separada ? " border-top:1px solid var(--lmath-borde); margin-top:5px; padding-top:5px;" : "");
-            fila.createDiv({ text: etiqueta }).setCssStyles({ color: "var(--lmath-texto-tenue)" });
-            fila.createDiv({ text: valor }).setCssStyles({ textAlign: "right" });
-          }
-        });
-      };
-      refrescarInfo = () => {
-        if (visible)
-          construir();
-      };
-      const cerrar = () => {
-        visible = false;
-        pop.setCssStyles({ display: "none" });
-      };
-      btnInfo.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        visible = !visible;
-        if (visible)
-          construir();
-        pop.setCssStyles({ display: visible ? "block" : "none" });
-      });
-      const fuera = (ev) => {
-        if (visible && !pop.contains(ev.target) && !btnInfo.contains(ev.target)) {
-          cerrar();
-        }
-      };
-      document.addEventListener("mousedown", fuera);
-      limpieza.register(() => document.removeEventListener("mousedown", fuera));
-    }
-    lienzoColocado(reparto.estrecho);
-    redimensionar();
-    pintar();
-    revelar();
-  }
-  /**
-   * Armazón del toggle del panel, COMÚN a los cuatro bloques: la barra de botones (arriba,
-   * centrada, flotando sobre la fórmula) y el desplegable que cuelga de ella. Devuelve las
-   * cajas vacías y el estilo de sus opciones; QUIÉN va dentro y qué hace al pulsarlo es cosa
-   * de cada panel, que es lo único en lo que se diferencian.
-   *
-   * `barra` se crea antes que `menu` para que el desplegable quede por delante en el orden del
-   * documento; ambos son absolutos dentro del panel, así que no participan en su flujo.
-   */
-  crearMenuDesplegable(panelLatex) {
-    const barra = panelLatex.createDiv();
-    barra.style.cssText = "position:absolute; top:8px; left:0; right:0; z-index:6; display:flex; gap:6px; justify-content:center; pointer-events:none;";
-    const menu = panelLatex.createDiv();
-    menu.style.cssText = "position:absolute; top:36px; left:0; right:0; z-index:7; display:none; flex-direction:column; align-items:center; pointer-events:none;";
-    const caja = menu.createDiv();
-    caja.style.cssText = 'pointer-events:auto; display:flex; flex-direction:column; gap:2px; padding:4px; border-radius:10px; background:var(--lmath-panel); border:1px solid var(--lmath-borde); box-shadow:var(--lmath-sombra-flotante); font-family:"Lora", var(--font-interface);';
-    const itemEstilo = (el, habilitado) => {
-      el.style.cssText = "padding:5px 14px; font-size:11px; line-height:1.15; user-select:none; border-radius:6px; white-space:nowrap; text-align:center; transition:background 0.12s ease, color 0.12s ease; " + (habilitado ? "color:var(--lmath-texto); cursor:pointer; pointer-events:auto;" : "color:var(--lmath-texto-apagado); cursor:default; pointer-events:none;");
-    };
-    return { barra, menu, caja, itemEstilo };
-  }
-  /**
-   * Cierra el desplegable al pulsar FUERA de la barra y del menú. Se registra en la limpieza
-   * del bloque: es un listener del documento y sobreviviría al bloque que lo puso.
-   */
-  cerrarMenuAlPulsarFuera(barra, caja, limpieza, cerrar) {
-    const onDocDown = (e3) => {
-      if (!barra.contains(e3.target) && !caja.contains(e3.target))
-        cerrar();
-    };
-    document.addEventListener("mousedown", onDocDown);
-    limpieza.register(() => document.removeEventListener("mousedown", onDocDown));
-  }
-  /**
-   * Panel izquierdo de los bloques de OPERADOR (obs-derivate, obs-integral): el scroller de
-   * fórmula + una barra de toggle de TRES vistas —el OPERADOR sin evaluar (la forma de
-   * partida, vista por defecto), el RESULTADO evaluado, y AMBAS apiladas—. No cambia lo
-   * graficado: el plano ya grafica lo suyo (la derivada, el integrando); esto solo alterna la
-   * fórmula MOSTRADA, con el mismo lenguaje visual que el toggle de obs-graph.
-   *
-   * Los dos bloques comparten esta maquinaria ENTERA y se distinguen solo por sus textos: qué
-   * fórmulas hay (`operador`/`resultado`), qué glifo lleva el botón principal y qué opciones
-   * cuelgan del menú. Nada de eso justifica dos copias del mismo toggle.
-   */
-  async montarPanelVistas(contenedor, ctx, limpieza, reparto, config4) {
-    const { panelLatex, renderLatex } = this.crearScrollerLatex(contenedor, ctx, limpieza, reparto);
-    const { operador, resultado } = config4;
-    const latexDe = (v) => v === "operador" ? operador : v === "resultado" ? resultado : [operador, resultado];
-    const firmaDe = (v) => {
-      const l = latexDe(v);
-      return typeof l === "string" ? l : l.join(" ");
-    };
-    const { barra, menu, caja, itemEstilo } = this.crearMenuDesplegable(panelLatex);
-    const btnOriginal = barra.createDiv();
-    this.ponerTooltip(btnOriginal, t().botones.operador);
-    this.montarEtiquetaMath(btnOriginal, config4.glifoOperador, ctx);
-    const btnOpciones = this.crearBotonOpciones(barra, config4.tooltipOpciones);
-    const items = config4.opciones.map((o) => {
-      const el = caja.createDiv();
-      this.ponerTooltip(el, o.etiqueta);
-      this.montarEtiquetaMath(el, o.tex, ctx);
-      return el;
-    });
-    let vista = "operador";
-    let abierto = false;
-    const sincronizar = () => {
-      this.estiloBotonPanel(btnOriginal, vista === "operador");
-      this.estiloBotonOpciones(btnOpciones, vista !== "operador" || abierto);
-      this.iconoBotonOpciones(btnOpciones, abierto, config4.tooltipOpciones);
-      const actual = firmaDe(vista);
-      items.forEach((el, i2) => itemEstilo(el, firmaDe(config4.opciones[i2].vista) !== actual));
-      menu.style.display = abierto ? "flex" : "none";
-    };
-    const aplicar = async (i2) => {
-      abierto = false;
-      const v = config4.opciones[i2].vista;
-      if (firmaDe(v) !== firmaDe(vista)) {
-        vista = v;
-        await renderLatex(latexDe(vista));
-      }
-      sincronizar();
-    };
-    btnOriginal.addEventListener("click", () => void (async () => {
-      abierto = false;
-      if (vista !== "operador") {
-        vista = "operador";
-        await renderLatex(operador);
-      }
-      sincronizar();
-    })());
-    btnOpciones.addEventListener("click", (e3) => {
-      e3.stopPropagation();
-      abierto = !abierto;
-      sincronizar();
-    });
-    items.forEach((el, i2) => el.addEventListener("click", () => void aplicar(i2)));
-    this.cerrarMenuAlPulsarFuera(barra, caja, limpieza, () => {
-      if (!abierto)
-        return;
-      abierto = false;
-      sincronizar();
-    });
-    sincronizar();
-    await renderLatex(operador);
-  }
-  /**
-   * Panel izquierdo de obs-graph / obs-system: el scroller de fórmula + la barra de
-   * toggle de transformaciones ([Original] [Opciones ▾] con Simplificar / Despejar y).
-   */
-  async montarPanelLatex(contenedor, ecuaciones, ctx, limpieza, reparto) {
-    const { panelLatex, renderLatex } = this.crearScrollerLatex(contenedor, ctx, limpieza, reparto);
-    const ajustes = this.obtenerAjustes();
-    const base = this.baseAutomatica(ecuaciones, ajustes);
-    const original = bloqueALatex(base, this.sistema);
-    const todas = [
-      // `etiqueta` = título accesible; `tex` = glifo matemático RENDERIZADO en el botón.
-      { etiqueta: t().botones.despejarY, tex: "y=f(x)", auto: ajustes.despejarAuto, fn: despejarEcuaciones }
-    ];
-    const transformaciones = todas.filter((t2) => !t2.auto);
-    if (ecuaciones.length > 0 && transformaciones.length > 0) {
-      let estado = base;
-      const { barra, menu, caja, itemEstilo } = this.crearMenuDesplegable(panelLatex);
-      const estiloBoton = (b, activo) => this.estiloBotonPanel(b, activo);
-      const btnOriginal = barra.createDiv();
-      this.ponerTooltip(btnOriginal, t().botones.original);
-      this.montarEtiquetaMath(
-        btnOriginal,
-        this.sistema ? "\\scriptscriptstyle\\begin{cases}~\\\\[1.1ex]~\\end{cases}" : "f(x)",
-        ctx
-      );
-      const btnOpciones = this.crearBotonOpciones(barra, t().botones.transformaciones);
-      const items = transformaciones.map((t2) => {
-        const el = caja.createDiv();
-        this.ponerTooltip(el, t2.etiqueta);
-        this.montarEtiquetaMath(el, t2.tex, ctx);
-        return el;
-      });
-      let abierto = false;
-      const esOriginal = () => bloqueALatex(estado) === original;
-      const sincronizar = () => {
-        estiloBoton(btnOriginal, esOriginal());
-        this.estiloBotonOpciones(btnOpciones, !esOriginal() || abierto);
-        this.iconoBotonOpciones(btnOpciones, abierto, t().botones.transformaciones);
-        const actual = bloqueALatex(estado);
-        items.forEach((el, i2) => itemEstilo(el, bloqueALatex(transformaciones[i2].fn(estado)) !== actual));
-        menu.style.display = abierto ? "flex" : "none";
-      };
-      const aplicar = async (i2) => {
-        abierto = false;
-        const nuevo = transformaciones[i2].fn(estado);
-        if (bloqueALatex(nuevo) !== bloqueALatex(estado)) {
-          estado = nuevo;
-          await renderLatex(bloqueALatex(estado));
-        }
-        sincronizar();
-      };
-      btnOriginal.addEventListener("click", () => void (async () => {
-        abierto = false;
-        if (!esOriginal()) {
-          estado = base;
-          await renderLatex(original);
-        }
-        sincronizar();
-      })());
-      btnOpciones.addEventListener("click", (e3) => {
-        e3.stopPropagation();
-        abierto = !abierto;
-        sincronizar();
-      });
-      items.forEach((el, i2) => el.addEventListener("click", () => void aplicar(i2)));
-      this.cerrarMenuAlPulsarFuera(barra, caja, limpieza, () => {
-        if (!abierto)
-          return;
-        abierto = false;
-        sincronizar();
-      });
-      sincronizar();
-    }
-    await renderLatex(original);
-  }
-  /**
-   * Panel izquierdo de obs-derivate: las dos fórmulas del bloque —el operador sin evaluar
-   * `\frac{d}{dx}\left(f\right)` y la derivada evaluada `f'\left(x\right) = …`— servidas al
-   * toggle común (`montarPanelVistas`), que arranca en el OPERADOR: es la forma de partida,
-   * análoga al `f(x)` de obs-graph. No transforma lo graficado —el plano SIEMPRE grafica la
-   * derivada, ver `process`—: solo alterna la fórmula MOSTRADA.
-   */
-  async montarPanelDerivada(contenedor, ecuaciones, ctx, limpieza, reparto) {
-    const operadorSimp = derivadaOperadorSimplificadoLatex(ecuaciones);
-    const operador = operadorSimp != null ? operadorSimp : derivadaOperadorLatex(ecuaciones);
-    await this.montarPanelVistas(contenedor, ctx, limpieza, reparto, {
-      operador,
-      resultado: derivadaLatex(ecuaciones),
-      glifoOperador: "\\frac{d}{dx}\\left(f(x)\\right)",
-      tooltipOpciones: t().botones.derivadaEvaluada,
-      opciones: [
-        { etiqueta: t().botones.derivada, tex: "f'(x)", vista: "resultado" },
-        // Vista combinada: su glifo APILA el operador sobre la derivada (representa que
-        // muestra ambas expresiones a la vez, una debajo de la otra).
-        {
-          etiqueta: t().botones.operadorYDerivada,
-          tex: "\\begin{matrix}\\frac{d}{dx}\\left(f(x)\\right)\\\\ f'\\left(x\\right)\\end{matrix}",
-          vista: "ambas"
-        }
-      ]
-    });
-  }
-  /**
-   * Panel izquierdo de obs-integral: el scroller de fórmula + una barra de toggle de TRES
-   * vistas, espejo EXACTO del panel de obs-derivate (§6.4):
-   *   • [Operador] (por defecto): la integral sin evaluar `\int_a^b f\,dx` (forma de partida).
-   *   • Primitiva: la regla de BARROW `\left[F(x)\right]_a^b = <valor>`, con F la antiderivada
-   *     simbólica (`integralPrimitivaLatex` → `integrarExpr`) y el valor numérico ya presente.
-   *     Es el análogo de la "derivada evaluada" (`f'(x)=…`). Si el integrador NO cubre este
-   *     integrando, cae al VALOR sin corchete (`\int_a^b f\,dx = <área>`, la vista de siempre).
-   *   • Operador y primitiva: ambas apiladas (operador arriba, primitiva debajo) — la forma
-   *     del mockup del usuario.
-   * No cambia lo graficado (el plano SIEMPRE grafica el integrando y sombrea la región): solo
-   * alterna la fórmula MOSTRADA. El área se calcula UNA vez; si es un caso límite del Nivel 2,
-   * el cuerpo es la etiqueta (`\text{Integral divergente}`).
-   */
-  async montarPanelIntegral(contenedor, source, ctx, limpieza, reparto) {
-    const operador = integralOperadorLatex(source);
-    const { cuerpo, conector } = cuerpoAreaLatexExacto(source);
-    const barrow = integralPrimitivaLatex(source);
-    const resultado = cuerpo === null ? barrow != null ? barrow : operador : barrow ? `${barrow} ${conector} ${cuerpo}` : integralValorLatex(source, cuerpo, conector);
-    await this.montarPanelVistas(contenedor, ctx, limpieza, reparto, {
-      operador,
-      resultado,
-      // Glifo del botón principal: el operador integral (`∫ₐᵇ f dx`), análogo al `d/dx(f(x))`
-      // del botón "Operador" de obs-derivate.
-      glifoOperador: "\\int_a^b f(x)\\,dx",
-      tooltipOpciones: t().botones.primitivaEvaluada,
-      opciones: [
-        // La PRIMITIVA evaluada (glifo `[F(x)]_a^b`) y AMBAS (operador apilado sobre
-        // primitiva). Espejo de "Derivada" / "Operador y derivada" de obs-derivate.
-        { etiqueta: t().botones.primitiva, tex: "\\left[F(x)\\right]_a^b", vista: "resultado" },
-        {
-          etiqueta: t().botones.operadorYPrimitiva,
-          tex: "\\begin{matrix}\\int_a^b f\\,dx\\\\ \\left[F(x)\\right]_a^b\\end{matrix}",
-          vista: "ambas"
-        }
-      ]
-    });
-  }
-  /**
-   * Etiqueta formal del bloque, o null si es graficable: bloque VACÍO → "Sin
-   * función"; forma explícita clásica (expr suelta o y=expr) sin ningún valor real
-   * → clasificación del GraphEngine (Indeterminada / Indefinida / No definida en ℝ,
-   * con el MISMO evaluador compartido, que preserva los valores complejos). Las
-   * demás formas (implícitas, paramétricas, polares, sistemas) no se clasifican:
-   * el motor grafica lo que pueda.
-   */
-  clasificarBloque(ecuaciones, source = "") {
-    const noSoportados = comandosNoSoportados(source);
-    if (noSoportados.length > 0) {
-      return {
-        etiqueta: noSoportados.length === 1 ? t().velo.simboloNoSoportado : t().velo.simbolosNoSoportados,
-        detalle: t().velo.simboloDetalle(noSoportados.join(", "))
-      };
-    }
-    if (this.integral && ecuaciones.length === 0) {
-      if (/\\int/.test(source)) {
-        return { ...t().velo.integrandoNoValido };
-      }
-      return { ...t().velo.sinIntegral };
-    }
-    if (this.integral) {
-      const etiqueta = etiquetaIntegral(source);
-      if (etiqueta)
-        return etiqueta;
-    }
-    if (this.sistema) {
-      if (ecuaciones.length === 0) {
-        return { ...t().velo.sinSistema };
-      }
-      if (ecuaciones.length === 1) {
-        return { ...t().velo.sistemaIncompleto };
-      }
-      return null;
-    }
-    if (ecuaciones.length === 0) {
-      return { ...t().velo.sinFuncion };
-    }
-    return this.degeneradaDeEcuacion(ecuaciones[0]);
-  }
-  /**
-   * Clasificación formal de UNA ecuación explícita (`y=f(x)` o expresión suelta): la etiqueta
-   * del velo (Indeterminada / Indefinida / No definida en ℝ), o null si es graficable o no es
-   * una f(x). Extraída de `clasificarBloque` porque obs-derivate necesita clasificar la función
-   * ESCRITA (no la derivada): `\frac{0}{0}` deriva a `0` y el bloque graficaba la recta y=0 con
-   * su derivada "f'(x) = 0" — un resultado inventado sobre una función que no existe.
-   */
-  degeneradaDeEcuacion(ec) {
-    const comp = funcionDelParametro(ec);
-    if (comp) {
-      const enX = renombrarParametroAX(insertarProductoImplicito(normalizarEntrada(comp.expr.trim())));
-      try {
-        return clasificarDegenerada(compilarFuncion(enX, "x"));
-      } catch (e3) {
-        return null;
-      }
-    }
-    const partes = ec.split("=");
-    let expr = null;
-    if (partes.length === 1)
-      expr = partes[0];
-    else if (partes.length === 2) {
-      if (normalizarEntrada(partes[0].trim()) === "y")
-        expr = partes[1];
-      else if (normalizarEntrada(partes[1].trim()) === "y")
-        expr = partes[0];
-    }
-    if (expr === null)
-      return null;
-    if (expr.trim() === "") {
-      return { ...t().velo.sinFuncion };
-    }
-    try {
-      const norm3 = insertarProductoImplicito(normalizarEntrada(expr.trim()));
-      if (contieneYLibre(norm3))
-        return null;
-      const evalX = compilarFuncion(norm3, "x");
-      return clasificarDegenerada(evalX);
-    } catch (e3) {
-      return null;
-    }
-  }
-  /**
-   * Expresión f(x) de un bloque obs-graph (la 1ª ecuación, si es explícita y=f(x)),
-   * NORMALIZADA a sintaxis mathjs, o null si no aplica (sistema, vacío, implícita,
-   * paramétrica…). Es la MISMA que grafica el motor, así que el resumen ⓘ coincide
-   * con lo dibujado.
-   */
-  exprExplicita(ecuaciones) {
-    if (this.sistema || ecuaciones.length === 0)
-      return null;
-    let tipo;
-    try {
-      tipo = construirObjeto(ecuaciones[0], "info").tipo;
-    } catch (e3) {
-      return null;
-    }
-    if (tipo !== "explicita")
-      return null;
-    const comp = funcionDelParametro(ecuaciones[0]);
-    if (comp) {
-      if (comp.eje === "x")
-        return null;
-      const enX = renombrarParametroAX(insertarProductoImplicito(normalizarEntrada(comp.expr.trim())));
-      return enX === "" ? null : enX;
-    }
-    const partes = ecuaciones[0].split("=");
-    let expr = null;
-    if (partes.length === 1)
-      expr = partes[0];
-    else if (partes.length === 2) {
-      if (normalizarEntrada(partes[0].trim()) === "y")
-        expr = partes[1];
-      else if (normalizarEntrada(partes[1].trim()) === "y")
-        expr = partes[0];
-    }
-    if (expr === null)
-      return null;
-    const norm3 = insertarProductoImplicito(normalizarEntrada(expr.trim()));
-    return norm3 === "" ? null : norm3;
-  }
-  /** Nombre traducido de la familia clásica reconocida. */
-  nombrePatron(p) {
-    const P4 = t().polar.patron;
-    switch (p.tipo) {
-      case "circunferenciaCentrada":
-        return P4.circunferenciaCentrada;
-      case "circunferenciaPorPolo":
-        return P4.circunferenciaPorPolo;
-      case "rosa":
-        return P4.rosa(String(p.petalos));
-      case "cardioide":
-        return P4.cardioide;
-      case "limaconLazo":
-        return P4.limaconLazo;
-      case "limaconHoyuelo":
-        return P4.limaconHoyuelo;
-      case "limaconConvexo":
-        return P4.limaconConvexo;
-    }
-  }
-  /**
-   * Las líneas del panel ⓘ de una curva POLAR, en orden de prioridad: qué es, cada
-   * cuánto se repite, sus simetrías, hasta dónde llega el radio, dónde están sus
-   * extremos, si toca el origen y cuánta área barre.
-   *
-   * Cada línea aparece SOLO si hay algo que decir. Dos ausencias son deliberadas:
-   *   • Sin simetrías detectadas no se escribe nada. Los tests son condiciones
-   *     suficientes (ver `analisisPolar`), así que "no tiene simetrías" sería una
-   *     afirmación que el análisis no respalda.
-   *   • Con radio constante se omiten los extremos: en una circunferencia centrada el
-   *     máximo y el mínimo son el mismo número que ya se ha dicho, en todo θ.
-   *
-   * Los números pasan por `numeroATexto`, que devuelve π donde toca (θ = π/16) en vez
-   * del decimal, y quita el ruido del último dígito de los cálculos numéricos.
-   */
-  lineasPolar(a) {
-    const T = t().polar;
-    const lineas = [];
-    const familia = a.patron ? this.nombrePatron(a.patron) : null;
-    lineas.push(familia ? `${T.titulo} \xB7 ${familia}` : T.titulo);
-    const periodoInformativo = a.periodoR !== null && (a.ordenRotacional !== null || a.periodoR > 2 * Math.PI + 1e-6);
-    if (periodoInformativo && a.periodoR !== null) {
-      const trozos = [T.periodo(numeroATexto(a.periodoR))];
-      if (a.ordenRotacional !== null)
-        trozos.push(T.ordenRotacional(String(a.ordenRotacional)));
-      lineas.push(trozos.join(" \xB7 "));
-    }
-    if (a.simetrias.length > 0) {
-      const nombres = a.simetrias.map((s) => s === "polo" ? T.simetriaPolo : s === "ejePolar" ? T.simetriaEjePolar : T.simetriaVertical);
-      lineas.push(T.simetriasPrefijo + nombres.join(", "));
-    }
-    const radioConstante = Math.abs(a.rMax - a.rMin) < 1e-9;
-    if (radioConstante) {
-      lineas.push(T.radioConstante(numeroATexto(a.rMax)));
-    } else {
-      lineas.push(T.rangoRadial(numeroATexto(a.rMin), numeroATexto(a.rMax)));
-      if (a.cambiaSigno)
-        lineas.push(T.cambiaSigno);
-      const extremos = T.extremosEn(
-        numeroATexto(a.thetaRMax),
-        numeroATexto(a.thetaRMin)
-      );
-      lineas.push(
-        a.ordenRotacional !== null && a.periodoR !== null ? T.masMultiplos(extremos, numeroATexto(a.periodoR)) : extremos
-      );
-    }
-    if (a.angulosPolo === null)
-      lineas.push(T.poloDemasiados);
-    else if (a.angulosPolo.length === 0)
-      lineas.push(T.noPasaPorPolo);
-    else
-      lineas.push(T.pasaPorPolo(a.angulosPolo.map(numeroATexto).join(", ")));
-    if (a.areaBarrida !== null)
-      lineas.push(T.areaBarrida(
-        numeroATexto(a.areaBarrida),
-        numeroATexto(a.intervaloArea)
-      ));
-    return lineas;
-  }
-  /** Nombre traducido de la familia paramétrica reconocida. */
-  nombreFamilia(f) {
-    const F = t().parametrica.familia;
-    switch (f.tipo) {
-      case "circunferencia":
-        return F.circunferencia;
-      case "elipse":
-        return F.elipse;
-      case "lissajous":
-        return F.lissajous(String(f.a), String(f.b), numeroATexto(f.desfase));
-    }
-  }
-  /**
-   * Las líneas del panel ⓘ de una curva PARAMÉTRICA: qué es, sobre qué intervalo, dónde
-   * cabe, si toca el origen, sus simetrías, cuántas veces se cruza, cuánto mide y cuánta
-   * área barre. Mismas reglas que el polar —cada línea solo si hay algo que decir, y las
-   * simetrías se afirman pero nunca se niegan (ver `analisisParametrico`)—.
-   *
-   * El área se rotula ALGEBRAICA a propósito: es ½∮(x dy − y dx), que cuenta el sentido de
-   * giro. En una Lissajous los lóbulos recorridos en sentidos opuestos se cancelan y sale
-   * 0; eso no es un fallo, es lo que mide esa integral, y llamarla "área encerrada" sí
-   * sería un error. Solo aparece cuando la curva se cierra: en una abierta no significa nada.
-   */
-  lineasParametricas(a) {
-    const T = t().parametrica;
-    const lineas = [];
-    const familia = a.familia ? this.nombreFamilia(a.familia) : null;
-    lineas.push(familia ? `${T.titulo} \xB7 ${familia}` : T.titulo);
-    const trozos = [T.intervalo(numeroATexto(a.tMin), numeroATexto(a.tMax))];
-    if (a.cerrada)
-      trozos.push(T.cerrada);
-    if (a.periodo !== null) {
-      trozos.push(a.periodoExcedeDominio ? T.periodoExcede(numeroATexto(a.periodo)) : T.periodo(numeroATexto(a.periodo)));
-    }
-    lineas.push(trozos.join(" \xB7 "));
-    lineas.push(T.caja(
-      numeroATexto(a.xMin),
-      numeroATexto(a.xMax),
-      numeroATexto(a.yMin),
-      numeroATexto(a.yMax)
-    ));
-    if (a.pasaPorOrigen)
-      lineas.push(T.pasaPorOrigen);
-    if (a.simetrias.length > 0) {
-      const nombres = a.simetrias.map((s) => s === "origen" ? T.simetriaOrigen : s === "ejeX" ? T.simetriaEjeX : T.simetriaEjeY);
-      lineas.push(T.simetriasPrefijo + nombres.join(", "));
-    }
-    if (a.autointersecciones !== null) {
-      lineas.push(a.autointersecciones === 0 ? T.sinAutointersecciones : T.autointersecciones(String(a.autointersecciones)));
-    }
-    const cierre = [];
-    if (a.longitud !== null)
-      cierre.push(T.longitud(numeroATexto(a.longitud)));
-    if (a.areaAlgebraica !== null)
-      cierre.push(T.areaAlgebraica(numeroATexto(a.areaAlgebraica)));
-    if (cierre.length > 0)
-      lineas.push(cierre.join(" \xB7 "));
-    return lineas;
-  }
-  /** Intervalo en texto plano, con ∞ donde toca: `(-∞, -1)`, `(0, ∞)`. */
-  intervaloATexto(a, b) {
-    const n = (v) => v === Infinity ? "\u221E" : v === -Infinity ? "-\u221E" : numeroATexto(v);
-    return `(${n(a)}, ${n(b)})`;
-  }
-  /**
-   * Las líneas del panel ⓘ de una DERIVADA: qué hace f, leído en f′. Pendiente en el
-   * origen, puntos críticos clasificados, crecimiento, inflexiones y puntos angulosos.
-   *
-   * Nada de esto es nuevo en el fondo —la intersección Y, las raíces y los vértices de f′
-   * ya se calculaban— salvo la clasificación de cada crítico, los tramos y los puntos no
-   * derivables. Lo que cambia es que se dicen con el nombre que tienen para f, que es la
-   * función de la que trata el bloque.
-   *
-   * Los grupos numerosos se resumen con la MISMA política que el resumen cartesiano
-   * (`estadoGrupo`): una trigonométrica tiene infinitos críticos, y media lista de ellos no
-   * es información. Y si un tramo muere en el borde del muestreo sin poder llegar a ±∞, se
-   * anuncia el rango analizado: es la señal de que hay críticos ahí fuera sin listar.
-   */
-  lineasDerivada(A, esTrig) {
-    const T = t().derivada;
-    const lineas = [{ texto: T.titulo }];
-    const push = (texto, sangrado) => lineas.push({ texto, sangrado });
-    if (A.pendienteEn0 !== null)
-      push(T.pendienteEn0(numeroATexto(A.pendienteEn0)));
-    const nombreTipo = (tipo) => T.tipo[tipo];
-    const estCriticos = estadoGrupo(A.criticos.length, esTrig);
-    if (estCriticos === "infinitas")
-      push(T.criticosInfinitos);
-    else if (estCriticos === "demasiadas" || A.criticos.length > MAX_LISTA_DERIVADA) {
-      if (A.criticos.length > 0)
-        push(T.criticosDemasiados);
-    } else if (A.criticos.length === 1) {
-      push(T.criticoUno(
-        T.criticoItem(numeroATexto(A.criticos[0].x), nombreTipo(A.criticos[0].tipo))
-      ));
-    } else if (A.criticos.length > 1) {
-      push(T.criticosPrefijo);
-      for (const c of A.criticos)
-        push(T.criticoItem(numeroATexto(c.x), nombreTipo(c.tipo)), true);
-    }
-    if (A.monotonia !== null)
-      for (const tramo of A.monotonia)
-        push((tramo.creciente ? T.creciente : T.decreciente)(
-          this.intervaloATexto(tramo.a, tramo.b)
-        ));
-    const estInflex = estadoGrupo(A.inflexiones.length, esTrig);
-    if (estInflex === "infinitas")
-      push(T.inflexionesInfinitas);
-    else if (estInflex === "demasiadas" || A.inflexiones.length > MAX_LISTA_DERIVADA) {
-      if (A.inflexiones.length > 0)
-        push(T.inflexionesDemasiadas);
-    } else if (A.inflexiones.length === 1) {
-      push(T.inflexionUna(numeroATexto(A.inflexiones[0])));
-    } else if (A.inflexiones.length > 1) {
-      push(T.inflexionesPrefijo);
-      for (const x of A.inflexiones)
-        push(T.punto(numeroATexto(x)), true);
-    }
-    if (A.noDerivables !== null && A.noDerivables.length > 0) {
-      if (A.noDerivables.length === 1)
-        push(T.noDerivableUno(numeroATexto(A.noDerivables[0])));
-      else {
-        push(T.noDerivablesPrefijo);
-        for (const x of A.noDerivables)
-          push(T.punto(numeroATexto(x)), true);
-      }
-    }
-    if (A.acotadoPorRango)
-      push(T.rangoAnalisis(numeroATexto(A.rango[0]), numeroATexto(A.rango[1])));
-    return lineas;
-  }
-  /**
-   * Botón ⓘ + popover del bloque obs-derivate. Devuelve si llegó a montarse.
-   *
-   * `fExpr` es la función ESCRITA (cruda) y `dfExpr` la derivada ya normalizada que grafica
-   * el motor: hacen falta las dos, porque todo se enmascara por el dominio de f (f′ = 1/x
-   * evalúa en x<0, donde ln x no existe) y porque los puntos angulosos se buscan donde f es
-   * continua pero f′ no. Perezoso y cacheado, como el de las integrales.
-   */
-  montarBotonInfoDerivada(wrap, fExpr, dfExpr, lado, exclusion) {
-    let f;
-    let df;
-    try {
-      const fc = compilarFuncion(insertarProductoImplicito(normalizarEntrada(fExpr)), "x");
-      const dc = compilarFuncion(dfExpr, "x");
-      f = (x) => {
-        const v = fc(x);
-        return typeof v === "number" ? v : NaN;
-      };
-      df = (x) => {
-        const v = dc(x);
-        return typeof v === "number" ? v : NaN;
-      };
-    } catch (e3) {
-      return false;
-    }
-    const btnInfo = wrap.createDiv();
-    this.ponerTooltip(btnInfo, t().botones.resumenDerivada);
-    btnInfo.style.cssText = this.estiloChipInfo(lado);
-    this.montarIcono(btnInfo, "info", ladoIcono(lado));
-    const pop = wrap.createDiv();
-    pop.style.cssText = this.estiloPopoverInfo(lado);
-    exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
-    const esTrig = tieneTrigonometria(dfExpr);
-    let montado = false;
-    const rellenar = () => {
-      if (montado)
-        return;
-      montado = true;
-      let A = null;
-      try {
-        A = analizarDerivada(f, df);
-      } catch (e3) {
-      }
-      if (!A)
-        return;
-      for (const l of this.lineasDerivada(A, esTrig)) {
-        const div2 = pop.createDiv({ text: l.texto });
-        if (l.sangrado)
-          div2.setCssStyles({ paddingLeft: "10px" });
-      }
-    };
-    btnInfo.addEventListener("click", (e3) => {
-      e3.stopPropagation();
-      const abierto = pop.style.display !== "none";
-      if (!abierto) {
-        exclusion.alAbrir();
-        rellenar();
-      }
-      pop.setCssStyles({ display: abierto ? "none" : "block" });
-    });
-    return true;
-  }
-  /**
-   * Las líneas del panel ⓘ de una INTEGRAL definida: qué región se mide, cuánto vale ese
-   * número, QUÉ es ese número (un área, o una diferencia de áreas) y el valor medio.
-   *
-   * El criterio de las categorías es el mismo que en polar y paramétricas —solo se afirma
-   * lo que la operación define—, aplicado aquí a la diferencia entre el VALOR y el ÁREA:
-   *
-   *   • Si el integrando no cruza el eje, valor y área son el mismo número y decirlos por
-   *     separado sería llenar dos líneas con lo mismo. Se dice UNO, rotulado con lo que es.
-   *   • Si lo cruza, ya no coinciden: el valor es la SUMA CON SIGNO, y ahí sí aportan las
-   *     dos áreas por separado —son lo que el valor esconde—. Solo aparecen cuando los
-   *     trozos reconstruyen el total (ver `descomponer`); si no, se calla.
-   *
-   * El VALOR va en KaTeX, no en texto: es el único número del cuadro que puede tener forma
-   * cerrada (8/3, π/2, ln 3) y se toma del MISMO reconocedor que el panel de la fórmula
-   * (`cuerpoAreaLatexExacto`), para que los dos sitios donde el bloque enseña su resultado
-   * no puedan discrepar. El resto son números sueltos y van por `numeroATexto`, como en los
-   * otros paneles.
-   */
-  lineasIntegral(A, variable, source) {
-    const T = t().integral;
-    const lineas = [];
-    const cabecera = [T.titulo];
-    if (A.impropia && A.singularidades.length > 0)
-      cabecera.push(T.impropia(variable, A.singularidades.map(numeroATexto).join(", ")));
-    lineas.push({ texto: cabecera.join(" \xB7 ") });
-    if (A.a === A.b) {
-      lineas.push({ texto: T.intervaloVacio });
-      return lineas;
-    }
-    lineas.push({
-      texto: T.intervalo(
-        numeroATexto(Math.min(A.a, A.b)),
-        numeroATexto(Math.max(A.a, A.b)),
-        variable
-      )
-    });
-    if (A.invertido)
-      lineas.push({ texto: T.limitesInvertidos });
-    const { cuerpo, conector } = cuerpoAreaLatexExacto(source);
-    const tex = cuerpo ? conector === "=" ? cuerpo : `\\approx ${cuerpo}` : numeroALatex(A.valor);
-    const nota = A.invertido ? null : A.signo === 1 ? T.valorEsArea : A.signo === -1 ? T.valorBajoEje : A.signo === 0 ? T.integrandoNulo : T.valorFirmado;
-    lineas.push({ texto: T.valorPrefijo, tex, cola: nota ? ` \xB7 ${nota}` : void 0 });
-    if (A.signo === null) {
-      if (A.cruces === null)
-        lineas.push({ texto: T.crucesMuchos });
-      else if (A.cruces.length > 0)
-        lineas.push({ texto: T.cruces(variable, A.cruces.map(numeroATexto).join(", ")) });
-    }
-    if (A.areaPositiva !== null && A.areaNegativa !== null) {
-      lineas.push({ texto: T.areaPositiva(numeroATexto(A.areaPositiva)) });
-      lineas.push({ texto: T.areaNegativa(numeroATexto(A.areaNegativa)) });
-    }
-    if (A.promedio !== null)
-      lineas.push({ texto: T.promedio(numeroATexto(A.promedio)) });
-    return lineas;
-  }
-  /**
-   * Botón ⓘ + popover del bloque obs-integral. Devuelve si llegó a montarse (el llamador
-   * necesita saberlo para colocar el botón f(x): los chips comparten esquina).
-   *
-   * El análisis se calcula PEREZOSAMENTE al abrir el cuadro y se cachea, como el de las
-   * paramétricas: descomponer la integral son hasta siete cuadraturas más, y el bloque ya
-   * hace dos al montarse (la clasificación del velo y el valor del panel). En un clic no se
-   * nota; al montar una nota con varios bloques, sí. El contenido NO depende de la vista
-   * —una integral definida es propiedad de (f, a, b), no del encuadre—, así que una vez
-   * calculado no hay nada que refrescar al mover la cámara.
-   */
-  montarBotonInfoIntegral(wrap, source, ctx, lado, exclusion) {
-    const it = extraerIntegral(source);
-    if (!it)
-      return false;
-    const a = evaluarLimite(it.a), b = evaluarLimite(it.b);
-    if (a === null || b === null)
-      return false;
-    const btnInfo = wrap.createDiv();
-    this.ponerTooltip(btnInfo, t().botones.resumenIntegral);
-    btnInfo.style.cssText = this.estiloChipInfo(lado);
-    this.montarIcono(btnInfo, "info", ladoIcono(lado));
-    const pop = wrap.createDiv();
-    pop.style.cssText = this.estiloPopoverInfo(lado);
-    exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
-    let montado = false;
-    const rellenar = () => {
-      if (montado)
-        return;
-      montado = true;
-      let A = null;
-      try {
-        A = analizarIntegral(
-          crearFuncionReal(insertarProductoImplicito(normalizarEntrada(it.integrando))),
-          a,
-          b
-        );
-      } catch (e3) {
-      }
-      if (!A)
-        return;
-      for (const l of this.lineasIntegral(A, it.variable, source)) {
-        const div2 = pop.createDiv({ text: l.texto });
-        if (l.tex)
-          this.montarEtiquetaMath(div2.createSpan(), l.tex, ctx);
-        if (l.cola)
-          div2.createSpan({ text: l.cola });
-      }
-    };
-    btnInfo.addEventListener("click", (e3) => {
-      e3.stopPropagation();
-      const abierto = pop.style.display !== "none";
-      if (!abierto) {
-        exclusion.alAbrir();
-        rellenar();
-      }
-      pop.setCssStyles({ display: abierto ? "none" : "block" });
-    });
-    return true;
-  }
-  /**
-   * Botón ⓘ + popover con el resumen de puntos notables de la función (portado del
-   * GraphEngine): intersección con Y, raíces y vértices. Los grupos periódicos
-   * (trig que oscila → "infinitas") o excesivos ("demasiadas") se resumen en vez de
-   * enumerarse. El análisis es sobre el rango fijo de `analizarFuncion` (agnóstico
-   * de la vista actual), igual que en el motor original.
-   */
-  montarBotonInfo(wrap, expr, ctx, lado, exclusion) {
-    let evalX;
-    try {
-      const evalXRaw = compilarFuncion(expr, "x");
-      evalX = (x) => {
-        const v = evalXRaw(x);
-        return typeof v === "number" ? v : NaN;
-      };
-    } catch (e3) {
-      return;
-    }
-    const analisis = analizarFuncion(evalX);
-    const interseccionY = evalX(0);
-    const esTrig = tieneTrigonometria(expr);
-    const estadoRaices = estadoGrupo(
-      analisis.raices.length + analisis.intervalosRaiz.length,
-      esTrig
-    );
-    const estadoVertices = estadoGrupo(analisis.vertices.length, esTrig);
-    let id\u00E9nticamenteCero = false;
-    try {
-      id\u00E9nticamenteCero = simplify(expr).toString() === "0";
-    } catch (e3) {
-    }
-    const T = t().resumen;
-    const lineas = [];
-    if (id\u00E9nticamenteCero) {
-      lineas.push({ texto: T.interseccionYCero });
-      lineas.push({ texto: T.identicamenteCero });
-    } else {
-      lineas.push({
-        texto: Number.isFinite(interseccionY) ? T.interseccionY(numeroATexto(interseccionY)) : T.interseccionYNoDefinida
-      });
-      if (estadoRaices === "infinitas")
-        lineas.push({ texto: T.raicesInfinitas });
-      else if (estadoRaices === "demasiadas")
-        lineas.push({ texto: T.raicesDemasiadas });
-      else if (analisis.intervalosRaiz.length > 0)
-        lineas.push({ texto: T.raicesPrefijo, tex: raicesALatex(analisis.intervalosRaiz, analisis.raices) });
-      else if (analisis.raices.length > 0)
-        lineas.push({ texto: T.raicesPrefijo + analisis.raices.map(numeroATexto).join(", ") });
-      else
-        lineas.push({ texto: T.noRaices });
-      if (estadoVertices === "infinitas")
-        lineas.push({ texto: T.verticesInfinitos });
-      else if (estadoVertices === "demasiadas")
-        lineas.push({ texto: T.verticesDemasiados });
-      else if (analisis.vertices.length > 0)
-        for (const v of analisis.vertices)
-          lineas.push({
-            texto: (v.tipo === "min" ? T.verticeMin : T.verticeMax)(
-              numeroATexto(v.x),
-              numeroATexto(v.y)
-            )
-          });
-      else
-        lineas.push({ texto: T.noVertices });
-    }
-    const btnInfo = wrap.createDiv();
-    this.ponerTooltip(btnInfo, t().botones.resumenNotables);
-    btnInfo.style.cssText = this.estiloChipInfo(lado);
-    this.montarIcono(btnInfo, "info", ladoIcono(lado));
-    const pop = wrap.createDiv();
-    pop.style.cssText = this.estiloPopoverInfo(lado);
-    exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
-    for (const l of lineas) {
-      const div2 = pop.createDiv({ text: l.texto });
-      if (l.tex)
-        this.montarEtiquetaMath(div2.createSpan(), l.tex, ctx);
-    }
-    btnInfo.addEventListener("click", (e3) => {
-      e3.stopPropagation();
-      const abierto = pop.style.display !== "none";
-      if (!abierto)
-        exclusion.alAbrir();
-      pop.setCssStyles({ display: abierto ? "none" : "block" });
-    });
   }
 };
 
@@ -63000,10 +65488,10 @@ async function registrarFuenteLora(_plugin) {
 }
 
 // main.ts
-var LMathPlugin = class extends import_obsidian5.Plugin {
+var LMathPlugin = class extends import_obsidian9.Plugin {
   constructor() {
     super(...arguments);
-    // Selector del motor para el bloque obs-graph. `true` → motor nuevo (src/motor/);
+    // Selector del motor para el bloque obs-graph. `true` → motor nuevo (src/core/);
     // `false` → GraphEngine antiguo (intacto, reactivable con esta sola bandera).
     // El bloque obs-system usa SIEMPRE el motor nuevo: el SystemEngine antiguo, que
     // resolvía las implícitas por marching squares, quedó retirado y no tiene vuelta atrás.
@@ -63012,10 +65500,26 @@ var LMathPlugin = class extends import_obsidian5.Plugin {
     // leen VIVAS por un getter (`() => this.ajustes`), así un cambio en la pestaña de
     // configuración afecta a los bloques que se re-rendericen sin recargar el plugin.
     this.ajustes = { ...AJUSTES_POR_DEFECTO };
+    // Bloques ya montados que quieren enterarse de un cambio de ajustes. Es una lista propia y no
+    // un evento del workspace de Obsidian porque el emisor y los oyentes son todos nuestros: un
+    // `Set` de funciones se tipa solo, se da de baja solo y no compite por un nombre de evento
+    // global. Los bloques se apuntan al montarse y se borran al desmontarse (ver
+    // `registrarRecarga` en MotorExperimental), así que aquí nunca queda nada de una nota cerrada.
+    this.oyentesAjustes = /* @__PURE__ */ new Set();
+  }
+  alCambiarAjustes(oyente) {
+    this.oyentesAjustes.add(oyente);
+    return () => {
+      this.oyentesAjustes.delete(oyente);
+    };
+  }
+  notificarCambioDeAjustes() {
+    for (const oyente of [...this.oyentesAjustes])
+      oyente();
   }
   async onload() {
     await this.cargarAjustes();
-    new import_obsidian5.Notice(t().aviso.cargado);
+    new import_obsidian9.Notice(t().aviso.cargado);
     this.addSettingTab(new PestanaAjustesLMath(this.app, this));
     void registrarFuenteLora(this);
     const ajustes = () => this.ajustes;
@@ -63045,6 +65549,11 @@ var LMathPlugin = class extends import_obsidian5.Plugin {
       "obs-trig",
       (source, el, ctx) => motorTrig.process(source, el, ctx)
     );
+    const motorVector = new MotorExperimental(this, "vector", ajustes);
+    this.registerMarkdownCodeBlockProcessor(
+      "obs-vector",
+      (source, el, ctx) => motorVector.process(source, el, ctx)
+    );
   }
   /** Carga las preferencias (loadData) copiando SOLO las claves vigentes (las de
    *  AJUSTES_POR_DEFECTO) y de tipo correcto; las ausentes toman su default. NO se fusiona
@@ -63052,8 +65561,7 @@ var LMathPlugin = class extends import_obsidian5.Plugin {
    *  Simplificar era opcional) quedaba en el data.json del vault, el merge ciego lo
    *  re-adoptaba y guardarAjustes() lo re-persistía para siempre. */
   async cargarAjustes() {
-    var _a;
-    const disco = (_a = await this.loadData()) != null ? _a : {};
+    const disco = await this.loadData() ?? {};
     const ajustes = { ...AJUSTES_POR_DEFECTO };
     for (const k of Object.keys(ajustes)) {
       if (typeof disco[k] === typeof ajustes[k])

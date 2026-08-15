@@ -2,6 +2,8 @@ import { parse } from "mathjs";
 
 import { FUNCIONES_INVERSAS_EXTRA, FUNCIONES_ESCALON_RAPIDAS, FUNCIONES_SIGNO, FUNCIONES_DOMINIO } from "./constantes";
 import { compilarNativo } from "./compiladorNativo";
+import { normalizarEntrada } from "./parser";
+import { insertarProductoImplicito } from "./core/parsing/productoImplicito";
 
 // ─────────────────────────────────────────────
 // Evaluador (compartido por obs-graph y obs-system)
@@ -67,4 +69,29 @@ export function compilarCampo(
   const nativa = compilarNativo(expr, [varX, varY], ([x, y]) => evaluar({ [varX]: x, [varY]: y }));
   if (nativa) return (x, y) => nativa(x, y);
   return (x, y) => evaluar({ [varX]: x, [varY]: y });
+}
+
+/**
+ * Un número ESCRITO por el usuario, evaluado, o `null` si no es un número real.
+ *
+ * Es el atajo para los sitios donde una expresión no es una curva sino un VALOR suelto: el
+ * extremo de un intervalo (`2\pi`), el ángulo de un obs-trig, la componente de un vector. Pasa
+ * por el pipeline de entrada completo, así que acepta exactamente lo mismo que cualquier bloque
+ * (`\frac{\pi}{6}`, `2\pi`, `-\sqrt{2}`, `30°`), y evalúa con el ámbito VACÍO, que es la
+ * definición de constante que no se queda corta: lo que dependa de una variable sale NaN, y eso
+ * es la respuesta correcta —no es un número, es una regla—.
+ *
+ * `null` y no NaN porque el consumidor tiene que DECIDIR qué hacer con la ausencia (rechazar la
+ * restricción, velar el bloque, no dibujar), y un NaN que se propaga silenciosamente es
+ * justamente lo que impide decidir.
+ */
+export function evaluarConstante(expr: string): number | null {
+  const limpio = expr.trim();
+  if (!limpio) return null;
+  try {
+    const valor = compilarExpresion(insertarProductoImplicito(normalizarEntrada(limpio)))({});
+    return typeof valor === "number" && Number.isFinite(valor) ? valor : null;
+  } catch {
+    return null;
+  }
 }

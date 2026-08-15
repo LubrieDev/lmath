@@ -923,9 +923,39 @@ const COMANDOS_SOPORTADOS = new Set([
   "begin", "end", "cases", "aligned", "array", "int", "to",
 ]);
 
+// Comparadores escritos SIN comando: `≤`, `<`, `>`… Se vetan por la misma razón que `\le`, que
+// ya estaba vetado por no figurar en la lista blanca: una comparación suelta es una REGIÓN y este
+// plugin no las dibuja. Sin esto la misma frase se comportaba de dos maneras según cómo se
+// teclease —`y \le x` se velaba y `y ≤ x` salía en blanco sin decir nada—, y el silencio es la
+// peor de las dos. Dentro de `{…}` el comparador SÍ está soportado: la restricción de dominio se
+// retira antes de llegar aquí (ver restriccionDominio.ts), así que un intervalo válido no pasa
+// por este barrido.
+//
+// La flecha `->` de obs-vector queda fuera a propósito: ahí el `>` no compara nada, es la punta
+// de `A->B`. Se neutraliza antes de buscar, igual que el `\\`. Y SOLO esa: `<-` no es sintaxis de
+// ningún bloque (obs-vector lee `->`, `→` y `\to`), así que eximirla dejaría pasar `y<-x`, que es
+// `y < -x` escrito sin espacios y por tanto una región como cualquier otra.
+const COMPARADOR_SUELTO = /≤|≥|≠|<|>/g;
+
+// Símbolos matemáticos UNICODE que el pipeline no sabe traducir. Es el mismo punto ciego que
+// tenían los comparadores y se arregla igual: `\nabla` ya se vetaba por no estar en la lista
+// blanca, pero `∇` —la misma idea escrita con el teclado— se colaba, porque este barrido solo
+// miraba comandos con barra invertida. El resultado no era un velo sino algo peor: la expresión
+// seguía por el pipeline de lo evaluable y salía deformada. `∇f(x,y)` se tipografiaba
+// `∇f * (x,y)`, con un producto que nadie escribió.
+//
+// La lista se midió, no se supuso: cada símbolo se probó en contexto binario, prefijo y sufijo, y
+// aquí solo están los que fallan en TODOS. Por eso NO figuran `·`, `×`, `÷` ni `°`, que sí se
+// traducen (`2·3` → `2*3`, `30°` → `30*(pi/180)`), ni `√`, `∞`, `±` ni las letras griegas.
+//
+// La flecha `→` queda fuera por lo mismo que `->`: es la de `A→B` en obs-vector, donde no compara
+// ni transforma nada. Se neutraliza antes de buscar, igual que su gemela de dos caracteres.
+const SIMBOLO_UNICODE_NO_SOPORTADO = /[∇∂∫∮∑∏∈∉⊂⊃∪∩∀∃∅⋅≈≡∝∠⊥∥′″↦…]/gu;
+
 /**
- * Comandos LaTeX de `raw` que el pipeline no sabe traducir (sin repetir, con su `\`).
- * Vacío = todo lo escrito es traducible. Lo usa el host para clasificar el bloque.
+ * Comandos LaTeX de `raw` que el pipeline no sabe traducir (sin repetir, con su `\`), más los
+ * comparadores sueltos. Vacío = todo lo escrito es traducible. Lo usa el host para clasificar el
+ * bloque.
  */
 export function comandosNoSoportados(raw: string): string[] {
   // El `\\` de LaTeX es un SALTO DE LÍNEA, no un comando: en `\begin{cases}y=x\\y=2\end…`
@@ -934,6 +964,11 @@ export function comandosNoSoportados(raw: string): string[] {
   const vistos = new Set<string>();
   for (const m of raw.replace(/\\\\/g, " ").matchAll(/\\([a-zA-Z]+)/g))
     if (!COMANDOS_SOPORTADOS.has(m[1])) vistos.add(`\\${m[1]}`);
+  // Las dos flechas de obs-vector (`->` y `→`) se neutralizan a la vez: son la misma idea escrita
+  // de dos maneras, y eximir solo a una dejaría que la otra velara el bloque.
+  const sinFlechas = raw.replace(/->|→/g, " ");
+  for (const m of sinFlechas.matchAll(COMPARADOR_SUELTO)) vistos.add(m[0]);
+  for (const m of sinFlechas.matchAll(SIMBOLO_UNICODE_NO_SOPORTADO)) vistos.add(m[0]);
   return [...vistos];
 }
 

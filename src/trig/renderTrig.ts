@@ -28,7 +28,7 @@
 // salen de la figura—, y sobre todo compiten con la protagonista: rodeada de círculos, la
 // circunferencia unidad pasa a ser uno de los aros en vez de EL círculo.
 
-import { paletaPlano } from "../motor/rendering/paleta";
+import { paletaPlano } from "../core/rendering/paleta";
 import type { UnidadTrig } from "./bloqueTrig";
 import type { ModeloTrig } from "./modeloTrig";
 import { DOS_PI, aGrados } from "./modeloTrig";

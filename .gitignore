@@ -146,14 +146,15 @@ vite.config.ts.timestamp-*
 data.json
 
 # Generated bundles
-herramientas/.trazar.cjs
-herramientas/.huella.cjs
-herramientas/.medir.cjs
-herramientas/.sonda.cjs
-herramientas/.notacion.cjs
+tools/.trazar.cjs
+tools/.huella.cjs
+tools/.medir.cjs
+tools/.sonda.cjs
+tools/.notacion.cjs
 tests/.bundle.cjs
 tests/.bundle.zoom.cjs
 tests/.bundle.fuzz.cjs
 tests/.bundle.bateria.cjs
+tests/.bundle.mate.cjs
 
 .dev/

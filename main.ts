@@ -15,7 +15,7 @@ import {
 // Plugin principal
 // ─────────────────────────────────────────────
 export default class LMathPlugin extends Plugin implements PluginConAjustes {
-  // Selector del motor para el bloque obs-graph. `true` → motor nuevo (src/motor/);
+  // Selector del motor para el bloque obs-graph. `true` → motor nuevo (src/core/);
   // `false` → GraphEngine antiguo (intacto, reactivable con esta sola bandera).
   // El bloque obs-system usa SIEMPRE el motor nuevo: el SystemEngine antiguo, que
   // resolvía las implícitas por marching squares, quedó retirado y no tiene vuelta atrás.
@@ -25,6 +25,25 @@ export default class LMathPlugin extends Plugin implements PluginConAjustes {
   // leen VIVAS por un getter (`() => this.ajustes`), así un cambio en la pestaña de
   // configuración afecta a los bloques que se re-rendericen sin recargar el plugin.
   ajustes: AjustesTransformaciones = { ...AJUSTES_POR_DEFECTO };
+
+  // Bloques ya montados que quieren enterarse de un cambio de ajustes. Es una lista propia y no
+  // un evento del workspace de Obsidian porque el emisor y los oyentes son todos nuestros: un
+  // `Set` de funciones se tipa solo, se da de baja solo y no compite por un nombre de evento
+  // global. Los bloques se apuntan al montarse y se borran al desmontarse (ver
+  // `registrarRecarga` en MotorExperimental), así que aquí nunca queda nada de una nota cerrada.
+  private readonly oyentesAjustes = new Set<() => void>();
+
+  alCambiarAjustes(oyente: () => void): () => void {
+    this.oyentesAjustes.add(oyente);
+    return () => { this.oyentesAjustes.delete(oyente); };
+  }
+
+  notificarCambioDeAjustes(): void {
+    // Sobre una COPIA: cada oyente se da de baja y se vuelve a apuntar mientras se recorre (un
+    // bloque que se rehace crea uno nuevo), y mutar el Set en mitad de su propia iteración es
+    // justo la forma de saltarse la mitad de los bloques.
+    for (const oyente of [...this.oyentesAjustes]) oyente();
+  }
 
   async onload() {
 
@@ -95,6 +114,18 @@ export default class LMathPlugin extends Plugin implements PluginConAjustes {
     this.registerMarkdownCodeBlockProcessor(
       "obs-trig",
       (source, el, ctx) => motorTrig.process(source, el, ctx)
+    );
+
+    // ── Bloque obs-vector (NOTACIÓN VECTORIAL) ──
+    // UNA TARJETA POR LÍNEA, no una fórmula por bloque: cada línea declara una cosa distinta
+    // (`v=(3,2)` un vector, `A=(1,2)` un punto, `F(x,y)=(-y,x)` un campo) y se tipografía como
+    // lo que es —la flecha de `\vec{}` solo sobre los vectores—. El plano aparece SOLO si hay
+    // algo que dibujar: con puntos y vectores numéricos salen sus flechas; con un campo o con
+    // notación suelta (`\nabla f(x,y)`) el bloque es solo la tarjeta, a todo lo ancho.
+    const motorVector = new MotorExperimental(this, "vector", ajustes);
+    this.registerMarkdownCodeBlockProcessor(
+      "obs-vector",
+      (source, el, ctx) => motorVector.process(source, el, ctx)
     );
   }
 

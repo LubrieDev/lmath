@@ -24,11 +24,11 @@
 // donde la figura aún tiene tamaño de sobra en pantalla.
 
 import { describe, test, assert, igual, resumen } from "./runner";
-import { crearViewport } from "../src/motor/scene/viewport-utils";
-import { TrazadorContinuacion } from "../src/motor/tracing/continuation/TrazadorContinuacion";
-import { construirObjeto } from "../src/motor/parsing/construirObjeto";
-import { crearProveedor } from "../src/motor/app/composicion";
-import type { Viewport, Tolerancia, Geometria, ObjetoImplicito, Semilla } from "../src/motor/contracts";
+import { crearViewport } from "../src/core/scene/viewport-utils";
+import { TrazadorContinuacion } from "../src/core/tracing/continuation/TrazadorContinuacion";
+import { construirObjeto } from "../src/core/parsing/construirObjeto";
+import { crearProveedor } from "../src/core/app/composicion";
+import type { Viewport, Tolerancia, Geometria, ObjetoImplicito, Semilla } from "../src/core/contracts";
 
 const VP: Viewport = crearViewport([-8, 8], [-7, 7], 768, 261, 1);
 const TOL_FINAL: Tolerancia = { desviacionMaxPx: 0.5, pasoMaxPx: 2, pasada: "final" };

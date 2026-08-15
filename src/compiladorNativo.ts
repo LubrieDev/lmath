@@ -1,6 +1,6 @@
 import { parse } from "mathjs";
 
-import { CENTINELAS_SIGNO } from "./motor/parsing/dobleSigno";
+import { CENTINELAS_SIGNO } from "./core/parsing/dobleSigno";
 import { FUNCIONES_ESCALON_RAPIDAS } from "./constantes";
 
 // ─────────────────────────────────────────────

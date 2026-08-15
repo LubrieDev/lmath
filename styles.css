@@ -9,7 +9,7 @@
 
    La TINTA del plano (rejilla, ejes, curvas) NO está aquí: es paleta propia en dos
    versiones, porque necesita contraste garantizado entre capas y ninguna variable de
-   tema lo promete. Ver `src/motor/rendering/paleta.ts`.
+   tema lo promete. Ver `src/core/rendering/paleta.ts`.
 
    Las dos declaraciones seguidas de los tokens "-activo" son un respaldo deliberado:
    si `color-mix` no está disponible, queda la primera (plana pero válida).
@@ -72,6 +72,51 @@
    columnas y suelto se lee como una raya pegada al margen. */
 .lmath-container.lmath-estrecho .lmath-grafica {
   border-left: 0;
+}
+
+/* Bloque SIN PLANO (un obs-vector que solo escribe: campos, notación suelta): el panel es el
+   bloque entero y su alto lo pone el número de tarjetas, así que el mínimo de 261 sobra —con
+   una sola tarjeta dejaría una franja vacía por debajo—. El `min-height` es lo único que se
+   suelta: el resto del marco (fondo, borde, radio, márgenes) es el mismo, que es justo lo que
+   hace que se lea como un bloque de LMath y no como una fórmula suelta. */
+/* Velo de `obs-vector` cuando no hay ninguna flecha que dibujar: la misma capa oscurecida y el
+   mismo mensaje centrado que usa obs-graph para sus bloques degenerados, aquí como reglas de la
+   hoja (obs-graph lo escribe en línea porque su velo nace dentro de un camino más enredado).
+   `pointer-events:none` en las dos capas: el velo explica, no bloquea. */
+.lmath-velo-vector {
+  position: absolute;
+  inset: 0;
+  z-index: var(--lmath-velo-z, 4);
+  background: var(--lmath-velo);
+  pointer-events: none;
+}
+
+.lmath-velo-mensaje {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  box-sizing: border-box;
+  text-align: center;
+  pointer-events: none;
+}
+
+.lmath-velo-titulo {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--lmath-texto);
+}
+
+.lmath-velo-detalle {
+  font-size: 12px;
+  line-height: 1.4;
+  max-width: 320px;
+  color: var(--lmath-texto-tenue);
 }
 
 .theme-light .lmath-container {
@@ -172,15 +217,83 @@
   font-size: 24px;
 }
 
+/* ── obs-vector: los nombres del plano ────────────────────────────────────────────────
+   Los rótulos del plano (`\vec{v}`, `A`, `\vec{AB}`) NO se pintan en el lienzo: pasan por
+   el mismo KaTeX que las tarjetas del panel, así que son DOM y necesitan una capa encima.
+   Con `fillText` lo único que se podía pedir era una cursiva del sistema, y al lado de su
+   propia tarjeta se notaba que no era la misma letra: sin la flecha del vector y con otra
+   tipografía.
+
+   La capa no intercepta el ratón —debajo vive el botón f(x)— y recorta lo que se salga,
+   igual que el lienzo hace con las flechas. */
+.lmath-rotulos {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Cada nombre se centra en el punto que le da el renderizador. Posición y color llegan como
+   propiedades desde el host porque dependen del encuadre y del tema, que aquí no se conocen;
+   el tamaño sí es fijo, y es el mismo que tenía el texto del lienzo. */
+.lmath-rotulo {
+  position: absolute;
+  left: var(--lmath-rotulo-x, 0);
+  top: var(--lmath-rotulo-y, 0);
+  transform: translate(-50%, -50%);
+  color: var(--lmath-rotulo-color, currentColor);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 /* ── obs-trig: lo que no depende de ningún número calculado ───────────────────────────
    El bloque del círculo compone casi todo su cromo en el host, porque casi todo depende
    de medidas que solo allí se conocen (el lado del chip, el ancho de la caja, la
    posición de la manija). Lo que NO depende de nada vive aquí: es estilo fijo, y una
    cadena en línea que nunca cambia solo consigue que el tema no la pueda alcanzar. */
 
-/* Deslizador del ángulo. La caja la dimensiona el host; esto es solo el foco. */
+/* Deslizador del ángulo: una PÍLDORA con un disco corriendo por dentro.
+   Las tres medidas (alto de la caja, diámetro de la manija y su posición) llegan como
+   propiedades desde el host, que es quien hace la cuenta del recorrido; escribirlas aquí otra
+   vez daría dos verdades para la misma medida. El resto —forma, color, sombra— es fijo y por
+   eso vive aquí y no en una cadena en línea, que el tema no podría alcanzar. */
 .lmath-slider {
+  position: relative;
+  width: 100%;
+  height: var(--lmath-slider-alto);
+  flex: 0 0 auto;
+  /* El dedo sobre el deslizador lo mueve; sin esto el navegador se queda el gesto para
+     desplazar la nota y el mando no responde en el móvil, que es donde más falta hace. */
+  touch-action: none;
+  cursor: pointer;
+  user-select: none;
   outline: none;
+}
+
+/* La pista ocupa la caja entera. Va del color del borde y no del panel: sobre `--lmath-panel`,
+   que es el fondo que tiene detrás, una píldora del mismo tono no se vería. */
+.lmath-slider-pista {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--lmath-borde);
+  pointer-events: none;
+}
+
+/* La manija es del color del TEXTO, no del acento: es la pieza que se agarra y tiene que
+   destacar sobre la pista en los dos temas (casi blanca en oscuro, casi negra en claro). */
+.lmath-slider-manija {
+  position: absolute;
+  top: 50%;
+  left: var(--lmath-slider-x, 0);
+  transform: translateY(-50%);
+  width: var(--lmath-slider-manija);
+  height: var(--lmath-slider-manija);
+  border-radius: 50%;
+  background: var(--lmath-texto);
+  box-shadow: var(--lmath-sombra);
+  pointer-events: none;
 }
 
 /* El anillo de foco va en `:focus-visible` y no en un listener de `focus`: el navegador
@@ -260,4 +373,69 @@
   gap: 8px;
   padding: 2px 0;
   font-size: 11.5px;
+}
+
+
+/* ── Vista de MANDOS del panel (parámetros declarados, `A = 1`) ───────────────────────────
+   Es una VISTA del panel, hermana de la fórmula, y se alterna con ella desde la barra de
+   arriba —igual que obs-vector alterna entre lo declarado y el vector deducido—. Por eso ocupa
+   la misma caja que las tarjetas (`inset:0`) en vez de repartirse el panel con ellas: el panel
+   enseña una cosa a la vez, y partirlo dejaría la fórmula a media altura para siempre.
+
+   El `padding-top` deja libre la barra de botones, que flota por encima. */
+.lmath-parametros {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  box-sizing: border-box;
+  padding: 40px 14px 14px;
+  overflow-y: auto;
+  /* Nunca a lo ancho: una fila que no cabe se estrecha (ver `.lmath-parametro .lmath-slider`),
+     no empuja una barra de scroll horizontal por debajo del panel. */
+  overflow-x: hidden;
+}
+
+/* Una fila: nombre, valor y mando. El nombre y el valor llevan ancho FIJO para que las manijas
+   de varios parámetros queden alineadas en columna; si cada fila midiera su propio rótulo, los
+   mandos saldrían escalonados y costaría compararlos. */
+.lmath-parametro {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  /* Sin esto el nombre en KaTeX impone su ancho natural y la fila no puede encoger. */
+  min-width: 0;
+}
+
+/* El mando se queda LO QUE SOBRE de la fila, y puede encoger.
+   `.lmath-slider` viene de obs-trig, donde ocupa una columna entera y por eso pide `width:100%`
+   y `flex:0 0 auto`. Aquí comparte fila con el nombre y el valor: dejando ese ancho, la fila
+   medía el panel entero MÁS los dos rótulos y se salía por la derecha —con su barra de scroll
+   por debajo—. `min-width:0` es lo que permite encoger de verdad: sin él, el mínimo automático
+   del flex lo mantiene en su ancho de contenido. */
+.lmath-parametro .lmath-slider {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.lmath-parametro-nombre {
+  flex: 0 0 auto;
+  min-width: 16px;
+  font-size: 13px;
+  color: var(--lmath-texto);
+}
+
+/* `tabular-nums` por lo mismo que en obs-trig: el número cambia sesenta veces por segundo
+   mientras se arrastra, y sin cifras de ancho fijo la fila entera baila. */
+.lmath-parametro-valor {
+  flex: 0 0 38px;
+  text-align: right;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--lmath-texto);
+  font-variant-numeric: tabular-nums;
 }

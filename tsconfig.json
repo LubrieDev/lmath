@@ -3,7 +3,7 @@
     "inlineSourceMap": true,
     "inlineSources": true,
     "module": "ESNext",
-    "target": "ES2019",
+    "target": "ES2020",
     "allowJs": true,
     "noImplicitAny": true,
     "moduleResolution": "bundler",
@@ -19,7 +19,8 @@
       "ES6",
       "ES7",
       "ES2017",
-      "ES2019"
+      "ES2019",
+      "ES2020"
     ]
   },
   "include": [

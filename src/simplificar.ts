@@ -1,8 +1,9 @@
 import { parse, simplify, type MathNode } from "mathjs";
 
 import { normalizarEntrada } from "./parser";
-import { insertarProductoImplicito } from "./motor/parsing/productoImplicito";
-import { componenteParametrica } from "./motor/parsing/componentesParametricas";
+import { insertarProductoImplicito } from "./core/parsing/productoImplicito";
+import { componenteParametrica } from "./core/parsing/componentesParametricas";
+import { transformarSinRestriccion } from "./core/parsing/restriccionDominio";
 import { bloqueALatex } from "./latex";
 import {
   formatearCanonico, racionalizarFracciones, combinarYordenar, combinarFracciones,
@@ -192,7 +193,7 @@ function simplificarLado(lado: string): string {
 /** Simplifica y expande cada ecuación de un bloque (ambos lados). Devuelve strings
  *  re-parseables (para encadenar/comparar transformaciones). */
 export function simplificarEcuaciones(ecuaciones: readonly string[]): string[] {
-  return ecuaciones.map((ec) => {
+  return ecuaciones.map((entrada) => transformarSinRestriccion(entrada, (ec) => {
     // Componente paramétrica (`x(t)=…`): el LHS no es una expresión sino una DECLARACIÓN de
     // función del parámetro. Pasarlo por el pipeline lo leería como el producto `x·t` y el
     // panel acabaría mostrando `t·x = …` (una implícita inventada). Se simplifica el cuerpo y
@@ -202,7 +203,7 @@ export function simplificarEcuaciones(ecuaciones: readonly string[]): string[] {
     const partes = ec.split("=");
     if (partes.length === 2) return `${simplificarLado(partes[0])} = ${simplificarLado(partes[1])}`;
     return simplificarLado(ec); // expresión suelta
-  });
+  }));
 }
 
 /** LaTeX del bloque simplificado y expandido (deriva del string por el pipeline). */

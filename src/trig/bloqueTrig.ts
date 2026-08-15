@@ -19,8 +19,8 @@
 // significa lo mismo dentro de un obs-trig que dentro de un obs-graph de la misma nota.
 
 import { normalizarEntrada } from "../parser";
-import { insertarProductoImplicito } from "../motor/parsing/productoImplicito";
-import { compilarExpresion } from "../evaluador";
+import { insertarProductoImplicito } from "../core/parsing/productoImplicito";
+import { compilarExpresion, evaluarConstante } from "../evaluador";
 import { aRadianes } from "./modeloTrig";
 import { fuenteSimbolica } from "./exactosTrig";
 // Solo el TIPO, que TypeScript borra al compilar: no crea dependencia en tiempo de ejecución del
@@ -84,20 +84,13 @@ export interface BloqueTrig {
 }
 
 /**
- * Evalúa una expresión de ángulo a radianes, o `null` si no da un número real. Reutiliza el
- * pipeline de entrada del plugin, así que acepta lo mismo que cualquier otro bloque:
+ * Evalúa una expresión de ángulo a radianes, o `null` si no da un número real.
+ *
+ * Es `evaluarConstante` con el nombre que tiene sentido aquí. El pipeline de entrada es el mismo
+ * de todo el plugin, y con él la conversión del `°`, así que acepta lo que cualquier otro bloque:
  * `30°`, `\frac{\pi}{6}`, `pi/6`, `2\pi`, `-45°`, `0.5236`.
  */
-export function evaluarAngulo(expr: string): number | null {
-  const limpio = expr.trim();
-  if (!limpio) return null;
-  try {
-    const valor = compilarExpresion(insertarProductoImplicito(normalizarEntrada(limpio)))({});
-    return typeof valor === "number" && Number.isFinite(valor) ? valor : null;
-  } catch {
-    return null;
-  }
-}
+export const evaluarAngulo = evaluarConstante;
 
 /** Las tres funciones que TIENEN trazo en la figura, con la componente que enciende cada una. */
 const FUNCION_COMPONENTE: ReadonlyArray<readonly [string, ComponenteTrig]> = [

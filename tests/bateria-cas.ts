@@ -26,8 +26,8 @@ import { despejarEcuaciones } from "../src/despejar";
 import { simplificarEcuaciones } from "../src/simplificar";
 import { bloqueALatex } from "../src/latex";
 import { normalizarEntrada } from "../src/parser";
-import { insertarProductoImplicito } from "../src/motor/parsing/productoImplicito";
-import { expandirDobleSigno } from "../src/motor/parsing/dobleSigno";
+import { insertarProductoImplicito } from "../src/core/parsing/productoImplicito";
+import { expandirDobleSigno } from "../src/core/parsing/dobleSigno";
 import { compilarExpresion } from "../src/evaluador";
 
 declare const process: { argv: string[]; exitCode?: number };
