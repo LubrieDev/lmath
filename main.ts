@@ -10,6 +10,11 @@ import {
   type AjustesTransformaciones,
   type PluginConAjustes,
 } from "./src/host-obsidian/ajustes";
+// Renombrado de los bloques (`obs-graph` → `_graph`). Vive en `migracion/`, que es código
+// TEMPORAL: se publica SOLO en la 1.5.0 y se borra entero en la 2.0.0 junto con
+// la aceptación de los nombres `obs-*`. Estos dos imports se van con él.
+import { nombresDe } from "./migracion/nombres";
+import { tm } from "./migracion/textos";
 
 // ─────────────────────────────────────────────
 // Plugin principal
@@ -45,6 +50,29 @@ export default class LMathPlugin extends Plugin implements PluginConAjustes {
     for (const oyente of [...this.oyentesAjustes]) oyente();
   }
 
+  /**
+   * Registra UN bloque bajo todos sus nombres (el histórico `obs-*` y el nuevo `_graph`), para
+   * que durante la transición las dos sintaxis rindan exactamente lo mismo.
+   *
+   * El try/catch no es decorativo. El identificador de bloque es una clave global compartida por
+   * todos los plugins instalados: si otro ya tomó uno de estos nombres, la llamada puede lanzar.
+   * Sin el catch esa excepción aborta `onload()` entera y se cae TODO el plugin —incluidos los
+   * `obs-*`, que llevan funcionando desde la 1.0.0— por culpa de un nombre nuevo. Con él se
+   * pierde solo ese nombre, queda dicho en la consola, y las notas de la gente siguen rindiendo.
+   */
+  private registrarBloque(
+    viejo: string,
+    manejador: Parameters<typeof this.registerMarkdownCodeBlockProcessor>[1]
+  ): void {
+    for (const nombre of nombresDe(viejo)) {
+      try {
+        this.registerMarkdownCodeBlockProcessor(nombre, manejador);
+      } catch (e) {
+        console.warn(`LMath: no se pudo registrar el bloque "${nombre}"`, e);
+      }
+    }
+  }
+
   async onload() {
 
     // Ajustes persistentes ANTES de registrar los motores (los capturan por referencia) y
@@ -52,6 +80,14 @@ export default class LMathPlugin extends Plugin implements PluginConAjustes {
     // partir de la preferencia guardada, así el aviso y la pestaña ya salen en ese idioma.
     await this.cargarAjustes();
     new Notice(t().aviso.cargado);
+
+    // Aviso del renombrado de los bloques, EN CADA CARGA (TEMPORAL, se va con la herramienta de
+    // migración). Fue una sola vez por instalación hasta que se vio el problema de esa cuenta:
+    // el arranque es justo el momento en que hay tres avisos apilados, así que el único que
+    // había se gastaba sin que nadie lo leyera y no volvía nunca. Mientras la migración siga
+    // pendiente, repetirlo es lo que hace que la gente acabe enterándose; la fila permanente de
+    // los ajustes sigue estando para quien lo cierre igual.
+    new Notice(`${tm().avisoTitulo}\n${tm().avisoCuerpo}`, 15000);
     this.addSettingTab(new PestanaAjustesLMath(this.app, this));
 
     // Fuente Lora para el texto de la interfaz del plugin (se aplica en styles.css,
@@ -66,21 +102,18 @@ export default class LMathPlugin extends Plugin implements PluginConAjustes {
     // La bandera decide el motor; GraphEngine permanece intacto como fallback.
     const graphEngine = new GraphEngine(this);
     const motorGraph = new MotorExperimental(this, "graph", ajustes);
-    this.registerMarkdownCodeBlockProcessor(
-      "obs-graph",
-      (source, el, ctx) =>
-        this.MOTOR_EXPERIMENTAL
-          ? motorGraph.process(source, el, ctx)
-          : graphEngine.process(source, el, ctx)
+    this.registrarBloque("obs-graph", (source, el, ctx) =>
+      this.MOTOR_EXPERIMENTAL
+        ? motorGraph.process(source, el, ctx)
+        : graphEngine.process(source, el, ctx)
     );
 
     // ── Bloque obs-system (SISTEMA de ecuaciones) ──
     // Motor nuevo: cada ecuación con su mejor proveedor (continuación/separable/…),
     // sin marching squares. (Panel de solución/intersecciones: trabajo futuro.)
     const motorSistema = new MotorExperimental(this, "system", ajustes);
-    this.registerMarkdownCodeBlockProcessor(
-      "obs-system",
-      (source, el, ctx) => motorSistema.process(source, el, ctx)
+    this.registrarBloque("obs-system", (source, el, ctx) =>
+      motorSistema.process(source, el, ctx)
     );
 
     // ── Bloque obs-derivate (DERIVADA de una función) ──
@@ -88,9 +121,8 @@ export default class LMathPlugin extends Plugin implements PluginConAjustes {
     // f'(x) de lo escrito; el panel alterna [Original] (operador d/dx sin evaluar) y
     // [Derivada] (f'(x) = …). Deriva simbólicamente con mathjs (src/derivar.ts).
     const motorDerivada = new MotorExperimental(this, "derivate", ajustes);
-    this.registerMarkdownCodeBlockProcessor(
-      "obs-derivate",
-      (source, el, ctx) => motorDerivada.process(source, el, ctx)
+    this.registrarBloque("obs-derivate", (source, el, ctx) =>
+      motorDerivada.process(source, el, ctx)
     );
 
     // ── Bloque obs-integral (INTEGRAL DEFINIDA de una función) ──
@@ -100,9 +132,8 @@ export default class LMathPlugin extends Plugin implements PluginConAjustes {
     // o una etiqueta si diverge / sale de dominio / los límites no son numéricos). El área se
     // calcula numéricamente (mathjs no integra simbólicamente): src/integral.ts + areaBajoRama.
     const motorIntegral = new MotorExperimental(this, "integral", ajustes);
-    this.registerMarkdownCodeBlockProcessor(
-      "obs-integral",
-      (source, el, ctx) => motorIntegral.process(source, el, ctx)
+    this.registrarBloque("obs-integral", (source, el, ctx) =>
+      motorIntegral.process(source, el, ctx)
     );
 
     // ── Bloque obs-trig (CÍRCULO TRIGONOMÉTRICO) ──
@@ -111,9 +142,8 @@ export default class LMathPlugin extends Plugin implements PluginConAjustes {
     // bloque vacío ya rinde un círculo funcional a 30°: aquí no falta contenido, el círculo
     // unidad ES el contenido.
     const motorTrig = new MotorExperimental(this, "trig", ajustes);
-    this.registerMarkdownCodeBlockProcessor(
-      "obs-trig",
-      (source, el, ctx) => motorTrig.process(source, el, ctx)
+    this.registrarBloque("obs-trig", (source, el, ctx) =>
+      motorTrig.process(source, el, ctx)
     );
 
     // ── Bloque obs-vector (NOTACIÓN VECTORIAL) ──
@@ -123,10 +153,10 @@ export default class LMathPlugin extends Plugin implements PluginConAjustes {
     // algo que dibujar: con puntos y vectores numéricos salen sus flechas; con un campo o con
     // notación suelta (`\nabla f(x,y)`) el bloque es solo la tarjeta, a todo lo ancho.
     const motorVector = new MotorExperimental(this, "vector", ajustes);
-    this.registerMarkdownCodeBlockProcessor(
-      "obs-vector",
-      (source, el, ctx) => motorVector.process(source, el, ctx)
+    this.registrarBloque("obs-vector", (source, el, ctx) =>
+      motorVector.process(source, el, ctx)
     );
+
   }
 
   /** Carga las preferencias (loadData) copiando SOLO las claves vigentes (las de

@@ -91,15 +91,44 @@ export interface Textos {
     unaSolucion: string;
     nSoluciones: (n: number) => string;
     yMas: (n: number) => string;
-    /** El intervalo explorado por el camino numérico, dicho con sus dos extremos. */
-    enIntervalo: (min: string, max: string) => string;
+    /** El intervalo explorado por el camino numérico, con sus dos extremos y la VARIABLE que
+     *  se barrió: el barrido puede ir en x o en y, y decir siempre «x» sería afirmar algo que
+     *  no se ha comprobado. */
+    enIntervalo: (min: string, max: string, variable: string) => string;
     /** Ni el camino exacto ni el numérico saben con este sistema. */
     noResoluble: string;
+    /**
+     * Alguna pareja de curvas del bloque no se pudo enumerar, pero otras sí. La lista es
+     * verdadera y puede estar INCOMPLETA, que no es lo mismo que «no hay más»: sin esto, un
+     * bloque con una pareja fuera de alcance presentaba su lista parcial como si fuera toda.
+     */
+    parcial: string;
+    /** Ninguna pareja dio soluciones y alguna quedó sin enumerar: no se puede decir «no se
+     *  cortan», porque de esa parte no se sabe nada. */
+    sinSolucionParcial: string;
   };
+  /**
+   * Resumen cartesiano del ⓘ (obs-graph): intersección con Y, raíces y vértices.
+   *
+   * CONTRATO DE ESTAS LÍNEAS, y de las de `polar`, `parametrica`, `integral` y `derivada`:
+   * lo que se interpola es **LaTeX**, no texto, y es CADA MENSAJE quien decide dónde van los
+   * `$…$`. La razón de que la frontera la ponga el idioma y no el código es que solo el texto
+   * sabe dónde acaba la matemática: en «Raíces: …» es la lista, en «Máximo en θ = …» es la
+   * igualdad entera, y en «Vértice: …» es el par con sus paréntesis. Lo pinta
+   * `pintarLineaPanel`, que compone con KaTeX lo que va entre `$` y deja el resto en la fuente
+   * del panel.
+   *
+   * Dos consecuencias para quien traduzca: el símbolo va en su forma LaTeX (`\\pi`, `\\le`,
+   * `\\theta`) cuando está DENTRO de los `$`, y una línea sin `$` es prosa pura y se pinta sin
+   * pasar por el renderizador.
+   */
   resumen: {
     interseccionesYInfinitas: string;
     interseccionesYDemasiadas: string;
-    interseccionY: (y: string) => string;
+    /** El par ENTERO llega compuesto (`\\left(0,\\ \\frac{\\pi}{2}\\right)`), no sus dos
+     *  coordenadas por separado: los paréntesis son de la expresión y tienen que crecer con
+     *  ella, y la coma que separa el par no es la de un decimal. */
+    interseccionY: (punto: string) => string;
     noCortaY: string;
     raicesInfinitas: string;
     raicesDemasiadas: string;
@@ -108,13 +137,21 @@ export interface Textos {
     verticesInfinitos: string;
     verticesDemasiados: string;
     noVertices: string;
-    vertice: (x: string, y: string) => string;
-    interseccionYCero: string;
+    vertice: (punto: string) => string;
     identicamenteCero: string;
     interseccionYNoDefinida: string;
-    verticeMin: (x: string, y: string) => string;
-    verticeMax: (x: string, y: string) => string;
-    enVista: string;
+    verticeMin: (punto: string) => string;
+    verticeMax: (punto: string) => string;
+    /**
+     * Algún grupo de puntos notables no se ha podido determinar (el sistema se le escapa al
+     * motor, o se resolvió solo en parte). Sustituye al viejo «En la vista actual»: aquel decía
+     * que la respuesta dependía del encuadre —y por eso se ha ido, porque ya no depende—; este
+     * dice que hay una pregunta sin responder, que es lo único que queda por matizar.
+     *
+     * Va SOLO cuando de verdad pasa. Una curva polinómica se resuelve entera y su resumen es
+     * completo sobre ℝ: ahí no lleva pie ninguno.
+     */
+    sinDeterminar: string;
   };
   /** Panel ⓘ de una curva POLAR. No comparte cadenas con `resumen` a propósito: son
    *  otras categorías (nada de intersecciones ni vértices), no otra traducción. */

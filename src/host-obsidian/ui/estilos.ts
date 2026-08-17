@@ -56,10 +56,23 @@ export function estiloChipInfo(lado: number): string {
 }
 
 /**
+ * Clase del popover ⓘ. La lleva el elemento ADEMÁS del estilo en línea de abajo, porque hay
+ * una regla que el estilo en línea no puede escribir: la de sus `<p>` (ver `styles.css`). Las
+ * líneas del cuadro pasan por `MarkdownRenderer`, que las envuelve en párrafos, y sus márgenes
+ * tienen que estar a cero DESDE EL PRIMER FOTOGRAMA. Se nombra aquí, junto al estilo que
+ * acompaña, para que el nombre no viva en cinco archivos.
+ */
+export const CLASE_POPOVER_INFO = "lmath-info-pop";
+
+/**
  * Popover del ⓘ: se abre HACIA ARRIBA desde su chip, así que su borde inferior sube con la
  * fila de chips. Los topes son relativos al PLANO (`min(...)` contra el 100%): en el móvil
  * el plano mide ~321×263 y un cuadro de 260×200 anclado abajo se saldría por arriba en
  * cuanto el chip creciera; en escritorio el plano es mayor y los topes fijos siguen mandando.
+ *
+ * Va de `--lmath-tarjeta`, el MISMO material que la caja de la fórmula: los dos son objetos
+ * posados sobre el bloque, y que compartan color es lo que los hace leerse como una capa y no
+ * como dos accidentes. Si uno cambia, cambia el otro: el color se toca en el token, no aquí.
  */
 export function estiloPopoverInfo(lado: number): string {
   const bajo = 8 + lado + 6;
@@ -67,7 +80,7 @@ export function estiloPopoverInfo(lado: number): string {
     "max-width:min(260px, calc(100% - 16px)); " +
     `max-height:min(200px, calc(100% - ${bajo + 8}px)); ` +
     "overflow-y:auto; padding:8px 10px; box-sizing:border-box; " +
-    "background:var(--lmath-panel); border:1px solid var(--lmath-borde); " +
+    "background:var(--lmath-tarjeta); border:1px solid var(--lmath-borde); " +
     "border-radius:6px; font-size:11px; line-height:1.5; " +
     "color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);";
 }

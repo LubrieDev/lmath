@@ -51,32 +51,72 @@ export interface SolucionNumerica {
 }
 
 export type ResultadoNumerico =
-  | { readonly tipo: "puntos"; readonly puntos: readonly SolucionNumerica[] }
-  /** Ninguna de las dos ecuaciones se deja evaluar como y = f(x): este camino tampoco puede. */
+  | {
+      readonly tipo: "puntos";
+      readonly puntos: readonly SolucionNumerica[];
+      /** Sobre qué variable se hizo el barrido. El panel lo dice: el intervalo declarado acota
+       *  ESA, y prometer la otra sería una afirmación que no se ha comprobado. */
+      readonly variable: "x" | "y";
+    }
+  /** Ninguna de las dos ecuaciones se deja despejar: este camino tampoco puede. */
   | { readonly tipo: "noResoluble" };
 
-/** `f(x)` compilada a partir del lado derecho de `y = …`, o `null` si la ecuación no tiene esa
- *  forma. Es el único formato que este camino sabe manejar: sin una y despejada no hay una
- *  función de una variable que restar. */
-function funcionExplicita(ecuacion: string): ((x: number) => number) | null {
+/** Qué modos de barrido se autorizan. Ver `resolverNumerico`. */
+export interface OpcionesNumerico {
+  /**
+   * ¿Se admiten los sistemas TUMBADOS (`x = g(y)`) y los MIXTOS? Por defecto NO, y el motivo es
+   * el orden de los escalones del solucionador: este camino va ANTES que el de ramas, y las
+   * ramas resuelven de forma exacta varios de los sistemas que estos dos modos resolverían
+   * aproximados. Se activan detrás de aquel, no delante.
+   */
+  readonly simetrico?: boolean;
+}
+
+/** Una ecuación con una variable AISLADA: `y = f(x)` o `x = g(y)`. */
+interface FormaExplicita {
+  /** La variable que quedó sola a un lado. */
+  readonly aislada: "x" | "y";
+  /** La función de la OTRA variable. */
+  readonly f: (t: number) => number;
+}
+
+/**
+ * La ecuación como una variable aislada igual a una función de la otra, o `null`.
+ *
+ * Acepta las CUATRO escrituras (`y = f(x)`, `f(x) = y`, `x = g(y)`, `g(y) = x`), y esa simetría
+ * no es un adorno: sin ella, `x = g(y)` —una curva perfectamente explícita, solo que tumbada—
+ * quedaba fuera del camino numérico entero, y el sistema se declaraba irresoluble por la
+ * ORIENTACIÓN de lo escrito. Es la misma clase de fuga que el escalón de ramas vino a cerrar.
+ */
+function formaExplicita(ecuacion: string): FormaExplicita | null {
   const partes = ecuacion.split("=");
-  let derecha: string;
-  if (partes.length === 1) derecha = partes[0];
-  else if (partes.length === 2) {
-    const izq = partes[0].trim();
-    const der = partes[1].trim();
-    if (izq === "y") derecha = der;
-    else if (der === "y") derecha = izq;
+  let aislada: "x" | "y";
+  let otra: string;
+  if (partes.length === 1) {
+    // Expresión suelta: en obs-graph significa `y = expr`.
+    aislada = "y";
+    otra = partes[0];
+  } else if (partes.length === 2) {
+    const izq = partes[0].trim(), der = partes[1].trim();
+    if (izq === "y") { aislada = "y"; otra = der; }
+    else if (der === "y") { aislada = "y"; otra = izq; }
+    else if (izq === "x") { aislada = "x"; otra = der; }
+    else if (der === "x") { aislada = "x"; otra = izq; }
     else return null;
   } else return null;
+
+  const variableLibre = aislada === "y" ? "x" : "y";
   try {
-    const f = compilarFuncion(insertarProductoImplicito(normalizarEntrada(derecha)), "x");
+    const f = compilarFuncion(insertarProductoImplicito(normalizarEntrada(otra)), variableLibre);
     // `compilarFuncion` devuelve `unknown` porque el camino de mathjs puede dar un Complex; aquí
     // solo interesa la recta real, y lo que no sea un número finito se trata como hueco del
     // dominio (que es como lo trata el resto del motor).
-    return (x: number) => {
-      const v = f(x);
-      return typeof v === "number" ? v : NaN;
+    return {
+      aislada,
+      f: (t: number) => {
+        const v = f(t);
+        return typeof v === "number" ? v : NaN;
+      },
     };
   } catch {
     return null;
@@ -128,50 +168,101 @@ function pulir(h: (x: number) => number, x0: number): number {
 }
 
 /**
- * Resuelve numéricamente el sistema, sobre el intervalo declarado.
+ * Las raíces de `h` en el intervalo declarado, con el mismo barrido fino de siempre.
  *
- * Exige que las DOS ecuaciones sean explícitas (`y = f(x)`): entonces el sistema es
- * `f(x) − g(x) = 0`, una ecuación de una variable, que es lo que se sabe hacer bien. Con una
- * implícita no explícita de por medio hace falta un barrido en dos dimensiones, y ese barrido sí
- * volvería a depender de una ventana —es exactamente la puerta por la que entró el problema que
- * se está cerrando—, así que se prefiere decir `noResoluble` y que el panel lo diga.
+ * Se extrajo del cuerpo de `resolverNumerico` cuando este dejó de barrer solo en x: los tres
+ * modos (barrer x, barrer y, y el mixto) resuelven UNA ecuación de una variable y solo se
+ * diferencian en cuál es esa variable y en cómo se reconstruye el punto. Compartir el barrido
+ * hace que las tres tengan exactamente las mismas garantías.
  */
-export function resolverNumerico(ecuacionA: string, ecuacionB: string): ResultadoNumerico {
-  const f = funcionExplicita(ecuacionA);
-  const g = funcionExplicita(ecuacionB);
-  if (!f || !g) return { tipo: "noResoluble" };
-
-  const h = (x: number): number => f(x) - g(x);
-  const [x0, x1] = DOMINIO_X;
-  const paso = (x1 - x0) / MUESTRAS;
+function raicesDe(h: (t: number) => number): number[] {
+  const [t0, t1] = DOMINIO_X;
+  const paso = (t1 - t0) / MUESTRAS;
 
   const crudas: number[] = [];
-  let xPrev = x0;
-  let hPrev = h(xPrev);
+  let tPrev = t0;
+  let hPrev = h(tPrev);
   for (let i = 1; i <= MUESTRAS; i++) {
-    const x = x0 + i * paso;
-    const hx = h(x);
-    if (Number.isFinite(hPrev) && Number.isFinite(hx)) {
-      if (hx === 0) crudas.push(x);
-      else if (hPrev * hx < 0) {
-        const r = bisecar(h, xPrev, x);
+    const t = t0 + i * paso;
+    const ht = h(t);
+    if (Number.isFinite(hPrev) && Number.isFinite(ht)) {
+      if (ht === 0) crudas.push(t);
+      else if (hPrev * ht < 0) {
+        const r = bisecar(h, tPrev, t);
         if (r !== null) crudas.push(r);
       }
     }
-    xPrev = x; hPrev = hx;
+    tPrev = t; hPrev = ht;
   }
 
-  const puntos: SolucionNumerica[] = [];
+  const out: number[] = [];
   for (const cruda of crudas) {
-    const x = pulir(h, cruda);
-    const y = f(x);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    const t = pulir(h, cruda);
+    if (!Number.isFinite(t)) continue;
     // Deduplicado: dos cruces separados por menos que el paso son el mismo punto encontrado dos
     // veces (una tangencia que roza el eje y vuelve).
-    if (puntos.some((p) => Math.abs(p.x - x) <= 10 * paso)) continue;
-    puntos.push({ x, y });
+    if (out.some((p) => Math.abs(p - t) <= 10 * paso)) continue;
+    out.push(t);
+  }
+  return out;
+}
+
+/**
+ * Resuelve numéricamente el sistema, sobre el intervalo declarado.
+ *
+ * Exige que las dos ecuaciones tengan una variable DESPEJADA, y admite las tres combinaciones,
+ * porque las tres se reducen a una ecuación de una variable:
+ *
+ *   • `y = f(x)` con `y = g(x)`   →  `f(x) − g(x) = 0`, se barre x.
+ *   • `x = f(y)` con `x = g(y)`   →  lo mismo tumbado, se barre y.
+ *   • `y = f(x)` con `x = g(y)`   →  `f(g(y)) − y = 0` por COMPOSICIÓN, se barre y.
+ *
+ * El tercero es el que faltaba y el que más se notaba: una recta vertical (`x = 0`) contra
+ * cualquier curva explícita se declaraba irresoluble, porque el barrido solo sabía moverse en x
+ * y una vertical no es una función de x. No era una frontera matemática, era la del bucle.
+ *
+ * Con las dos implícitas de verdad (ninguna despejada) sigue diciendo `noResoluble`: ahí haría
+ * falta un barrido en dos dimensiones, y ese sí volvería a depender de una ventana —es
+ * exactamente la puerta por la que entró el problema que este módulo cerró—.
+ */
+export function resolverNumerico(
+  ecuacionA: string, ecuacionB: string, opciones: OpcionesNumerico = {}
+): ResultadoNumerico {
+  const a = formaExplicita(ecuacionA);
+  const b = formaExplicita(ecuacionB);
+  if (!a || !b) return { tipo: "noResoluble" };
+  // Los modos TUMBADO y MIXTO solo se abren cuando quien llama los pide. No es timidez: son
+  // capaces de resolver sistemas que el escalón de RAMAS resuelve de forma EXACTA (`|y| = x`
+  // tiene la x despejada, y aquí se barrería), y adelantarse a él cambiaría una respuesta
+  // exacta por una aproximada. Quien los pide es quien ya sabe que las ramas no han podido.
+  if (!opciones.simetrico && (a.aislada !== "y" || b.aislada !== "y"))
+    return { tipo: "noResoluble" };
+
+  // Las dos despejan la MISMA variable: se barre la otra y el punto se reconstruye evaluando.
+  if (a.aislada === b.aislada) {
+    const h = (t: number): number => a.f(t) - b.f(t);
+    const variable = a.aislada === "y" ? "x" : "y";
+    const puntos: SolucionNumerica[] = [];
+    for (const t of raicesDe(h)) {
+      const otro = a.f(t);
+      if (!Number.isFinite(otro)) continue;
+      puntos.push(a.aislada === "y" ? { x: t, y: otro } : { x: otro, y: t });
+    }
+    puntos.sort((p, q) => p.x - q.x || p.y - q.y);
+    return { tipo: "puntos", puntos, variable };
   }
 
-  puntos.sort((a, b) => a.x - b.x);
-  return { tipo: "puntos", puntos };
+  // MIXTO: una da `y = f(x)` y la otra `x = g(y)`. Sustituyendo la segunda en la primera queda
+  // `y = f(g(y))`, una ecuación en y sola. Se barre y, y la abscisa sale de `g`.
+  const explY = a.aislada === "y" ? a : b;      // y = f(x)
+  const explX = a.aislada === "x" ? a : b;      // x = g(y)
+  const h = (y: number): number => explY.f(explX.f(y)) - y;
+  const puntos: SolucionNumerica[] = [];
+  for (const y of raicesDe(h)) {
+    const x = explX.f(y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    puntos.push({ x, y });
+  }
+  puntos.sort((p, q) => p.x - q.x || p.y - q.y);
+  return { tipo: "puntos", puntos, variable: "y" };
 }

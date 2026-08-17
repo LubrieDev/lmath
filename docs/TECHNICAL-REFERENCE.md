@@ -1,6 +1,6 @@
 # LMath — Internal Technical Reference
 
-**Technical guide for version 1.4.0.**
+**Technical guide for version 1.5.0.**
 
 This document describes the source tree **as it stands at one version**, and it is expected to
 go out of date: the plugin keeps growing, and a reference that claimed to be permanent would
@@ -506,6 +506,22 @@ sequence of passes. The order is load-bearing; the main stages:
    trig with LaTeX-style arguments,
    and functions applied to **ungrouped** arguments (`\ln x`, `\cos 5t` — the coefficient
    run rule prevents `cos(5)*t`).
+
+   **A function's braced argument is matched by counting levels, not by a regex** — since
+   1.5.0 for the trigonometric family too. `\{([^{}]+)\}` cannot match a group that contains
+   another group, and the pass ran once, outward in: `\cos{\tan{x}}` had its inner `\tan`
+   converted and its outer `\cos{` left broken, the residual sweep then stripped that
+   backslash, and mathjs rejected `cos{…}` — the block drew nothing, silently. Repeating the
+   pass would not fix it either, because `\sqrt` is converted *after* this point (stage 9), so
+   `\sin{\sqrt{x}}` still carries the root's braces here. `\ln`/`\log` had already been moved
+   to the balanced-brace helper for exactly this; the trig family was left behind, and the
+   **hyperbolic** family had never been in the rule at all (`\sinh{x}` simply did not parse).
+   Two details in `reemplazarFuncionLlaves` that a `\command` helper does not need: the name
+   may come **without** a backslash (`tan{x}` is informal notation people write), which is why
+   the character to its left has to be checked — otherwise the `sin` of `asin{…}` would steal
+   the inverse's argument — and the name list is **not** `FUNCIONES_TRIG`, because that one
+   drives the degree heuristic and a hyperbolic argument is not an angle: `\sinh{30}` is 30,
+   `\sin{30}` is 30°.
 9. `\sqrt[n]{…}` → `nthRoot`, `\cdot → *`, and finally the residual sweep `\cmd → cmd`.
 10. Degree heuristic: pure numeric literals inside direct trig calls are converted to
     radians (`\sin(45) → sin(45*pi/180)`), including literal fractions; symbolic arguments
@@ -1722,9 +1738,22 @@ were free functions with a `this.` in front.
 | `ui/paneles.ts` | `montarPanelVistas`, `montarPanelLatex`, `montarPanelDerivada`, `montarPanelIntegral`. |
 | `ui/reparto.ts` | Layout constants and the column/floating split. |
 | `info/contratos.ts` | `ExclusionPopover` and `FilaInfo`. |
+| `info/latexSolucion.ts` | A solution of the system as LaTeX (`\left(\frac{7-\sqrt{13}}{2},\ …\right)`), plus the plain-text form kept as the fallback if typesetting never completes. Pure. |
 | `info/botones.ts` | The ⓘ of `obs-graph` (explicit), `obs-derivate` and `obs-integral`: written once from a formula. |
-| `info/plano.ts` | The two ⓘ that read the plane **now** — the system's solutions and the geometric summary. They return a refresher that `process()` calls on every final pass. `escena` and `camara` enter as **accessors**, not values: `escena` is replaced when a parameter slider moves, and capturing it would leave the panel describing the previous scene. |
+| `info/plano.ts` | The two ⓘ that are **refreshed** — the system's solutions and the summary of a non-explicit curve. They return a refresher that `process()` calls on every final pass, and the equations enter as **accessors**, not values, so that moving a slider changes what they say. Neither receives the camera any more: as of this version an implicit curve's notable points come from solving three systems (`math/notablesImplicita`) rather than from the traced polyline inside the current viewport, which is why the box no longer ends in "In the current view". `Escena.resumenNotables` went with it. |
 | `analysis/` | The pure half: `clasificacion`, `lineasAnalisis`, `transformaciones`. No DOM. |
+
+**How an ⓘ line is written.** A line is prose with its mathematics marked between `$…$`;
+`pintarLineaPanel` typesets what lies between the delimiters with KaTeX and leaves the rest in the
+panel's font. A line with no `$` never reaches the renderer. What gets interpolated into a
+translated message is **LaTeX**, and it is each message that decides where the delimiters go —
+only the sentence knows how far the mathematics extends: in "Roots: …" it is the list, in "Max at
+θ = …" the whole equality, in "Vertex: …" the pair with its parentheses. The five redactions
+(`lineasResumen`, `lineasPolar`, `lineasParametricas`, `lineasDerivada`, `lineasIntegral`) live in
+`analysis/lineasAnalisis` and are pure, so the contract is checked in
+`tests/modules/paneles-info.test.ts` without mounting a block. Two panels stay in plain text on
+purpose: `obs-trig`'s refreshes on every frame of the drag, and typesetting six formulas per frame
+is not sustainable; `obs-vector`'s values come from producers that only emit plain text.
 
 **How an ⓘ panel is dismissed.** By its own chip, and by nothing else. The `obs-trig` and
 `obs-vector` panels used to register a `mousedown` listener on `document`, copied from
@@ -1844,6 +1873,72 @@ to `.lmath-grafica` (the plot's DOM overlays) only — KaTeX keeps its own fonts
 neutralizes Obsidian's own math-block overflow wrappers so the plugin's scroller is the
 only scrollbar.
 
+### 15.4b Colour: `--lmath-*` tokens (`styles.css`) and `paleta.ts`
+
+The rule the whole plugin follows: **the frame is the theme's, the plot is ours.** Everything that
+is chrome — panels, cards, popovers, chips, menus, borders, text — is painted with `--lmath-*`
+custom properties declared on `.lmath-container`, and each of those resolves to an Obsidian
+variable. Everything *inside* the plot — curve colours, grid, axes — comes from `paleta.ts`, which
+carries a hand-tuned pair of palettes (dark and light) because a graph's six hues have to stay
+distinguishable from each other, which no theme variable can promise. **No colour literal, ever**,
+outside those two places.
+
+The chrome stack, as of 1.5.0, is three layers deep and defined only in terms of the note:
+
+| token | what it paints | how it is derived |
+|---|---|---|
+| `--lmath-superficie` | the plot's surface | `--background-primary` — the note itself |
+| `--lmath-panel` | the block's own material: the area around the formula card, the floating menu, the mobile card | `--background-primary` lifted 5% toward `--text-normal` |
+| `--lmath-tarjeta` | the formula card and the ⓘ popover — the objects that sit *on* the block | `--background-primary` mixed 80/20 toward black |
+
+Three things about that table are load-bearing.
+
+**None of them hangs off `--background-secondary` any more.** It used to, and the result depended
+on a coin-flip the theme makes: the secondary background is *lighter* than the primary in some
+themes (Obsidian's stock dark included) and darker in others, so the block rendered either as a
+recessed card or as a pale grey box around a dark plot, with no way to predict which.
+
+**The card is measured against the note, not against the panel**, even though "one step below the
+panel" is what it looks like. If it were derived from `--lmath-panel`, raising the panel would
+raise the card with it and the two mixes would never separate — the distance between the layers
+would stay constant no matter what either knob did. Anchored to the same place, each knob moves
+exactly one layer and the separation is the sum of the two.
+
+**The mixes go toward `--text-normal` and toward `black` for different reasons.** Lifting toward
+the ink is the theme-symmetric gesture: moving a background *toward the text colour* means "stand
+away from the background" whether the ink is light or dark, which is also what the `-activo`
+tokens do. Darkening has no symmetric counterpart — on a light theme you cannot go lighter than
+white — so the card mixes toward black, which is not a design colour but the operation "sink this
+a little", the same status `--lmath-velo` has. Each `color-mix` declaration is preceded by a flat
+one that stands in if `color-mix` is unavailable.
+
+Two derived rules that are easy to break:
+
+* **The card's background and its fade gradients are the same colour** (`scrollerLatex.ts`, the
+  frame and `fadeColor`). They must move together or the edge of the fade shows against the card
+  when a formula overflows.
+* **Anything that floats over the plot carries its own `border` and `box-shadow`** — ⓘ popover,
+  menu, mobile card — so none of them depends on its background differing from what is behind it.
+  That is what makes it safe for the panel token to coincide with the note's own background.
+
+Since 1.5.0 the ⓘ popover also needs one rule that an inline style cannot express, so the element
+carries the class `CLASE_POPOVER_INFO` (`lmath-info-pop`, named in `ui/estilos.ts`) alongside its
+inline geometry:
+
+```css
+.lmath-container .lmath-info-pop p { margin: 0; }
+```
+
+An ⓘ line is rendered by `MarkdownRenderer`, which wraps it in a `<p>` carrying Obsidian's
+paragraph margins. `pintarLineaPanel` unwraps that `<p>`, but it does so in the render promise's
+`.then()`, and the popover is shown *before* that resolves. Without the rule, the user sees the
+box in its margined state first: five lines went from ~96 px to over 200 px, hit the popover's
+`max-height`, grew a scrollbar, and then snapped shut when the renders landed. With margins at
+zero the box measures the same in both states. The left formula panel has had the equivalent rule
+(`.lmath-latex p`) since it started rendering markdown; the ⓘ boxes only began doing so when their
+lines moved to LaTeX, and were left without it. The unwrap is still needed — this equalises the
+**height**, that puts the line in the box's flow as text rather than as a block.
+
 ### 15.5 Legacy engine: `src/engines/obs-graph/GraphEngine.ts` (+ `src/render/muestreoExplicito.ts`, `src/webgl.ts`)
 
 The original single-function engine, still compiled and reachable via the flag in
@@ -1858,6 +1953,61 @@ the new engine's `TrazadorExplicitoAdaptativo` is the same algorithm re-housed b
 contract, and `tests/motor.test.ts` asserts parity between the two (allowed to differ only
 in the finite-value clipping correction). `webgl.ts` and `render/muestreoExplicito.ts`
 have no other consumers.
+
+### 15.6 The block rename and its migration tool (`migracion/`) — **temporary: ships in 1.5.0, removed in 2.0.0**
+
+Since 1.5.0 every block answers to **two** identifiers: the one published up to 1.4.0
+(`obs-graph`, `obs-system`, `obs-derivate`, `obs-integral`, `obs-trig`, `obs-vector`) and a new one
+that swaps the `obs-` prefix for an underscore (`_graph`, `_system`, …). `main.ts`'s
+`registrarBloque` walks `nombresDe(viejo)` and registers each handler under both, **old name
+first**: if the new identifier turned out to be one Obsidian rejects and its registration threw,
+the old one is already in and existing notes keep rendering. The whole call sits in a `try/catch`
+for a reason that is not defensive habit — a block identifier is a **global key shared by every
+installed plugin**, so a collision would otherwise abort `onload()` and take down the entire
+plugin, `obs-*` blocks included.
+
+**Why an underscore.** `graph` bare is among the easiest names for another plugin to have taken,
+and whoever loses that draw stops rendering with no warning. The first attempt at a prefix was
+`graph*`, and it did not work: Obsidian does not preserve the asterisk from a fence's info string,
+so the registered key never matched what was written in the note. `\graph` and `.graph` fail the
+same way. The underscore is a word character, survives the round trip, and still marks the block
+as ours at a glance.
+
+**The tool.** `migracion/` holds the rename table (`nombres.ts` — the single source of truth; every
+other piece reads from it and nothing else), a pure scanner (`escaner.ts`, no Obsidian and no
+disk), the vault walk (`migracion.ts`, `cachedRead` to read and `vault.process` to write
+atomically), a three-state modal (scanning → summary → result) and its strings in es/en/pt.
+`tests` are `npm run test:migracion` (19, chained into `test:todo`). Its CSS cannot live in
+`migracion/` — Obsidian only loads the root `styles.css` — so it sits there in a section marked
+TEMPORAL. The folder is at the repo root and not in `.dev/` because `.dev/` is gitignored and this
+is code that ships.
+
+**The settings row is temporary and dated.** The *Update notes* button in the settings tab, the
+startup notice about the syntax change, and everything under `migracion/` exist only to carry people
+across the rename. They ship in **1.5.0 and are removed in 2.0.0** —
+together with the acceptance of the `obs-*` names, the TEMPORAL block in `styles.css`, the
+`test:migracion` script and this section. Nothing else in the product depends on any of it.
+
+Note the consequence, because it is a real one and it is deliberate: 1.5.0 is the **only** release
+that can convert a vault automatically. Someone updating straight from 1.4.0 to 2.0.0 lands on a
+plugin that neither renders their `obs-*` blocks nor offers the button that would fix them, and
+their only route is editing every fence by hand. Keeping the button alive in 2.0.0 — it can still
+rewrite fences the plugin no longer renders — would cover that jump at no cost; it was decided
+against, and the release notes say so where a user will read it rather than here.
+
+Two decisions not to undo without thinking:
+
+* **Both names work at once, and that ordering is the point.** If the old identifier stopped
+  rendering in the same release that introduces the new one, people's notes would break *before*
+  they could press the button that fixes them. The button only makes sense on a plugin that
+  already accepts both syntaxes.
+* **The startup notice fires on every load**, not once per install. It was once-per-install until
+  the failure showed up in a real account: start-up is exactly the moment when three notices are
+  stacked, so the only one there was got spent without anyone reading it and never came back.
+  While the migration is still pending, repeating it is what makes people eventually notice; the
+  permanent row in settings is still there for whoever dismisses it anyway.
+
+If it is ever promoted instead of deleted, the mapping is in `migracion/nombres.ts`.
 
 ---
 
@@ -1884,6 +2034,43 @@ with facet flags.
 - A `window.lmath` DevTools global used to exist (`src/host-obsidian/consolaDev.ts`); it was
   removed in 1.1.8 (commit `d75536d`) while clearing the Obsidian review warnings. The tracer
   core is unaffected — it is reachable from the CLI and directly from tests.
+
+### 16.2b Corpus probe over a real vault (`.dev/sondas/`)
+
+Not a test suite — it asserts no expected results. It is a **sweep**: it takes the LMath blocks a
+person actually wrote in their notes, over months, with no thought for the engine, and pushes each
+one through the same pipeline the plugin uses, without Canvas and without Obsidian. It looks for
+what a green suite structurally cannot see: exceptions, curves that come out empty, panels that go
+mute, non-finite coordinates reaching the geometry, and cases that take absurdly long.
+
+```
+node .dev/sondas/extraerBloques.cjs "<vault>/<folder>" bloques.json
+npx esbuild .dev/sondas/corpusVault.ts --bundle --platform=node --format=cjs \
+    --outfile=.dev/sondas/.corpus.cjs && node .dev/sondas/.corpus.cjs bloques.json informe.txt
+```
+
+The extractor pulls every fence whose language is one of the six blocks under **either** name
+(`obs-graph` and `_graph`), copying the body verbatim — erratas included, since that is the whole
+value of the corpus. The probe then runs, per block type: geometry at a fixed viewport
+(`[-8,8]×[-7,7]`, the one the zoom suite uses, so cases are comparable), plus despeje, notable
+points, derivation, integral value, and the `_trig`/`_vector` models. It also re-simplifies every
+expression and asserts through `mismaFuncion` that the simplified form is still the same function,
+domain included.
+
+There is deliberately **no `package.json` script**: the probe reads one particular vault, which is
+not part of the plugin. Two conventions worth keeping if it is ever re-run: the blocks are
+numbered **by block type**, the same order the organised notes use — two numberings of one corpus
+is the easiest way to end up pointing at the wrong case in a report — and the length metric can
+overflow to `Infinity` on something like `x^{1000}` whose real coordinates are of order 10³⁰⁰,
+which is the metric overflowing and not a broken coordinate; the non-finite check is the
+authoritative one.
+
+Its first run over a 162-block corpus produced 0 exceptions, 0 non-finite coordinates, and six
+real defects. Two are fixed in 1.5.0 — the `±` of §18.2c and the nested-brace argument of
+§5.1 — and the other four are listed in the release notes as known limitations rather than
+half-fixed. The sweep after those two: 15 warnings instead of 18 (exactly the three blocks
+that did not parse), and the simplification check went from 3 unverifiable expressions to 0,
+because the three it could not compare were the three that did not compile.
 
 ### 16.3 Tests
 
@@ -2047,9 +2234,84 @@ correct **for those curves**. It was wrong wherever the expression can simply be
 | `polinomio.ts` | One variable over ℚ. `mcdPol` (monic at each step, or coefficients explode), `libreDeCuadrados` (`p/gcd(p,p')`, which is also what makes a double root visible), `sucesionSturm`, `raicesEnIntervalo` (Sturm's theorem: the *exact* count in `(a,b]`), `cotaCauchy` (every real root satisfies `abs(x) < 1 + max abs(aᵢ/aₙ)`, so the search interval comes from the polynomial and not from a window), `raicesReales` (isolation by Sturm-guided bisection, then refinement to double precision), `raicesRacionales` (rational-root theorem, capped at divisors ≤ 100000). |
 | `polinomio2.ts` | Two variables, stored as coefficients in `y`. `sustituirY` for the explicit case; `resultanteY` — Sylvester matrix, determinant by **fraction-free Bareiss** — for the rest. Bareiss and not Gauss because every division it performs is provably exact in ℚ[x], so the computation never leaves the ring. |
 | `extraer.ts` | Written equation → exact polynomial, or `null`. Uses the *same* front end as every other block (`normalizarEntrada` + `insertarProductoImplicito`), so it cannot read a different equation from the one drawn. Carries **fractions of polynomials**, which keeps `y = 1/x` on the exact path; the denominator is returned so the verifier can reject solutions the clearing invented. Degree cap 8. |
-| `numerico.ts` | The non-polynomial route. Deterministic sweep over `DOMINIO_X = [-100, 100]` with 40000 samples, bisection on each sign change, Newton polish, and root/pole discrimination — without which `y = tan x` against `y = 0` would list every asymptote. Requires **both** equations explicit. |
-| `resolverSistema.ts` | Classify → eliminate → solve → **verify**. `resolverBloque` is the entry point the host calls; it separates the domain restriction before solving and re-applies it after. |
+| `numerico.ts` | The non-polynomial route. Deterministic sweep over `DOMINIO_X = [-100, 100]` with 40000 samples, bisection on each sign change, Newton polish, and root/pole discrimination — without which `y = tan x` against `y = 0` would list every asymptote. Requires both equations to have a variable **isolated**, in any of the three shapes: both `y = f(x)` (sweep x), both `x = g(y)` (sweep y), or one of each, composed into `f(g(y)) = y` (sweep y). The last two need `{ simetrico: true }`, which only the rungs *after* the branch stage pass — reaching them earlier would answer with decimals what the branch stage answers exactly. |
+| `ramas.ts` | Written equation → the N equations it really represents, each with the guard under which it holds. `despejar` (transposing x↔y when the isolatable unknown is the other one) → `expandirDobleSigno` → `dom` guards pulled out as predicates. Declines an incomplete solve and a periodic family (infinitely many branches), and screens out free symbols — which is also what keeps a 40000-sample sweep from running on an expression that cannot be evaluated anywhere. ≤ 4 branches per equation by construction. |
+| `simbolico/valorExacto.ts` | The quadratic field `a + b√d`, `d` square-free. Closed under +, −, ×, ÷, with a canonical form, so `√8 → 2√2`, `1/√2 → √2/2` and `√9 → 3` fall out of construction rather than from rewrite rules. Equality is field comparison, not a tolerance. Two different radicals return `null`: `√2+√3` is degree 4 and admitting it would cost the canonical form. |
+| `simbolico/raicesSimbolicas.ts` | Closed form of the real roots. A quadratic irrational never comes alone — its conjugate is also a real root — so pairs of irrational roots propose `x² − Sx + M` (S and M reconstructed from doubles by continued fractions) and **exact division decides**. The floating-point step can only propose; nothing approximate can be presented as exact. |
+| `simbolico/polinomioExacto.ts` | Horner over ℚ[x] evaluated inside the field: turns an exact abscissa into an exact ordinate through `y = f(x)`. |
+| `simbolico/constanteExacta.ts` | A variable-free subtree evaluated in ℚ, in integer arithmetic only: `nthRoot(64,3)` is 4, `8^(2/3)` is 4, `√2` is `null`. Roots are accepted only when the integer root exists. |
+| `resolverSistema.ts` | Classify → eliminate → solve → **verify**, plus the four-rung ladder (exact → numeric → branches → symmetric numeric). `resolverBloque` is the entry point the host calls; it separates the domain restriction before solving and re-applies it after, **expands the double sign before pairing anything** (§18.2c), and reports `aproximado` (values came from a sweep) and `parcial` (some pair could not be enumerated) as **independent** facts — an empty *and* partial list is "I do not know", not "they do not meet". |
 | `ordenada.ts` | `lectorExacto(objeto)`: the exact ordinate reader, for explicit `y = f(x)` only. |
+| `dominio.ts` | What an expression needs in order to exist, read off the tree: a denominator that does not vanish, an even radicand that is not negative, a positive logarithm argument, an arcsine argument within [−1, 1]. From those conditions it derives the **breakpoints** — where the domain can change — solving them exactly through the CAS's own root engine when they are polynomial, and by a sign-change sweep otherwise. `mismaFuncion(a, b)` is the guard that decides whether a transformation is adopted: it compares **values** over the anodyne sample *and* **domains** over the breakpoints, and the second question is asked of the conditions, never of the numbers — in floating point `1/0` is `Infinity`, so `(1/x)^(-1)` evaluates to 0 at x=0 and agrees with `x`. Shared by `simplificar` and `derivar`. |
+| `notablesImplicita.ts` | The notable points of an implicit curve, asked of the equation: roots are `F = 0 ∩ y = 0`, Y-intercepts `F = 0 ∩ x = 0`, and vertices `F = 0 ∩ ∂F/∂x = 0` — implicit differentiation, since `dy/dx = −Fₓ/F_y` vanishes where `Fₓ` does and `F_y` does not. That last condition is not decoration: where **both** vanish the point is singular (the cusp of `y² = x³` at the origin has no tangent), so those are filtered out. Three calls to `resolverBloque`; the states it returns travel untouched to the panel, because an empty list from an unsolved system is not "there are none". |
+
+### 18.2b A transformation must preserve the domain, not just the values
+
+Algebraic identities taught as rewriting rules are mostly conditional, and the two classic traps
+are `(x²−1)/(x−1) → x+1` (true only for `x ≠ 1`) and `√(x²) → x` (false for every negative `x`;
+the real identity is `|x|`). A simplifier that treats expressions as strings makes both.
+
+The plugin's answer is a **fidelity guard**: a transformation is adopted only if the result is the
+same function as the original. That guard used to compare values over ten anodyne sample points —
+non-integer, both signs, near and far from the origin — chosen precisely so as not to land on a
+root. It catches the big error, because a form that widens the domain over a whole *interval*
+(`√u² → u` for `u<0`) shows up in some sample; and it is blind to the small one **by
+construction**, because a domain that changes at a single *point* is invisible to a sample that
+avoids the special points. Four unsound cancellations were passing through it: `x²/x → x`,
+`x³/x → x²`, `x²/x² → 1` and `sin(x)·x/x → sin(x)`, all of them filling the hole at `x = 0`.
+
+`math/dominio.ts` closes it by telling the sample where to look, and by asking the right question:
+
+- **Where.** The conditions are read off the tree and their zeros — the breakpoints — are solved
+  exactly through the CAS's own root engine when polynomial. Exactly matters: evaluating `x²/x` at
+  `1e-13` yields `1e-13`, a perfectly finite number that betrays nothing. The hole is only visible
+  if you step exactly on it.
+- **What.** Whether a point is outside the domain is decided by the *conditions*, not by the value
+  that comes out. `1/x` at 0 is `Infinity` in floating point, so `(1/x)^(-1)` is 0 there and
+  matches `x` number for number; comparing conditions instead shows one demands `x ≠ 0` and the
+  other does not.
+
+Two identities that *are* unconditionally true were added at the same time, and they are the ones
+that used to be left undone out of caution: `√(u²) → |u|` and `|u|² → u²`.
+
+**What this does not do.** It does not decide implications between conditions, and it does not need
+to: the caller already has the points where the difference shows. And it cannot rescue a reduction
+that happens before the plugin sees it — `mathjs`'s own `derivative()` returns `1` for `d/dx(x²/x)`,
+already without the hole, so the derivative panel still widens the domain there. Expressing that
+result faithfully would need a notation for "everywhere except a point", which the block syntax
+does not have.
+
+### 18.2c A `±` is two curves, and both halves of the engine have to agree on that
+
+`y = ±⁴√(1−x⁴)` is not an equation, it is the *family* of two. The tracing side always knew this:
+`composicion.ts` runs `expandirDobleSigno` and hands the two branches to a `ProveedorUnion`, which
+is why the plot shows both halves. The solver did not — it paired the equations as written — so
+against `y = ∛x`, a system whose two curves are **odd** and therefore cross in a symmetric pair
+(x ≈ 0.7507 and x ≈ −0.7508), the ⓘ panel named one point while the plot drew the crossing of the
+other. Two halves of the same engine disagreeing about how many curves are written.
+
+Since 1.5.0 `resolverBloque` expands the double sign **before pairing anything**, through the same
+`parsing/dobleSigno` the plot uses. Two properties make the fix correct rather than merely
+larger:
+
+* **Branches stay grouped by the equation they came from, and pairing is group against group.**
+  A branch is never crossed with its own sibling. Where the two halves meet — the radicand at zero
+  — there is no intersection between distinct curves; it is one curve closing on itself, and
+  enumerating that point would invent solutions. It is the same reason the plot unites them in one
+  provider instead of treating them as two objects.
+* **The expansion happens above the ladder, not inside a rung**, so all four rungs see
+  single-valued equations. Rung 3 already expanded `±` on its own despeje results; that still
+  works, because `ramaDoble` refuses to open a second independent sign axis in a context that
+  already has one.
+
+Pairs are flattened into one list before the loop, so the four rungs still read at one level of
+indentation instead of at the bottom of four nested loops. Cost is bounded the same way the tracer
+bounds it: one written `±` means two branches, never four, because `expandirDobleSigno` resolves
+*every* sentinel in an expression with the same sign.
+
+Two regression tests pin both properties (`mate.test.ts`). Measured against the 162 hand-written
+blocks of a real vault, this changed that one system and **no other**: every other output is
+identical line by line.
 
 ### 18.3 Verification is not a formality
 

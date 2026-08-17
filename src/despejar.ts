@@ -809,9 +809,17 @@ function despejePorInversion(L: Nodo, R: Nodo): ResultadoDespeje | null {
   return rhs === null ? null : { ecuacion: `y = ${rhs}`, completo: true };
 }
 
-/** Núcleo: despeja y como ECUACIÓN en sintaxis mathjs, o null si no hay `=`, no aparece
- *  y, o no se puede parsear. `completo`=true si quedó `y = …`. */
-function despejar(ecuacion: string): ResultadoDespeje | null {
+/**
+ * Núcleo: despeja y como ECUACIÓN en sintaxis mathjs, o null si no hay `=`, no aparece
+ * y, o no se puede parsear. `completo`=true si quedó `y = …`.
+ *
+ * Se exporta EN CRUDO —sin el LaTeX de `despejarY`, sin el filtro a un solo valor de
+ * `despejeExplicito` y sin el embellecido de `despejarEcuaciones`— porque el solucionador de
+ * sistemas (`math/ramas.ts`) necesita las dos cosas a la vez: el string re-parseable con sus
+ * centinelas intactos (el `±` multivaluado es justamente lo que quiere cruzar rama a rama) y el
+ * `completo`, que es lo que decide si la enumeración resultante se puede prometer.
+ */
+export function despejar(ecuacion: string): ResultadoDespeje | null {
   // Componente paramétrica (`y(t)=…`): su `y` es el NOMBRE de la componente, no la incógnita.
   // Sin esta guarda, `y(t)=5\sin t` se leía como el producto `y·t` y el despeje entregaba una
   // ecuación inventada (`y = (5 sin t)/t`) sobre una curva que no es esa.

@@ -131,10 +131,26 @@ export function numeroALatex(v: number): string {
   return q === 1 ? `${signo}${numerador}` : `${signo}\\frac{${numerador}}{${q}}`;
 }
 
-/**
- * Par ordenado ya formateado, `(x, y)`, en texto plano. Es el formato que usan casi
- * todas las líneas del panel cartesiano.
- */
-export function puntoATexto(x: number, y: number): string {
-  return `(${numeroATexto(x)}, ${numeroATexto(y)})`;
+// ─────────────────────────────────────────────
+// Piezas compuestas, en LaTeX
+// ─────────────────────────────────────────────
+//
+// Un par y un intervalo son UNA expresión, no dos números con puntuación en medio: sus
+// paréntesis pertenecen a la expresión y tienen que crecer con ella (`\left(…\right)`), y su
+// coma es un separador y no un decimal. Por eso se componen aquí enteros en vez de dejar que
+// cada panel pegue trozos: así los cinco cuadros escriben el mismo par de la misma manera.
+
+/** Par ordenado en LaTeX, con paréntesis que crecen: `\left(0,\ \frac{\pi}{2}\right)`. */
+export function puntoALatex(x: number, y: number): string {
+  return `\\left(${numeroALatex(x)},\\ ${numeroALatex(y)}\\right)`;
+}
+
+/** Intervalo ABIERTO en LaTeX, con ∞ donde toca: `\left(-\infty,\ -1\right)`. */
+export function intervaloALatex(a: number, b: number): string {
+  return `\\left(${numeroALatex(a)},\\ ${numeroALatex(b)}\\right)`;
+}
+
+/** Varios números como UN fragmento matemático: `\frac{\pi}{4},\ \frac{3\pi}{4}`. */
+export function listaALatex(vs: readonly number[]): string {
+  return vs.map(numeroALatex).join(",\\ ");
 }

@@ -324,6 +324,44 @@ describe("Parser: trig SIN backslash con llaves y exponente vacío", () => {
     // Un `(…)` SIN nada delante sí es la base de la raíz (comportamiento intacto).
     igual(normalizarEntrada("(x+1)^{1/2}"), "sqrt((x+1))", "(x+1)^{1/2} → sqrt((x+1))");
   });
+
+  test("el argumento en llaves de una trigonométrica puede llevar llaves DENTRO", () => {
+    // La regla usaba `\{([^{}]+)\}`, que por construcción no puede casar un grupo anidado: se
+    // aplicaba de fuera hacia dentro y una sola vez, así que en `\cos{\tan{x}}` convertía el
+    // `\tan` interior y dejaba el `\cos{` roto; el barrido de barras residuales le quitaba
+    // después la suya y quedaba `cos{...}`, que MathJS rechaza. El bloque no dibujaba nada.
+    igual(normalizarEntrada(String.raw`\sin{\sqrt{x}}`), "sin(sqrt(x))", "raíz dentro del seno");
+    igual(normalizarEntrada(String.raw`\cos{\sin{x}}`), "cos(sin(x))", "una trig dentro de otra");
+    igual(normalizarEntrada(String.raw`\cos{\tan{\sin{\csc{x^{3}}}}}`), "cos(tan(sin(csc(x^(3)))))",
+      "cuatro niveles");
+    // Y NO se arregla repitiendo la pasada plana: `convertirRaices` corre DESPUÉS de esta
+    // regla, así que al llegar aquí la raíz todavía tiene sus llaves puestas.
+    // (`logNat` viaja con nombre propio hasta el final, donde se resuelve a `log(·, e)`.)
+    igual(normalizarEntrada(String.raw`\sin{\ln{x^{\sqrt{2}}}}`), "sin(log(x^(sqrt(2)), e))",
+      "logaritmo y raíz dentro del seno");
+  });
+
+  test("la guarda por la izquierda no le roba el argumento a una inversa ni a una hiperbólica", () => {
+    // Sin barra que delimite el nombre, el `sin` de `asin{` casaría y la inversa se quedaría
+    // sin argumento. Y `sinh{` no es `sin{`: entre el nombre y la llave está la `h`.
+    igual(normalizarEntrada(String.raw`\arcsin{\sqrt{x}}`), "asin(sqrt(x))", "inversa con raíz");
+    igual(normalizarEntrada("asin{x}"), "asin(x)", "inversa ya convertida");
+    igual(normalizarEntrada(String.raw`\sinh{x}`), "sinh(x)", "hiperbólica, que antes no casaba");
+    igual(normalizarEntrada(String.raw`\tanh{\sqrt{x}}`), "tanh(sqrt(x))", "hiperbólica con raíz");
+  });
+
+  test("las hiperbólicas NO pasan su argumento a grados", () => {
+    // `FUNCIONES_TRIG` (la lista de la conversión a radianes) y la lista de esta regla son
+    // distintas a propósito: el argumento de un seno hiperbólico no es un ángulo.
+    igual(normalizarEntrada(String.raw`\sin{30}`), "sin(30*pi/180)", "el seno sí");
+    igual(normalizarEntrada(String.raw`\sinh{30}`), "sinh(30)", "el seno hiperbólico no");
+  });
+
+  test("una llave sin cerrar se deja intacta en vez de destrozar la cadena", () => {
+    // Media conversión es peor que ninguna: el resto del parser hace lo mismo ante un grupo
+    // sin cerrar, y así el bloque puede decir que no lo entiende en vez de graficar basura.
+    igual(normalizarEntrada(String.raw`\sin{x`), "sin{x", "sin cierre, sin tocar");
+  });
 });
 
 describe("Símbolos de entrada: ± y comandos LaTeX", () => {
@@ -526,5 +564,54 @@ describe("Formas degeneradas: nada las convierte en un número", () => {
     igual(etiquetaIntegral("\\int_{-\\infty}^{\\infty}x^2\\,dx")?.etiqueta, "Límites no numéricos",
       "límites infinitos: la impropia no se evalúa, y se dice en el plano");
     igual(etiquetaIntegral("\\int_{0}^{2}x^2\\,dx"), null, "una integral con valor no tiene etiqueta");
+  });
+});
+
+describe("LaTeX · el signo de un término simbólico se pinta como un signo", () => {
+  /** El bloque despejado, tal como lo ve el panel «Despejar y». */
+  const despejado = (ec: string): string => bloqueALatex(despejarEcuaciones([ec]));
+
+  test("π y e SOBREVIVEN al despeje: no se evalúan a decimales", () => {
+    // Es la propiedad de fondo: el despejador manipula el árbol, no lo evalúa. Una constante
+    // con nombre llega al otro lado siendo la misma constante.
+    igual(despejado("\\pi x + 6y = 12"), "y=\\frac{-\\pi{x}}{6}+2");
+    igual(despejado("2y = \\pi"), "y=\\frac{\\pi}{2}");
+    igual(despejado("\\pi y = 3x"), "y=\\frac{3x}{\\pi}");
+    igual(despejado("y = e^x"), "y=e^{x}");
+    for (const ec of ["\\pi x + 6y = 12", "2y = \\pi", "y = e^x"])
+      assert(!/3\.14|2\.71/.test(despejado(ec)), `${ec}: se ha colado un decimal`);
+  });
+
+  test("un término negativo se RESTA, no se suma en negativo", () => {
+    // `y + e = x` despeja a `y = -e + x`; al ordenar en grado descendente, el término negativo
+    // quedaba detrás de un `+` y salía `x+-e`. El signo estaba escondido dentro del nodo.
+    igual(despejado("y + e = x"), "y=x- e");
+    igual(despejado("y + \\pi = x"), "y=x-\\pi");
+    igual(despejado("y + z = x"), "y=x- z");
+    // Con el signo pegado al primer factor del producto (`-2·e`), que es como sale del cambio
+    // de lado, tampoco debe aparecer el `+-`.
+    igual(despejado("y + 2e = x"), "y=x-2e");
+    for (const ec of ["y + e = x", "y + \\pi = x", "y + z = x", "y + 2e = x"])
+      assert(!despejado(ec).includes("+-"), `${ec}: quedó un «+-»`);
+  });
+
+  test("el menos de un producto no arrastra paréntesis", () => {
+    igual(despejado("\\pi x + 6y = 12"), "y=\\frac{-\\pi{x}}{6}+2");
+    igual(despejado("3 \\pi x + 6y = 12"), "y=\\frac{-\\pi{x}}{2}+2");
+    igual(despejado("\\pi x + y = 12"), "y=-\\pi{x}+12");
+  });
+
+  test("donde el paréntesis SÍ significa algo, se queda", () => {
+    // Estas tres cambiarían de valor sin él, así que la limpieza no debe tocarlas.
+    igual(exprALatex("-(a + b)"), "-\\left( a+b\\right)");
+    igual(exprALatex("-(a - b)"), "-\\left( a-b\\right)");
+    igual(exprALatex("-(x^2)"), "-x^{2}", "una potencia no se convierte en (-x)^2");
+  });
+
+  test("NO REGRESIÓN: el menos de una FRACCIÓN sigue yendo fuera", () => {
+    // Convención del panel: `d/dx 1/x` se lee `−1/x²`, no `(−1)/x²`. El arreglo del producto
+    // no debe arrastrar al cociente —lo hizo una vez, y estas dos pruebas lo detectaron—.
+    igual(exprALatex("-(1/x^2)"), "-\\frac{1}{x^{2}}");
+    igual(exprALatex("-(2/x^3)"), "-\\frac{2}{x^{3}}");
   });
 });

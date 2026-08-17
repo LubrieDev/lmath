@@ -21,6 +21,10 @@ import {
 } from "obsidian";
 
 import { IDIOMA_POR_DEFECTO, IDIOMAS, fijarIdioma, t, type Idioma } from "../i18n";
+// Migración de la sintaxis de los bloques (`obs-graph` → `_graph`), en `migracion/`. Ambos
+// imports son TEMPORALES y se van con la herramienta en la 2.0.0.
+import { ModalMigracion } from "../../migracion/ModalMigracion";
+import { tm } from "../../migracion/textos";
 
 /** Preferencias persistentes del plugin. (La simplificación es SIEMPRE automática e
  *  incondicional, no es un ajuste: ver `baseAutomatica` en MotorExperimental.) */
@@ -206,6 +210,31 @@ export class PestanaAjustesLMath extends PluginSettingTab {
             name: txt.ajustes.trig.iman.etiqueta,
             desc: txt.ajustes.trig.iman.detalle,
             control: { type: "toggle", key: "imanTrig" },
+          },
+        ],
+      },
+      // ── Migración de la sintaxis (SECCIÓN TEMPORAL) ────────────────────────────────────
+      // Se retira entera el día que los `obs-*` dejen de aceptarse. Hasta entonces es el único
+      // sitio permanente donde alguien puede enterarse del renombrado y actuar: el aviso del
+      // arranque se enseña UNA vez y se va, esta fila se queda.
+      //
+      // Va con `render` y no con un `control` declarativo porque no persiste ningún ajuste —
+      // dispara una acción—, y los `control` de la API declarativa están hechos para leer y
+      // escribir una clave de `AjustesTransformaciones`.
+      {
+        type: "group",
+        heading: tm().ajustesNombre,
+        items: [
+          {
+            name: tm().modalTitulo,
+            desc: tm().ajustesDescripcion,
+            render: (setting) => {
+              setting.addButton((boton) => {
+                boton.setButtonText(tm().ajustesBoton);
+                boton.setCta();
+                boton.onClick(() => { new ModalMigracion(this.app).open(); });
+              });
+            },
           },
         ],
       },

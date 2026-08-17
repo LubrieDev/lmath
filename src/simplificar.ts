@@ -9,7 +9,7 @@ import {
   formatearCanonico, racionalizarFracciones, combinarYordenar, combinarFracciones,
   profundidadFraccion, rationalizeSeguro, resimbolizarConstantes, sinParentesisRedundantes, type Nodo,
 } from "./formatoExpr";
-import { compilarExpresion } from "./evaluador";
+import { mismaFuncion } from "./math/dominio";
 
 // ─────────────────────────────────────────────
 // Simplificar y expandir
@@ -57,6 +57,18 @@ const REGLAS_SIMPLIFY: unknown[] = (simplify as unknown as { rules: unknown[] })
     "sin(-n1) -> -sin(n1)",
     "cos(-n1) -> cos(n1)",
     "tan(-n1) -> -tan(n1)",
+    // La raíz par de un cuadrado es el VALOR ABSOLUTO, no la base. `√(u²) = u` es el error de
+    // manual —falso para todo u<0— y por evitarlo el motor no reducía nada: dejaba `√(x²)` tal
+    // cual, que es correcto pero es el radical de un cuadrado sin resolver. `|u|` sí es cierto
+    // en TODO ℝ, y además es la forma canónica real de esa expresión.
+    "sqrt(n1^2) -> abs(n1)",
+    "nthRoot(n1^2, 2) -> abs(n1)",
+    // Y al revés: elevar un módulo al cuadrado lo borra, porque el cuadrado ya es no negativo.
+    // Las dos formas están definidas en todo ℝ y valen lo mismo, así que la igualdad no lleva
+    // condición. Encadenadas, `√(|u|²)` acaba en `|u|`.
+    "abs(n1)^2 -> n1^2",
+    "abs(-n1) -> abs(n1)",
+    "abs(abs(n1)) -> abs(n1)",
   ]);
 
 // `simplify` convierte TODO decimal a fracción exacta, y su tope de fábrica es un denominador
@@ -87,51 +99,11 @@ export function simplificarExpr(exprNorm: string): Nodo | null {
   } catch { return base; }
 }
 
-// Constantes con NOMBRE que NO son variables libres (no se muestrean en la equivalencia).
-const CONSTANTES_EVAL = new Set(["pi", "e", "tau", "phi", "Infinity", "NaN"]);
-// Muestra "anodina" (no entera, ambos signos, cerca y lejos del origen) para el guardián de
-// equivalencia: evita caer justo en raíces/simetrías. Misma filosofía que en `derivar.ts`.
-const MUESTRA = [-7.3, -2.6, -1.2, -0.7, -0.3, 0.4, 1.1, 2.7, 5.8, 11.4];
-
-/** Variables LIBRES de una expresión (SymbolNode que no son constantes con nombre): las que
- *  hay que muestrear para comparar dos formas (x en obs-graph; x e y en implícitas/sistemas).
- *  El NOMBRE de una función es también un SymbolNode en mathjs (el `fn` del FunctionNode): hay
- *  que EXCLUIRLO —si `log` o `sqrt` entran como variable, el scope de la evaluación los sombrea
- *  con un número y la expresión entera da NaN → toda forma con funciones se declaraba "no
- *  equivalente"—. El `parent`/`path` del filtro es lo que distingue una cosa de la otra. */
-function variablesLibres(expr: string): string[] {
-  try {
-    const nombres = new Set<string>();
-    const esNombreDeFuncion = (padre: Nodo | null, camino: string) =>
-      padre !== null && padre.type === "FunctionNode" && camino === "fn";
-    (parse(expr) as unknown as Nodo).filter(
-      (nn: Nodo, camino: string, padre: Nodo | null) =>
-        nn.type === "SymbolNode" && !esNombreDeFuncion(padre, camino)
-    ).forEach((nn) => { if (!CONSTANTES_EVAL.has(nn.name)) nombres.add(nn.name); });
-    return [...nombres];
-  } catch { return []; }
-}
-
-/** ¿`a` y `b` (strings mathjs) definen la MISMA función sobre una muestra de sus variables
- *  libres, INCLUIDA la no-finitud (fidelidad de DOMINIO: una forma que "rellene" un hueco
- *  —p. ej. cancelar √u/√u— queda rechazada)? Conservador: ante cualquier duda → false, y el
- *  llamador conserva la forma original. Cada variable toma un valor distinto de la muestra
- *  (índices desfasados) para no correlacionarlas en x=y. */
-function formasEquivalentes(a: string, b: string): boolean {
-  try {
-    const vars = [...new Set([...variablesLibres(a), ...variablesLibres(b)])];
-    const fa = compilarExpresion(a), fb = compilarExpresion(b);
-    return MUESTRA.every((_, i) => {
-      const scope: Record<string, number> = {};
-      vars.forEach((v, k) => { scope[v] = MUESTRA[(i + 3 * k) % MUESTRA.length]; });
-      const va = fa(scope) as number, vb = fb(scope) as number;
-      const finA = typeof va === "number" && Number.isFinite(va);
-      const finB = typeof vb === "number" && Number.isFinite(vb);
-      if (!finA || !finB) return finA === finB;
-      return Math.abs(va - vb) <= 1e-8 * (1 + Math.abs(va));
-    });
-  } catch { return false; }
-}
+// El guardián de fidelidad (valor Y dominio) vive en `math/dominio`, con el análisis de
+// condiciones del que depende, y lo comparte con `derivar`: los dos hacen la misma pregunta
+// —«¿esta forma es la misma función que aquella?»— y tenían dos respuestas distintas, las dos
+// ciegas al mismo punto.
+const formasEquivalentes = mismaFuncion;
 
 /** Formato final compartido: reordena factores/combina semejantes (`combinarYordenar`),
  *  recupera fracciones exactas de los decimales de `rationalize` (`0.5x`→`x/2`), RE-SIMBOLIZA

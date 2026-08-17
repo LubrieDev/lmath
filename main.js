@@ -2815,7 +2815,7 @@ __export(main_exports, {
   default: () => LMathPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian9 = require("obsidian");
+var import_obsidian11 = require("obsidian");
 
 // src/engines/obs-graph/GraphEngine.ts
 var import_obsidian = require("obsidian");
@@ -45715,6 +45715,29 @@ function reemplazarComandoLlaves(expr, comando, envolver) {
   }
   return expr;
 }
+function reemplazarFuncionLlaves(expr, nombre, envolver) {
+  const marca = `${nombre}{`;
+  let desde = 0;
+  for (; ; ) {
+    const idx = expr.indexOf(marca, desde);
+    if (idx === -1)
+      return expr;
+    const conBarra = idx > 0 && expr[idx - 1] === "\\";
+    const inicio = conBarra ? idx - 1 : idx;
+    const previo = inicio === 0 ? "" : expr[inicio - 1];
+    if (!conBarra && previo !== "" && /[A-Za-z0-9\\]/.test(previo)) {
+      desde = idx + nombre.length;
+      continue;
+    }
+    const inicioLlave = idx + nombre.length;
+    const fin = encontrarLlaveCierre(expr, inicioLlave);
+    if (fin === -1)
+      return expr;
+    const reemplazo = envolver(expr.slice(inicioLlave + 1, fin));
+    expr = expr.slice(0, inicio) + reemplazo + expr.slice(fin + 1);
+    desde = inicio + reemplazo.length;
+  }
+}
 var ENVOLTORIOS_DESENVUELVEN = ["operatorname", "mathrm", "mathbf", "mathit", "mathsf", "boldsymbol"];
 var ENVOLTORIOS_BORRAN = ["text", "textrm", "textit", "mbox", "label"];
 function quitarEnvoltoriosTipograficos(expr) {
@@ -46180,14 +46203,9 @@ function normalizarEntrada(raw) {
     new RegExp(`\\\\(${TRIG_PATRON})\\s*\\\\frac\\{([^}]+)\\}\\{([^}]+)\\}`, "g"),
     "$1(($2)/($3))"
   );
-  expr = expr.replace(
-    new RegExp(`\\\\(${TRIG_PATRON})\\s*\\{([^{}]+)\\}`, "g"),
-    "$1($2)"
-  );
-  expr = expr.replace(
-    new RegExp(`(^|[^A-Za-z0-9\\\\])(${TRIG_PATRON})\\s*\\{([^{}]+)\\}`, "g"),
-    "$1$2($3)"
-  );
+  const FUNCIONES_LLAVES = [...TRIG_PATRON.split("|"), "sinh", "cosh", "tanh", "sech", "csch", "coth"];
+  for (const fn of FUNCIONES_LLAVES)
+    expr = reemplazarFuncionLlaves(expr, fn, (a) => `${fn}(${a})`);
   expr = expr.replace(
     new RegExp(`\\\\(${TRIG_PATRON})\\s+([+-]?\\d+(\\.\\d+)?)(?![0-9.a-zA-Z\\\\])`, "g"),
     "$1($2)"
@@ -46821,10 +46839,10 @@ function insertarProductoImplicito(expr) {
 
 // src/evaluador.ts
 function compilarExpresion(expr) {
-  const compilada = parse2(expr).compile();
+  const compilada2 = parse2(expr).compile();
   return (scope) => {
     try {
-      return compilada.evaluate({
+      return compilada2.evaluate({
         ...scope,
         ...FUNCIONES_INVERSAS_EXTRA,
         ...FUNCIONES_ESCALON_RAPIDAS,
@@ -48931,14 +48949,30 @@ function gradoEnX(n) {
       return contieneVarOrden(n) ? null : 0;
   }
 }
+function signoDelTermino(n) {
+  if (n.type === "OperatorNode" && n.args.length === 1 && n.op === "-") {
+    const dentro2 = signoDelTermino(n.args[0]);
+    return { signo: -dentro2.signo, nodo: dentro2.nodo };
+  }
+  if (n.type === "OperatorNode" && n.args.length === 2 && (n.op === "*" || n.op === "/")) {
+    const izq = signoDelTermino(n.args[0]);
+    if (izq.signo < 0) {
+      const fn = n.op === "*" ? "multiply" : "divide";
+      return { signo: -1, nodo: opNodo(n.op, fn, [izq.nodo, n.args[1]], n.implicit) };
+    }
+  }
+  return { signo: 1, nodo: n };
+}
 function ordenarPolinomioDescendente(node) {
   const terminos2 = [];
   const aplanar = (n, signo3) => {
     if (n.type === "OperatorNode" && n.args.length === 2 && (n.op === "+" || n.op === "-")) {
       aplanar(n.args[0], signo3);
       aplanar(n.args[1], n.op === "-" ? -signo3 : signo3);
-    } else
-      terminos2.push({ signo: signo3, nodo: n });
+      return;
+    }
+    const { signo: propio, nodo: cuerpo } = signoDelTermino(n);
+    terminos2.push({ signo: signo3 * propio, nodo: cuerpo });
   };
   aplanar(node, 1);
   if (terminos2.length < 2)
@@ -49085,6 +49119,19 @@ function fusionarRadicalesEnProducto(node) {
   const llanos = salida.filter((f) => factorRadical(f) === null);
   return [...llanos, ...raices2].reduce((acc, f) => opNodo("*", "multiply", [acc, f]));
 }
+function sinParentesisDeMenosUnario(node) {
+  const desnudo = (n) => n.type === "ParenthesisNode" ? desnudo(n.content) : n;
+  const negar = (n) => {
+    const cuerpo = desnudo(n);
+    if (cuerpo.type === "OperatorNode" && cuerpo.args.length === 2 && cuerpo.op === "*") {
+      return opNodo("*", "multiply", [negar(cuerpo.args[0]), cuerpo.args[1]], cuerpo.implicit);
+    }
+    if (cuerpo.type === "OperatorNode" && (cuerpo.args.length === 1 || cuerpo.op === "+" || cuerpo.op === "-"))
+      return opNodo("-", "unaryMinus", [n]);
+    return opNodo("-", "unaryMinus", [cuerpo]);
+  };
+  return node.transform((n) => n.type === "OperatorNode" && n.args.length === 1 && n.op === "-" ? negar(n.args[0]) : n);
+}
 
 // src/latex.ts
 function ladoALatex(lado) {
@@ -49093,9 +49140,11 @@ function ladoALatex(lado) {
     return "\\text{[...]}";
   try {
     const arbol = ordenarPolinomioDescendente(
-      agruparFuncionesDesnudasEnProducto(
-        fusionarRadicalesEnProducto(
-          normalizarPotenciasRacionales(parse2(norm3))
+      sinParentesisDeMenosUnario(
+        agruparFuncionesDesnudasEnProducto(
+          fusionarRadicalesEnProducto(
+            normalizarPotenciasRacionales(parse2(norm3))
+          )
         )
       )
     );
@@ -50535,7 +50584,7 @@ var GraphEngine = class {
 };
 
 // src/host-obsidian/MotorExperimental.ts
-var import_obsidian8 = require("obsidian");
+var import_obsidian10 = require("obsidian");
 
 // src/core/scene/viewport-utils.ts
 function crearViewport(domX, domY, anchoPx, altoPx, dpr) {
@@ -52507,8 +52556,8 @@ var TrazadorParametricoAdaptativo = class {
         const dxs = B.sx - A2.sx, dys = B.sy - A2.sy;
         const cuerda = Math.hypot(dxs, dys);
         if (prof < PROF_MAX3) {
-          const tm = (ta + tb) / 2;
-          const M = ev(tm);
+          const tm2 = (ta + tb) / 2;
+          const M = ev(tm2);
           if (M.util) {
             const dev = cuerda < 1e-9 ? Math.hypot(M.sx - A2.sx, M.sy - A2.sy) : Math.abs(dxs * (A2.sy - M.sy) - (A2.sx - M.sx) * dys) / cuerda;
             let giro = 0;
@@ -52520,13 +52569,13 @@ var TrazadorParametricoAdaptativo = class {
                 giro = Math.abs(Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy));
             }
             if (dev > DESV || cuerda > SALTO_PX || giro * 2 > GIRO_MAX) {
-              tramo(ta, A2, tm, M, prof + 1);
-              tramo(tm, M, tb, B, prof + 1);
+              tramo(ta, A2, tm2, M, prof + 1);
+              tramo(tm2, M, tb, B, prof + 1);
               return;
             }
           } else {
-            tramo(ta, A2, tm, M, prof + 1);
-            tramo(tm, M, tb, B, prof + 1);
+            tramo(ta, A2, tm2, M, prof + 1);
+            tramo(tm2, M, tb, B, prof + 1);
             return;
           }
         }
@@ -53371,9 +53420,6 @@ function analizarPuntosNotables(ramas, objetoId, viewport) {
   if (vertices.length <= LIMITE_POR_CATEGORIA)
     out.push(...vertices);
   return out;
-}
-function resumenPuntosNotables(ramas, objetoId, viewport) {
-  return recolectar(ramas, objetoId, viewport);
 }
 
 // src/core/analysis/separarImplicita.ts
@@ -54646,6 +54692,1050 @@ var ProveedorUnion = class {
   }
 };
 
+// src/math/racional.ts
+function mcd5(a, b) {
+  let x = a < 0n ? -a : a;
+  let y = b < 0n ? -b : b;
+  while (y) {
+    const t2 = x % y;
+    x = y;
+    y = t2;
+  }
+  return x;
+}
+function rac(n, d = 1n) {
+  if (d === 0n)
+    throw new Error("racional con denominador cero");
+  let nn = n, dd = d;
+  if (dd < 0n) {
+    nn = -nn;
+    dd = -dd;
+  }
+  const g = mcd5(nn, dd);
+  if (g > 1n) {
+    nn /= g;
+    dd /= g;
+  }
+  return { n: nn, d: dd };
+}
+var CERO = { n: 0n, d: 1n };
+var UNO = { n: 1n, d: 1n };
+var esCero2 = (a) => a.n === 0n;
+var signo = (a) => a.n < 0n ? -1 : a.n > 0n ? 1 : 0;
+var suma = (a, b) => rac(a.n * b.d + b.n * a.d, a.d * b.d);
+var resta = (a, b) => rac(a.n * b.d - b.n * a.d, a.d * b.d);
+var producto = (a, b) => rac(a.n * b.n, a.d * b.d);
+var negado = (a) => ({ n: -a.n, d: a.d });
+function cociente(a, b) {
+  if (esCero2(b))
+    throw new Error("divisi\xF3n racional por cero");
+  return rac(a.n * b.d, a.d * b.n);
+}
+function potencia(a, k) {
+  let r = UNO;
+  for (let i2 = 0; i2 < k; i2++)
+    r = producto(r, a);
+  return r;
+}
+function comparar(a, b) {
+  const izq = a.n * b.d, der = b.n * a.d;
+  return izq < der ? -1 : izq > der ? 1 : 0;
+}
+var absoluto = (a) => a.n < 0n ? negado(a) : a;
+function aNumero3(a) {
+  const n = Number(a.n), d = Number(a.d);
+  if (Number.isFinite(n) && Number.isFinite(d))
+    return n / d;
+  const entero2 = a.n / a.d;
+  const resto = a.n % a.d;
+  return Number(entero2) + Number(resto) / Number(a.d);
+}
+function desdeNumero(x) {
+  if (!Number.isFinite(x))
+    throw new Error("racional desde un n\xFAmero no finito");
+  if (Number.isInteger(x))
+    return rac(BigInt(x));
+  let num = x, den = 1n;
+  for (let i2 = 0; i2 < 1100 && !Number.isInteger(num); i2++) {
+    num *= 2;
+    den *= 2n;
+  }
+  return rac(BigInt(num), den);
+}
+function desdeDecimal(texto) {
+  const m = /^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(texto.trim());
+  if (!m || m[2] === "" && (m[3] ?? "") === "")
+    return null;
+  const sig = m[1] === "-" ? -1n : 1n;
+  const enteros = m[2] === "" ? "0" : m[2];
+  const decimales = m[3] ?? "";
+  let n = BigInt(enteros + decimales) * sig;
+  let d = 10n ** BigInt(decimales.length);
+  const exp3 = m[4] ? Number(m[4]) : 0;
+  if (exp3 > 0)
+    n *= 10n ** BigInt(exp3);
+  else if (exp3 < 0)
+    d *= 10n ** BigInt(-exp3);
+  return rac(n, d);
+}
+function aTexto(a) {
+  return a.d === 1n ? String(a.n) : `${a.n}/${a.d}`;
+}
+
+// src/math/polinomio.ts
+var NULO = [];
+function normalizar(p) {
+  let n = p.length;
+  while (n > 0 && esCero2(p[n - 1]))
+    n--;
+  return n === p.length ? p : p.slice(0, n);
+}
+var grado = (p) => normalizar(p).length - 1;
+var esNulo = (p) => normalizar(p).length === 0;
+function sumaPol(a, b) {
+  const out = [];
+  for (let i2 = 0; i2 < Math.max(a.length, b.length); i2++)
+    out.push(suma(a[i2] ?? CERO, b[i2] ?? CERO));
+  return normalizar(out);
+}
+function restaPol(a, b) {
+  const out = [];
+  for (let i2 = 0; i2 < Math.max(a.length, b.length); i2++)
+    out.push(resta(a[i2] ?? CERO, b[i2] ?? CERO));
+  return normalizar(out);
+}
+function productoPol(a, b) {
+  const A = normalizar(a), B = normalizar(b);
+  if (A.length === 0 || B.length === 0)
+    return NULO;
+  const out = new Array(A.length + B.length - 1).fill(CERO);
+  for (let i2 = 0; i2 < A.length; i2++)
+    for (let j = 0; j < B.length; j++)
+      out[i2 + j] = suma(out[i2 + j], producto(A[i2], B[j]));
+  return normalizar(out);
+}
+function derivada(p) {
+  const q = normalizar(p);
+  if (q.length <= 1)
+    return NULO;
+  const out = [];
+  for (let i2 = 1; i2 < q.length; i2++)
+    out.push(producto(q[i2], rac(BigInt(i2))));
+  return normalizar(out);
+}
+function evaluar(p, x) {
+  const q = normalizar(p);
+  let acc = CERO;
+  for (let i2 = q.length - 1; i2 >= 0; i2--)
+    acc = suma(producto(acc, x), q[i2]);
+  return acc;
+}
+function evaluarNum(p, x) {
+  const q = normalizar(p);
+  let acc = 0;
+  for (let i2 = q.length - 1; i2 >= 0; i2--)
+    acc = acc * x + aNumero3(q[i2]);
+  return acc;
+}
+function dividir(a, b) {
+  const B = normalizar(b);
+  if (B.length === 0)
+    throw new Error("divisi\xF3n polin\xF3mica por el polinomio nulo");
+  let R = [...normalizar(a)];
+  const gb = B.length - 1;
+  const lb = B[gb];
+  const coc = [];
+  while (R.length - 1 >= gb && R.length > 0) {
+    const gr = R.length - 1;
+    const factor = cociente(R[gr], lb);
+    coc[gr - gb] = factor;
+    for (let i2 = 0; i2 <= gb; i2++)
+      R[gr - gb + i2] = resta(R[gr - gb + i2], producto(factor, B[i2]));
+    R = [...normalizar(R)];
+  }
+  for (let i2 = 0; i2 < coc.length; i2++)
+    coc[i2] = coc[i2] ?? CERO;
+  return { coc: normalizar(coc), resto: normalizar(R) };
+}
+function mcdPol(a, b) {
+  let A = normalizar(a), B = normalizar(b);
+  while (B.length > 0) {
+    const { resto } = dividir(A, B);
+    A = B;
+    B = normalizar(resto);
+  }
+  if (A.length === 0)
+    return NULO;
+  return monico(A);
+}
+function monico(p) {
+  const q = normalizar(p);
+  if (q.length === 0)
+    return NULO;
+  const lc = q[q.length - 1];
+  return q.map((c) => cociente(c, lc));
+}
+function libreDeCuadrados(p) {
+  const q = normalizar(p);
+  if (q.length <= 1)
+    return q;
+  const g = mcdPol(q, derivada(q));
+  if (grado(g) <= 0)
+    return monico(q);
+  return monico(dividir(q, g).coc);
+}
+function sucesionSturm(p) {
+  const p0 = normalizar(p);
+  if (p0.length === 0)
+    return [];
+  const suc = [p0];
+  const p1 = derivada(p0);
+  if (esNulo(p1))
+    return suc;
+  suc.push(p1);
+  for (let k = 0; k < p0.length + 2; k++) {
+    const a = suc[suc.length - 2], b = suc[suc.length - 1];
+    if (grado(b) <= 0)
+      break;
+    const { resto } = dividir(a, b);
+    if (esNulo(resto))
+      break;
+    suc.push(normalizar(resto.map(negado)));
+  }
+  return suc;
+}
+function cambiosDeSigno(suc, x) {
+  let previo = 0, cambios = 0;
+  for (const q of suc) {
+    const s = signo(evaluar(q, x));
+    if (s === 0)
+      continue;
+    if (previo !== 0 && s !== previo)
+      cambios++;
+    previo = s;
+  }
+  return cambios;
+}
+function cotaCauchy(p) {
+  const q = normalizar(p);
+  if (q.length <= 1)
+    return UNO;
+  const lc = q[q.length - 1];
+  let max3 = CERO;
+  for (let i2 = 0; i2 < q.length - 1; i2++) {
+    const c = absoluto(cociente(q[i2], lc));
+    if (comparar(c, max3) > 0)
+      max3 = c;
+  }
+  return suma(UNO, max3);
+}
+var MAX_BISECCIONES = 200;
+function raicesRacionales(p) {
+  const q = normalizar(p);
+  if (q.length < 2)
+    return [];
+  let mcm2 = 1n;
+  for (const c of q)
+    mcm2 = mcm2 * c.d / mcdEnteros(mcm2, c.d);
+  const enteros = q.map((c) => c.n * mcm2 / c.d);
+  const a0 = enteros[0] < 0n ? -enteros[0] : enteros[0];
+  const an = enteros[enteros.length - 1] < 0n ? -enteros[enteros.length - 1] : enteros[enteros.length - 1];
+  if (a0 === 0n) {
+    const sinX = normalizar(q.slice(1));
+    return [CERO, ...raicesRacionales(sinX)];
+  }
+  const TOPE = 100000n;
+  if (a0 > TOPE || an > TOPE)
+    return [];
+  const divisores = (n) => {
+    const out2 = [];
+    for (let d = 1n; d * d <= n; d++) {
+      if (n % d === 0n) {
+        out2.push(d);
+        if (d * d !== n)
+          out2.push(n / d);
+      }
+    }
+    return out2;
+  };
+  const out = [];
+  for (const dp of divisores(a0)) {
+    for (const dq of divisores(an)) {
+      for (const s of [1n, -1n]) {
+        const cand = rac(s * dp, dq);
+        if (esCero2(evaluar(q, cand)) && !out.some((r) => comparar(r, cand) === 0))
+          out.push(cand);
+      }
+    }
+  }
+  return out;
+}
+function mcdEnteros(a, b) {
+  let x = a < 0n ? -a : a, y = b < 0n ? -b : b;
+  while (y) {
+    const t2 = x % y;
+    x = y;
+    y = t2;
+  }
+  return x;
+}
+function raicesReales(p) {
+  const libre = libreDeCuadrados(p);
+  if (grado(libre) < 1)
+    return [];
+  const exactas = raicesRacionales(libre);
+  const suc = sucesionSturm(libre);
+  const cota = cotaCauchy(libre);
+  const total = Math.max(0, cambiosDeSigno(suc, negado(cota)) - cambiosDeSigno(suc, cota));
+  if (total === 0)
+    return [];
+  const aislados = [];
+  const cola = [
+    { a: negado(cota), b: cota, n: total }
+  ];
+  let vueltas = 0;
+  while (cola.length > 0 && vueltas++ < MAX_BISECCIONES * 8) {
+    const it = cola.shift();
+    if (!it)
+      break;
+    if (it.n === 0)
+      continue;
+    if (it.n === 1) {
+      aislados.push({ a: it.a, b: it.b });
+      continue;
+    }
+    const m = cociente(suma(it.a, it.b), rac(2n));
+    const cm = cambiosDeSigno(suc, m);
+    const izq = Math.max(0, cambiosDeSigno(suc, it.a) - cm);
+    const der = Math.max(0, cm - cambiosDeSigno(suc, it.b));
+    if (izq === it.n && der === 0) {
+      cola.push({ a: it.a, b: m, n: izq });
+      continue;
+    }
+    if (der === it.n && izq === 0) {
+      cola.push({ a: m, b: it.b, n: der });
+      continue;
+    }
+    if (izq > 0)
+      cola.push({ a: it.a, b: m, n: izq });
+    if (der > 0)
+      cola.push({ a: m, b: it.b, n: der });
+  }
+  const salida = aislados.map(({ a, b }) => {
+    const exacto2 = exactas.find((e3) => comparar(e3, a) > 0 && comparar(e3, b) <= 0) ?? null;
+    if (exacto2)
+      return { a: exacto2, b: exacto2, valor: aNumero3(exacto2), exacto: exacto2 };
+    const r = refinar(libre, a, b);
+    return { a: r.a, b: r.b, valor: r.valor, exacto: null };
+  });
+  salida.sort((u, v) => u.valor - v.valor);
+  return salida;
+}
+function refinar(p, a0, b0) {
+  let a = a0, b = b0;
+  const sa = signo(evaluar(p, a));
+  if (sa === 0)
+    return { valor: aNumero3(a), a, b: a };
+  if (signo(evaluar(p, b)) === 0)
+    return { valor: aNumero3(b), a: b, b };
+  let signoA = sa;
+  for (let i2 = 0; i2 < MAX_BISECCIONES; i2++) {
+    const m = cociente(suma(a, b), rac(2n));
+    const sm = signo(evaluar(p, m));
+    if (sm === 0)
+      return { valor: aNumero3(m), a: m, b: m };
+    if (sm === signoA) {
+      a = m;
+      signoA = sm;
+    } else {
+      b = m;
+    }
+    const na = aNumero3(a), nb = aNumero3(b);
+    if (na === nb)
+      return { valor: na, a, b };
+  }
+  return { valor: (aNumero3(a) + aNumero3(b)) / 2, a, b };
+}
+function potenciaPol(p, k) {
+  let r = [UNO];
+  for (let i2 = 0; i2 < k; i2++)
+    r = productoPol(r, p);
+  return r;
+}
+
+// src/math/polinomio2.ts
+var NULO2 = [];
+function normalizar2(p) {
+  let n = p.length;
+  while (n > 0 && esNulo(p[n - 1]))
+    n--;
+  return (n === p.length ? p : p.slice(0, n)).map(normalizar);
+}
+var gradoY = (p) => normalizar2(p).length - 1;
+function gradoX(p) {
+  let g = -1;
+  for (const c of normalizar2(p))
+    g = Math.max(g, grado(c));
+  return g;
+}
+var esNulo2 = (p) => normalizar2(p).length === 0;
+var constante2 = (k) => esCero2(k) ? NULO2 : [[k]];
+var X2 = [[CERO, UNO]];
+var Y2 = [NULO, [UNO]];
+function suma2(a, b) {
+  const out = [];
+  for (let j = 0; j < Math.max(a.length, b.length); j++)
+    out.push(sumaPol(a[j] ?? NULO, b[j] ?? NULO));
+  return normalizar2(out);
+}
+function resta2(a, b) {
+  const out = [];
+  for (let j = 0; j < Math.max(a.length, b.length); j++)
+    out.push(restaPol(a[j] ?? NULO, b[j] ?? NULO));
+  return normalizar2(out);
+}
+function producto2(a, b) {
+  const A = normalizar2(a), B = normalizar2(b);
+  if (A.length === 0 || B.length === 0)
+    return NULO2;
+  const out = new Array(A.length + B.length - 1).fill(NULO);
+  for (let i2 = 0; i2 < A.length; i2++)
+    for (let j = 0; j < B.length; j++)
+      out[i2 + j] = sumaPol(out[i2 + j], productoPol(A[i2], B[j]));
+  return normalizar2(out);
+}
+function negado2(p) {
+  return normalizar2(p.map((c) => c.map(negado)));
+}
+function potencia2(p, k) {
+  let r = constante2(UNO);
+  for (let i2 = 0; i2 < k; i2++)
+    r = producto2(r, p);
+  return r;
+}
+function sustituirY(p, f) {
+  const P4 = normalizar2(p);
+  let acc = NULO;
+  for (let j = P4.length - 1; j >= 0; j--)
+    acc = sumaPol(productoPol(acc, f), P4[j]);
+  return normalizar(acc);
+}
+function sustituirX(p, x) {
+  const P4 = normalizar2(p);
+  const out = [];
+  for (const c of P4) {
+    let acc = CERO;
+    for (let i2 = c.length - 1; i2 >= 0; i2--)
+      acc = suma(producto(acc, x), c[i2]);
+    out.push(acc);
+  }
+  return normalizar(out);
+}
+function evaluarNum2(p, x, y) {
+  const P4 = normalizar2(p);
+  let acc = 0;
+  for (let j = P4.length - 1; j >= 0; j--) {
+    let cx = 0;
+    const c = P4[j];
+    for (let i2 = c.length - 1; i2 >= 0; i2--)
+      cx = cx * x + Number(c[i2].n) / Number(c[i2].d);
+    acc = acc * y + cx;
+  }
+  return acc;
+}
+function resultanteY(p, q) {
+  const A = normalizar2(p), B = normalizar2(q);
+  const m = gradoY(A), n = gradoY(B);
+  if (m < 0 || n < 0)
+    return NULO;
+  if (m === 0)
+    return potenciaPol(A[0], n);
+  if (n === 0)
+    return potenciaPol(B[0], m);
+  const dim = m + n;
+  const M = [];
+  for (let i2 = 0; i2 < n; i2++) {
+    const fila = new Array(dim).fill(NULO);
+    for (let j = 0; j <= m; j++)
+      fila[i2 + j] = A[m - j];
+    M.push(fila);
+  }
+  for (let i2 = 0; i2 < m; i2++) {
+    const fila = new Array(dim).fill(NULO);
+    for (let j = 0; j <= n; j++)
+      fila[i2 + j] = B[n - j];
+    M.push(fila);
+  }
+  return determinanteBareiss(M, dim);
+}
+function determinanteBareiss(M, dim) {
+  let signoDet = 1;
+  let anterior = [UNO];
+  for (let k = 0; k < dim - 1; k++) {
+    if (esNulo(M[k][k])) {
+      let cambio = -1;
+      for (let i2 = k + 1; i2 < dim; i2++)
+        if (!esNulo(M[i2][k])) {
+          cambio = i2;
+          break;
+        }
+      if (cambio === -1)
+        return NULO;
+      const t2 = M[k];
+      M[k] = M[cambio];
+      M[cambio] = t2;
+      signoDet = -signoDet;
+    }
+    for (let i2 = k + 1; i2 < dim; i2++) {
+      for (let j = k + 1; j < dim; j++) {
+        const num = restaPol(productoPol(M[i2][j], M[k][k]), productoPol(M[i2][k], M[k][j]));
+        M[i2][j] = esNulo(anterior) ? num : dividir(num, anterior).coc;
+      }
+      M[i2][k] = NULO;
+    }
+    anterior = M[k][k];
+  }
+  const det2 = M[dim - 1][dim - 1];
+  return signoDet === 1 ? normalizar(det2) : normalizar(det2.map(negado));
+}
+function compartenComponente(p, q) {
+  const A = normalizar2(p), B = normalizar2(q);
+  if (esNulo2(A) || esNulo2(B))
+    return false;
+  if (gradoY(A) === 0 && gradoY(B) === 0) {
+    const { resto } = dividir(A[0], B[0]);
+    return esNulo(resto) || esNulo(dividir(B[0], A[0]).resto);
+  }
+  if (gradoY(A) === 0 || gradoY(B) === 0)
+    return false;
+  return esNulo(resultanteY(A, B));
+}
+
+// src/math/simbolico/constanteExacta.ts
+var GRADO_MAXIMO = 64;
+var ENTERO_MAXIMO = 1n << 256n;
+function raizEnteraK(n, k) {
+  if (n < 0n || k < 1)
+    return null;
+  if (n < 2n)
+    return n;
+  let lo = 1n, hi = 2n;
+  while (hi ** BigInt(k) <= n)
+    hi *= 2n;
+  while (lo < hi) {
+    const medio = (lo + hi + 1n) / 2n;
+    if (medio ** BigInt(k) <= n)
+      lo = medio;
+    else
+      hi = medio - 1n;
+  }
+  return lo ** BigInt(k) === n ? lo : null;
+}
+function raizRacional(v, k) {
+  if (k < 1 || k > GRADO_MAXIMO)
+    return null;
+  const negativo = signo(v) < 0;
+  if (negativo && k % 2 === 0)
+    return null;
+  const n = negativo ? -v.n : v.n;
+  if (n > ENTERO_MAXIMO || v.d > ENTERO_MAXIMO)
+    return null;
+  const rn = raizEnteraK(n, k);
+  const rd = raizEnteraK(v.d, k);
+  if (rn === null || rd === null)
+    return null;
+  return rac(negativo ? -rn : rn, rd);
+}
+function exponenteRacional(n) {
+  return constanteExacta(n);
+}
+function potenciaRacionalExacta(base, e3) {
+  if (e3.d > BigInt(GRADO_MAXIMO))
+    return null;
+  const raiz = e3.d === 1n ? base : raizRacional(base, Number(e3.d));
+  if (raiz === null)
+    return null;
+  const p = e3.n;
+  if (p > BigInt(GRADO_MAXIMO) || p < -BigInt(GRADO_MAXIMO))
+    return null;
+  if (p < 0n && esCero2(raiz))
+    return null;
+  return potencia(raiz, Number(p));
+}
+function constanteExacta(nodo) {
+  switch (nodo.type) {
+    case "ParenthesisNode":
+      return constanteExacta(nodo.content);
+    case "ConstantNode": {
+      const v = nodo.value;
+      if (typeof v !== "number" || !Number.isFinite(v))
+        return null;
+      return desdeDecimal(String(v)) ?? desdeNumero(v);
+    }
+    case "SymbolNode":
+      return null;
+    case "OperatorNode": {
+      if (nodo.op === "-" && nodo.args.length === 1) {
+        const a2 = constanteExacta(nodo.args[0]);
+        return a2 === null ? null : negado(a2);
+      }
+      if (nodo.op === "+" && nodo.args.length === 1)
+        return constanteExacta(nodo.args[0]);
+      if (nodo.args.length !== 2)
+        return null;
+      const a = constanteExacta(nodo.args[0]);
+      if (a === null)
+        return null;
+      if (nodo.op === "^") {
+        const e3 = exponenteRacional(nodo.args[1]);
+        return e3 === null ? null : potenciaRacionalExacta(a, e3);
+      }
+      const b = constanteExacta(nodo.args[1]);
+      if (b === null)
+        return null;
+      switch (nodo.op) {
+        case "+":
+          return suma(a, b);
+        case "-":
+          return resta(a, b);
+        case "*":
+          return producto(a, b);
+        case "/":
+          return esCero2(b) ? null : cociente(a, b);
+        default:
+          return null;
+      }
+    }
+    case "FunctionNode": {
+      const nombre = nodo.fn?.name;
+      const args = nodo.args;
+      if (nombre === "sqrt" && args.length === 1) {
+        const a = constanteExacta(args[0]);
+        return a === null ? null : raizRacional(a, 2);
+      }
+      if (nombre === "cbrt" && args.length === 1) {
+        const a = constanteExacta(args[0]);
+        return a === null ? null : raizRacional(a, 3);
+      }
+      if (nombre === "nthRoot" && args.length === 2) {
+        const a = constanteExacta(args[0]);
+        const k = constanteExacta(args[1]);
+        if (a === null || k === null || k.d !== 1n)
+          return null;
+        return raizRacional(a, Number(k.n));
+      }
+      if (nombre === "abs" && args.length === 1) {
+        const a = constanteExacta(args[0]);
+        return a === null ? null : signo(a) < 0 ? negado(a) : a;
+      }
+      if (nombre === "unaryMinus" && args.length === 1) {
+        const a = constanteExacta(args[0]);
+        return a === null ? null : negado(a);
+      }
+      return null;
+    }
+    default:
+      return null;
+  }
+}
+
+// src/math/extraer.ts
+var entera = (p) => ({ num: p, den: constante2(UNO) });
+var GRADO_MAXIMO2 = 8;
+function desParen3(n) {
+  return n.type === "ParenthesisNode" ? desParen3(n.content) : n;
+}
+function constanteDe(n) {
+  if (n.type !== "ConstantNode")
+    return null;
+  const v = n.value;
+  if (typeof v !== "number" || !Number.isFinite(v))
+    return null;
+  return desdeDecimal(String(v)) ?? desdeNumero(v);
+}
+function exponenteEntero(n) {
+  const e3 = desParen3(n);
+  if (e3.type === "ConstantNode" && Number.isInteger(e3.value))
+    return e3.value;
+  if (e3.type === "OperatorNode" && e3.op === "-" && e3.args.length === 1) {
+    const dentro2 = desParen3(e3.args[0]);
+    if (dentro2.type === "ConstantNode" && Number.isInteger(dentro2.value))
+      return -dentro2.value;
+  }
+  return null;
+}
+function fraccionDe(n) {
+  const nodo = desParen3(n);
+  const comoConstante = () => {
+    const k = constanteExacta(nodo);
+    return k === null ? null : entera(constante2(k));
+  };
+  switch (nodo.type) {
+    case "ConstantNode": {
+      const k = constanteDe(nodo);
+      return k === null ? null : entera(constante2(k));
+    }
+    case "SymbolNode":
+      if (nodo.name === "x")
+        return entera(X2);
+      if (nodo.name === "y")
+        return entera(Y2);
+      return null;
+    case "OperatorNode": {
+      if (nodo.op === "-" && nodo.args.length === 1) {
+        const a2 = fraccionDe(nodo.args[0]);
+        return a2 === null ? null : { num: negado2(a2.num), den: a2.den };
+      }
+      if (nodo.args.length !== 2)
+        return null;
+      const a = fraccionDe(nodo.args[0]);
+      if (a === null)
+        return null;
+      if (nodo.op === "^") {
+        const k = exponenteEntero(nodo.args[1]);
+        if (k === null)
+          return comoConstante();
+        if (k >= 0)
+          return { num: potencia2(a.num, k), den: potencia2(a.den, k) };
+        if (esNulo2(a.num))
+          return null;
+        return { num: potencia2(a.den, -k), den: potencia2(a.num, -k) };
+      }
+      const b = fraccionDe(nodo.args[1]);
+      if (b === null)
+        return null;
+      switch (nodo.op) {
+        case "+":
+          return {
+            num: suma2(producto2(a.num, b.den), producto2(b.num, a.den)),
+            den: producto2(a.den, b.den)
+          };
+        case "-":
+          return {
+            num: resta2(producto2(a.num, b.den), producto2(b.num, a.den)),
+            den: producto2(a.den, b.den)
+          };
+        case "*":
+          return { num: producto2(a.num, b.num), den: producto2(a.den, b.den) };
+        case "/":
+          if (esNulo2(b.num))
+            return null;
+          return { num: producto2(a.num, b.den), den: producto2(a.den, b.num) };
+        default:
+          return null;
+      }
+    }
+    default:
+      return comoConstante();
+  }
+}
+function ecuacionAPolinomio(ecuacion) {
+  const partes = ecuacion.split("=");
+  if (partes.length > 2)
+    return null;
+  const preparar = (s) => {
+    const limpio = s.trim();
+    if (limpio === "")
+      return null;
+    try {
+      return parse2(insertarProductoImplicito(normalizarEntrada(limpio)));
+    } catch {
+      return null;
+    }
+  };
+  let izquierda;
+  let derecha;
+  if (partes.length === 2) {
+    const a = preparar(partes[0]), b = preparar(partes[1]);
+    if (!a || !b)
+      return null;
+    izquierda = fraccionDe(a);
+    derecha = fraccionDe(b);
+  } else {
+    const a = preparar(partes[0]);
+    if (!a)
+      return null;
+    izquierda = entera(Y2);
+    derecha = fraccionDe(a);
+  }
+  if (!izquierda || !derecha)
+    return null;
+  const p = resta2(producto2(izquierda.num, derecha.den), producto2(derecha.num, izquierda.den));
+  const denominador = producto2(izquierda.den, derecha.den);
+  if (esNulo2(p)) {
+    return null;
+  }
+  if (Math.max(gradoX(p), gradoY(p)) > GRADO_MAXIMO2)
+    return null;
+  return { p, denominador };
+}
+
+// src/math/dominio.ts
+var RAIZ_PAR = /* @__PURE__ */ new Set(["sqrt"]);
+var LOGARITMO = /* @__PURE__ */ new Set(["log", "log10", "log2", "ln"]);
+var ARCO_ACOTADO = /* @__PURE__ */ new Set(["asin", "acos", "arcsin", "arccos"]);
+var desParen4 = (n) => n.type === "ParenthesisNode" ? desParen4(n.content) : n;
+function variablesLibresDe(exprNorm) {
+  try {
+    const nombres = /* @__PURE__ */ new Set();
+    parse2(exprNorm).filter(
+      (n, camino, padre) => n.type === "SymbolNode" && !(padre !== null && padre.type === "FunctionNode" && camino === "fn")
+    ).forEach((n) => {
+      if (!CONSTANTES3.has(n.name))
+        nombres.add(n.name);
+    });
+    return [...nombres];
+  } catch {
+    return [];
+  }
+}
+function constante(n0) {
+  const n = desParen4(n0);
+  if (n.type === "ConstantNode")
+    return Number(n.value);
+  if (n.type === "OperatorNode" && n.args.length === 1 && n.op === "-") {
+    const v = constante(n.args[0]);
+    return v === null ? null : -v;
+  }
+  if (n.type === "OperatorNode" && n.args.length === 2 && n.op === "/") {
+    const a = constante(n.args[0]), b = constante(n.args[1]);
+    return a === null || b === null || b === 0 ? null : a / b;
+  }
+  return null;
+}
+function exponenteDeRaizPar(e3) {
+  if (!Number.isFinite(e3) || Number.isInteger(e3))
+    return false;
+  for (let q = 2; q <= 64; q += 1) {
+    const p = e3 * q;
+    if (Math.abs(p - Math.round(p)) < 1e-12)
+      return q % 2 === 0;
+  }
+  return false;
+}
+var CACHE = /* @__PURE__ */ new Map();
+var CACHE_MAX = 512;
+function restriccionesDe(exprNorm) {
+  const guardado = CACHE.get(exprNorm);
+  if (guardado !== void 0)
+    return guardado;
+  const calculado = leerRestricciones(exprNorm);
+  if (CACHE.size >= CACHE_MAX)
+    CACHE.clear();
+  CACHE.set(exprNorm, calculado);
+  return calculado;
+}
+function leerRestricciones(exprNorm) {
+  let raiz;
+  try {
+    raiz = parse2(exprNorm);
+  } catch {
+    return null;
+  }
+  const out = [];
+  const anotar = (tipo, n) => {
+    const expr = desParen4(n).toString();
+    if (variablesLibresDe(expr).length === 0)
+      return;
+    if (!out.some((r) => r.tipo === tipo && r.expr === expr))
+      out.push({ tipo, expr });
+  };
+  const visitar = (n0) => {
+    const n = desParen4(n0);
+    if (n.type === "OperatorNode") {
+      if (n.op === "/" && n.args.length === 2)
+        anotar("noCero", n.args[1]);
+      if (n.op === "^" && n.args.length === 2) {
+        const e3 = constante(n.args[1]);
+        if (e3 !== null && e3 < 0)
+          anotar("noCero", n.args[0]);
+        if (e3 !== null && exponenteDeRaizPar(e3))
+          anotar("noNegativo", n.args[0]);
+      }
+    } else if (n.type === "FunctionNode") {
+      const nombre = n.fn?.name ?? "";
+      const arg2 = n.args[0];
+      if (arg2) {
+        if (RAIZ_PAR.has(nombre))
+          anotar("noNegativo", arg2);
+        if (LOGARITMO.has(nombre))
+          anotar("positivo", arg2);
+        if (ARCO_ACOTADO.has(nombre))
+          anotar("acotado", arg2);
+        if (nombre === "nthRoot" && n.args.length === 2) {
+          const k = constante(n.args[1]);
+          if (k !== null && Number.isInteger(k) && k % 2 === 0)
+            anotar("noNegativo", arg2);
+        }
+      }
+    }
+    n.forEach((h) => visitar(h));
+  };
+  try {
+    visitar(raiz);
+  } catch {
+    return null;
+  }
+  return out;
+}
+var COMPILADAS = /* @__PURE__ */ new Map();
+function compilada(expr) {
+  const guardada = COMPILADAS.get(expr);
+  if (guardada !== void 0)
+    return guardada;
+  let f;
+  try {
+    f = compilarExpresion(expr);
+  } catch {
+    f = null;
+  }
+  if (COMPILADAS.size >= CACHE_MAX)
+    COMPILADAS.clear();
+  COMPILADAS.set(expr, f);
+  return f;
+}
+function valorDe(expr, scope) {
+  const f = compilada(expr);
+  if (f === null)
+    return NaN;
+  try {
+    const v = f(scope);
+    return typeof v === "number" ? v : NaN;
+  } catch {
+    return NaN;
+  }
+}
+var EPS3 = 1e-12;
+function violaUna(r, scope) {
+  const v = valorDe(r.expr, scope);
+  if (!Number.isFinite(v))
+    return false;
+  switch (r.tipo) {
+    case "noCero":
+      return Math.abs(v) <= EPS3;
+    case "noNegativo":
+      return v < -EPS3;
+    case "positivo":
+      return v <= EPS3;
+    case "acotado":
+      return Math.abs(v) > 1 + EPS3;
+  }
+}
+var BARRIDO_MIN = -30;
+var BARRIDO_MAX = 30;
+var BARRIDO_PASOS = 3e3;
+var BISECCIONES = 60;
+var MAX_PUNTOS = 12;
+var CONSTANTES3 = /* @__PURE__ */ new Set(["pi", "e", "tau", "phi", "Infinity", "NaN"]);
+function cerosPolinomicos(expr, variable) {
+  const eq = ecuacionAPolinomio(`${expr} = 0`);
+  if (eq === null)
+    return null;
+  let p;
+  if (variable === "y") {
+    p = sustituirX(eq.p, CERO);
+  } else {
+    if (gradoY(eq.p) > 0)
+      return null;
+    p = eq.p[0] ?? [];
+  }
+  if (p.length === 0)
+    return null;
+  return raicesReales(p).map((r) => r.exacto !== null ? Number(r.exacto.n) / Number(r.exacto.d) : r.valor);
+}
+function cerosPorBarrido(expr, variable) {
+  const f = (x) => valorDe(expr, { [variable]: x });
+  const out = [];
+  const paso = (BARRIDO_MAX - BARRIDO_MIN) / BARRIDO_PASOS;
+  let xa = BARRIDO_MIN, va = f(xa);
+  for (let i2 = 1; i2 <= BARRIDO_PASOS && out.length < MAX_PUNTOS; i2++) {
+    const xb = BARRIDO_MIN + i2 * paso, vb = f(xb);
+    if (Number.isFinite(va) && Number.isFinite(vb) && va !== 0 && vb !== 0 && va < 0 !== vb < 0) {
+      let a = xa, b = xb, fa = va;
+      for (let k = 0; k < BISECCIONES; k++) {
+        const m = (a + b) / 2, fm = f(m);
+        if (!Number.isFinite(fm))
+          break;
+        if (fa < 0 === fm < 0) {
+          a = m;
+          fa = fm;
+        } else
+          b = m;
+      }
+      out.push(redondear((a + b) / 2, expr, variable));
+    }
+    if (va === 0)
+      out.push(xa);
+    xa = xb;
+    va = vb;
+  }
+  return out;
+}
+function redondear(x, expr, variable) {
+  for (const cand of [Math.round(x), Math.round(x * 2) / 2, Math.round(x * 4) / 4, Math.round(x * 1e6) / 1e6]) {
+    if (Math.abs(cand - x) < 1e-6 && valorDe(expr, { [variable]: cand }) === 0)
+      return cand;
+  }
+  return x;
+}
+function puntosDeQuiebre(exprNorm, variable) {
+  const rs = restriccionesDe(exprNorm);
+  if (rs === null || rs.length === 0)
+    return [];
+  const out = [];
+  for (const r of rs) {
+    const vars = variablesLibresDe(r.expr);
+    if (vars.length !== 1 || vars[0] !== variable)
+      continue;
+    const objetivos = r.tipo === "acotado" ? [`(${r.expr}) - 1`, `(${r.expr}) + 1`] : [r.expr];
+    for (const obj of objetivos) {
+      const exactos = cerosPolinomicos(obj, variable);
+      for (const v of exactos ?? cerosPorBarrido(obj, variable))
+        if (Number.isFinite(v) && !out.some((w) => Math.abs(w - v) < 1e-9))
+          out.push(v);
+    }
+    if (out.length >= MAX_PUNTOS)
+      break;
+  }
+  return out.slice(0, MAX_PUNTOS);
+}
+var MUESTRA = [-7.3, -2.6, -1.2, -0.7, -0.3, 0.4, 1.1, 2.7, 5.8, 11.4];
+function escenarios(a, b, vars) {
+  const base = (i2) => {
+    const scope = {};
+    vars.forEach((v, k) => {
+      scope[v] = MUESTRA[(i2 + 3 * k) % MUESTRA.length];
+    });
+    return scope;
+  };
+  const out = MUESTRA.map((_, i2) => base(i2));
+  for (const v of vars)
+    for (const q of [...puntosDeQuiebre(a, v), ...puntosDeQuiebre(b, v)])
+      out.push({ ...base(0), [v]: q });
+  return out;
+}
+function mismaFuncion(a, b) {
+  try {
+    const vars = [.../* @__PURE__ */ new Set([...variablesLibresDe(a), ...variablesLibresDe(b)])];
+    const fa = compilada(a), fb = compilada(b);
+    if (fa === null || fb === null)
+      return false;
+    const ra = restriccionesDe(a) ?? [], rb = restriccionesDe(b) ?? [];
+    return escenarios(a, b, vars).every((scope) => {
+      if (ra.some((r) => violaUna(r, scope)) !== rb.some((r) => violaUna(r, scope)))
+        return false;
+      const va = fa(scope), vb = fb(scope);
+      const finA = typeof va === "number" && Number.isFinite(va);
+      const finB = typeof vb === "number" && Number.isFinite(vb);
+      if (!finA || !finB)
+        return finA === finB;
+      return Math.abs(va - vb) <= 1e-8 * (1 + Math.abs(va));
+    });
+  } catch {
+    return false;
+  }
+}
+
 // src/simplificar.ts
 var REGLAS_SIMPLIFY = simplify.rules.concat([
   // `log(e^u) = u` vale en TODO ℝ (`e^u > 0` siempre). Se cubren las DOS escrituras del
@@ -54667,7 +55757,19 @@ var REGLAS_SIMPLIFY = simplify.rules.concat([
   "cos(n1)^2 + sin(n1)^2 -> 1",
   "sin(-n1) -> -sin(n1)",
   "cos(-n1) -> cos(n1)",
-  "tan(-n1) -> -tan(n1)"
+  "tan(-n1) -> -tan(n1)",
+  // La raíz par de un cuadrado es el VALOR ABSOLUTO, no la base. `√(u²) = u` es el error de
+  // manual —falso para todo u<0— y por evitarlo el motor no reducía nada: dejaba `√(x²)` tal
+  // cual, que es correcto pero es el radical de un cuadrado sin resolver. `|u|` sí es cierto
+  // en TODO ℝ, y además es la forma canónica real de esa expresión.
+  "sqrt(n1^2) -> abs(n1)",
+  "nthRoot(n1^2, 2) -> abs(n1)",
+  // Y al revés: elevar un módulo al cuadrado lo borra, porque el cuadrado ya es no negativo.
+  // Las dos formas están definidas en todo ℝ y valen lo mismo, así que la igualdad no lleva
+  // condición. Encadenadas, `√(|u|²)` acaba en `|u|`.
+  "abs(n1)^2 -> n1^2",
+  "abs(-n1) -> abs(n1)",
+  "abs(abs(n1)) -> abs(n1)"
 ]);
 var OPCIONES_SIMPLIFY = { fractionsLimit: 64 };
 function simplificarExpr(exprNorm) {
@@ -54691,43 +55793,7 @@ function simplificarExpr(exprNorm) {
     return base;
   }
 }
-var CONSTANTES_EVAL = /* @__PURE__ */ new Set(["pi", "e", "tau", "phi", "Infinity", "NaN"]);
-var MUESTRA = [-7.3, -2.6, -1.2, -0.7, -0.3, 0.4, 1.1, 2.7, 5.8, 11.4];
-function variablesLibres(expr) {
-  try {
-    const nombres = /* @__PURE__ */ new Set();
-    const esNombreDeFuncion = (padre, camino) => padre !== null && padre.type === "FunctionNode" && camino === "fn";
-    parse2(expr).filter(
-      (nn, camino, padre) => nn.type === "SymbolNode" && !esNombreDeFuncion(padre, camino)
-    ).forEach((nn) => {
-      if (!CONSTANTES_EVAL.has(nn.name))
-        nombres.add(nn.name);
-    });
-    return [...nombres];
-  } catch {
-    return [];
-  }
-}
-function formasEquivalentes(a, b) {
-  try {
-    const vars = [.../* @__PURE__ */ new Set([...variablesLibres(a), ...variablesLibres(b)])];
-    const fa = compilarExpresion(a), fb = compilarExpresion(b);
-    return MUESTRA.every((_, i2) => {
-      const scope = {};
-      vars.forEach((v, k) => {
-        scope[v] = MUESTRA[(i2 + 3 * k) % MUESTRA.length];
-      });
-      const va = fa(scope), vb = fb(scope);
-      const finA = typeof va === "number" && Number.isFinite(va);
-      const finB = typeof vb === "number" && Number.isFinite(vb);
-      if (!finA || !finB)
-        return finA === finB;
-      return Math.abs(va - vb) <= 1e-8 * (1 + Math.abs(va));
-    });
-  } catch {
-    return false;
-  }
-}
+var formasEquivalentes = mismaFuncion;
 function formatear(n) {
   return formatearCanonico(sinParentesisRedundantes(
     resimbolizarConstantes(racionalizarFracciones(combinarYordenar(n)))
@@ -54786,7 +55852,7 @@ function simplificarEcuaciones(ecuaciones) {
 }
 
 // src/despeje/aritmetica.ts
-var mcdEnteros = (a, b) => b === 0 ? Math.abs(a) : mcdEnteros(b, Math.abs(a % b));
+var mcdEnteros2 = (a, b) => b === 0 ? Math.abs(a) : mcdEnteros2(b, Math.abs(a % b));
 function normalizarFraccion(num, den) {
   if (den === 0)
     return null;
@@ -54794,7 +55860,7 @@ function normalizarFraccion(num, den) {
     num = -num;
     den = -den;
   }
-  const g = mcdEnteros(Math.abs(num), den) || 1;
+  const g = mcdEnteros2(Math.abs(num), den) || 1;
   return { num: num / g, den: den / g };
 }
 function fraccionSencilla(v) {
@@ -54852,27 +55918,27 @@ function ladoDerecho(t2, derecha, libres, render = renderTerminos) {
     rhs = `(${rhs})/(${bajan.join("*")})`;
   return rhs;
 }
-function desParen3(n) {
-  return n.type === "ParenthesisNode" ? desParen3(n.content) : n;
+function desParen5(n) {
+  return n.type === "ParenthesisNode" ? desParen5(n.content) : n;
 }
 function exponenteY(n) {
-  const nodo = desParen3(n);
+  const nodo = desParen5(n);
   if (nodo.type === "OperatorNode" && nodo.op === "^" && nodo.args.length === 2) {
-    const base = desParen3(nodo.args[0]);
-    const exp3 = desParen3(nodo.args[1]);
+    const base = desParen5(nodo.args[0]);
+    const exp3 = desParen5(nodo.args[1]);
     if (base.type === "SymbolNode" && base.name === "y" && exp3.type === "ConstantNode" && Number.isInteger(exp3.value) && exp3.value >= 2)
       return exp3.value;
   }
   return null;
 }
 function inversoExponenteFraccionarioY(n) {
-  const nodo = desParen3(n);
+  const nodo = desParen5(n);
   if (nodo.type !== "OperatorNode" || nodo.op !== "^" || nodo.args.length !== 2)
     return null;
-  const base = desParen3(nodo.args[0]);
+  const base = desParen5(nodo.args[0]);
   if (base.type !== "SymbolNode" || base.name !== "y")
     return null;
-  const exp3 = desParen3(nodo.args[1]);
+  const exp3 = desParen5(nodo.args[1]);
   const r = racionalConstante(exp3);
   if (r !== null) {
     if (r.den === 1 || r.num <= 0)
@@ -54910,11 +55976,11 @@ function despejePotencia(t2, derecha) {
   return doble === null ? null : { ecuacion: `y = ${doble}`, completo: true };
 }
 function raizY(n) {
-  const nodo = desParen3(n);
+  const nodo = desParen5(n);
   if (nodo.type !== "FunctionNode")
     return null;
   const nombre = nodo.fn?.name;
-  const arg0 = nodo.args[0] && desParen3(nodo.args[0]);
+  const arg0 = nodo.args[0] && desParen5(nodo.args[0]);
   if (!arg0 || arg0.type !== "SymbolNode" || arg0.name !== "y")
     return null;
   if (nombre === "sqrt" && nodo.args.length === 1)
@@ -54922,7 +55988,7 @@ function raizY(n) {
   if (nombre === "cbrt" && nodo.args.length === 1)
     return 3;
   if (nombre === "nthRoot" && nodo.args.length === 2) {
-    const k = desParen3(nodo.args[1]);
+    const k = desParen5(nodo.args[1]);
     if (k.type === "ConstantNode" && Number.isInteger(k.value) && k.value >= 2)
       return k.value;
   }
@@ -54957,7 +56023,7 @@ function despejeRaiz(t2, derecha) {
   return cuerpo === null ? null : { ecuacion: `y = ${cuerpo}`, completo: true };
 }
 function raizDePotenciaY(n0) {
-  const nodo = desParen3(n0);
+  const nodo = desParen5(n0);
   if (nodo.type !== "FunctionNode")
     return null;
   const nombre = nodo.fn?.name;
@@ -54970,7 +56036,7 @@ function raizDePotenciaY(n0) {
     n = 3;
     rad = nodo.args[0];
   } else if (nombre === "nthRoot" && nodo.args.length === 2) {
-    const k = desParen3(nodo.args[1]);
+    const k = desParen5(nodo.args[1]);
     if (k.type === "ConstantNode" && Number.isInteger(k.value) && k.value >= 2) {
       n = k.value;
       rad = nodo.args[0];
@@ -55001,19 +56067,19 @@ function despejeRaizDePotencia(t2, derecha) {
   const guardado = conDominio(cuerpo, R);
   return guardado === null ? null : { ecuacion: `y = ${guardado}`, completo: true };
 }
-function exponenteEntero(n) {
+function exponenteEntero2(n) {
   const v = valorConstanteFactor(n);
   return v !== null && Number.isInteger(v) ? v : null;
 }
 function esAbsDeY(n) {
-  const nodo = desParen3(n);
+  const nodo = desParen5(n);
   if (nodo.type !== "FunctionNode" || nodo.fn?.name !== "abs" || nodo.args.length !== 1)
     return false;
-  const arg2 = desParen3(nodo.args[0]);
+  const arg2 = desParen5(nodo.args[0]);
   return arg2.type === "SymbolNode" && arg2.name === "y";
 }
 function racionalConstante(n) {
-  const nodo = desParen3(n);
+  const nodo = desParen5(n);
   if (nodo.type === "OperatorNode" && nodo.op === "/" && nodo.args.length === 2) {
     const a = racionalConstante(nodo.args[0]);
     const b = racionalConstante(nodo.args[1]);
@@ -55029,7 +56095,7 @@ function racionalConstante(n) {
   return v !== null && Number.isInteger(v) ? { num: v, den: 1 } : null;
 }
 function indiceRaiz(n) {
-  const nodo = desParen3(n);
+  const nodo = desParen5(n);
   if (nodo.type !== "FunctionNode")
     return null;
   const nombre = nodo.fn?.name;
@@ -55038,7 +56104,7 @@ function indiceRaiz(n) {
   if (nombre === "cbrt" && nodo.args.length === 1)
     return { n: 3, rad: nodo.args[0] };
   if (nombre === "nthRoot" && nodo.args.length === 2) {
-    const k = exponenteEntero(nodo.args[1]);
+    const k = exponenteEntero2(nodo.args[1]);
     if (k !== null && k >= 2)
       return { n: k, rad: nodo.args[0] };
   }
@@ -55051,19 +56117,19 @@ function absYExponente(t2) {
   if (conYf.length !== 1)
     return null;
   let num = conYf[0].exp, den = 1;
-  let nucleo = desParen3(conYf[0].nodo);
+  let nucleo = desParen5(conYf[0].nodo);
   if (nucleo.type === "OperatorNode" && nucleo.op === "^" && nucleo.args.length === 2) {
     const k = racionalConstante(nucleo.args[1]);
     if (k === null || k.num === 0)
       return null;
     num *= k.num;
     den *= k.den;
-    nucleo = desParen3(nucleo.args[0]);
+    nucleo = desParen5(nucleo.args[0]);
   } else {
     const r = indiceRaiz(nucleo);
     if (r !== null) {
       den *= r.n;
-      nucleo = desParen3(r.rad);
+      nucleo = desParen5(r.rad);
     }
   }
   if (!esAbsDeY(nucleo))
@@ -55085,7 +56151,7 @@ function despejeAbsoluto(t2, derecha) {
   const { num, den, libres } = info;
   const R = ladoDerecho(t2, derecha, libres, renderCanonico);
   const a = den, b = Math.abs(num), neg = num < 0;
-  const raizDe = (r, n) => n === 2 ? `sqrt(${r})` : `nthRoot((${r}), ${n})`;
+  const raizDe2 = (r, n) => n === 2 ? `sqrt(${r})` : `nthRoot((${r}), ${n})`;
   let mag;
   let esPotencia2 = false;
   if (b === 1) {
@@ -55096,7 +56162,7 @@ function despejeAbsoluto(t2, derecha) {
       esPotencia2 = true;
     }
   } else if (a === 1) {
-    mag = raizDe(R, b);
+    mag = raizDe2(R, b);
   } else {
     mag = `nthRoot((${R})^${a}, ${b})`;
     esPotencia2 = true;
@@ -55181,18 +56247,18 @@ function uSiemprePositivo(uStr) {
 }
 function despejeTrigCero(t2, derecha, resolver) {
   const noNulos = derecha.filter((d) => {
-    const n = desParen3(d.nodo);
+    const n = desParen5(d.nodo);
     return !(n.type === "ConstantNode" && n.value === 0);
   });
   if (noNulos.length !== 0)
     return null;
-  const nodo = desParen3(t2.nodo);
+  const nodo = desParen5(t2.nodo);
   if (nodo.type !== "FunctionNode" || nodo.args?.length !== 1)
     return null;
   const info = TRIG_CERO[nodo.fn?.name ?? ""];
   if (!info)
     return null;
-  const u = desParen3(nodo.args[0]);
+  const u = desParen5(nodo.args[0]);
   if (!contieneY2(u) || u.type === "SymbolNode" && u.name === "y")
     return null;
   const uStr = u.toString();
@@ -55229,21 +56295,21 @@ function reducirFraccionEntera(rhs) {
   } catch {
     return rhs;
   }
-  const raiz = desParen3(n);
+  const raiz = desParen5(n);
   if (raiz.type !== "OperatorNode" || raiz.op !== "/" || raiz.args.length !== 2)
     return rhs;
-  const den = desParen3(raiz.args[1]);
+  const den = desParen5(raiz.args[1]);
   if (den.type !== "ConstantNode")
     return rhs;
   const d = Number(den.value);
   if (!Number.isInteger(d) || d < 2)
     return rhs;
-  const ts = terminos(desParen3(raiz.args[0]));
+  const ts = terminos(desParen5(raiz.args[0]));
   if (ts.length === 0)
     return rhs;
   const partes = [];
   for (const t2 of ts) {
-    const nodo = desParen3(t2.nodo);
+    const nodo = desParen5(t2.nodo);
     const sentinela = nodo.type === "FunctionNode" && nodo.args.length === 1 && nodo.fn?.name !== void 0 && SENTINELAS_SIGNO.has(nodo.fn.name) ? nodo.fn.name : null;
     const cr = coefYresto(sentinela === null ? nodo : nodo.args[0]);
     if (cr === null)
@@ -55252,7 +56318,7 @@ function reducirFraccionEntera(rhs) {
   }
   let g = d;
   for (const p of partes)
-    g = mcdEnteros(g, Math.abs(p.coef));
+    g = mcdEnteros2(g, Math.abs(p.coef));
   if (g < 2)
     return rhs;
   let out = "";
@@ -55396,7 +56462,7 @@ function potenciaYCoef(t2) {
   const libres = fs.filter((f) => !contieneY2(f.nodo));
   if (conYf.length !== 1 || conYf[0].exp !== 1)
     return null;
-  const yn = desParen3(conYf[0].nodo);
+  const yn = desParen5(conYf[0].nodo);
   let power;
   if (yn.type === "SymbolNode" && yn.name === "y")
     power = 1;
@@ -55410,11 +56476,11 @@ function potenciaYCoef(t2) {
   return { power, coef: t2.signo === 1 ? coef : `-(${coef})` };
 }
 function baseYExponente(f) {
-  const nodo = desParen3(f.nodo);
+  const nodo = desParen5(f.nodo);
   if (nodo.type === "OperatorNode" && nodo.op === "^" && nodo.args.length === 2) {
-    const k = exponenteEntero(nodo.args[1]);
+    const k = exponenteEntero2(nodo.args[1]);
     if (k !== null)
-      return { base: desParen3(nodo.args[0]), k: k * f.exp };
+      return { base: desParen5(nodo.args[0]), k: k * f.exp };
   }
   return { base: nodo, k: f.exp };
 }
@@ -55440,13 +56506,13 @@ function raizImpar(R, n) {
 }
 function reducirRaizImpar(L, R) {
   const intento = (potencia3, otro) => {
-    const p = desParen3(potencia3);
+    const p = desParen5(potencia3);
     if (!(p.type === "OperatorNode" && p.op === "^" && p.args.length === 2))
       return null;
-    const n = exponenteEntero(p.args[1]);
+    const n = exponenteEntero2(p.args[1]);
     if (n === null || n < 3 || n % 2 === 0)
       return null;
-    const base = desParen3(p.args[0]);
+    const base = desParen5(p.args[0]);
     if (!contieneY2(base))
       return null;
     const raiz = raizImpar(otro, n);
@@ -55466,13 +56532,13 @@ function reducirRaizImparPorTerminos(D) {
   if (ts.length < 2)
     return null;
   for (let i2 = 0; i2 < ts.length; i2++) {
-    const p = desParen3(ts[i2].nodo);
+    const p = desParen5(ts[i2].nodo);
     if (!(p.type === "OperatorNode" && p.op === "^" && p.args.length === 2))
       continue;
-    const n = exponenteEntero(p.args[1]);
+    const n = exponenteEntero2(p.args[1]);
     if (n === null || n < 3 || n % 2 === 0)
       continue;
-    const base = desParen3(p.args[0]);
+    const base = desParen5(p.args[0]);
     if (!contieneY2(base))
       continue;
     if (base.type === "SymbolNode")
@@ -55496,13 +56562,13 @@ function plegarRaicesImpares(n) {
     return n.transform((nn) => {
       if (nn.type !== "OperatorNode" || nn.op !== "^" || nn.args.length !== 2)
         return nn;
-      const base = desParen3(nn.args[0]);
-      const k = exponenteEntero(nn.args[1]);
+      const base = desParen5(nn.args[0]);
+      const k = exponenteEntero2(nn.args[1]);
       if (k === null || base.type !== "FunctionNode" || base.fn?.name !== "nthRoot")
         return nn;
       if (base.args.length !== 2)
         return nn;
-      const idx = exponenteEntero(base.args[1]);
+      const idx = exponenteEntero2(base.args[1]);
       if (idx === null || idx < 3 || idx % 2 === 0)
         return nn;
       return parse2(`nthRoot((${base.args[0].toString()})^(${k}), ${idx})`);
@@ -55528,7 +56594,7 @@ function despejeCuadratico(D0, DVal = D0) {
   if (pcs.some((p2) => p2 === null))
     return null;
   const P4 = pcs;
-  const g = P4.map((p2) => p2.power).reduce(mcdEnteros);
+  const g = P4.map((p2) => p2.power).reduce(mcdEnteros2);
   if (g !== 1 && g % 2 !== 0)
     return null;
   const degs = P4.map((p2) => p2.power / g);
@@ -55667,7 +56733,7 @@ var MAX_ELEVACIONES = 3;
 function radicandoDeY(f) {
   if (f.exp !== 1)
     return null;
-  const n = desParen3(f.nodo);
+  const n = desParen5(f.nodo);
   return n.type === "FunctionNode" && n.fn?.name === "sqrt" && n.args.length === 1 && contieneY2(n) ? n.args[0] : null;
 }
 function partirRadical(t2) {
@@ -55822,7 +56888,7 @@ var INVERSA_INYECTIVA = {
 var TRIG_PERIODICA = /* @__PURE__ */ new Set(["sin", "cos", "tan", "cot", "sec", "csc"]);
 var objetivoConGuarda = (cuerpo, target) => conDominio(cuerpo, target);
 function aislarInversion(nodo, target, ctx) {
-  const n = desParen3(nodo);
+  const n = desParen5(nodo);
   const pelado = pelarCapa(n, target, ctx);
   if (pelado !== null)
     return pelado;
@@ -55853,7 +56919,7 @@ function pelarCapa(n, target, ctx) {
           return enA ? aislar(a, `(${target}) * (${sb})`) : aislar(b, `(${sa}) / (${target})`);
         case "^": {
           if (enA) {
-            const k = exponenteEntero(b);
+            const k = exponenteEntero2(b);
             if (k === null || k < 1)
               return null;
             if (k % 2 === 0) {
@@ -55876,7 +56942,7 @@ function pelarCapa(n, target, ctx) {
   if (n.type === "FunctionNode") {
     const fn = n.fn?.name ?? "";
     if (fn === "log" && n.args.length === 2 && !contieneY2(n.args[1])) {
-      const base = desParen3(n.args[1]).toString();
+      const base = desParen5(n.args[1]).toString();
       return aislar(n.args[0], `(${base})^(${target})`);
     }
     if (n.args.length === 1) {
@@ -55898,7 +56964,7 @@ function pelarCapa(n, target, ctx) {
       return null;
     }
     if (fn === "nthRoot" && n.args.length === 2) {
-      const k = exponenteEntero(n.args[1]);
+      const k = exponenteEntero2(n.args[1]);
       if (k === null || k < 2)
         return null;
       if (k % 2 === 0) {
@@ -56582,7 +57648,7 @@ var Crosshair = class {
 };
 
 // src/core/analysis/interseccionesRamas.ts
-var MAX_PUNTOS = 200;
+var MAX_PUNTOS2 = 200;
 var LIMITE_CELDAS = 256;
 function interseccionSegmentos(ax, ay, bx, by, cx, cy, dx, dy) {
   const rx = bx - ax, ry = by - ay;
@@ -56593,8 +57659,8 @@ function interseccionSegmentos(ax, ay, bx, by, cx, cy, dx, dy) {
   const qx = cx - ax, qy = cy - ay;
   const t2 = (qx * sy - qy * sx) / det2;
   const u = (qx * ry - qy * rx) / det2;
-  const EPS3 = 1e-9;
-  if (t2 < -EPS3 || t2 > 1 + EPS3 || u < -EPS3 || u > 1 + EPS3)
+  const EPS4 = 1e-9;
+  if (t2 < -EPS4 || t2 > 1 + EPS4 || u < -EPS4 || u > 1 + EPS4)
     return null;
   return { x: ax + t2 * rx, y: ay + t2 * ry };
 }
@@ -56621,7 +57687,7 @@ function solapanColineales(ax, ay, bx, by, cx, cy, dx, dy, eps) {
     return false;
   return (hi - lo) * lenR > 0.5 * Math.min(lenR, lenS);
 }
-function interseccionesDeGeometrias(geometrias, epsilonMundo, maxPuntos = MAX_PUNTOS, region, estado) {
+function interseccionesDeGeometrias(geometrias, epsilonMundo, maxPuntos = MAX_PUNTOS2, region, estado) {
   const out = [];
   for (let i2 = 0; i2 < geometrias.length && out.length < maxPuntos; i2++) {
     for (let j = i2 + 1; j < geometrias.length && out.length < maxPuntos; j++) {
@@ -56786,7 +57852,7 @@ var PROF_MAX2 = 50;
 var MAX_NODOS = 2e5;
 var TOL_CONV = 1e-4;
 var ITERS_EPS = 40;
-var signo = (v) => v > 0 ? 1 : v < 0 ? -1 : 0;
+var signo2 = (v) => v > 0 ? 1 : v < 0 ? -1 : 0;
 function simpson(fa, fm, fb, a, b) {
   return (b - a) / 6 * (fa + 4 * fm + fb);
 }
@@ -56821,7 +57887,7 @@ function poloEntreSignos(f, x1, x2) {
       return true;
     if (Math.abs(fm) > HUGE)
       return true;
-    if (signo(fm) === signo(fa)) {
+    if (signo2(fm) === signo2(fa)) {
       a = m;
       fa = fm;
     } else {
@@ -56860,7 +57926,7 @@ function escanearInterior(f, a, b) {
   const media = nEscala > 0 ? escala2 / nEscala : 0;
   const umbralPico = Math.max(SPIKE_ABS, 1e3 * media);
   for (let i2 = 0; i2 + 1 < fs.length; i2++) {
-    if (signo(fs[i2]) !== 0 && signo(fs[i2 + 1]) !== 0 && signo(fs[i2]) !== signo(fs[i2 + 1])) {
+    if (signo2(fs[i2]) !== 0 && signo2(fs[i2 + 1]) !== 0 && signo2(fs[i2]) !== signo2(fs[i2 + 1])) {
       if (poloEntreSignos(f, xs[i2], xs[i2 + 1]))
         return "polo";
     }
@@ -57179,7 +58245,7 @@ var Escena = class {
         estado
       );
       this.cruceSolapa = estado.solapa;
-      this.cruceSaturado = crudos.length >= MAX_PUNTOS;
+      this.cruceSaturado = crudos.length >= MAX_PUNTOS2;
       this.puntosCruce = this.cruceSaturado ? [] : crudos.filter((p) => p.x >= viewport.domX[0] && p.x <= viewport.domX[1] && p.y >= viewport.domY[0] && p.y <= viewport.domY[1]);
     }
   }
@@ -57322,19 +58388,11 @@ var Escena = class {
     }
     return true;
   }
-  /**
-   * Resumen COMPLETO (sin el cap de dibujo) de los puntos notables de la curva
-   * SELECCIONADA, recalculado de su geometría cacheada. Para el panel ⓘ de
-   * obs-graph con curvas no explícitas: ahí "demasiados" se RESUME en texto
-   * ("infinitas raíces", …) en vez de omitirse como hace el plano. `viewport`
-   * habilita las raíces de extremo de rama (misma semántica que el dibujo).
-   */
-  resumenNotables(viewport) {
-    const it = this.items[this.seleccion];
-    if (!it)
-      return { raices: [], vertices: [], interseccionesY: [] };
-    return resumenPuntosNotables(it.geometria.ramas, it.geometria.ramas[0]?.objetoId ?? "", viewport);
-  }
+  // Aquí vivía `resumenNotables(viewport)`, que devolvía los puntos notables de la curva
+  // seleccionada leídos de su GEOMETRÍA cacheada y recortados al encuadre. Lo consumía un solo
+  // sitio —el ⓘ de obs-graph con curvas no explícitas—, y ese cuadro ya no pregunta por el
+  // dibujo: resuelve la ecuación (`math/notablesImplicita`). Se ha ido con él, porque mientras
+  // el método existiera seguiría estando disponible la respuesta que depende de la ventana.
   /** Número de curvas del sistema (objetos de la escena). */
   numeroCurvas() {
     return this.objetos.length;
@@ -57505,11 +58563,11 @@ var RUN_DE_LETRAS = /(\\?)([a-zA-Z]+)/g;
 function sustituirParametros(expr, parametros, valores) {
   if (parametros.length === 0)
     return expr;
-  const valorDe = (p) => `(${valores?.get(p.nombre) ?? p.valor})`;
+  const valorDe2 = (p) => `(${valores?.get(p.nombre) ?? p.valor})`;
   const comandos = parametros.filter((p) => p.escrito.startsWith("\\")).sort((a, b) => b.escrito.length - a.escrito.length);
   let s = expr;
   for (const p of comandos)
-    s = s.replace(patronDeComando(p.escrito), valorDe(p));
+    s = s.replace(patronDeComando(p.escrito), valorDe2(p));
   const desnudos = new Map(
     parametros.filter((p) => !p.escrito.startsWith("\\")).map((p) => [p.escrito, p])
   );
@@ -57520,7 +58578,7 @@ function sustituirParametros(expr, parametros, valores) {
       return todo;
     return partirEnAtomos(run).map((a) => {
       const p = desnudos.get(a);
-      return p ? valorDe(p) : a;
+      return p ? valorDe2(p) : a;
     }).join("");
   });
 }
@@ -57583,22 +58641,7 @@ function extraerFuncion(ec) {
   return f && esFuncionDeX(f) ? f : null;
 }
 var REGLAS_DERIVADA = ["sqrt(n1)^2 -> n1"].concat(simplify.rules);
-var PUNTOS_EQUIVALENCIA = [-7.3, -2.6, -1.2, -0.7, -0.3, 0.4, 1.1, 2.7, 5.8, 11.4];
-function derivadasEquivalentes(a, b) {
-  try {
-    const fa = compilarFuncion(a, VAR2), fb = compilarFuncion(b, VAR2);
-    return PUNTOS_EQUIVALENCIA.every((x) => {
-      const va = fa(x), vb = fb(x);
-      const finA = typeof va === "number" && Number.isFinite(va);
-      const finB = typeof vb === "number" && Number.isFinite(vb);
-      if (!finA || !finB)
-        return finA === finB;
-      return Math.abs(va - vb) <= 1e-8 * (1 + Math.abs(va));
-    });
-  } catch {
-    return false;
-  }
-}
+var derivadasEquivalentes = mismaFuncion;
 function factoresProducto(n) {
   if (n.type === "ParenthesisNode")
     return factoresProducto(n.content);
@@ -57746,7 +58789,7 @@ function contarSimbolo(n, nombre) {
   });
   return total + (n.type === "SymbolNode" && n.name === nombre ? 1 : 0);
 }
-var producto = (a, b) => a.type === "ConstantNode" && a.value === 1 ? b : b.type === "ConstantNode" && b.value === 1 ? a : opNodo("*", "multiply", [a, b]);
+var producto3 = (a, b) => a.type === "ConstantNode" && a.value === 1 ? b : b.type === "ConstantNode" && b.value === 1 ? a : opNodo("*", "multiply", [a, b]);
 function sacarFactorSimbolo(n, nombre) {
   if (n.type === "SymbolNode" && n.name === nombre)
     return constNodo(1);
@@ -57760,9 +58803,9 @@ function sacarFactorSimbolo(n, nombre) {
     if (n.op === "*") {
       const izq = sacarFactorSimbolo(n.args[0], nombre);
       if (izq)
-        return producto(izq, n.args[1]);
+        return producto3(izq, n.args[1]);
       const der = sacarFactorSimbolo(n.args[1], nombre);
-      return der && producto(n.args[0], der);
+      return der && producto3(n.args[0], der);
     }
     if (n.op === "/") {
       const num = sacarFactorSimbolo(n.args[0], nombre);
@@ -57858,7 +58901,7 @@ var TOL_SNAP = 1e-4;
 var DEN_MAX_PI = 16;
 var NUM_MAX_PI = 64;
 var DECIMALES = 4;
-var mcd5 = (a, b) => b === 0 ? a : mcd5(b, a % b);
+var mcd6 = (a, b) => b === 0 ? a : mcd6(b, a % b);
 function cerca(v, objetivo) {
   return Math.abs(v - objetivo) <= TOL_SNAP * Math.max(1, Math.abs(objetivo));
 }
@@ -57873,7 +58916,7 @@ function formaDe(v) {
     const p = Math.round(ratio * q);
     if (p === 0 || Math.abs(p) > NUM_MAX_PI)
       continue;
-    if (mcd5(Math.abs(p), q) !== 1)
+    if (mcd6(Math.abs(p), q) !== 1)
       continue;
     if (cerca(v, p * Math.PI / q))
       return { tipo: "pi", f: { p, q } };
@@ -57912,6 +58955,15 @@ function numeroALatex(v) {
   const mag = Math.abs(p);
   const numerador = mag === 1 ? "\\pi" : `${mag}\\pi`;
   return q === 1 ? `${signo3}${numerador}` : `${signo3}\\frac{${numerador}}{${q}}`;
+}
+function puntoALatex(x, y) {
+  return `\\left(${numeroALatex(x)},\\ ${numeroALatex(y)}\\right)`;
+}
+function intervaloALatex(a, b) {
+  return `\\left(${numeroALatex(a)},\\ ${numeroALatex(b)}\\right)`;
+}
+function listaALatex(vs) {
+  return vs.map(numeroALatex).join(",\\ ");
 }
 
 // src/integrar.ts
@@ -58469,9 +59521,9 @@ function cuerpoAreaExactoBase(source) {
       const v = F.eval(b) - F.eval(a);
       const tol = area.impropia ? 1e-3 : 1e-5;
       if (Number.isFinite(v) && Math.abs(v - area.valor) <= tol * (1 + Math.abs(area.valor))) {
-        const exacto = valorExactoLatex(v);
-        if (exacto)
-          return { cuerpo: exacto, conector: "=" };
+        const exacto2 = valorExactoLatex(v);
+        if (exacto2)
+          return { cuerpo: exacto2, conector: "=" };
         return { cuerpo: formatearAprox(v), conector: "\\approx" };
       }
     } catch {
@@ -58486,7 +59538,7 @@ function cuerpoAreaExactoBase(source) {
 }
 
 // src/host-obsidian/ajustes.ts
-var import_obsidian2 = require("obsidian");
+var import_obsidian3 = require("obsidian");
 
 // src/i18n/en.ts
 var EN = {
@@ -58567,13 +59619,15 @@ var EN = {
     unaSolucion: "Solution:",
     nSoluciones: (n) => `Solutions (${n}):`,
     yMas: (n) => `\u2026 and ${n} more`,
-    enIntervalo: (min3, max3) => `Searched over ${min3} \u2264 x \u2264 ${max3}.`,
-    noResoluble: "This system cannot be solved exactly; no solutions are listed."
+    enIntervalo: (min3, max3, variable) => `Searched over ${min3} \u2264 ${variable} \u2264 ${max3}.`,
+    noResoluble: "This system cannot be solved exactly; no solutions are listed.",
+    parcial: "Some pair of curves could not be solved: there may be more solutions.",
+    sinSolucionParcial: "No solutions were found, but some pair of curves could not be solved: not being listed does not mean they do not exist."
   },
   resumen: {
     interseccionesYInfinitas: "Y-axis intercepts: infinitely many",
     interseccionesYDemasiadas: "Y-axis intercepts: too many to show",
-    interseccionY: (y) => `Y-intercept: (0, ${y})`,
+    interseccionY: (punto) => `Y-intercept: $${punto}$`,
     noCortaY: "Does not cross the Y axis",
     raicesInfinitas: "Roots: infinitely many",
     raicesDemasiadas: "Roots: too many to show",
@@ -58582,31 +59636,30 @@ var EN = {
     verticesInfinitos: "Vertices: infinitely many",
     verticesDemasiados: "Vertices: too many to show",
     noVertices: "No vertices",
-    vertice: (x, y) => `Vertex: (${x}, ${y})`,
-    interseccionYCero: "Y-intercept: (0, 0)",
+    vertice: (punto) => `Vertex: $${punto}$`,
     identicamenteCero: "Every value of x is a root (identically zero function).",
-    interseccionYNoDefinida: "Y-intercept: undefined (discontinuity at x=0)",
-    verticeMin: (x, y) => `Minimum vertex: (${x}, ${y})`,
-    verticeMax: (x, y) => `Maximum vertex: (${x}, ${y})`,
-    enVista: "In the current view."
+    interseccionYNoDefinida: "Y-intercept: undefined (discontinuity at $x = 0$)",
+    verticeMin: (punto) => `Minimum vertex: $${punto}$`,
+    verticeMax: (punto) => `Maximum vertex: $${punto}$`,
+    sinDeterminar: "Some notable points could not be determined."
   },
   polar: {
     titulo: "Polar curve",
-    periodo: (p) => `Repeats every ${p}`,
+    periodo: (p) => `Repeats every $${p}$`,
     ordenRotacional: (n) => `${n}-fold rotational symmetry`,
     simetriasPrefijo: "Symmetry: ",
     simetriaPolo: "about the pole",
     simetriaEjePolar: "about the polar axis",
-    simetriaVertical: "about \u03B8 = \u03C0/2",
-    rangoRadial: (min3, max3) => `Radius: ${min3} \u2264 r \u2264 ${max3}`,
-    radioConstante: (r) => `Constant radius r = ${r}`,
+    simetriaVertical: "about $\\theta = \\frac{\\pi}{2}$",
+    rangoRadial: (min3, max3) => `Radius: $${min3} \\le r \\le ${max3}$`,
+    radioConstante: (r) => `Constant radius $r = ${r}$`,
     cambiaSigno: "r changes sign: the curve crosses to the opposite side of the pole",
-    extremosEn: (thetaMax, thetaMin) => `Max at \u03B8 = ${thetaMax}, min at \u03B8 = ${thetaMin}`,
-    masMultiplos: (texto, periodo) => `${texto} (+ k\xB7${periodo})`,
-    pasaPorPolo: (angulos) => `Passes through the pole at \u03B8 = ${angulos}`,
+    extremosEn: (thetaMax, thetaMin) => `Max at $\\theta = ${thetaMax}$, min at $\\theta = ${thetaMin}$`,
+    masMultiplos: (texto, periodo) => `${texto} $\\left(+\\,k\\cdot ${periodo}\\right)$`,
+    pasaPorPolo: (angulos) => `Passes through the pole at $\\theta = ${angulos}$`,
     noPasaPorPolo: "Does not pass through the pole",
     poloDemasiados: "Passes through the pole many times",
-    areaBarrida: (area, intervalo) => `Swept area over ${intervalo}: ${area}`,
+    areaBarrida: (area, intervalo) => `Swept area over $${intervalo}$: $${area}$`,
     patron: {
       circunferenciaCentrada: "circle centred on the pole",
       circunferenciaPorPolo: "circle through the pole",
@@ -58619,11 +59672,11 @@ var EN = {
   },
   parametrica: {
     titulo: "Parametric curve",
-    intervalo: (a, b) => `${a} \u2264 t \u2264 ${b}`,
+    intervalo: (a, b) => `$${a} \\le t \\le ${b}$`,
     cerrada: "closed",
-    periodo: (p) => `period ${p}`,
-    periodoExcede: (p) => `period ${p}: only part of the curve is drawn`,
-    caja: (xMin, xMax, yMin, yMax) => `${xMin} \u2264 x \u2264 ${xMax},  ${yMin} \u2264 y \u2264 ${yMax}`,
+    periodo: (p) => `period $${p}$`,
+    periodoExcede: (p) => `period $${p}$: only part of the curve is drawn`,
+    caja: (xMin, xMax, yMin, yMax) => `$${xMin} \\le x \\le ${xMax}$,  $${yMin} \\le y \\le ${yMax}$`,
     pasaPorOrigen: "Passes through the origin",
     simetriasPrefijo: "Symmetry: ",
     simetriaOrigen: "about the origin",
@@ -58631,18 +59684,18 @@ var EN = {
     simetriaEjeY: "about the y axis",
     autointersecciones: (n) => `Self-intersections: ${n}`,
     sinAutointersecciones: "Does not cross itself",
-    longitud: (l) => `Length: ${l}`,
-    areaAlgebraica: (a) => `Algebraic area: ${a}`,
+    longitud: (l) => `Length: $${l}$`,
+    areaAlgebraica: (a) => `Algebraic area: $${a}$`,
     familia: {
-      lissajous: (a, b, desfase) => `Lissajous ${a}:${b}, phase ${desfase}`,
+      lissajous: (a, b, desfase) => `Lissajous ${a}:${b}, phase $${desfase}$`,
       elipse: "ellipse",
       circunferencia: "circle"
     }
   },
   integral: {
     titulo: "Definite integral",
-    impropia: (variable, x) => `improper at ${variable} = ${x}, converges`,
-    intervalo: (a, b, variable) => `${a} \u2264 ${variable} \u2264 ${b}`,
+    impropia: (variable, x) => `improper at $${variable} = ${x}$, converges`,
+    intervalo: (a, b, variable) => `$${a} \\le ${variable} \\le ${b}$`,
     intervaloVacio: "Empty interval: the integral is 0 by definition",
     limitesInvertidos: "Limits are written in reverse order: the value changes sign",
     valorPrefijo: "Value: ",
@@ -58650,18 +59703,18 @@ var EN = {
     valorBajoEje: "the curve stays below the axis, so the value is negative",
     valorFirmado: "signed area: the parts below the axis subtract",
     integrandoNulo: "The integrand is zero throughout the interval",
-    cruces: (variable, lista) => `Crosses the axis at ${variable} = ${lista}`,
+    cruces: (variable, lista) => `Crosses the axis at $${variable} = ${lista}$`,
     crucesMuchos: "Crosses the axis many times",
-    areaPositiva: (area) => `Positive area: ${area}`,
-    areaNegativa: (area) => `Negative area: ${area}`,
-    promedio: (v) => `Average value: ${v}`
+    areaPositiva: (area) => `Positive area: $${area}$`,
+    areaNegativa: (area) => `Negative area: $${area}$`,
+    promedio: (v) => `Average value: $${v}$`
   },
   derivada: {
     titulo: "Derivative",
-    pendienteEn0: (m) => `Slope at x = 0: ${m}`,
+    pendienteEn0: (m) => `Slope at $x = 0$: $${m}$`,
     criticoUno: (item) => `Critical point: ${item}`,
     criticosPrefijo: "Critical points:",
-    criticoItem: (x, tipo) => `x = ${x} (${tipo})`,
+    criticoItem: (x, tipo) => `$x = ${x}$ (${tipo})`,
     tipo: {
       maximo: "local maximum",
       minimo: "local minimum",
@@ -58672,16 +59725,16 @@ var EN = {
     },
     criticosInfinitos: "Infinitely many critical points (periodic)",
     criticosDemasiados: "Too many critical points to list",
-    creciente: (intervalo) => `Increasing on ${intervalo}`,
-    decreciente: (intervalo) => `Decreasing on ${intervalo}`,
-    inflexionUna: (x) => `Inflection point: x = ${x}`,
+    creciente: (intervalo) => `Increasing on $${intervalo}$`,
+    decreciente: (intervalo) => `Decreasing on $${intervalo}$`,
+    inflexionUna: (x) => `Inflection point: $x = ${x}$`,
     inflexionesPrefijo: "Inflection points:",
     inflexionesInfinitas: "Infinitely many inflection points (periodic)",
     inflexionesDemasiadas: "Too many inflection points to list",
-    noDerivableUno: (x) => `Not differentiable at x = ${x}`,
+    noDerivableUno: (x) => `Not differentiable at $x = ${x}$`,
     noDerivablesPrefijo: "Not differentiable at:",
-    punto: (x) => `x = ${x}`,
-    rangoAnalisis: (a, b) => `Analysed on ${a} \u2264 x \u2264 ${b}`
+    punto: (x) => `$x = ${x}$`,
+    rangoAnalisis: (a, b) => `Analysed on $${a} \\le x \\le ${b}$`
   },
   parametros: {
     mando: (nombre) => `Value of ${nombre}`
@@ -58917,13 +59970,15 @@ var ES = {
     unaSolucion: "Soluci\xF3n:",
     nSoluciones: (n) => `Soluciones (${n}):`,
     yMas: (n) => `\u2026 y ${n} m\xE1s`,
-    enIntervalo: (min3, max3) => `Buscadas en ${min3} \u2264 x \u2264 ${max3}.`,
-    noResoluble: "Este sistema no se puede resolver de forma exacta; no se enumeran soluciones."
+    enIntervalo: (min3, max3, variable) => `Buscadas en ${min3} \u2264 ${variable} \u2264 ${max3}.`,
+    noResoluble: "Este sistema no se puede resolver de forma exacta; no se enumeran soluciones.",
+    parcial: "Alguna pareja de curvas no se ha podido resolver: puede haber m\xE1s soluciones.",
+    sinSolucionParcial: "No se han encontrado soluciones, pero alguna pareja de curvas no se ha podido resolver: que no se listen no significa que no existan."
   },
   resumen: {
     interseccionesYInfinitas: "Intersecciones con el eje Y: infinitas",
     interseccionesYDemasiadas: "Intersecciones con el eje Y: demasiadas para mostrar",
-    interseccionY: (y) => `Intersecci\xF3n Y: (0, ${y})`,
+    interseccionY: (punto) => `Intersecci\xF3n Y: $${punto}$`,
     noCortaY: "No corta el eje Y",
     raicesInfinitas: "Ra\xEDces: infinitas",
     raicesDemasiadas: "Ra\xEDces: demasiadas para mostrar",
@@ -58932,31 +59987,30 @@ var ES = {
     verticesInfinitos: "V\xE9rtices: infinitos",
     verticesDemasiados: "V\xE9rtices: demasiados para mostrar",
     noVertices: "No hay v\xE9rtices",
-    vertice: (x, y) => `V\xE9rtice: (${x}, ${y})`,
-    interseccionYCero: "Intersecci\xF3n Y: (0, 0)",
+    vertice: (punto) => `V\xE9rtice: $${punto}$`,
     identicamenteCero: "Todos los valores de x son ra\xEDces (funci\xF3n id\xE9nticamente cero).",
-    interseccionYNoDefinida: "Intersecci\xF3n Y: no definida (discontinuidad en x=0)",
-    verticeMin: (x, y) => `V\xE9rtice m\xEDnimo: (${x}, ${y})`,
-    verticeMax: (x, y) => `V\xE9rtice m\xE1ximo: (${x}, ${y})`,
-    enVista: "En la vista actual."
+    interseccionYNoDefinida: "Intersecci\xF3n Y: no definida (discontinuidad en $x = 0$)",
+    verticeMin: (punto) => `V\xE9rtice m\xEDnimo: $${punto}$`,
+    verticeMax: (punto) => `V\xE9rtice m\xE1ximo: $${punto}$`,
+    sinDeterminar: "Hay puntos notables que el motor no ha podido determinar."
   },
   polar: {
     titulo: "Curva polar",
-    periodo: (p) => `Se repite cada ${p}`,
+    periodo: (p) => `Se repite cada $${p}$`,
     ordenRotacional: (n) => `Simetr\xEDa rotacional de orden ${n}`,
     simetriasPrefijo: "Simetr\xEDa: ",
     simetriaPolo: "respecto al polo",
     simetriaEjePolar: "respecto al eje polar",
-    simetriaVertical: "respecto a \u03B8 = \u03C0/2",
-    rangoRadial: (min3, max3) => `Radio: ${min3} \u2264 r \u2264 ${max3}`,
-    radioConstante: (r) => `Radio constante r = ${r}`,
+    simetriaVertical: "respecto a $\\theta = \\frac{\\pi}{2}$",
+    rangoRadial: (min3, max3) => `Radio: $${min3} \\le r \\le ${max3}$`,
+    radioConstante: (r) => `Radio constante $r = ${r}$`,
     cambiaSigno: "r cambia de signo: la curva pasa al lado opuesto del polo",
-    extremosEn: (thetaMax, thetaMin) => `M\xE1ximo en \u03B8 = ${thetaMax}, m\xEDnimo en \u03B8 = ${thetaMin}`,
-    masMultiplos: (texto, periodo) => `${texto} (+ k\xB7${periodo})`,
-    pasaPorPolo: (angulos) => `Pasa por el polo en \u03B8 = ${angulos}`,
+    extremosEn: (thetaMax, thetaMin) => `M\xE1ximo en $\\theta = ${thetaMax}$, m\xEDnimo en $\\theta = ${thetaMin}$`,
+    masMultiplos: (texto, periodo) => `${texto} $\\left(+\\,k\\cdot ${periodo}\\right)$`,
+    pasaPorPolo: (angulos) => `Pasa por el polo en $\\theta = ${angulos}$`,
     noPasaPorPolo: "No pasa por el polo",
     poloDemasiados: "Pasa por el polo muchas veces",
-    areaBarrida: (area, intervalo) => `\xC1rea barrida en ${intervalo}: ${area}`,
+    areaBarrida: (area, intervalo) => `\xC1rea barrida en $${intervalo}$: $${area}$`,
     patron: {
       circunferenciaCentrada: "circunferencia centrada en el polo",
       circunferenciaPorPolo: "circunferencia que pasa por el polo",
@@ -58969,11 +60023,11 @@ var ES = {
   },
   parametrica: {
     titulo: "Curva param\xE9trica",
-    intervalo: (a, b) => `${a} \u2264 t \u2264 ${b}`,
+    intervalo: (a, b) => `$${a} \\le t \\le ${b}$`,
     cerrada: "cerrada",
-    periodo: (p) => `periodo ${p}`,
-    periodoExcede: (p) => `periodo ${p}: solo se dibuja una parte de la curva`,
-    caja: (xMin, xMax, yMin, yMax) => `${xMin} \u2264 x \u2264 ${xMax},  ${yMin} \u2264 y \u2264 ${yMax}`,
+    periodo: (p) => `periodo $${p}$`,
+    periodoExcede: (p) => `periodo $${p}$: solo se dibuja una parte de la curva`,
+    caja: (xMin, xMax, yMin, yMax) => `$${xMin} \\le x \\le ${xMax}$,  $${yMin} \\le y \\le ${yMax}$`,
     pasaPorOrigen: "Pasa por el origen",
     simetriasPrefijo: "Simetr\xEDa: ",
     simetriaOrigen: "respecto al origen",
@@ -58981,18 +60035,18 @@ var ES = {
     simetriaEjeY: "respecto al eje y",
     autointersecciones: (n) => `Autointersecciones: ${n}`,
     sinAutointersecciones: "No se corta a s\xED misma",
-    longitud: (l) => `Longitud: ${l}`,
-    areaAlgebraica: (a) => `\xC1rea algebraica: ${a}`,
+    longitud: (l) => `Longitud: $${l}$`,
+    areaAlgebraica: (a) => `\xC1rea algebraica: $${a}$`,
     familia: {
-      lissajous: (a, b, desfase) => `Lissajous ${a}:${b}, desfase ${desfase}`,
+      lissajous: (a, b, desfase) => `Lissajous ${a}:${b}, desfase $${desfase}$`,
       elipse: "elipse",
       circunferencia: "circunferencia"
     }
   },
   integral: {
     titulo: "Integral definida",
-    impropia: (variable, x) => `impropia en ${variable} = ${x}, converge`,
-    intervalo: (a, b, variable) => `${a} \u2264 ${variable} \u2264 ${b}`,
+    impropia: (variable, x) => `impropia en $${variable} = ${x}$, converge`,
+    intervalo: (a, b, variable) => `$${a} \\le ${variable} \\le ${b}$`,
     intervaloVacio: "Intervalo vac\xEDo: la integral es 0 por definici\xF3n",
     limitesInvertidos: "Los l\xEDmites est\xE1n escritos al rev\xE9s: el valor cambia de signo",
     valorPrefijo: "Valor: ",
@@ -59000,18 +60054,18 @@ var ES = {
     valorBajoEje: "la curva se queda bajo el eje, as\xED que el valor es negativo",
     valorFirmado: "\xE1rea con signo: lo que queda bajo el eje resta",
     integrandoNulo: "El integrando es nulo en todo el intervalo",
-    cruces: (variable, lista) => `Cruza el eje en ${variable} = ${lista}`,
+    cruces: (variable, lista) => `Cruza el eje en $${variable} = ${lista}$`,
     crucesMuchos: "Cruza el eje muchas veces",
-    areaPositiva: (area) => `\xC1rea positiva: ${area}`,
-    areaNegativa: (area) => `\xC1rea negativa: ${area}`,
-    promedio: (v) => `Valor medio: ${v}`
+    areaPositiva: (area) => `\xC1rea positiva: $${area}$`,
+    areaNegativa: (area) => `\xC1rea negativa: $${area}$`,
+    promedio: (v) => `Valor medio: $${v}$`
   },
   derivada: {
     titulo: "Derivada",
-    pendienteEn0: (m) => `Pendiente en x = 0: ${m}`,
+    pendienteEn0: (m) => `Pendiente en $x = 0$: $${m}$`,
     criticoUno: (item) => `Punto cr\xEDtico: ${item}`,
     criticosPrefijo: "Puntos cr\xEDticos:",
-    criticoItem: (x, tipo) => `x = ${x} (${tipo})`,
+    criticoItem: (x, tipo) => `$x = ${x}$ (${tipo})`,
     tipo: {
       maximo: "m\xE1ximo local",
       minimo: "m\xEDnimo local",
@@ -59022,16 +60076,16 @@ var ES = {
     },
     criticosInfinitos: "Infinitos puntos cr\xEDticos (peri\xF3dica)",
     criticosDemasiados: "Demasiados puntos cr\xEDticos para listarlos",
-    creciente: (intervalo) => `Creciente en ${intervalo}`,
-    decreciente: (intervalo) => `Decreciente en ${intervalo}`,
-    inflexionUna: (x) => `Punto de inflexi\xF3n: x = ${x}`,
+    creciente: (intervalo) => `Creciente en $${intervalo}$`,
+    decreciente: (intervalo) => `Decreciente en $${intervalo}$`,
+    inflexionUna: (x) => `Punto de inflexi\xF3n: $x = ${x}$`,
     inflexionesPrefijo: "Puntos de inflexi\xF3n:",
     inflexionesInfinitas: "Infinitos puntos de inflexi\xF3n (peri\xF3dica)",
     inflexionesDemasiadas: "Demasiados puntos de inflexi\xF3n para listarlos",
-    noDerivableUno: (x) => `No derivable en x = ${x}`,
+    noDerivableUno: (x) => `No derivable en $x = ${x}$`,
     noDerivablesPrefijo: "No derivable en:",
-    punto: (x) => `x = ${x}`,
-    rangoAnalisis: (a, b) => `Analizado en ${a} \u2264 x \u2264 ${b}`
+    punto: (x) => `$x = ${x}$`,
+    rangoAnalisis: (a, b) => `Analizado en $${a} \\le x \\le ${b}$`
   },
   parametros: {
     mando: (nombre) => `Valor de ${nombre}`
@@ -59231,13 +60285,15 @@ var PT = {
     unaSolucion: "Solu\xE7\xE3o:",
     nSoluciones: (n) => `Solu\xE7\xF5es (${n}):`,
     yMas: (n) => `\u2026 e mais ${n}`,
-    enIntervalo: (min3, max3) => `Procuradas em ${min3} \u2264 x \u2264 ${max3}.`,
-    noResoluble: "Este sistema n\xE3o pode ser resolvido de forma exata; n\xE3o se enumeram solu\xE7\xF5es."
+    enIntervalo: (min3, max3, variable) => `Procuradas em ${min3} \u2264 ${variable} \u2264 ${max3}.`,
+    noResoluble: "Este sistema n\xE3o pode ser resolvido de forma exata; n\xE3o se enumeram solu\xE7\xF5es.",
+    parcial: "Algum par de curvas n\xE3o p\xF4de ser resolvido: pode haver mais solu\xE7\xF5es.",
+    sinSolucionParcial: "N\xE3o se encontraram solu\xE7\xF5es, mas algum par de curvas n\xE3o p\xF4de ser resolvido: n\xE3o estarem listadas n\xE3o significa que n\xE3o existam."
   },
   resumen: {
     interseccionesYInfinitas: "Interse\xE7\xF5es com o eixo Y: infinitas",
     interseccionesYDemasiadas: "Interse\xE7\xF5es com o eixo Y: demasiadas para mostrar",
-    interseccionY: (y) => `Interse\xE7\xE3o Y: (0, ${y})`,
+    interseccionY: (punto) => `Interse\xE7\xE3o Y: $${punto}$`,
     noCortaY: "N\xE3o interseta o eixo Y",
     raicesInfinitas: "Ra\xEDzes: infinitas",
     raicesDemasiadas: "Ra\xEDzes: demasiadas para mostrar",
@@ -59246,31 +60302,30 @@ var PT = {
     verticesInfinitos: "V\xE9rtices: infinitos",
     verticesDemasiados: "V\xE9rtices: demasiados para mostrar",
     noVertices: "N\xE3o h\xE1 v\xE9rtices",
-    vertice: (x, y) => `V\xE9rtice: (${x}, ${y})`,
-    interseccionYCero: "Interse\xE7\xE3o Y: (0, 0)",
+    vertice: (punto) => `V\xE9rtice: $${punto}$`,
     identicamenteCero: "Todos os valores de x s\xE3o ra\xEDzes (fun\xE7\xE3o identicamente nula).",
-    interseccionYNoDefinida: "Interse\xE7\xE3o Y: n\xE3o definida (descontinuidade em x=0)",
-    verticeMin: (x, y) => `V\xE9rtice m\xEDnimo: (${x}, ${y})`,
-    verticeMax: (x, y) => `V\xE9rtice m\xE1ximo: (${x}, ${y})`,
-    enVista: "Na vista atual."
+    interseccionYNoDefinida: "Interse\xE7\xE3o Y: n\xE3o definida (descontinuidade em $x = 0$)",
+    verticeMin: (punto) => `V\xE9rtice m\xEDnimo: $${punto}$`,
+    verticeMax: (punto) => `V\xE9rtice m\xE1ximo: $${punto}$`,
+    sinDeterminar: "H\xE1 pontos not\xE1veis que o motor n\xE3o conseguiu determinar."
   },
   polar: {
     titulo: "Curva polar",
-    periodo: (p) => `Repete-se a cada ${p}`,
+    periodo: (p) => `Repete-se a cada $${p}$`,
     ordenRotacional: (n) => `Simetria rotacional de ordem ${n}`,
     simetriasPrefijo: "Simetria: ",
     simetriaPolo: "em rela\xE7\xE3o ao polo",
     simetriaEjePolar: "em rela\xE7\xE3o ao eixo polar",
-    simetriaVertical: "em rela\xE7\xE3o a \u03B8 = \u03C0/2",
-    rangoRadial: (min3, max3) => `Raio: ${min3} \u2264 r \u2264 ${max3}`,
-    radioConstante: (r) => `Raio constante r = ${r}`,
+    simetriaVertical: "em rela\xE7\xE3o a $\\theta = \\frac{\\pi}{2}$",
+    rangoRadial: (min3, max3) => `Raio: $${min3} \\le r \\le ${max3}$`,
+    radioConstante: (r) => `Raio constante $r = ${r}$`,
     cambiaSigno: "r muda de sinal: a curva passa para o lado oposto do polo",
-    extremosEn: (thetaMax, thetaMin) => `M\xE1ximo em \u03B8 = ${thetaMax}, m\xEDnimo em \u03B8 = ${thetaMin}`,
-    masMultiplos: (texto, periodo) => `${texto} (+ k\xB7${periodo})`,
-    pasaPorPolo: (angulos) => `Passa pelo polo em \u03B8 = ${angulos}`,
+    extremosEn: (thetaMax, thetaMin) => `M\xE1ximo em $\\theta = ${thetaMax}$, m\xEDnimo em $\\theta = ${thetaMin}$`,
+    masMultiplos: (texto, periodo) => `${texto} $\\left(+\\,k\\cdot ${periodo}\\right)$`,
+    pasaPorPolo: (angulos) => `Passa pelo polo em $\\theta = ${angulos}$`,
     noPasaPorPolo: "N\xE3o passa pelo polo",
     poloDemasiados: "Passa pelo polo muitas vezes",
-    areaBarrida: (area, intervalo) => `\xC1rea varrida em ${intervalo}: ${area}`,
+    areaBarrida: (area, intervalo) => `\xC1rea varrida em $${intervalo}$: $${area}$`,
     patron: {
       circunferenciaCentrada: "circunfer\xEAncia centrada no polo",
       circunferenciaPorPolo: "circunfer\xEAncia que passa pelo polo",
@@ -59283,11 +60338,11 @@ var PT = {
   },
   parametrica: {
     titulo: "Curva param\xE9trica",
-    intervalo: (a, b) => `${a} \u2264 t \u2264 ${b}`,
+    intervalo: (a, b) => `$${a} \\le t \\le ${b}$`,
     cerrada: "fechada",
-    periodo: (p) => `per\xEDodo ${p}`,
-    periodoExcede: (p) => `per\xEDodo ${p}: s\xF3 se desenha uma parte da curva`,
-    caja: (xMin, xMax, yMin, yMax) => `${xMin} \u2264 x \u2264 ${xMax},  ${yMin} \u2264 y \u2264 ${yMax}`,
+    periodo: (p) => `per\xEDodo $${p}$`,
+    periodoExcede: (p) => `per\xEDodo $${p}$: s\xF3 se desenha uma parte da curva`,
+    caja: (xMin, xMax, yMin, yMax) => `$${xMin} \\le x \\le ${xMax}$,  $${yMin} \\le y \\le ${yMax}$`,
     pasaPorOrigen: "Passa pela origem",
     simetriasPrefijo: "Simetria: ",
     simetriaOrigen: "em rela\xE7\xE3o \xE0 origem",
@@ -59295,18 +60350,18 @@ var PT = {
     simetriaEjeY: "em rela\xE7\xE3o ao eixo y",
     autointersecciones: (n) => `Autointerse\xE7\xF5es: ${n}`,
     sinAutointersecciones: "N\xE3o se interseta a si mesma",
-    longitud: (l) => `Comprimento: ${l}`,
-    areaAlgebraica: (a) => `\xC1rea alg\xE9brica: ${a}`,
+    longitud: (l) => `Comprimento: $${l}$`,
+    areaAlgebraica: (a) => `\xC1rea alg\xE9brica: $${a}$`,
     familia: {
-      lissajous: (a, b, desfase) => `Lissajous ${a}:${b}, desfasamento ${desfase}`,
+      lissajous: (a, b, desfase) => `Lissajous ${a}:${b}, desfasamento $${desfase}$`,
       elipse: "elipse",
       circunferencia: "circunfer\xEAncia"
     }
   },
   integral: {
     titulo: "Integral definido",
-    impropia: (variable, x) => `impr\xF3prio em ${variable} = ${x}, converge`,
-    intervalo: (a, b, variable) => `${a} \u2264 ${variable} \u2264 ${b}`,
+    impropia: (variable, x) => `impr\xF3prio em $${variable} = ${x}$, converge`,
+    intervalo: (a, b, variable) => `$${a} \\le ${variable} \\le ${b}$`,
     intervaloVacio: "Intervalo vazio: o integral \xE9 0 por defini\xE7\xE3o",
     limitesInvertidos: "Os limites est\xE3o escritos ao contr\xE1rio: o valor muda de sinal",
     valorPrefijo: "Valor: ",
@@ -59314,18 +60369,18 @@ var PT = {
     valorBajoEje: "a curva fica abaixo do eixo, por isso o valor \xE9 negativo",
     valorFirmado: "\xE1rea com sinal: o que fica abaixo do eixo subtrai",
     integrandoNulo: "O integrando \xE9 nulo em todo o intervalo",
-    cruces: (variable, lista) => `Interseta o eixo em ${variable} = ${lista}`,
+    cruces: (variable, lista) => `Interseta o eixo em $${variable} = ${lista}$`,
     crucesMuchos: "Interseta o eixo muitas vezes",
-    areaPositiva: (area) => `\xC1rea positiva: ${area}`,
-    areaNegativa: (area) => `\xC1rea negativa: ${area}`,
-    promedio: (v) => `Valor m\xE9dio: ${v}`
+    areaPositiva: (area) => `\xC1rea positiva: $${area}$`,
+    areaNegativa: (area) => `\xC1rea negativa: $${area}$`,
+    promedio: (v) => `Valor m\xE9dio: $${v}$`
   },
   derivada: {
     titulo: "Derivada",
-    pendienteEn0: (m) => `Declive em x = 0: ${m}`,
+    pendienteEn0: (m) => `Declive em $x = 0$: $${m}$`,
     criticoUno: (item) => `Ponto cr\xEDtico: ${item}`,
     criticosPrefijo: "Pontos cr\xEDticos:",
-    criticoItem: (x, tipo) => `x = ${x} (${tipo})`,
+    criticoItem: (x, tipo) => `$x = ${x}$ (${tipo})`,
     tipo: {
       maximo: "m\xE1ximo local",
       minimo: "m\xEDnimo local",
@@ -59336,16 +60391,16 @@ var PT = {
     },
     criticosInfinitos: "Infinitos pontos cr\xEDticos (peri\xF3dica)",
     criticosDemasiados: "Demasiados pontos cr\xEDticos para listar",
-    creciente: (intervalo) => `Crescente em ${intervalo}`,
-    decreciente: (intervalo) => `Decrescente em ${intervalo}`,
-    inflexionUna: (x) => `Ponto de inflex\xE3o: x = ${x}`,
+    creciente: (intervalo) => `Crescente em $${intervalo}$`,
+    decreciente: (intervalo) => `Decrescente em $${intervalo}$`,
+    inflexionUna: (x) => `Ponto de inflex\xE3o: $x = ${x}$`,
     inflexionesPrefijo: "Pontos de inflex\xE3o:",
     inflexionesInfinitas: "Infinitos pontos de inflex\xE3o (peri\xF3dica)",
     inflexionesDemasiadas: "Demasiados pontos de inflex\xE3o para listar",
-    noDerivableUno: (x) => `N\xE3o deriv\xE1vel em x = ${x}`,
+    noDerivableUno: (x) => `N\xE3o deriv\xE1vel em $x = ${x}$`,
     noDerivablesPrefijo: "N\xE3o deriv\xE1vel em:",
-    punto: (x) => `x = ${x}`,
-    rangoAnalisis: (a, b) => `Analisado em ${a} \u2264 x \u2264 ${b}`
+    punto: (x) => `$x = ${x}$`,
+    rangoAnalisis: (a, b) => `Analisado em $${a} \\le x \\le ${b}$`
   },
   parametros: {
     mando: (nombre) => `Valor de ${nombre}`
@@ -59500,6 +60555,9 @@ var idiomaActual = IDIOMA_POR_DEFECTO;
 function fijarIdioma(id) {
   idiomaActual = IDIOMAS.includes(id ?? "") ? id : IDIOMA_POR_DEFECTO;
 }
+function idiomaActivo() {
+  return idiomaActual;
+}
 function t() {
   return RECURSOS[idiomaActual];
 }
@@ -59510,6 +60568,339 @@ function localizarVelo(velo) {
   return mapa[velo.etiqueta] ?? velo;
 }
 
+// migracion/ModalMigracion.ts
+var import_obsidian2 = require("obsidian");
+
+// migracion/nombres.ts
+var RENOMBRES = [
+  { viejo: "obs-graph", nuevo: "_graph", motor: "graph" },
+  { viejo: "obs-system", nuevo: "_system", motor: "system" },
+  { viejo: "obs-derivate", nuevo: "_derivate", motor: "derivate" },
+  { viejo: "obs-integral", nuevo: "_integral", motor: "integral" },
+  { viejo: "obs-trig", nuevo: "_trig", motor: "trig" },
+  { viejo: "obs-vector", nuevo: "_vector", motor: "vector" }
+];
+function nombresDe(viejo) {
+  const fila = RENOMBRES.find((r) => r.viejo === viejo);
+  return fila ? [fila.viejo, fila.nuevo] : [viejo];
+}
+var HACIA_ADELANTE = new Map(RENOMBRES.map((r) => [r.viejo.toLowerCase(), r.nuevo]));
+var HACIA_ATRAS = new Map(RENOMBRES.map((r) => [r.nuevo.toLowerCase(), r.viejo]));
+function traducir(id, direccion = "adelante") {
+  const mapa = direccion === "adelante" ? HACIA_ADELANTE : HACIA_ATRAS;
+  return mapa.get(id.toLowerCase());
+}
+
+// migracion/escaner.ts
+function analizar(texto, direccion = "adelante") {
+  return localizar(texto, direccion).map((r) => r.hallazgo);
+}
+function reescribir(texto, direccion = "adelante") {
+  const reemplazos = localizar(texto, direccion);
+  if (reemplazos.length === 0)
+    return { texto, hallazgos: [] };
+  const trozos = [];
+  let cursor = 0;
+  for (const r of reemplazos) {
+    trozos.push(texto.slice(cursor, r.inicio), r.hallazgo.nuevo);
+    cursor = r.fin;
+  }
+  trozos.push(texto.slice(cursor));
+  return { texto: trozos.join(""), hallazgos: reemplazos.map((r) => r.hallazgo) };
+}
+function localizar(texto, direccion) {
+  const reemplazos = [];
+  let abierto = null;
+  let linea = 1;
+  let inicioLinea = 0;
+  while (inicioLinea <= texto.length) {
+    const salto = texto.indexOf("\n", inicioLinea);
+    const finLinea = salto === -1 ? texto.length : salto;
+    const finContenido = finLinea > inicioLinea && texto[finLinea - 1] === "\r" ? finLinea - 1 : finLinea;
+    const contenido = texto.slice(inicioLinea, finContenido);
+    if (abierto) {
+      if (esCierre(contenido, abierto))
+        abierto = null;
+    } else {
+      const apertura = leerApertura(contenido);
+      if (apertura) {
+        abierto = { caracter: apertura.caracter, longitud: apertura.longitud };
+        const nuevo = apertura.id ? traducir(apertura.id, direccion) : void 0;
+        if (apertura.id && nuevo) {
+          const inicio = inicioLinea + apertura.columnaId;
+          reemplazos.push({
+            inicio,
+            fin: inicio + apertura.id.length,
+            hallazgo: { linea, columna: apertura.columnaId, viejo: apertura.id, nuevo }
+          });
+        }
+      }
+    }
+    if (salto === -1)
+      break;
+    inicioLinea = salto + 1;
+    linea++;
+  }
+  return reemplazos;
+}
+function leerApertura(contenido) {
+  const m = /^[ \t]*(`{3,}|~{3,})/.exec(contenido);
+  if (!m)
+    return null;
+  const valla = m[1];
+  const caracter = valla[0];
+  const resto = contenido.slice(m[0].length);
+  if (caracter === "`" && resto.includes("`"))
+    return null;
+  const espacios = /^[ \t]*/.exec(resto)?.[0].length ?? 0;
+  const id = /^[^ \t]*/.exec(resto.slice(espacios))?.[0] ?? "";
+  return { caracter, longitud: valla.length, id, columnaId: m[0].length + espacios };
+}
+function esCierre(contenido, abierto) {
+  const patron = abierto.caracter === "`" ? /^[ \t]*(`{3,})[ \t]*$/ : /^[ \t]*(~{3,})[ \t]*$/;
+  const m = patron.exec(contenido);
+  return m !== null && m[1].length >= abierto.longitud;
+}
+
+// migracion/vault.ts
+async function escanear(app, direccion = "adelante") {
+  const notas = [];
+  let bloques = 0;
+  for (const archivo of app.vault.getMarkdownFiles()) {
+    let contenido;
+    try {
+      contenido = await app.vault.cachedRead(archivo);
+    } catch {
+      continue;
+    }
+    const hallazgos = analizar(contenido, direccion);
+    if (hallazgos.length > 0) {
+      notas.push({ archivo, hallazgos });
+      bloques += hallazgos.length;
+    }
+  }
+  notas.sort((a, b) => b.hallazgos.length - a.hallazgos.length);
+  return { notas, bloques };
+}
+async function aplicar(app, plan, direccion = "adelante") {
+  let notasCambiadas = 0;
+  let bloquesCambiados = 0;
+  const fallos = [];
+  for (const nota of plan.notas) {
+    try {
+      let cambiadosAqui = 0;
+      await app.vault.process(nota.archivo, (datos) => {
+        const { texto, hallazgos } = reescribir(datos, direccion);
+        cambiadosAqui = hallazgos.length;
+        return texto;
+      });
+      if (cambiadosAqui > 0) {
+        notasCambiadas++;
+        bloquesCambiados += cambiadosAqui;
+      }
+    } catch (e3) {
+      fallos.push({
+        ruta: nota.archivo.path,
+        error: e3 instanceof Error ? e3.message : String(e3)
+      });
+    }
+  }
+  return { notasCambiadas, bloquesCambiados, fallos };
+}
+
+// migracion/textos.ts
+var ES2 = {
+  avisoTitulo: "LMath: la sintaxis de los bloques ha cambiado",
+  avisoCuerpo: "Tus notas siguen funcionando. Abre los ajustes de LMath para actualizarlas al nombre nuevo.",
+  ajustesNombre: "Sintaxis de los bloques",
+  ajustesDescripcion: "Los bloques pasan de `obs-graph` a `_graph`. Los nombres antiguos siguen funcionando durante esta transici\xF3n; esta herramienta reescribe tus notas al nombre nuevo.",
+  ajustesBoton: "Actualizar mis notas",
+  modalTitulo: "Actualizar la sintaxis de los bloques",
+  modalIntro: "Los seis bloques de LMath cambian de nombre:",
+  columnaAntes: "Antes",
+  columnaAhora: "Ahora",
+  compatibilidad: "Los dos nombres funcionan mientras dure la transici\xF3n, as\xED que no hay ninguna prisa: puedes cerrar esto y volver cuando quieras.",
+  escaneando: "Buscando bloques en tus notas\u2026",
+  nadaQueHacer: "No hay ning\xFAn bloque con la sintaxis antigua. No hay nada que actualizar.",
+  advertencia: "Esto reescribe tus notas en el disco. Solo se cambia el nombre del bloque \u2014ni una l\xEDnea m\xE1s\u2014, pero conviene tener una copia del vault antes de seguir.",
+  resumen: (bloques, notas) => `${bloques} ${bloques === 1 ? "bloque" : "bloques"} en ${notas} ${notas === 1 ? "nota" : "notas"}:`,
+  bloquesEnNota: (n) => `${n} ${n === 1 ? "bloque" : "bloques"}`,
+  cancelar: "Cancelar",
+  confirmar: "Reescribir",
+  cerrar: "Cerrar",
+  hecho: (bloques, notas) => `Listo: ${bloques} ${bloques === 1 ? "bloque actualizado" : "bloques actualizados"} en ${notas} ${notas === 1 ? "nota" : "notas"}.`,
+  fallos: (n) => `${n} ${n === 1 ? "nota no se pudo escribir" : "notas no se pudieron escribir"}.`
+};
+var EN2 = {
+  avisoTitulo: "LMath: the block syntax has changed",
+  avisoCuerpo: "Your notes still work. Open the LMath settings to update them to the new name.",
+  ajustesNombre: "Block syntax",
+  ajustesDescripcion: "Blocks are moving from `obs-graph` to `_graph`. The old names keep working throughout this transition; this tool rewrites your notes to the new one.",
+  ajustesBoton: "Update my notes",
+  modalTitulo: "Update the block syntax",
+  modalIntro: "All six LMath blocks are being renamed:",
+  columnaAntes: "Before",
+  columnaAhora: "Now",
+  compatibilidad: "Both names work for as long as the transition lasts, so there is no hurry: you can close this and come back whenever you like.",
+  escaneando: "Looking for blocks in your notes\u2026",
+  nadaQueHacer: "No blocks use the old syntax. There is nothing to update.",
+  advertencia: "This rewrites your notes on disk. Only the block's name changes \u2014 not one line more \u2014 but it is worth having a backup of your vault before you continue.",
+  resumen: (bloques, notas) => `${bloques} ${bloques === 1 ? "block" : "blocks"} in ${notas} ${notas === 1 ? "note" : "notes"}:`,
+  bloquesEnNota: (n) => `${n} ${n === 1 ? "block" : "blocks"}`,
+  cancelar: "Cancel",
+  confirmar: "Rewrite",
+  cerrar: "Close",
+  hecho: (bloques, notas) => `Done: ${bloques} ${bloques === 1 ? "block" : "blocks"} updated in ${notas} ${notas === 1 ? "note" : "notes"}.`,
+  fallos: (n) => `${n} ${n === 1 ? "note could not be written" : "notes could not be written"}.`
+};
+var PT2 = {
+  avisoTitulo: "LMath: a sintaxe dos blocos mudou",
+  avisoCuerpo: "As suas notas continuam a funcionar. Abra as defini\xE7\xF5es do LMath para as atualizar para o nome novo.",
+  ajustesNombre: "Sintaxe dos blocos",
+  ajustesDescripcion: "Os blocos passam de `obs-graph` para `_graph`. Os nomes antigos continuam a funcionar durante esta transi\xE7\xE3o; esta ferramenta reescreve as suas notas para o nome novo.",
+  ajustesBoton: "Atualizar as minhas notas",
+  modalTitulo: "Atualizar a sintaxe dos blocos",
+  modalIntro: "Os seis blocos do LMath mudam de nome:",
+  columnaAntes: "Antes",
+  columnaAhora: "Agora",
+  compatibilidad: "Os dois nomes funcionam enquanto durar a transi\xE7\xE3o, por isso n\xE3o h\xE1 pressa: pode fechar isto e voltar quando quiser.",
+  escaneando: "A procurar blocos nas suas notas\u2026",
+  nadaQueHacer: "Nenhum bloco usa a sintaxe antiga. N\xE3o h\xE1 nada para atualizar.",
+  advertencia: "Isto reescreve as suas notas no disco. S\xF3 muda o nome do bloco \u2014 nem uma linha a mais \u2014, mas conv\xE9m ter uma c\xF3pia do cofre antes de continuar.",
+  resumen: (bloques, notas) => `${bloques} ${bloques === 1 ? "bloco" : "blocos"} em ${notas} ${notas === 1 ? "nota" : "notas"}:`,
+  bloquesEnNota: (n) => `${n} ${n === 1 ? "bloco" : "blocos"}`,
+  cancelar: "Cancelar",
+  confirmar: "Reescrever",
+  cerrar: "Fechar",
+  hecho: (bloques, notas) => `Pronto: ${bloques} ${bloques === 1 ? "bloco atualizado" : "blocos atualizados"} em ${notas} ${notas === 1 ? "nota" : "notas"}.`,
+  fallos: (n) => `${n} ${n === 1 ? "nota n\xE3o p\xF4de ser escrita" : "notas n\xE3o puderam ser escritas"}.`
+};
+function tm() {
+  const id = idiomaActivo();
+  return id === "es" ? ES2 : id === "pt" ? PT2 : EN2;
+}
+
+// migracion/ModalMigracion.ts
+var ModalMigracion = class extends import_obsidian2.Modal {
+  constructor(app, alCerrar) {
+    super(app);
+    this.alCerrar = alCerrar;
+  }
+  onOpen() {
+    const txt = tm();
+    this.titleEl.setText(txt.modalTitulo);
+    this.contentEl.addClass("lmath-mig");
+    this.pintarCabecera();
+    const zona = this.contentEl.createDiv({ cls: "lmath-mig-zona" });
+    zona.createEl("p", { text: txt.escaneando, cls: "lmath-mig-estado" });
+    void escanear(this.app).then(
+      (plan) => {
+        this.pintarResumen(zona, plan);
+      },
+      () => {
+        zona.empty();
+        zona.createEl("p", { text: txt.nadaQueHacer, cls: "lmath-mig-estado" });
+      }
+    );
+  }
+  onClose() {
+    this.contentEl.empty();
+    this.alCerrar?.();
+  }
+  /** La tabla de renombrado y la nota de compatibilidad: lo que no cambia entre estados. */
+  pintarCabecera() {
+    const txt = tm();
+    this.contentEl.createEl("p", { text: txt.modalIntro });
+    const tabla = this.contentEl.createEl("table", { cls: "lmath-mig-tabla" });
+    const cabecera = tabla.createEl("thead").createEl("tr");
+    cabecera.createEl("th", { text: txt.columnaAntes });
+    cabecera.createEl("th", { text: "\u2192", cls: "lmath-mig-flecha" });
+    cabecera.createEl("th", { text: txt.columnaAhora });
+    const cuerpo = tabla.createEl("tbody");
+    for (const r of RENOMBRES) {
+      const fila = cuerpo.createEl("tr");
+      fila.createEl("td").createEl("code", { text: r.viejo });
+      fila.createEl("td", { text: "\u2192", cls: "lmath-mig-flecha" });
+      fila.createEl("td").createEl("code", { text: r.nuevo, cls: "lmath-mig-nuevo" });
+    }
+    this.contentEl.createEl("p", { text: txt.compatibilidad, cls: "lmath-mig-calma" });
+  }
+  /** Estado 2: lo encontrado, y el botón que lo aplica. */
+  pintarResumen(zona, plan) {
+    const txt = tm();
+    zona.empty();
+    if (plan.bloques === 0) {
+      zona.createEl("p", { text: txt.nadaQueHacer, cls: "lmath-mig-estado" });
+      this.pintarBotones(zona, [{ etiqueta: txt.cerrar, principal: true, accion: () => {
+        this.close();
+      } }]);
+      return;
+    }
+    zona.createEl("p", {
+      text: txt.resumen(plan.bloques, plan.notas.length),
+      cls: "lmath-mig-resumen"
+    });
+    const lista = zona.createDiv({ cls: "lmath-mig-lista" });
+    for (const nota of plan.notas) {
+      const fila = lista.createDiv({ cls: "lmath-mig-fila" });
+      fila.createSpan({ text: nota.archivo.path, cls: "lmath-mig-ruta" });
+      fila.createSpan({
+        text: txt.bloquesEnNota(nota.hallazgos.length),
+        cls: "lmath-mig-cuenta"
+      });
+    }
+    zona.createEl("p", { text: txt.advertencia, cls: "lmath-mig-aviso" });
+    this.pintarBotones(zona, [
+      { etiqueta: txt.cancelar, principal: false, accion: () => {
+        this.close();
+      } },
+      {
+        etiqueta: `${txt.confirmar} (${plan.bloques})`,
+        principal: true,
+        accion: () => {
+          void this.ejecutar(zona, plan);
+        }
+      }
+    ]);
+  }
+  /** Estado 3: se aplica y se informa. */
+  async ejecutar(zona, plan) {
+    const txt = tm();
+    zona.empty();
+    zona.createEl("p", { text: txt.escaneando, cls: "lmath-mig-estado" });
+    const resultado = await aplicar(this.app, plan);
+    zona.empty();
+    zona.createEl("p", {
+      text: txt.hecho(resultado.bloquesCambiados, resultado.notasCambiadas),
+      cls: "lmath-mig-resumen"
+    });
+    if (resultado.fallos.length > 0) {
+      zona.createEl("p", { text: txt.fallos(resultado.fallos.length), cls: "lmath-mig-aviso" });
+      const lista = zona.createDiv({ cls: "lmath-mig-lista" });
+      for (const fallo of resultado.fallos) {
+        lista.createDiv({ cls: "lmath-mig-fila" }).createSpan({
+          text: fallo.ruta,
+          cls: "lmath-mig-ruta"
+        });
+      }
+    }
+    this.pintarBotones(zona, [
+      { etiqueta: txt.cerrar, principal: true, accion: () => {
+        this.close();
+      } }
+    ]);
+  }
+  pintarBotones(zona, botones) {
+    const barra = zona.createDiv({ cls: "lmath-mig-botones" });
+    for (const b of botones) {
+      const boton = barra.createEl("button", { text: b.etiqueta });
+      if (b.principal)
+        boton.addClass("mod-cta");
+      boton.addEventListener("click", b.accion);
+    }
+  }
+};
+
 // src/host-obsidian/ajustes.ts
 var AJUSTES_POR_DEFECTO = {
   despejarAuto: false,
@@ -59519,7 +60910,7 @@ var AJUSTES_POR_DEFECTO = {
   imanTrig: true,
   idioma: IDIOMA_POR_DEFECTO
 };
-var PestanaAjustesLMath = class extends import_obsidian2.PluginSettingTab {
+var PestanaAjustesLMath = class extends import_obsidian3.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -59638,6 +61029,33 @@ var PestanaAjustesLMath = class extends import_obsidian2.PluginSettingTab {
             name: txt.ajustes.trig.iman.etiqueta,
             desc: txt.ajustes.trig.iman.detalle,
             control: { type: "toggle", key: "imanTrig" }
+          }
+        ]
+      },
+      // ── Migración de la sintaxis (SECCIÓN TEMPORAL) ────────────────────────────────────
+      // Se retira entera el día que los `obs-*` dejen de aceptarse. Hasta entonces es el único
+      // sitio permanente donde alguien puede enterarse del renombrado y actuar: el aviso del
+      // arranque se enseña UNA vez y se va, esta fila se queda.
+      //
+      // Va con `render` y no con un `control` declarativo porque no persiste ningún ajuste —
+      // dispara una acción—, y los `control` de la API declarativa están hechos para leer y
+      // escribir una clave de `AjustesTransformaciones`.
+      {
+        type: "group",
+        heading: tm().ajustesNombre,
+        items: [
+          {
+            name: tm().modalTitulo,
+            desc: tm().ajustesDescripcion,
+            render: (setting) => {
+              setting.addButton((boton) => {
+                boton.setButtonText(tm().ajustesBoton);
+                boton.setCta();
+                boton.onClick(() => {
+                  new ModalMigracion(this.app).open();
+                });
+              });
+            }
           }
         ]
       }
@@ -59905,7 +61323,7 @@ function esTemaOscuro(el) {
 }
 
 // src/host-obsidian/ui/scrollerLatex.ts
-var import_obsidian3 = require("obsidian");
+var import_obsidian4 = require("obsidian");
 function crearScrollerLatex(plugin, contenedor, ctx, limpieza, reparto) {
   const panelLatex = contenedor.createDiv({ cls: "lmath-latex" });
   reparto.panel = panelLatex;
@@ -59936,13 +61354,13 @@ function crearScrollerLatex(plugin, contenedor, ctx, limpieza, reparto) {
     const llenar = () => compartirAlto || reparto.estrecho;
     const flexMarco = llenar() ? "flex:1 1 0;" : `flex:0 0 auto; height:${ALTO_TARJETA}px;`;
     const marco = padre.createDiv();
-    marco.style.cssText = "position:relative; overflow:hidden; min-height:0; " + flexMarco + (enmarcado ? " border:1px solid var(--lmath-borde); border-radius:12px; background:var(--lmath-superficie);" : "");
+    marco.style.cssText = "position:relative; overflow:hidden; min-height:0; " + flexMarco + (enmarcado ? " border:1px solid var(--lmath-borde); border-radius:12px; background:var(--lmath-tarjeta);" : "");
     const area = marco.createDiv({ cls: "lmath-latex" });
     area.style.cssText = `width:100%; height:100%; box-sizing:border-box; padding:${enmarcado ? "8px 24px" : "24px"}; display:flex; align-items:safe center; justify-content:safe center; overflow-x:hidden; overflow-y:hidden;`;
     area.setCssStyles({ scrollbarWidth: "thin", scrollbarColor: "var(--lmath-borde) transparent" });
     const fadeOverlay = marco.createDiv();
     fadeOverlay.style.cssText = "position:absolute; inset:0; pointer-events:none; overflow:hidden; " + (enmarcado ? "border-radius:12px;" : "");
-    const fadeColor = "var(--lmath-superficie)";
+    const fadeColor = "var(--lmath-tarjeta)";
     const fadeIzq = fadeOverlay.createDiv();
     fadeIzq.style.cssText = `position:absolute; top:0; bottom:0; left:0; width:32px; opacity:0; transition:opacity 0.15s ease; background:linear-gradient(to right, ${fadeColor}, transparent);`;
     const fadeDer = fadeOverlay.createDiv();
@@ -60006,7 +61424,7 @@ function crearScrollerLatex(plugin, contenedor, ctx, limpieza, reparto) {
       const a = crearArea(zona, "enmarcado", compartirAlto);
       areas.push(a);
       disposers.push(a.soltar);
-      await import_obsidian3.MarkdownRenderer.render(
+      await import_obsidian4.MarkdownRenderer.render(
         plugin.app,
         "$$" + formula + "$$",
         a.area,
@@ -60063,13 +61481,14 @@ function estiloBotonOpciones(b, activo) {
 function estiloChipInfo(lado) {
   return `position:absolute; bottom:8px; right:8px; width:${lado}px; height:${lado}px; display:flex; align-items:center; justify-content:center; line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; user-select:none; z-index:5;`;
 }
+var CLASE_POPOVER_INFO = "lmath-info-pop";
 function estiloPopoverInfo(lado) {
   const bajo = 8 + lado + 6;
-  return `position:absolute; bottom:${bajo}px; right:8px; display:none; max-width:min(260px, calc(100% - 16px)); max-height:min(200px, calc(100% - ${bajo + 8}px)); overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:6px; font-size:11px; line-height:1.5; color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);`;
+  return `position:absolute; bottom:${bajo}px; right:8px; display:none; max-width:min(260px, calc(100% - 16px)); max-height:min(200px, calc(100% - ${bajo + 8}px)); overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:var(--lmath-tarjeta); border:1px solid var(--lmath-borde); border-radius:6px; font-size:11px; line-height:1.5; color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);`;
 }
 
 // src/host-obsidian/ui/controles.ts
-var import_obsidian4 = require("obsidian");
+var import_obsidian5 = require("obsidian");
 
 // src/host-obsidian/ui/iconos.ts
 var ICONO = {
@@ -60100,7 +61519,7 @@ var CICLO_UNIDAD = ["degrees", "radians", "gradians"];
 
 // src/host-obsidian/ui/controles.ts
 function ponerTooltip(el, texto) {
-  (0, import_obsidian4.setTooltip)(el, texto, { placement: "top" });
+  (0, import_obsidian5.setTooltip)(el, texto, { placement: "top" });
 }
 function ponerEtiquetaAccesible(el, texto) {
   el.setAttribute("aria-label", texto);
@@ -60141,16 +61560,28 @@ function montarGlifoUnidad(el, unidad, px2) {
   svg.createSvg("path", { attr: { d } });
 }
 function montarEtiquetaMath(plugin, el, tex, ctx) {
-  el.empty();
-  const hijo = new import_obsidian4.MarkdownRenderChild(el);
+  const hijo = new import_obsidian5.MarkdownRenderChild(el);
   ctx.addChild(hijo);
-  void import_obsidian4.MarkdownRenderer.render(plugin.app, `$${tex}$`, el, ctx.sourcePath, hijo).then(() => {
+  pintarMathEnLinea(plugin, el, tex, ctx.sourcePath, hijo);
+}
+function pintarMathEnLinea(plugin, el, tex, sourcePath, componente, respaldo) {
+  pintarLineaPanel(plugin, el, `$${tex}$`, sourcePath, componente, respaldo);
+}
+function pintarLineaPanel(plugin, el, linea, sourcePath, componente, respaldo) {
+  el.empty();
+  if (!linea.includes("$")) {
+    el.setText(linea);
+    return;
+  }
+  void import_obsidian5.MarkdownRenderer.render(plugin.app, linea, el, sourcePath, componente).then(() => {
     const p = el.querySelector("p");
     if (p) {
       while (p.firstChild)
         el.appendChild(p.firstChild);
       p.remove();
     }
+  }).catch(() => {
+    el.setText(respaldo ?? linea);
   });
 }
 
@@ -60306,7 +61737,7 @@ async function montarPanelVistas(motor, contenedor, ctx, limpieza, reparto, conf
     items.forEach((el, i2) => itemEstilo(el, firmaDe(config4.opciones[i2].vista) !== actual));
     menu.style.display = abierto ? "flex" : "none";
   };
-  const aplicar = async (i2) => {
+  const aplicar2 = async (i2) => {
     abierto = false;
     const v = config4.opciones[i2].vista;
     if (firmaDe(v) !== firmaDe(vista)) {
@@ -60328,7 +61759,7 @@ async function montarPanelVistas(motor, contenedor, ctx, limpieza, reparto, conf
     abierto = !abierto;
     sincronizar();
   });
-  items.forEach((el, i2) => el.addEventListener("click", () => void aplicar(i2)));
+  items.forEach((el, i2) => el.addEventListener("click", () => void aplicar2(i2)));
   cerrarMenuAlPulsarFuera(barra, caja, limpieza, () => {
     if (!abierto)
       return;
@@ -60394,7 +61825,7 @@ async function montarPanelLatex(motor, contenedor, ecuaciones, ctx, limpieza, re
       items.forEach((el, i2) => itemEstilo(el, bloqueALatex(transformaciones[i2].fn(estado)) !== actual));
       menu.style.display = abierto ? "flex" : "none";
     };
-    const aplicar = async (i2) => {
+    const aplicar2 = async (i2) => {
       abierto = false;
       verMandos(false);
       const nuevo = transformaciones[i2].fn(estado);
@@ -60423,7 +61854,7 @@ async function montarPanelLatex(motor, contenedor, ecuaciones, ctx, limpieza, re
       abierto = !abierto;
       sincronizar();
     });
-    items.forEach((el, i2) => el.addEventListener("click", () => void aplicar(i2)));
+    items.forEach((el, i2) => el.addEventListener("click", () => void aplicar2(i2)));
     cerrarMenuAlPulsarFuera(barra, caja, limpieza, () => {
       if (!abierto)
         return;
@@ -60481,8 +61912,407 @@ async function montarPanelIntegral(motor, contenedor, source, ctx, limpieza, rep
   });
 }
 
+// src/host-obsidian/info/botones.ts
+var import_obsidian6 = require("obsidian");
+
+// src/math/numerico.ts
+var DOMINIO_X = [-100, 100];
+var MUESTRAS2 = 4e4;
+function formaExplicita(ecuacion) {
+  const partes = ecuacion.split("=");
+  let aislada;
+  let otra;
+  if (partes.length === 1) {
+    aislada = "y";
+    otra = partes[0];
+  } else if (partes.length === 2) {
+    const izq = partes[0].trim(), der = partes[1].trim();
+    if (izq === "y") {
+      aislada = "y";
+      otra = der;
+    } else if (der === "y") {
+      aislada = "y";
+      otra = izq;
+    } else if (izq === "x") {
+      aislada = "x";
+      otra = der;
+    } else if (der === "x") {
+      aislada = "x";
+      otra = izq;
+    } else
+      return null;
+  } else
+    return null;
+  const variableLibre = aislada === "y" ? "x" : "y";
+  try {
+    const f = compilarFuncion(insertarProductoImplicito(normalizarEntrada(otra)), variableLibre);
+    return {
+      aislada,
+      f: (t2) => {
+        const v = f(t2);
+        return typeof v === "number" ? v : NaN;
+      }
+    };
+  } catch {
+    return null;
+  }
+}
+function bisecar(h, a, b) {
+  let lo = a, hi = b;
+  let flo = h(lo);
+  if (!Number.isFinite(flo))
+    return null;
+  for (let i2 = 0; i2 < 80; i2++) {
+    const m2 = (lo + hi) / 2;
+    const fm2 = h(m2);
+    if (!Number.isFinite(fm2))
+      return null;
+    if (fm2 === 0)
+      return m2;
+    if (flo * fm2 < 0) {
+      hi = m2;
+    } else {
+      lo = m2;
+      flo = fm2;
+    }
+    if (hi === lo || hi - lo <= Math.abs(m2) * Number.EPSILON)
+      break;
+  }
+  const m = (lo + hi) / 2;
+  const fm = h(m);
+  if (!Number.isFinite(fm))
+    return null;
+  const escala2 = Math.max(1, Math.abs(h(m + 1e-6)), Math.abs(h(m - 1e-6)));
+  return Math.abs(fm) < 1e-6 * escala2 || Math.abs(fm) < 1e-9 ? m : null;
+}
+function pulir(h, x0) {
+  let x = x0;
+  for (let i2 = 0; i2 < 6; i2++) {
+    const paso = Math.max(1e-10, Math.abs(x) * 1e-10);
+    const d = (h(x + paso) - h(x - paso)) / (2 * paso);
+    if (!Number.isFinite(d) || d === 0)
+      break;
+    const nx = x - h(x) / d;
+    if (!Number.isFinite(nx) || Math.abs(nx - x) > Math.max(1, Math.abs(x)))
+      break;
+    if (nx === x)
+      break;
+    x = nx;
+  }
+  return Math.abs(h(x)) <= Math.abs(h(x0)) ? x : x0;
+}
+function raicesDe(h) {
+  const [t0, t1] = DOMINIO_X;
+  const paso = (t1 - t0) / MUESTRAS2;
+  const crudas = [];
+  let tPrev = t0;
+  let hPrev = h(tPrev);
+  for (let i2 = 1; i2 <= MUESTRAS2; i2++) {
+    const t2 = t0 + i2 * paso;
+    const ht = h(t2);
+    if (Number.isFinite(hPrev) && Number.isFinite(ht)) {
+      if (ht === 0)
+        crudas.push(t2);
+      else if (hPrev * ht < 0) {
+        const r = bisecar(h, tPrev, t2);
+        if (r !== null)
+          crudas.push(r);
+      }
+    }
+    tPrev = t2;
+    hPrev = ht;
+  }
+  const out = [];
+  for (const cruda of crudas) {
+    const t2 = pulir(h, cruda);
+    if (!Number.isFinite(t2))
+      continue;
+    if (out.some((p) => Math.abs(p - t2) <= 10 * paso))
+      continue;
+    out.push(t2);
+  }
+  return out;
+}
+function resolverNumerico(ecuacionA, ecuacionB, opciones = {}) {
+  const a = formaExplicita(ecuacionA);
+  const b = formaExplicita(ecuacionB);
+  if (!a || !b)
+    return { tipo: "noResoluble" };
+  if (!opciones.simetrico && (a.aislada !== "y" || b.aislada !== "y"))
+    return { tipo: "noResoluble" };
+  if (a.aislada === b.aislada) {
+    const h2 = (t2) => a.f(t2) - b.f(t2);
+    const variable = a.aislada === "y" ? "x" : "y";
+    const puntos2 = [];
+    for (const t2 of raicesDe(h2)) {
+      const otro = a.f(t2);
+      if (!Number.isFinite(otro))
+        continue;
+      puntos2.push(a.aislada === "y" ? { x: t2, y: otro } : { x: otro, y: t2 });
+    }
+    puntos2.sort((p, q) => p.x - q.x || p.y - q.y);
+    return { tipo: "puntos", puntos: puntos2, variable };
+  }
+  const explY = a.aislada === "y" ? a : b;
+  const explX = a.aislada === "x" ? a : b;
+  const h = (y) => explY.f(explX.f(y)) - y;
+  const puntos = [];
+  for (const y of raicesDe(h)) {
+    const x = explX.f(y);
+    if (!Number.isFinite(x) || !Number.isFinite(y))
+      continue;
+    puntos.push({ x, y });
+  }
+  puntos.sort((p, q) => p.x - q.x || p.y - q.y);
+  return { tipo: "puntos", puntos, variable: "y" };
+}
+
+// src/math/simbolico/valorExacto.ts
+var RADICANDO_MAXIMO = 1n << 40n;
+function raizEntera(n) {
+  if (n < 0n)
+    return null;
+  if (n < 2n)
+    return n;
+  let x = n, y = (x + 1n) / 2n;
+  while (y < x) {
+    x = y;
+    y = (x + n / x) / 2n;
+  }
+  return x * x === n ? x : null;
+}
+function extraerCuadrado(n) {
+  let dentro2 = n, fuera = 1n;
+  const r = raizEntera(dentro2);
+  if (r !== null)
+    return { fuera: r, dentro: 1n };
+  for (let k = 2n; k * k <= dentro2; k++) {
+    const k2 = k * k;
+    while (dentro2 % k2 === 0n) {
+      dentro2 /= k2;
+      fuera *= k;
+    }
+  }
+  return { fuera, dentro: dentro2 };
+}
+function exacto(r) {
+  return { a: r, b: CERO, d: 1n };
+}
+var CERO_E = exacto(CERO);
+function raizDe(a, b, radicando) {
+  if (signo(radicando) < 0)
+    return null;
+  if (esCero2(radicando) || esCero2(b))
+    return exacto(a);
+  const p = radicando.n * radicando.d;
+  const q = radicando.d;
+  if (p > RADICANDO_MAXIMO)
+    return null;
+  const { fuera, dentro: dentro2 } = extraerCuadrado(p);
+  const coef = producto(b, rac(fuera, q));
+  if (dentro2 === 1n)
+    return exacto(suma(a, coef));
+  if (esCero2(coef))
+    return exacto(a);
+  return { a, b: coef, d: dentro2 };
+}
+var racionalDe3 = (v) => esCero2(v.b) ? v.a : null;
+var aNumeroE = (v) => aNumero3(v.a) + (esCero2(v.b) ? 0 : aNumero3(v.b) * Math.sqrt(Number(v.d)));
+function radicandoComun(u, v) {
+  if (esCero2(u.b))
+    return v.d;
+  if (esCero2(v.b))
+    return u.d;
+  return u.d === v.d ? u.d : null;
+}
+function sumaE(u, v) {
+  const d = radicandoComun(u, v);
+  if (d === null)
+    return null;
+  const b = suma(u.b, v.b);
+  return esCero2(b) ? exacto(suma(u.a, v.a)) : { a: suma(u.a, v.a), b, d };
+}
+function productoE(u, v) {
+  const d = radicandoComun(u, v);
+  if (d === null)
+    return null;
+  const a = suma(producto(u.a, v.a), producto(producto(u.b, v.b), rac(d)));
+  const b = suma(producto(u.a, v.b), producto(u.b, v.a));
+  return esCero2(b) ? exacto(a) : { a, b, d };
+}
+function radicalATexto(b, d, raiz) {
+  const n = b.n < 0n ? -b.n : b.n;
+  const cuerpo = n === 1n ? `${raiz}${d}` : `${n}${raiz}${d}`;
+  return b.d === 1n ? cuerpo : `${cuerpo}/${b.d}`;
+}
+function aTextoE(v) {
+  return escribir(v, "\u221A", "-");
+}
+function fraccionLatex(n, d) {
+  if (d === 1n)
+    return String(n);
+  return n < 0n ? `-\\frac{${-n}}{${d}}` : `\\frac{${n}}{${d}}`;
+}
+function aLatexE(v) {
+  if (esCero2(v.b))
+    return fraccionLatex(v.a.n, v.a.d);
+  const den = lcm2(v.a.d, v.b.d);
+  const fuera = v.a.n <= 0n && v.b.n < 0n;
+  const s = fuera ? -1n : 1n;
+  const na = s * v.a.n * (den / v.a.d);
+  const nb = s * v.b.n * (den / v.b.d);
+  const abs3 = nb < 0n ? -nb : nb;
+  const radical = abs3 === 1n ? `\\sqrt{${v.d}}` : `${abs3}\\sqrt{${v.d}}`;
+  const cuerpo = na === 0n ? radical : na < 0n ? `${radical} - ${-na}` : `${na} ${nb < 0n ? "-" : "+"} ${radical}`;
+  const nucleo = den === 1n ? cuerpo : `\\frac{${cuerpo}}{${den}}`;
+  return `${fuera ? "-" : ""}${nucleo}`;
+}
+var lcm2 = (a, b) => a / mcd7(a, b) * b;
+function mcd7(a, b) {
+  let x = a < 0n ? -a : a, y = b < 0n ? -b : b;
+  while (y) {
+    const t2 = x % y;
+    x = y;
+    y = t2;
+  }
+  return x;
+}
+function escribir(v, raiz, menos) {
+  if (esCero2(v.b))
+    return aTexto(v.a).replace("-", menos);
+  if (esCero2(v.a)) {
+    const cuerpo2 = radicalATexto(v.b, v.d, raiz);
+    return v.b.n < 0n ? `${menos}${cuerpo2}` : cuerpo2;
+  }
+  const den = lcm2(v.a.d, v.b.d);
+  const na = v.a.n * (den / v.a.d);
+  const nb = v.b.n * (den / v.b.d);
+  const abs3 = nb < 0n ? -nb : nb;
+  const radical = abs3 === 1n ? `${raiz}${v.d}` : `${abs3}${raiz}${v.d}`;
+  const cuerpo = `${na} ${nb < 0n ? menos : "+"} ${radical}`;
+  return den === 1n ? cuerpo : `(${cuerpo})/${den}`;
+}
+
+// src/host-obsidian/info/infinitasPeriodicas.ts
+var MIN_PERIODICO = 3;
+var BORDE = 0.9;
+function infinitasPorPeriodicidad(resultado, hayTrigonometria) {
+  if (resultado.tipo !== "puntos" || !resultado.aproximado || !hayTrigonometria)
+    return false;
+  const puntos = resultado.puntos;
+  if (puntos.length < MIN_PERIODICO)
+    return false;
+  const enY2 = resultado.exploradas.length > 0 && !resultado.exploradas.includes("x");
+  const coordenada = (p) => enY2 ? p.y : p.x;
+  const limite = Math.max(Math.abs(DOMINIO_X[0]), Math.abs(DOMINIO_X[1])) * BORDE;
+  return puntos.some((p) => coordenada(p) <= -limite) && puntos.some((p) => coordenada(p) >= limite);
+}
+
 // src/host-obsidian/analysis/lineasAnalisis.ts
 var MAX_LISTA_DERIVADA = 6;
+function lineasResumen(analisis, interseccionY, esTrig, identicamenteCero) {
+  const T = t().resumen;
+  const lineas = [];
+  if (identicamenteCero) {
+    lineas.push(T.interseccionY(puntoALatex(0, 0)));
+    lineas.push(T.identicamenteCero);
+    return lineas;
+  }
+  lineas.push(Number.isFinite(interseccionY) ? T.interseccionY(puntoALatex(0, interseccionY)) : T.interseccionYNoDefinida);
+  const estR = estadoGrupo(analisis.raices.length + analisis.intervalosRaiz.length, esTrig);
+  if (estR === "infinitas")
+    lineas.push(T.raicesInfinitas);
+  else if (estR === "demasiadas")
+    lineas.push(T.raicesDemasiadas);
+  else if (analisis.intervalosRaiz.length > 0)
+    lineas.push(`${T.raicesPrefijo}$${raicesALatex(analisis.intervalosRaiz, analisis.raices)}$`);
+  else if (analisis.raices.length > 0)
+    lineas.push(`${T.raicesPrefijo}$${listaALatex(analisis.raices)}$`);
+  else
+    lineas.push(T.noRaices);
+  const estV = estadoGrupo(analisis.vertices.length, esTrig);
+  if (estV === "infinitas")
+    lineas.push(T.verticesInfinitos);
+  else if (estV === "demasiadas")
+    lineas.push(T.verticesDemasiados);
+  else if (analisis.vertices.length > 0)
+    for (const v of analisis.vertices)
+      lineas.push((v.tipo === "min" ? T.verticeMin : T.verticeMax)(puntoALatex(v.x, v.y)));
+  else
+    lineas.push(T.noVertices);
+  return lineas;
+}
+var MAX_LISTA_IMPLICITA = 12;
+function lineasImplicita(N, hayTrigonometria) {
+  const T = t().resumen;
+  const lineas = [];
+  let sinDeterminar = false;
+  const exploradas = /* @__PURE__ */ new Set();
+  const afirmable = (r2) => {
+    if (r2 === null || r2.tipo === "noResoluble" || r2.parcial) {
+      sinDeterminar = true;
+      return false;
+    }
+    for (const v2 of r2.exploradas)
+      exploradas.add(v2);
+    return true;
+  };
+  const iy = N.interseccionesY;
+  if (afirmable(iy)) {
+    if (iy.tipo === "solape")
+      lineas.push(T.interseccionesYInfinitas);
+    else if (infinitasPorPeriodicidad(iy, hayTrigonometria))
+      lineas.push(T.interseccionesYInfinitas);
+    else if (iy.puntos.length > MAX_LISTA_IMPLICITA)
+      lineas.push(T.interseccionesYDemasiadas);
+    else if (iy.puntos.length === 0)
+      lineas.push(T.noCortaY);
+    else
+      for (const p of iy.puntos)
+        lineas.push(T.interseccionY(puntoALatex(0, p.y)));
+  }
+  const r = N.raices;
+  if (afirmable(r)) {
+    if (r.tipo === "solape")
+      lineas.push(T.raicesInfinitas);
+    else if (infinitasPorPeriodicidad(r, hayTrigonometria))
+      lineas.push(T.raicesInfinitas);
+    else if (r.puntos.length > MAX_LISTA_IMPLICITA)
+      lineas.push(T.raicesDemasiadas);
+    else if (r.puntos.length === 0)
+      lineas.push(T.noRaices);
+    else
+      lineas.push(`${T.raicesPrefijo}$${listaExactaALatex(r.puntos, "x")}$`);
+  }
+  const v = N.vertices;
+  if (afirmable(v) && v !== null) {
+    if (v.tipo === "solape")
+      lineas.push(T.verticesInfinitos);
+    else if (infinitasPorPeriodicidad(v, hayTrigonometria))
+      lineas.push(T.verticesInfinitos);
+    else if (v.puntos.length > MAX_LISTA_IMPLICITA)
+      lineas.push(T.verticesDemasiados);
+    else if (v.puntos.length === 0)
+      lineas.push(T.noVertices);
+    else
+      for (const p of v.puntos)
+        lineas.push(T.vertice(puntoALatex(p.x, p.y)));
+  }
+  const aproximado = [N.raices, N.interseccionesY, N.vertices].some((g) => g !== null && g.aproximado);
+  if (aproximado) {
+    const vars = exploradas.size > 0 ? [...exploradas].join(", ") : "x";
+    lineas.push(t().solucion.enIntervalo(String(DOMINIO_X[0]), String(DOMINIO_X[1]), vars));
+  }
+  if (sinDeterminar)
+    lineas.push(T.sinDeterminar);
+  return lineas;
+}
+function listaExactaALatex(puntos, eje) {
+  return puntos.map((p) => {
+    const exacto2 = eje === "x" ? p.exactoX : p.exactoY;
+    return exacto2 !== null ? aLatexE(exacto2) : numeroALatex(eje === "x" ? p.x : p.y);
+  }).join(",\\ ");
+}
 function nombrePatron(p) {
   const P4 = t().polar.patron;
   switch (p.tipo) {
@@ -60509,7 +62339,7 @@ function lineasPolar(a) {
   lineas.push(familia ? `${T.titulo} \xB7 ${familia}` : T.titulo);
   const periodoInformativo = a.periodoR !== null && (a.ordenRotacional !== null || a.periodoR > 2 * Math.PI + 1e-6);
   if (periodoInformativo && a.periodoR !== null) {
-    const trozos = [T.periodo(numeroATexto(a.periodoR))];
+    const trozos = [T.periodo(numeroALatex(a.periodoR))];
     if (a.ordenRotacional !== null)
       trozos.push(T.ordenRotacional(String(a.ordenRotacional)));
     lineas.push(trozos.join(" \xB7 "));
@@ -60520,17 +62350,17 @@ function lineasPolar(a) {
   }
   const radioConstante = Math.abs(a.rMax - a.rMin) < 1e-9;
   if (radioConstante) {
-    lineas.push(T.radioConstante(numeroATexto(a.rMax)));
+    lineas.push(T.radioConstante(numeroALatex(a.rMax)));
   } else {
-    lineas.push(T.rangoRadial(numeroATexto(a.rMin), numeroATexto(a.rMax)));
+    lineas.push(T.rangoRadial(numeroALatex(a.rMin), numeroALatex(a.rMax)));
     if (a.cambiaSigno)
       lineas.push(T.cambiaSigno);
     const extremos = T.extremosEn(
-      numeroATexto(a.thetaRMax),
-      numeroATexto(a.thetaRMin)
+      numeroALatex(a.thetaRMax),
+      numeroALatex(a.thetaRMin)
     );
     lineas.push(
-      a.ordenRotacional !== null && a.periodoR !== null ? T.masMultiplos(extremos, numeroATexto(a.periodoR)) : extremos
+      a.ordenRotacional !== null && a.periodoR !== null ? T.masMultiplos(extremos, numeroALatex(a.periodoR)) : extremos
     );
   }
   if (a.angulosPolo === null)
@@ -60538,11 +62368,11 @@ function lineasPolar(a) {
   else if (a.angulosPolo.length === 0)
     lineas.push(T.noPasaPorPolo);
   else
-    lineas.push(T.pasaPorPolo(a.angulosPolo.map(numeroATexto).join(", ")));
+    lineas.push(T.pasaPorPolo(listaALatex(a.angulosPolo)));
   if (a.areaBarrida !== null)
     lineas.push(T.areaBarrida(
-      numeroATexto(a.areaBarrida),
-      numeroATexto(a.intervaloArea)
+      numeroALatex(a.areaBarrida),
+      numeroALatex(a.intervaloArea)
     ));
   return lineas;
 }
@@ -60554,7 +62384,7 @@ function nombreFamilia(f) {
     case "elipse":
       return F.elipse;
     case "lissajous":
-      return F.lissajous(String(f.a), String(f.b), numeroATexto(f.desfase));
+      return F.lissajous(String(f.a), String(f.b), numeroALatex(f.desfase));
   }
 }
 function lineasParametricas(a) {
@@ -60562,18 +62392,18 @@ function lineasParametricas(a) {
   const lineas = [];
   const familia = a.familia ? nombreFamilia(a.familia) : null;
   lineas.push(familia ? `${T.titulo} \xB7 ${familia}` : T.titulo);
-  const trozos = [T.intervalo(numeroATexto(a.tMin), numeroATexto(a.tMax))];
+  const trozos = [T.intervalo(numeroALatex(a.tMin), numeroALatex(a.tMax))];
   if (a.cerrada)
     trozos.push(T.cerrada);
   if (a.periodo !== null) {
-    trozos.push(a.periodoExcedeDominio ? T.periodoExcede(numeroATexto(a.periodo)) : T.periodo(numeroATexto(a.periodo)));
+    trozos.push(a.periodoExcedeDominio ? T.periodoExcede(numeroALatex(a.periodo)) : T.periodo(numeroALatex(a.periodo)));
   }
   lineas.push(trozos.join(" \xB7 "));
   lineas.push(T.caja(
-    numeroATexto(a.xMin),
-    numeroATexto(a.xMax),
-    numeroATexto(a.yMin),
-    numeroATexto(a.yMax)
+    numeroALatex(a.xMin),
+    numeroALatex(a.xMax),
+    numeroALatex(a.yMin),
+    numeroALatex(a.yMax)
   ));
   if (a.pasaPorOrigen)
     lineas.push(T.pasaPorOrigen);
@@ -60586,23 +62416,19 @@ function lineasParametricas(a) {
   }
   const cierre = [];
   if (a.longitud !== null)
-    cierre.push(T.longitud(numeroATexto(a.longitud)));
+    cierre.push(T.longitud(numeroALatex(a.longitud)));
   if (a.areaAlgebraica !== null)
-    cierre.push(T.areaAlgebraica(numeroATexto(a.areaAlgebraica)));
+    cierre.push(T.areaAlgebraica(numeroALatex(a.areaAlgebraica)));
   if (cierre.length > 0)
     lineas.push(cierre.join(" \xB7 "));
   return lineas;
-}
-function intervaloATexto(a, b) {
-  const n = (v) => v === Infinity ? "\u221E" : v === -Infinity ? "-\u221E" : numeroATexto(v);
-  return `(${n(a)}, ${n(b)})`;
 }
 function lineasDerivada(A, esTrig) {
   const T = t().derivada;
   const lineas = [{ texto: T.titulo }];
   const push = (texto, sangrado) => lineas.push({ texto, sangrado });
   if (A.pendienteEn0 !== null)
-    push(T.pendienteEn0(numeroATexto(A.pendienteEn0)));
+    push(T.pendienteEn0(numeroALatex(A.pendienteEn0)));
   const nombreTipo = (tipo) => T.tipo[tipo];
   const estCriticos = estadoGrupo(A.criticos.length, esTrig);
   if (estCriticos === "infinitas")
@@ -60612,17 +62438,17 @@ function lineasDerivada(A, esTrig) {
       push(T.criticosDemasiados);
   } else if (A.criticos.length === 1) {
     push(T.criticoUno(
-      T.criticoItem(numeroATexto(A.criticos[0].x), nombreTipo(A.criticos[0].tipo))
+      T.criticoItem(numeroALatex(A.criticos[0].x), nombreTipo(A.criticos[0].tipo))
     ));
   } else if (A.criticos.length > 1) {
     push(T.criticosPrefijo);
     for (const c of A.criticos)
-      push(T.criticoItem(numeroATexto(c.x), nombreTipo(c.tipo)), true);
+      push(T.criticoItem(numeroALatex(c.x), nombreTipo(c.tipo)), true);
   }
   if (A.monotonia !== null)
     for (const tramo of A.monotonia)
       push((tramo.creciente ? T.creciente : T.decreciente)(
-        intervaloATexto(tramo.a, tramo.b)
+        intervaloALatex(tramo.a, tramo.b)
       ));
   const estInflex = estadoGrupo(A.inflexiones.length, esTrig);
   if (estInflex === "infinitas")
@@ -60631,23 +62457,23 @@ function lineasDerivada(A, esTrig) {
     if (A.inflexiones.length > 0)
       push(T.inflexionesDemasiadas);
   } else if (A.inflexiones.length === 1) {
-    push(T.inflexionUna(numeroATexto(A.inflexiones[0])));
+    push(T.inflexionUna(numeroALatex(A.inflexiones[0])));
   } else if (A.inflexiones.length > 1) {
     push(T.inflexionesPrefijo);
     for (const x of A.inflexiones)
-      push(T.punto(numeroATexto(x)), true);
+      push(T.punto(numeroALatex(x)), true);
   }
   if (A.noDerivables !== null && A.noDerivables.length > 0) {
     if (A.noDerivables.length === 1)
-      push(T.noDerivableUno(numeroATexto(A.noDerivables[0])));
+      push(T.noDerivableUno(numeroALatex(A.noDerivables[0])));
     else {
       push(T.noDerivablesPrefijo);
       for (const x of A.noDerivables)
-        push(T.punto(numeroATexto(x)), true);
+        push(T.punto(numeroALatex(x)), true);
     }
   }
   if (A.acotadoPorRango)
-    push(T.rangoAnalisis(numeroATexto(A.rango[0]), numeroATexto(A.rango[1])));
+    push(T.rangoAnalisis(numeroALatex(A.rango[0]), numeroALatex(A.rango[1])));
   return lineas;
 }
 function lineasIntegral(A, variable, source) {
@@ -60655,37 +62481,35 @@ function lineasIntegral(A, variable, source) {
   const lineas = [];
   const cabecera = [T.titulo];
   if (A.impropia && A.singularidades.length > 0)
-    cabecera.push(T.impropia(variable, A.singularidades.map(numeroATexto).join(", ")));
-  lineas.push({ texto: cabecera.join(" \xB7 ") });
+    cabecera.push(T.impropia(variable, listaALatex(A.singularidades)));
+  lineas.push(cabecera.join(" \xB7 "));
   if (A.a === A.b) {
-    lineas.push({ texto: T.intervaloVacio });
+    lineas.push(T.intervaloVacio);
     return lineas;
   }
-  lineas.push({
-    texto: T.intervalo(
-      numeroATexto(Math.min(A.a, A.b)),
-      numeroATexto(Math.max(A.a, A.b)),
-      variable
-    )
-  });
+  lineas.push(T.intervalo(
+    numeroALatex(Math.min(A.a, A.b)),
+    numeroALatex(Math.max(A.a, A.b)),
+    variable
+  ));
   if (A.invertido)
-    lineas.push({ texto: T.limitesInvertidos });
+    lineas.push(T.limitesInvertidos);
   const { cuerpo, conector } = cuerpoAreaLatexExacto(source);
   const tex = cuerpo ? conector === "=" ? cuerpo : `\\approx ${cuerpo}` : numeroALatex(A.valor);
   const nota = A.invertido ? null : A.signo === 1 ? T.valorEsArea : A.signo === -1 ? T.valorBajoEje : A.signo === 0 ? T.integrandoNulo : T.valorFirmado;
-  lineas.push({ texto: T.valorPrefijo, tex, cola: nota ? ` \xB7 ${nota}` : void 0 });
+  lineas.push(`${T.valorPrefijo}$${tex}$${nota ? ` \xB7 ${nota}` : ""}`);
   if (A.signo === null) {
     if (A.cruces === null)
-      lineas.push({ texto: T.crucesMuchos });
+      lineas.push(T.crucesMuchos);
     else if (A.cruces.length > 0)
-      lineas.push({ texto: T.cruces(variable, A.cruces.map(numeroATexto).join(", ")) });
+      lineas.push(T.cruces(variable, listaALatex(A.cruces)));
   }
   if (A.areaPositiva !== null && A.areaNegativa !== null) {
-    lineas.push({ texto: T.areaPositiva(numeroATexto(A.areaPositiva)) });
-    lineas.push({ texto: T.areaNegativa(numeroATexto(A.areaNegativa)) });
+    lineas.push(T.areaPositiva(numeroALatex(A.areaPositiva)));
+    lineas.push(T.areaNegativa(numeroALatex(A.areaNegativa)));
   }
   if (A.promedio !== null)
-    lineas.push({ texto: T.promedio(numeroATexto(A.promedio)) });
+    lineas.push(T.promedio(numeroALatex(A.promedio)));
   return lineas;
 }
 
@@ -60895,7 +62719,7 @@ function analizarDerivada(f, df) {
 }
 
 // src/core/analysis/analisisIntegral.ts
-var MUESTRAS2 = 1024;
+var MUESTRAS3 = 1024;
 var MAX_CRUCES = 6;
 var ITERS_BISECCION = 60;
 function raizEntre(g, x1, x2) {
@@ -60916,12 +62740,12 @@ function raizEntre(g, x1, x2) {
   return (lo + hi) / 2;
 }
 function barrerSignos(g, lo, hi) {
-  const paso = (hi - lo) / MUESTRAS2;
+  const paso = (hi - lo) / MUESTRAS3;
   const cruces = [];
   let xPrev = NaN, sPrev = 0;
   let vioPositivo = false, vioNegativo = false;
-  for (let i2 = 0; i2 <= MUESTRAS2; i2++) {
-    const x = i2 === MUESTRAS2 ? hi : lo + paso * i2;
+  for (let i2 = 0; i2 <= MUESTRAS3; i2++) {
+    const x = i2 === MUESTRAS3 ? hi : lo + paso * i2;
     const v = g(x);
     if (!Number.isFinite(v) || v === 0)
       continue;
@@ -61013,7 +62837,7 @@ function analizarIntegral(f, a, b) {
 }
 
 // src/host-obsidian/info/botones.ts
-function montarBotonInfoDerivada(motor, wrap, fExpr, dfExpr, lado, exclusion) {
+function montarBotonInfoDerivada(motor, wrap, fExpr, dfExpr, ctx, lado, exclusion) {
   let f;
   let df;
   try {
@@ -61034,7 +62858,7 @@ function montarBotonInfoDerivada(motor, wrap, fExpr, dfExpr, lado, exclusion) {
   ponerTooltip(btnInfo, t().botones.resumenDerivada);
   btnInfo.style.cssText = estiloChipInfo(lado);
   montarIcono(btnInfo, "info", ladoIcono(lado));
-  const pop = wrap.createDiv();
+  const pop = wrap.createDiv({ cls: CLASE_POPOVER_INFO });
   pop.style.cssText = estiloPopoverInfo(lado);
   exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
   const esTrig = tieneTrigonometria(dfExpr);
@@ -61050,8 +62874,11 @@ function montarBotonInfoDerivada(motor, wrap, fExpr, dfExpr, lado, exclusion) {
     }
     if (!A)
       return;
+    const hijo = new import_obsidian6.MarkdownRenderChild(pop);
+    ctx.addChild(hijo);
     for (const l of lineasDerivada(A, esTrig)) {
-      const div2 = pop.createDiv({ text: l.texto });
+      const div2 = pop.createDiv();
+      pintarLineaPanel(motor.plugin, div2, l.texto, ctx.sourcePath, hijo);
       if (l.sangrado)
         div2.setCssStyles({ paddingLeft: "10px" });
     }
@@ -61078,7 +62905,7 @@ function montarBotonInfoIntegral(motor, wrap, source, ctx, lado, exclusion) {
   ponerTooltip(btnInfo, t().botones.resumenIntegral);
   btnInfo.style.cssText = estiloChipInfo(lado);
   montarIcono(btnInfo, "info", ladoIcono(lado));
-  const pop = wrap.createDiv();
+  const pop = wrap.createDiv({ cls: CLASE_POPOVER_INFO });
   pop.style.cssText = estiloPopoverInfo(lado);
   exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
   let montado = false;
@@ -61097,13 +62924,10 @@ function montarBotonInfoIntegral(motor, wrap, source, ctx, lado, exclusion) {
     }
     if (!A)
       return;
-    for (const l of lineasIntegral(A, it.variable, source)) {
-      const div2 = pop.createDiv({ text: l.texto });
-      if (l.tex)
-        montarEtiquetaMath(motor.plugin, div2.createSpan(), l.tex, ctx);
-      if (l.cola)
-        div2.createSpan({ text: l.cola });
-    }
+    const hijo = new import_obsidian6.MarkdownRenderChild(pop);
+    ctx.addChild(hijo);
+    for (const l of lineasIntegral(A, it.variable, source))
+      pintarLineaPanel(motor.plugin, pop.createDiv(), l, ctx.sourcePath, hijo);
   };
   btnInfo.addEventListener("click", (e3) => {
     e3.stopPropagation();
@@ -61127,78 +62951,714 @@ function montarBotonInfo(motor, wrap, expr, ctx, lado, exclusion) {
   } catch {
     return;
   }
-  const analisis = analizarFuncion(evalX);
-  const interseccionY = evalX(0);
-  const esTrig = tieneTrigonometria(expr);
-  const estadoRaices = estadoGrupo(
-    analisis.raices.length + analisis.intervalosRaiz.length,
-    esTrig
-  );
-  const estadoVertices = estadoGrupo(analisis.vertices.length, esTrig);
   let id\u00E9nticamenteCero = false;
   try {
     id\u00E9nticamenteCero = simplify(expr).toString() === "0";
   } catch {
   }
-  const T = t().resumen;
-  const lineas = [];
-  if (id\u00E9nticamenteCero) {
-    lineas.push({ texto: T.interseccionYCero });
-    lineas.push({ texto: T.identicamenteCero });
-  } else {
-    lineas.push({
-      texto: Number.isFinite(interseccionY) ? T.interseccionY(numeroATexto(interseccionY)) : T.interseccionYNoDefinida
-    });
-    if (estadoRaices === "infinitas")
-      lineas.push({ texto: T.raicesInfinitas });
-    else if (estadoRaices === "demasiadas")
-      lineas.push({ texto: T.raicesDemasiadas });
-    else if (analisis.intervalosRaiz.length > 0)
-      lineas.push({ texto: T.raicesPrefijo, tex: raicesALatex(analisis.intervalosRaiz, analisis.raices) });
-    else if (analisis.raices.length > 0)
-      lineas.push({ texto: T.raicesPrefijo + analisis.raices.map(numeroATexto).join(", ") });
-    else
-      lineas.push({ texto: T.noRaices });
-    if (estadoVertices === "infinitas")
-      lineas.push({ texto: T.verticesInfinitos });
-    else if (estadoVertices === "demasiadas")
-      lineas.push({ texto: T.verticesDemasiados });
-    else if (analisis.vertices.length > 0)
-      for (const v of analisis.vertices)
-        lineas.push({
-          texto: (v.tipo === "min" ? T.verticeMin : T.verticeMax)(
-            numeroATexto(v.x),
-            numeroATexto(v.y)
-          )
-        });
-    else
-      lineas.push({ texto: T.noVertices });
-  }
+  const lineas = lineasResumen(
+    analizarFuncion(evalX),
+    evalX(0),
+    tieneTrigonometria(expr),
+    id\u00E9nticamenteCero
+  );
   const btnInfo = wrap.createDiv();
   ponerTooltip(btnInfo, t().botones.resumenNotables);
   btnInfo.style.cssText = estiloChipInfo(lado);
   montarIcono(btnInfo, "info", ladoIcono(lado));
-  const pop = wrap.createDiv();
+  const pop = wrap.createDiv({ cls: CLASE_POPOVER_INFO });
   pop.style.cssText = estiloPopoverInfo(lado);
   exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
-  for (const l of lineas) {
-    const div2 = pop.createDiv({ text: l.texto });
-    if (l.tex)
-      montarEtiquetaMath(motor.plugin, div2.createSpan(), l.tex, ctx);
-  }
+  let montado = false;
+  const rellenar = () => {
+    if (montado)
+      return;
+    montado = true;
+    const hijo = new import_obsidian6.MarkdownRenderChild(pop);
+    ctx.addChild(hijo);
+    for (const l of lineas)
+      pintarLineaPanel(motor.plugin, pop.createDiv(), l, ctx.sourcePath, hijo);
+  };
   btnInfo.addEventListener("click", (e3) => {
     e3.stopPropagation();
     const abierto = pop.style.display !== "none";
-    if (!abierto)
+    if (!abierto) {
       exclusion.alAbrir();
+      rellenar();
+    }
     pop.setCssStyles({ display: abierto ? "none" : "block" });
   });
 }
 
+// src/math/ramas.ts
+var FAMILIA = /(?<![a-zA-Z0-9_])(fam|famN)\s*\(/;
+var PASADAS_DOM = 8;
+function esDom(n) {
+  return n.type === "FunctionNode" && n.fn?.name === "dom" && n.args.length === 2;
+}
+function separarGuardas(n) {
+  const guardas = [];
+  const limpiar = (m) => {
+    let out = m;
+    for (let i2 = 0; i2 < PASADAS_DOM && out.filter(esDom).length > 0; i2++) {
+      out = out.transform((k) => {
+        if (!esDom(k))
+          return k;
+        guardas.push(k.args[1]);
+        return k.args[0];
+      });
+    }
+    return out;
+  };
+  const limpio = limpiar(n);
+  for (let i2 = 0; i2 < guardas.length; i2++)
+    guardas[i2] = limpiar(guardas[i2]);
+  return { limpio, guardas };
+}
+var constantes = /* @__PURE__ */ new Map();
+function esConstante2(nombre) {
+  let conocida = constantes.get(nombre);
+  if (conocida === void 0) {
+    conocida = evaluarConstante(nombre) !== null;
+    constantes.set(nombre, conocida);
+  }
+  return conocida;
+}
+function soloVariablesYConstantes(n) {
+  const libres = n.filter((m, camino) => m.type === "SymbolNode" && camino !== "fn" && m.name !== "x" && m.name !== "y");
+  return libres.every((m) => esConstante2(m.name));
+}
+function ramaLimpia(ec) {
+  const partes = ec.split("=");
+  if (partes.length > 2)
+    return null;
+  const lados = [];
+  const guardas = /* @__PURE__ */ new Set();
+  for (const parte of partes) {
+    let n;
+    try {
+      n = parse2(parte);
+    } catch {
+      return null;
+    }
+    const { limpio, guardas: gs } = separarGuardas(n);
+    if (!soloVariablesYConstantes(limpio))
+      return null;
+    lados.push(limpio.toString());
+    for (const g of gs) {
+      if (!soloVariablesYConstantes(g))
+        return null;
+      guardas.add(g.toString());
+    }
+  }
+  return { ecuacion: lados.join(" = "), guardas: [...guardas] };
+}
+function transponer(nodo) {
+  return nodo.transform((n) => {
+    if (n.type !== "SymbolNode")
+      return n;
+    if (n.name === "x")
+      return simboloNodo("y");
+    if (n.name === "y")
+      return simboloNodo("x");
+    return n;
+  });
+}
+function sinIncognitaY(ecuacion) {
+  const norm3 = insertarProductoImplicito(normalizarEntrada(ecuacion.trim()));
+  if (norm3 === "" || contieneYLibre(norm3))
+    return null;
+  const partes = norm3.split("=");
+  if (partes.length === 2) {
+    let girada;
+    try {
+      const izq = transponer(parse2(partes[0]));
+      const der = transponer(parse2(partes[1]));
+      girada = `${izq.toString()} = ${der.toString()}`;
+    } catch {
+      return { ecuacion: norm3, completo: true };
+    }
+    const desp = despejar(girada);
+    if (desp && desp.completo) {
+      try {
+        const vuelta = desp.ecuacion.split("=");
+        if (vuelta.length === 2) {
+          const izq = transponer(parse2(vuelta[0]));
+          const der = transponer(parse2(vuelta[1]));
+          return { ecuacion: `${izq.toString()} = ${der.toString()}`, completo: true };
+        }
+      } catch {
+      }
+    }
+  }
+  return { ecuacion: norm3, completo: true };
+}
+function ramasDe(ecuacion) {
+  const desp = despejar(ecuacion) ?? sinIncognitaY(ecuacion);
+  if (!desp || !desp.completo)
+    return null;
+  if (FAMILIA.test(desp.ecuacion))
+    return null;
+  const expandidas = tieneDobleSigno(desp.ecuacion) ? expandirDobleSigno(desp.ecuacion) : [desp.ecuacion];
+  const out = [];
+  for (const e3 of expandidas) {
+    const rama = ramaLimpia(e3);
+    if (!rama)
+      return null;
+    out.push(rama);
+  }
+  return out.length > 0 ? out : null;
+}
+
+// src/math/simbolico/raicesSimbolicas.ts
+var DENOMINADOR_MAXIMO = 1000000n;
+var TOL_RECONSTRUCCION = 1e-11;
+function racionalCercano(v, maxDen = DENOMINADOR_MAXIMO) {
+  if (!Number.isFinite(v))
+    return null;
+  const escala2 = Math.max(1, Math.abs(v));
+  let x = v;
+  let a = Math.floor(x);
+  if (!Number.isSafeInteger(a))
+    return null;
+  let pAnt = 1n, qAnt = 0n;
+  let p = BigInt(a), q = 1n;
+  for (let i2 = 0; i2 < 40; i2++) {
+    if (Math.abs(Number(p) / Number(q) - v) <= TOL_RECONSTRUCCION * escala2)
+      return rac(p, q);
+    const frac = x - a;
+    if (Math.abs(frac) < 1e-14)
+      break;
+    x = 1 / frac;
+    a = Math.floor(x);
+    if (!Number.isSafeInteger(a))
+      break;
+    const A = BigInt(a);
+    const p2 = A * p + pAnt, q2 = A * q + qAnt;
+    if (q2 > maxDen || q2 <= 0n)
+      break;
+    pAnt = p;
+    qAnt = q;
+    p = p2;
+    q = q2;
+  }
+  return null;
+}
+function divideExacto(p, q) {
+  if (grado(q) < 1 || grado(p) < grado(q))
+    return false;
+  return esNulo(dividir(p, q).resto);
+}
+function factoresCuadraticos(p, raices2) {
+  const irracionales = raices2.filter((r) => r.exacto === null);
+  const factores2 = [];
+  for (let i2 = 0; i2 < irracionales.length; i2++) {
+    for (let j = i2 + 1; j < irracionales.length; j++) {
+      const S = racionalCercano(irracionales[i2].valor + irracionales[j].valor);
+      const M = racionalCercano(irracionales[i2].valor * irracionales[j].valor);
+      if (S === null || M === null)
+        continue;
+      const q = [M, { n: -S.n, d: S.d }, rac(1n)];
+      if (divideExacto(p, q))
+        factores2.push(q);
+    }
+  }
+  return factores2;
+}
+function raicesDeCuadratica(b, c) {
+  const disc = resta(producto(b, b), producto(rac(4n), c));
+  const mitad = rac(1n, 2n);
+  const centro = producto({ n: -b.n, d: b.d }, mitad);
+  const mas = raizDe(centro, mitad, disc);
+  const menos = raizDe(centro, { n: -1n, d: 2n }, disc);
+  const out = [];
+  if (mas)
+    out.push(mas);
+  if (menos)
+    out.push(menos);
+  return out;
+}
+function raicesConForma(p) {
+  const raices2 = raicesReales(p);
+  if (raices2.length === 0)
+    return [];
+  const candidatas = [];
+  for (const q of factoresCuadraticos(p, raices2))
+    candidatas.push(...raicesDeCuadratica(q[1], q[0]));
+  return raices2.map((raiz) => {
+    if (raiz.exacto !== null)
+      return { raiz, exacto: exacto(raiz.exacto) };
+    const escala2 = Math.max(1, Math.abs(raiz.valor));
+    const forma = candidatas.find((c) => Math.abs(aNumeroE(c) - raiz.valor) <= 1e-9 * escala2);
+    return { raiz, exacto: forma ?? null };
+  });
+}
+
+// src/math/simbolico/polinomioExacto.ts
+function evaluarExacto(p, v) {
+  const P4 = normalizar(p);
+  if (P4.length === 0)
+    return CERO_E;
+  let acumulado = exacto(P4[P4.length - 1]);
+  for (let i2 = P4.length - 2; i2 >= 0; i2--) {
+    if (acumulado === null)
+      return null;
+    const escalado = productoE(acumulado, v);
+    if (escalado === null)
+      return null;
+    acumulado = sumaE(escalado, exacto(P4[i2]));
+  }
+  return acumulado;
+}
+
+// src/math/resolverSistema.ts
+var TOL_REL2 = 1e-9;
+function dX(p) {
+  return normalizar2(p.map((c) => {
+    const out = [];
+    for (let i2 = 1; i2 < c.length; i2++)
+      out.push({ n: c[i2].n * BigInt(i2), d: c[i2].d });
+    return normalizar(out);
+  }));
+}
+function dY(p) {
+  const P4 = normalizar2(p);
+  const out = [];
+  for (let j = 1; j < P4.length; j++)
+    out.push(normalizar(P4[j].map((c) => ({ n: c.n * BigInt(j), d: c.d }))));
+  return normalizar2(out);
+}
+function pulirNewton(p, q, x0, y0) {
+  const px2 = dX(p), py2 = dY(p), qx = dX(q), qy = dY(q);
+  let x = x0, y = y0;
+  for (let i2 = 0; i2 < 12; i2++) {
+    const fp = evaluarNum2(p, x, y), fq = evaluarNum2(q, x, y);
+    if (!Number.isFinite(fp) || !Number.isFinite(fq))
+      return { x: x0, y: y0 };
+    if (fp === 0 && fq === 0)
+      break;
+    const a = evaluarNum2(px2, x, y), b = evaluarNum2(py2, x, y);
+    const c = evaluarNum2(qx, x, y), d = evaluarNum2(qy, x, y);
+    const det2 = a * d - b * c;
+    if (!Number.isFinite(det2) || det2 === 0)
+      break;
+    const nx = x - (fp * d - fq * b) / det2;
+    const ny = y - (a * fq - c * fp) / det2;
+    if (!Number.isFinite(nx) || !Number.isFinite(ny))
+      break;
+    if (nx === x && ny === y)
+      break;
+    x = nx;
+    y = ny;
+  }
+  const antes = Math.abs(evaluarNum2(p, x0, y0)) + Math.abs(evaluarNum2(q, x0, y0));
+  const ahora = Math.abs(evaluarNum2(p, x, y)) + Math.abs(evaluarNum2(q, x, y));
+  return ahora <= antes ? { x, y } : { x: x0, y: y0 };
+}
+function escala(p, x, y) {
+  let s = 1;
+  for (const c of p)
+    for (const k of c)
+      s = Math.max(s, Math.abs(aNumero3(k)));
+  const m = Math.max(1, Math.abs(x), Math.abs(y));
+  return s * m ** Math.max(1, gradoY(p) + 1);
+}
+function verificar(p, q, denP, denQ, x, y) {
+  if (!Number.isFinite(x) || !Number.isFinite(y))
+    return false;
+  const rp = Math.abs(evaluarNum2(p, x, y)), rq = Math.abs(evaluarNum2(q, x, y));
+  if (!(rp <= TOL_REL2 * escala(p, x, y)) || !(rq <= TOL_REL2 * escala(q, x, y)))
+    return false;
+  for (const d of [denP, denQ]) {
+    if (esNulo2(d))
+      return false;
+    const v = Math.abs(evaluarNum2(d, x, y));
+    if (v <= 1e-12 * escala(d, x, y))
+      return false;
+  }
+  return true;
+}
+function ordenadasDe(p, q, xRacional, xr, explicita2, xValor) {
+  if (xRacional === null && explicita2 !== null)
+    return [{ y: evaluarNum(explicita2, xValor), exacta: null }];
+  return ordenadasPorEliminacion(p, q, xRacional, xr);
+}
+function ordenadasPorEliminacion(p, q, xRacional, xr) {
+  const py2 = sustituirX(p, xr);
+  const qy = sustituirX(q, xr);
+  if (esNulo(py2) && esNulo(qy))
+    return [];
+  const conForma = (pol) => raicesConForma(pol).map((r) => ({ y: r.raiz.valor, exacta: r.exacto }));
+  if (xRacional !== null) {
+    if (esNulo(py2))
+      return conForma(qy);
+    if (esNulo(qy))
+      return conForma(py2);
+    const g = mcdPol(py2, qy);
+    if (grado(g) < 1)
+      return [];
+    return conForma(g);
+  }
+  const soloValores = (pol) => raicesReales(pol).map((r) => ({ y: r.valor, exacta: null }));
+  if (gradoY(p) === 0)
+    return soloValores(qy);
+  if (gradoY(q) === 0)
+    return soloValores(py2);
+  const rp = raicesReales(py2), rq = raicesReales(qy);
+  const out = [];
+  for (const a of rp) {
+    for (const b of rq) {
+      const tol = 1e-6 * Math.max(1, Math.abs(a.valor));
+      if (Math.abs(a.valor - b.valor) <= tol)
+        out.push({ y: (a.valor + b.valor) / 2, exacta: null });
+    }
+  }
+  return out;
+}
+function ordenadaExacta(explicita2, xExacta, yNumerica) {
+  if (explicita2 === null)
+    return null;
+  if (xExacta === null && grado(explicita2) > 0)
+    return null;
+  const valor = evaluarExacto(explicita2, xExacta ?? exacto(rac(0n)));
+  if (valor === null)
+    return null;
+  const escala2 = Math.max(1, Math.abs(yNumerica));
+  return Math.abs(aNumeroE(valor) - yNumerica) <= 1e-6 * escala2 ? valor : null;
+}
+var riqueza = (s) => (s.exactoX ? 1 : 0) + (s.exactoY ? 1 : 0);
+function ordenarYUnificar(puntos) {
+  const orden = [...puntos].sort((a, b) => a.x - b.x || a.y - b.y);
+  const out = [];
+  for (const s of orden) {
+    const iguales2 = out.findIndex((o) => {
+      const escalaXY = Math.max(1, Math.abs(o.x), Math.abs(o.y));
+      return Math.abs(o.x - s.x) <= 1e-9 * escalaXY && Math.abs(o.y - s.y) <= 1e-9 * escalaXY;
+    });
+    if (iguales2 < 0)
+      out.push(s);
+    else if (riqueza(s) > riqueza(out[iguales2]))
+      out[iguales2] = s;
+  }
+  return out;
+}
+function resolverSistema(ecuacionA, ecuacionB) {
+  const A = ecuacionAPolinomio(ecuacionA);
+  const B = ecuacionAPolinomio(ecuacionB);
+  if (!A || !B)
+    return { tipo: "noResoluble" };
+  const p = A.p, q = B.p;
+  if (compartenComponente(p, q))
+    return { tipo: "solape" };
+  const explicita2 = despejarY(p) ?? despejarY(q);
+  const otra = despejarY(p) !== null ? q : p;
+  const enX = explicita2 !== null ? sustituirY(otra, explicita2) : resultanteY(p, q);
+  if (esNulo(enX))
+    return { tipo: "solape" };
+  const puntos = [];
+  for (const { raiz: r, exacto: xExacta } of raicesConForma(enX)) {
+    const xRacional = xExacta === null ? null : racionalDe3(xExacta);
+    const xr = xRacional ?? r.b;
+    for (const cand of ordenadasDe(p, q, xRacional, xr, explicita2, r.valor)) {
+      const pulido = xRacional !== null && cand.exacta !== null ? { x: r.valor, y: cand.y } : pulirNewton(p, q, r.valor, cand.y);
+      if (!verificar(p, q, A.denominador, B.denominador, pulido.x, pulido.y))
+        continue;
+      puntos.push({
+        x: pulido.x,
+        y: pulido.y,
+        exactoX: xExacta,
+        // Con la abscisa irracional el emparejado numérico no da forma cerrada; la relación
+        // explícita `y = f(x)`, evaluada en el cuerpo de la abscisa, sí.
+        exactoY: cand.exacta ?? ordenadaExacta(explicita2, xExacta, pulido.y)
+      });
+    }
+  }
+  return { tipo: "puntos", puntos: ordenarYUnificar(puntos) };
+}
+var TOL_ORIGINAL = 1e-6;
+var TOL_GUARDA = 1e-9;
+function verificadorDe(ecuacion) {
+  const norm3 = (s) => insertarProductoImplicito(normalizarEntrada(s.trim()));
+  const partes = ecuacion.split("=");
+  if (partes.length > 2)
+    return null;
+  try {
+    const D = partes.length === 2 ? parse2(`(${norm3(partes[0])}) - (${norm3(partes[1])})`) : parse2(`y - (${norm3(partes[0])})`);
+    return evaluadorDe(D);
+  } catch {
+    return null;
+  }
+}
+function satisface(D, s) {
+  const d = D(s.x, s.y);
+  return Number.isFinite(d) && Math.abs(d) <= TOL_ORIGINAL * (1 + s.x * s.x + s.y * s.y);
+}
+function compilarGuardas(guardas) {
+  const out = [];
+  for (const g of new Set(guardas)) {
+    let f;
+    try {
+      f = evaluadorDe(parse2(g));
+    } catch {
+      return null;
+    }
+    if (!f)
+      return null;
+    out.push(f);
+  }
+  return out;
+}
+function dentroDeGuardas(guardas, s) {
+  for (const g of guardas) {
+    const v = g(s.x, s.y);
+    if (!Number.isFinite(v))
+      return false;
+    if (v < -TOL_GUARDA * Math.max(1, Math.abs(s.x), Math.abs(s.y)))
+      return false;
+  }
+  return true;
+}
+function resolverPorRamas(ecuacionA, ecuacionB) {
+  const ramasA = ramasDe(ecuacionA);
+  const ramasB = ramasDe(ecuacionB);
+  if (!ramasA || !ramasB)
+    return null;
+  const verifA = verificadorDe(ecuacionA);
+  const verifB = verificadorDe(ecuacionB);
+  if (!verifA || !verifB)
+    return null;
+  const puntos = [];
+  const exploradas = /* @__PURE__ */ new Set();
+  let algunaResuelta = false;
+  let aproximado = false;
+  let parcial2 = false;
+  for (const ra of ramasA) {
+    for (const rb of ramasB) {
+      const guardas = compilarGuardas([...ra.guardas, ...rb.guardas]);
+      if (guardas === null) {
+        parcial2 = true;
+        continue;
+      }
+      const candidatos = resolverPareja(ra, rb);
+      if (candidatos === "solape")
+        return { tipo: "solape" };
+      if (candidatos === null) {
+        parcial2 = true;
+        continue;
+      }
+      algunaResuelta = true;
+      if (candidatos.aproximado)
+        aproximado = true;
+      if (candidatos.variable)
+        exploradas.add(candidatos.variable);
+      for (const s of candidatos.puntos)
+        if (dentroDeGuardas(guardas, s) && satisface(verifA, s) && satisface(verifB, s))
+          puntos.push(s);
+    }
+  }
+  if (!algunaResuelta)
+    return null;
+  return {
+    tipo: "puntos",
+    puntos: ordenarYUnificar(puntos),
+    aproximado,
+    parcial: parcial2,
+    exploradas: [...exploradas]
+  };
+}
+function resolverPareja(ra, rb) {
+  const exacto2 = resolverSistema(ra.ecuacion, rb.ecuacion);
+  if (exacto2.tipo === "solape")
+    return "solape";
+  if (exacto2.tipo === "puntos")
+    return { puntos: exacto2.puntos, aproximado: false, variable: null };
+  const num = resolverNumerico(ra.ecuacion, rb.ecuacion, { simetrico: true });
+  if (num.tipo === "noResoluble")
+    return null;
+  return {
+    puntos: num.puntos.map((p) => ({ x: p.x, y: p.y, exactoX: null, exactoY: null })),
+    aproximado: true,
+    variable: num.variable
+  };
+}
+function resolverBloque(ecuaciones) {
+  const nada = {
+    tipo: "noResoluble",
+    puntos: [],
+    aproximado: false,
+    parcial: false,
+    exploradas: []
+  };
+  const solape = {
+    tipo: "solape",
+    puntos: [],
+    aproximado: false,
+    parcial: false,
+    exploradas: []
+  };
+  if (ecuaciones.length < 2)
+    return nada;
+  const grupos = ecuaciones.map((ec) => {
+    const { expr, restriccion } = separarRestriccion(ec);
+    let ramas = [expr];
+    try {
+      const norm3 = normalizarEntrada(expr);
+      if (tieneDobleSigno(norm3))
+        ramas = expandirDobleSigno(norm3);
+    } catch {
+    }
+    return { ramas, restriccion };
+  });
+  const parejas = [];
+  for (let i2 = 0; i2 < grupos.length; i2++)
+    for (let j = i2 + 1; j < grupos.length; j++)
+      for (const a of grupos[i2].ramas)
+        for (const b of grupos[j].ramas)
+          parejas.push({ a, b, recortes: [grupos[i2].restriccion, grupos[j].restriccion] });
+  const todos = [];
+  const exploradas = /* @__PURE__ */ new Set();
+  let aproximado = false;
+  let algunaResuelta = false;
+  let parcial2 = false;
+  for (const { a, b, recortes } of parejas) {
+    const admitir = (p) => enDominio(p, recortes);
+    const exacto2 = resolverSistema(a, b);
+    if (exacto2.tipo === "solape")
+      return solape;
+    if (exacto2.tipo === "puntos") {
+      algunaResuelta = true;
+      todos.push(...exacto2.puntos.filter(admitir));
+      continue;
+    }
+    const numerico = resolverNumerico(a, b);
+    if (numerico.tipo === "puntos") {
+      algunaResuelta = true;
+      aproximado = true;
+      exploradas.add(numerico.variable);
+      for (const p of numerico.puntos)
+        if (admitir(p))
+          todos.push({ ...p, exactoX: null, exactoY: null });
+      continue;
+    }
+    const porRamas = resolverPorRamas(a, b);
+    if (porRamas === null) {
+      const tumbado = resolverNumerico(a, b, { simetrico: true });
+      if (tumbado.tipo === "puntos") {
+        algunaResuelta = true;
+        aproximado = true;
+        exploradas.add(tumbado.variable);
+        for (const p of tumbado.puntos)
+          if (admitir(p))
+            todos.push({ ...p, exactoX: null, exactoY: null });
+        continue;
+      }
+      parcial2 = true;
+      continue;
+    }
+    if (porRamas.tipo === "solape")
+      return solape;
+    algunaResuelta = true;
+    if (porRamas.aproximado)
+      aproximado = true;
+    if (porRamas.parcial)
+      parcial2 = true;
+    for (const v of porRamas.exploradas)
+      exploradas.add(v);
+    todos.push(...porRamas.puntos.filter(admitir));
+  }
+  if (!algunaResuelta)
+    return nada;
+  return {
+    tipo: "puntos",
+    puntos: ordenarYUnificar(todos),
+    aproximado,
+    parcial: parcial2,
+    exploradas: [...exploradas]
+  };
+}
+function enDominio(p, recortes) {
+  for (const r of recortes) {
+    if (!r)
+      continue;
+    if (r.variable === "x" && !dentro(r, p.x))
+      return false;
+    if (r.variable === "y" && !dentro(r, p.y))
+      return false;
+  }
+  return true;
+}
+function despejarY(p) {
+  const P4 = normalizar2(p);
+  if (gradoY(P4) !== 1)
+    return null;
+  const coef = P4[1];
+  if (grado(coef) !== 0)
+    return null;
+  const k = coef[0];
+  if (esCero2(k))
+    return null;
+  return normalizar(P4[0].map((c) => ({ n: -c.n * k.d, d: c.d * k.n })).map(
+    (c) => c.d < 0n ? { n: -c.n, d: -c.d } : c
+  )).map((c) => rac(c.n, c.d));
+}
+
+// src/math/notablesImplicita.ts
+var TOL_FY = 1e-9;
+function cuerpoF(ecuacion) {
+  const { expr } = separarRestriccion(ecuacion);
+  const partes = expr.split("=");
+  if (partes.length !== 2)
+    return null;
+  const lado = (s) => insertarProductoImplicito(normalizarEntrada(s.trim()));
+  return `(${lado(partes[0])}) - (${lado(partes[1])})`;
+}
+function parcial(F, variable) {
+  try {
+    return derivative(parse2(F), variable).toString();
+  } catch {
+    return null;
+  }
+}
+function evaluadorXY(expr) {
+  try {
+    const c = parse2(expr).compile();
+    return (x, y) => {
+      const v = c.evaluate({ x, y });
+      return typeof v === "number" ? v : NaN;
+    };
+  } catch {
+    return null;
+  }
+}
+function soloTangenteHorizontal(r, Fy) {
+  if (r.tipo !== "puntos" || Fy === null)
+    return r;
+  const evaluar2 = evaluadorXY(Fy);
+  if (evaluar2 === null)
+    return r;
+  return {
+    ...r,
+    puntos: r.puntos.filter((p) => {
+      const v = evaluar2(p.x, p.y);
+      return Number.isFinite(v) && Math.abs(v) > TOL_FY;
+    })
+  };
+}
+function notablesDeImplicita(ecuacion) {
+  const F = cuerpoF(ecuacion);
+  if (F === null)
+    return null;
+  const raices2 = resolverBloque([ecuacion, "y = 0"]);
+  const interseccionesY = resolverBloque([ecuacion, "x = 0"]);
+  const Fx = parcial(F, "x");
+  const vertices = Fx === null ? null : soloTangenteHorizontal(resolverBloque([ecuacion, `${Fx} = 0`]), parcial(F, "y"));
+  return { raices: raices2, interseccionesY, vertices };
+}
+
 // src/core/analysis/analisisPolar.ts
 var DOS_PI2 = 2 * Math.PI;
-var MUESTRAS3 = 4096;
-var TOL_REL2 = 1e-6;
+var MUESTRAS4 = 4096;
+var TOL_REL3 = 1e-6;
 var MAX_ANGULOS_POLO = 12;
 function refinarExtremo(g, a, b, buscarMaximo) {
   let lo = a, hi = b;
@@ -61247,7 +63707,7 @@ function simetriaValida(g, P4, periodica, reflejar, signo3, escala2) {
     const a = signo3 * g(th), b = g(espejo);
     if (!Number.isFinite(a) || !Number.isFinite(b))
       continue;
-    if (Math.abs(a - b) > TOL_REL2 * Math.max(1, escala2))
+    if (Math.abs(a - b) > TOL_REL3 * Math.max(1, escala2))
       return false;
     comprobadas++;
   }
@@ -61318,11 +63778,11 @@ function analizarPolar(exprR) {
   }
   const [, periodoCurva] = dominioPolar(exprR);
   const periodoR = periodoDeR(exprR);
-  const paso = periodoCurva / MUESTRAS3;
-  const ths = new Array(MUESTRAS3 + 1);
-  const rs = new Array(MUESTRAS3 + 1);
+  const paso = periodoCurva / MUESTRAS4;
+  const ths = new Array(MUESTRAS4 + 1);
+  const rs = new Array(MUESTRAS4 + 1);
   let finitas = 0;
-  for (let i2 = 0; i2 <= MUESTRAS3; i2++) {
+  for (let i2 = 0; i2 <= MUESTRAS4; i2++) {
     ths[i2] = i2 * paso;
     rs[i2] = g(ths[i2]);
     if (Number.isFinite(rs[i2]))
@@ -61331,7 +63791,7 @@ function analizarPolar(exprR) {
   if (finitas < 8)
     return null;
   let iMin = -1, iMax = -1;
-  for (let i2 = 0; i2 <= MUESTRAS3; i2++) {
+  for (let i2 = 0; i2 <= MUESTRAS4; i2++) {
     if (!Number.isFinite(rs[i2]))
       continue;
     if (iMin < 0 || rs[i2] < rs[iMin])
@@ -61341,7 +63801,7 @@ function analizarPolar(exprR) {
   }
   const vecindad = (i2) => [
     ths[Math.max(0, i2 - 1)],
-    ths[Math.min(MUESTRAS3, i2 + 1)]
+    ths[Math.min(MUESTRAS4, i2 + 1)]
   ];
   const [aMin, bMin] = vecindad(iMin);
   const [aMax, bMax] = vecindad(iMax);
@@ -61356,7 +63816,7 @@ function analizarPolar(exprR) {
   const escala2 = Math.max(Math.abs(rMin), Math.abs(rMax));
   const cerosPolo = [];
   let demasiadosCeros = false;
-  for (let i2 = 0; i2 < MUESTRAS3 && !demasiadosCeros; i2++) {
+  for (let i2 = 0; i2 < MUESTRAS4 && !demasiadosCeros; i2++) {
     const a = rs[i2], b = rs[i2 + 1];
     if (!Number.isFinite(a) || !Number.isFinite(b))
       continue;
@@ -61378,7 +63838,7 @@ function analizarPolar(exprR) {
     const a = g(th), b = g(th + periodoCurva);
     if (!Number.isFinite(a) || !Number.isFinite(b))
       continue;
-    if (Math.abs(a - b) > TOL_REL2 * Math.max(1, escala2))
+    if (Math.abs(a - b) > TOL_REL3 * Math.max(1, escala2))
       periodicaEnDominio = false;
   }
   const sim = (reflejar, signo3) => simetriaValida(g, periodoCurva, periodicaEnDominio, reflejar, signo3, escala2);
@@ -61390,9 +63850,9 @@ function analizarPolar(exprR) {
   if (sim((t2) => Math.PI - t2, 1) || sim((t2) => -t2, -1))
     simetrias.push("vertical");
   let areaBarrida = null;
-  if (finitas === MUESTRAS3 + 1) {
-    let suma3 = rs[0] * rs[0] + rs[MUESTRAS3] * rs[MUESTRAS3];
-    for (let i2 = 1; i2 < MUESTRAS3; i2++)
+  if (finitas === MUESTRAS4 + 1) {
+    let suma3 = rs[0] * rs[0] + rs[MUESTRAS4] * rs[MUESTRAS4];
+    for (let i2 = 1; i2 < MUESTRAS4; i2++)
       suma3 += (i2 % 2 === 1 ? 4 : 2) * rs[i2] * rs[i2];
     const integral = suma3 * paso / 3;
     if (Number.isFinite(integral))
@@ -61423,8 +63883,8 @@ function analizarPolar(exprR) {
 
 // src/core/analysis/analisisParametrico.ts
 var DOS_PI3 = 2 * Math.PI;
-var MUESTRAS4 = 2e3;
-var TOL_REL3 = 1e-6;
+var MUESTRAS5 = 2e3;
+var TOL_REL4 = 1e-6;
 var MAX_AUTOINTERSECCIONES = 200;
 function refinarExtremo2(g, a, b, buscarMaximo) {
   let lo = a, hi = b;
@@ -61450,8 +63910,8 @@ function corteSegmentos(a, b, c, d) {
     return null;
   const t2 = ((c.x - a.x) * s.y - (c.y - a.y) * s.x) / den;
   const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / den;
-  const EPS3 = 1e-9;
-  if (t2 < -EPS3 || t2 > 1 + EPS3 || u < -EPS3 || u > 1 + EPS3)
+  const EPS4 = 1e-9;
+  if (t2 < -EPS4 || t2 > 1 + EPS4 || u < -EPS4 || u > 1 + EPS4)
     return null;
   return { x: a.x + t2 * r.x, y: a.y + t2 * r.y };
 }
@@ -61486,7 +63946,7 @@ function armonicaDominante(vs) {
   const residuo = Math.sqrt(Math.max(0, energia)) / mejorAmp;
   return { k: mejorK, amplitud: mejorAmp, fase: Math.atan2(mejorB, mejorA), residuo };
 }
-function analizarParametrico(exprX, exprY, tMin, tMax, muestras = MUESTRAS4) {
+function analizarParametrico(exprX, exprY, tMin, tMax, muestras = MUESTRAS5) {
   const MUESTRAS6 = muestras;
   let gx;
   let gy;
@@ -61546,7 +64006,7 @@ function analizarParametrico(exprX, exprY, tMin, tMax, muestras = MUESTRAS4) {
   const yMax = mejor(iYMax, gy, true, pts[iYMax].y);
   const escala2 = Math.max(xMax - xMin, yMax - yMin, 1e-9);
   const pIni = pts[0], pFin = pts[MUESTRAS6];
-  const cerrada = Number.isFinite(pIni.x) && Number.isFinite(pFin.x) && Math.hypot(pFin.x - pIni.x, pFin.y - pIni.y) < TOL_REL3 * escala2;
+  const cerrada = Number.isFinite(pIni.x) && Number.isFinite(pFin.x) && Math.hypot(pFin.x - pIni.x, pFin.y - pIni.y) < TOL_REL4 * escala2;
   const px2 = periodoDeExpresion(exprX, "t");
   const py2 = periodoDeExpresion(exprY, "t");
   let periodo = null;
@@ -61682,8 +64142,8 @@ function analizarParametrico(exprX, exprY, tMin, tMax, muestras = MUESTRAS4) {
     const hx = evaluables ? armonicaDominante(xs) : null;
     const hy = evaluables ? armonicaDominante(ys) : null;
     if (hx && hy && hx.residuo < 0.01 && hy.residuo < 0.01) {
-      const mcd8 = (m, n) => n === 0 ? m : mcd8(n, m % n);
-      const g = mcd8(hx.k, hy.k);
+      const mcd9 = (m, n) => n === 0 ? m : mcd9(n, m % n);
+      const g = mcd9(hx.k, hy.k);
       const a = hx.k / g, b = hy.k / g;
       let desfase = hx.fase - hx.k / hy.k * hy.fase;
       desfase = (desfase % DOS_PI3 + DOS_PI3) % DOS_PI3;
@@ -61716,960 +64176,37 @@ function analizarParametrico(exprX, exprY, tMin, tMax, muestras = MUESTRAS4) {
   };
 }
 
-// src/math/racional.ts
-function mcd6(a, b) {
-  let x = a < 0n ? -a : a;
-  let y = b < 0n ? -b : b;
-  while (y) {
-    const t2 = x % y;
-    x = y;
-    y = t2;
-  }
-  return x;
+// src/host-obsidian/info/latexSolucion.ts
+function decimalALatex(v) {
+  const s = formatearNumero(v);
+  const m = /^(-?\d+(?:\.\d+)?)e([+-])(\d+)$/.exec(s);
+  if (m === null)
+    return s;
+  const exponente = `${m[2] === "-" ? "-" : ""}${Number(m[3])}`;
+  return `${m[1]}\\cdot 10^{${exponente}}`;
 }
-function rac(n, d = 1n) {
-  if (d === 0n)
-    throw new Error("racional con denominador cero");
-  let nn = n, dd = d;
-  if (dd < 0n) {
-    nn = -nn;
-    dd = -dd;
-  }
-  const g = mcd6(nn, dd);
-  if (g > 1n) {
-    nn /= g;
-    dd /= g;
-  }
-  return { n: nn, d: dd };
+var coordenadaALatex = (exacto2, valor) => exacto2 !== null ? aLatexE(exacto2) : decimalALatex(valor);
+function solucionALatex(p) {
+  const x = coordenadaALatex(p.exactoX, p.x);
+  const y = coordenadaALatex(p.exactoY, p.y);
+  return `\\left(${x},\\ ${y}\\right)`;
 }
-var CERO = { n: 0n, d: 1n };
-var UNO = { n: 1n, d: 1n };
-var esCero2 = (a) => a.n === 0n;
-var signo2 = (a) => a.n < 0n ? -1 : a.n > 0n ? 1 : 0;
-var suma = (a, b) => rac(a.n * b.d + b.n * a.d, a.d * b.d);
-var resta = (a, b) => rac(a.n * b.d - b.n * a.d, a.d * b.d);
-var producto2 = (a, b) => rac(a.n * b.n, a.d * b.d);
-var negado = (a) => ({ n: -a.n, d: a.d });
-function cociente(a, b) {
-  if (esCero2(b))
-    throw new Error("divisi\xF3n racional por cero");
-  return rac(a.n * b.d, a.d * b.n);
-}
-function comparar(a, b) {
-  const izq = a.n * b.d, der = b.n * a.d;
-  return izq < der ? -1 : izq > der ? 1 : 0;
-}
-var absoluto = (a) => a.n < 0n ? negado(a) : a;
-function aNumero3(a) {
-  const n = Number(a.n), d = Number(a.d);
-  if (Number.isFinite(n) && Number.isFinite(d))
-    return n / d;
-  const entero2 = a.n / a.d;
-  const resto = a.n % a.d;
-  return Number(entero2) + Number(resto) / Number(a.d);
-}
-function desdeNumero(x) {
-  if (!Number.isFinite(x))
-    throw new Error("racional desde un n\xFAmero no finito");
-  if (Number.isInteger(x))
-    return rac(BigInt(x));
-  let num = x, den = 1n;
-  for (let i2 = 0; i2 < 1100 && !Number.isInteger(num); i2++) {
-    num *= 2;
-    den *= 2n;
-  }
-  return rac(BigInt(num), den);
-}
-function desdeDecimal(texto) {
-  const m = /^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(texto.trim());
-  if (!m || m[2] === "" && (m[3] ?? "") === "")
-    return null;
-  const sig = m[1] === "-" ? -1n : 1n;
-  const enteros = m[2] === "" ? "0" : m[2];
-  const decimales = m[3] ?? "";
-  let n = BigInt(enteros + decimales) * sig;
-  let d = 10n ** BigInt(decimales.length);
-  const exp3 = m[4] ? Number(m[4]) : 0;
-  if (exp3 > 0)
-    n *= 10n ** BigInt(exp3);
-  else if (exp3 < 0)
-    d *= 10n ** BigInt(-exp3);
-  return rac(n, d);
-}
-function aTexto(a) {
-  return a.d === 1n ? String(a.n) : `${a.n}/${a.d}`;
-}
-
-// src/math/polinomio.ts
-var NULO = [];
-function normalizar(p) {
-  let n = p.length;
-  while (n > 0 && esCero2(p[n - 1]))
-    n--;
-  return n === p.length ? p : p.slice(0, n);
-}
-var grado = (p) => normalizar(p).length - 1;
-var esNulo = (p) => normalizar(p).length === 0;
-function sumaPol(a, b) {
-  const out = [];
-  for (let i2 = 0; i2 < Math.max(a.length, b.length); i2++)
-    out.push(suma(a[i2] ?? CERO, b[i2] ?? CERO));
-  return normalizar(out);
-}
-function restaPol(a, b) {
-  const out = [];
-  for (let i2 = 0; i2 < Math.max(a.length, b.length); i2++)
-    out.push(resta(a[i2] ?? CERO, b[i2] ?? CERO));
-  return normalizar(out);
-}
-function productoPol(a, b) {
-  const A = normalizar(a), B = normalizar(b);
-  if (A.length === 0 || B.length === 0)
-    return NULO;
-  const out = new Array(A.length + B.length - 1).fill(CERO);
-  for (let i2 = 0; i2 < A.length; i2++)
-    for (let j = 0; j < B.length; j++)
-      out[i2 + j] = suma(out[i2 + j], producto2(A[i2], B[j]));
-  return normalizar(out);
-}
-function derivada(p) {
-  const q = normalizar(p);
-  if (q.length <= 1)
-    return NULO;
-  const out = [];
-  for (let i2 = 1; i2 < q.length; i2++)
-    out.push(producto2(q[i2], rac(BigInt(i2))));
-  return normalizar(out);
-}
-function evaluar(p, x) {
-  const q = normalizar(p);
-  let acc = CERO;
-  for (let i2 = q.length - 1; i2 >= 0; i2--)
-    acc = suma(producto2(acc, x), q[i2]);
-  return acc;
-}
-function dividir(a, b) {
-  const B = normalizar(b);
-  if (B.length === 0)
-    throw new Error("divisi\xF3n polin\xF3mica por el polinomio nulo");
-  let R = [...normalizar(a)];
-  const gb = B.length - 1;
-  const lb = B[gb];
-  const coc = [];
-  while (R.length - 1 >= gb && R.length > 0) {
-    const gr = R.length - 1;
-    const factor = cociente(R[gr], lb);
-    coc[gr - gb] = factor;
-    for (let i2 = 0; i2 <= gb; i2++)
-      R[gr - gb + i2] = resta(R[gr - gb + i2], producto2(factor, B[i2]));
-    R = [...normalizar(R)];
-  }
-  for (let i2 = 0; i2 < coc.length; i2++)
-    coc[i2] = coc[i2] ?? CERO;
-  return { coc: normalizar(coc), resto: normalizar(R) };
-}
-function mcdPol(a, b) {
-  let A = normalizar(a), B = normalizar(b);
-  while (B.length > 0) {
-    const { resto } = dividir(A, B);
-    A = B;
-    B = normalizar(resto);
-  }
-  if (A.length === 0)
-    return NULO;
-  return monico(A);
-}
-function monico(p) {
-  const q = normalizar(p);
-  if (q.length === 0)
-    return NULO;
-  const lc = q[q.length - 1];
-  return q.map((c) => cociente(c, lc));
-}
-function libreDeCuadrados(p) {
-  const q = normalizar(p);
-  if (q.length <= 1)
-    return q;
-  const g = mcdPol(q, derivada(q));
-  if (grado(g) <= 0)
-    return monico(q);
-  return monico(dividir(q, g).coc);
-}
-function sucesionSturm(p) {
-  const p0 = normalizar(p);
-  if (p0.length === 0)
-    return [];
-  const suc = [p0];
-  const p1 = derivada(p0);
-  if (esNulo(p1))
-    return suc;
-  suc.push(p1);
-  for (let k = 0; k < p0.length + 2; k++) {
-    const a = suc[suc.length - 2], b = suc[suc.length - 1];
-    if (grado(b) <= 0)
-      break;
-    const { resto } = dividir(a, b);
-    if (esNulo(resto))
-      break;
-    suc.push(normalizar(resto.map(negado)));
-  }
-  return suc;
-}
-function cambiosDeSigno(suc, x) {
-  let previo = 0, cambios = 0;
-  for (const q of suc) {
-    const s = signo2(evaluar(q, x));
-    if (s === 0)
-      continue;
-    if (previo !== 0 && s !== previo)
-      cambios++;
-    previo = s;
-  }
-  return cambios;
-}
-function cotaCauchy(p) {
-  const q = normalizar(p);
-  if (q.length <= 1)
-    return UNO;
-  const lc = q[q.length - 1];
-  let max3 = CERO;
-  for (let i2 = 0; i2 < q.length - 1; i2++) {
-    const c = absoluto(cociente(q[i2], lc));
-    if (comparar(c, max3) > 0)
-      max3 = c;
-  }
-  return suma(UNO, max3);
-}
-var MAX_BISECCIONES = 200;
-function raicesRacionales(p) {
-  const q = normalizar(p);
-  if (q.length < 2)
-    return [];
-  let mcm2 = 1n;
-  for (const c of q)
-    mcm2 = mcm2 * c.d / mcdEnteros2(mcm2, c.d);
-  const enteros = q.map((c) => c.n * mcm2 / c.d);
-  const a0 = enteros[0] < 0n ? -enteros[0] : enteros[0];
-  const an = enteros[enteros.length - 1] < 0n ? -enteros[enteros.length - 1] : enteros[enteros.length - 1];
-  if (a0 === 0n) {
-    const sinX = normalizar(q.slice(1));
-    return [CERO, ...raicesRacionales(sinX)];
-  }
-  const TOPE = 100000n;
-  if (a0 > TOPE || an > TOPE)
-    return [];
-  const divisores = (n) => {
-    const out2 = [];
-    for (let d = 1n; d * d <= n; d++) {
-      if (n % d === 0n) {
-        out2.push(d);
-        if (d * d !== n)
-          out2.push(n / d);
-      }
-    }
-    return out2;
-  };
-  const out = [];
-  for (const dp of divisores(a0)) {
-    for (const dq of divisores(an)) {
-      for (const s of [1n, -1n]) {
-        const cand = rac(s * dp, dq);
-        if (esCero2(evaluar(q, cand)) && !out.some((r) => comparar(r, cand) === 0))
-          out.push(cand);
-      }
-    }
-  }
-  return out;
-}
-function mcdEnteros2(a, b) {
-  let x = a < 0n ? -a : a, y = b < 0n ? -b : b;
-  while (y) {
-    const t2 = x % y;
-    x = y;
-    y = t2;
-  }
-  return x;
-}
-function raicesReales(p) {
-  const libre = libreDeCuadrados(p);
-  if (grado(libre) < 1)
-    return [];
-  const exactas = raicesRacionales(libre);
-  const suc = sucesionSturm(libre);
-  const cota = cotaCauchy(libre);
-  const total = Math.max(0, cambiosDeSigno(suc, negado(cota)) - cambiosDeSigno(suc, cota));
-  if (total === 0)
-    return [];
-  const aislados = [];
-  const cola = [
-    { a: negado(cota), b: cota, n: total }
-  ];
-  let vueltas = 0;
-  while (cola.length > 0 && vueltas++ < MAX_BISECCIONES * 8) {
-    const it = cola.shift();
-    if (!it)
-      break;
-    if (it.n === 0)
-      continue;
-    if (it.n === 1) {
-      aislados.push({ a: it.a, b: it.b });
-      continue;
-    }
-    const m = cociente(suma(it.a, it.b), rac(2n));
-    const cm = cambiosDeSigno(suc, m);
-    const izq = Math.max(0, cambiosDeSigno(suc, it.a) - cm);
-    const der = Math.max(0, cm - cambiosDeSigno(suc, it.b));
-    if (izq === it.n && der === 0) {
-      cola.push({ a: it.a, b: m, n: izq });
-      continue;
-    }
-    if (der === it.n && izq === 0) {
-      cola.push({ a: m, b: it.b, n: der });
-      continue;
-    }
-    if (izq > 0)
-      cola.push({ a: it.a, b: m, n: izq });
-    if (der > 0)
-      cola.push({ a: m, b: it.b, n: der });
-  }
-  const salida = aislados.map(({ a, b }) => {
-    const exacto = exactas.find((e3) => comparar(e3, a) > 0 && comparar(e3, b) <= 0) ?? null;
-    if (exacto)
-      return { a: exacto, b: exacto, valor: aNumero3(exacto), exacto };
-    const r = refinar(libre, a, b);
-    return { a: r.a, b: r.b, valor: r.valor, exacto: null };
-  });
-  salida.sort((u, v) => u.valor - v.valor);
-  return salida;
-}
-function refinar(p, a0, b0) {
-  let a = a0, b = b0;
-  const sa = signo2(evaluar(p, a));
-  if (sa === 0)
-    return { valor: aNumero3(a), a, b: a };
-  if (signo2(evaluar(p, b)) === 0)
-    return { valor: aNumero3(b), a: b, b };
-  let signoA = sa;
-  for (let i2 = 0; i2 < MAX_BISECCIONES; i2++) {
-    const m = cociente(suma(a, b), rac(2n));
-    const sm = signo2(evaluar(p, m));
-    if (sm === 0)
-      return { valor: aNumero3(m), a: m, b: m };
-    if (sm === signoA) {
-      a = m;
-      signoA = sm;
-    } else {
-      b = m;
-    }
-    const na = aNumero3(a), nb = aNumero3(b);
-    if (na === nb)
-      return { valor: na, a, b };
-  }
-  return { valor: (aNumero3(a) + aNumero3(b)) / 2, a, b };
-}
-function potenciaPol(p, k) {
-  let r = [UNO];
-  for (let i2 = 0; i2 < k; i2++)
-    r = productoPol(r, p);
-  return r;
-}
-
-// src/math/polinomio2.ts
-var NULO2 = [];
-function normalizar2(p) {
-  let n = p.length;
-  while (n > 0 && esNulo(p[n - 1]))
-    n--;
-  return (n === p.length ? p : p.slice(0, n)).map(normalizar);
-}
-var gradoY = (p) => normalizar2(p).length - 1;
-function gradoX(p) {
-  let g = -1;
-  for (const c of normalizar2(p))
-    g = Math.max(g, grado(c));
-  return g;
-}
-var esNulo2 = (p) => normalizar2(p).length === 0;
-var constante2 = (k) => esCero2(k) ? NULO2 : [[k]];
-var X2 = [[CERO, UNO]];
-var Y2 = [NULO, [UNO]];
-function suma2(a, b) {
-  const out = [];
-  for (let j = 0; j < Math.max(a.length, b.length); j++)
-    out.push(sumaPol(a[j] ?? NULO, b[j] ?? NULO));
-  return normalizar2(out);
-}
-function resta2(a, b) {
-  const out = [];
-  for (let j = 0; j < Math.max(a.length, b.length); j++)
-    out.push(restaPol(a[j] ?? NULO, b[j] ?? NULO));
-  return normalizar2(out);
-}
-function producto22(a, b) {
-  const A = normalizar2(a), B = normalizar2(b);
-  if (A.length === 0 || B.length === 0)
-    return NULO2;
-  const out = new Array(A.length + B.length - 1).fill(NULO);
-  for (let i2 = 0; i2 < A.length; i2++)
-    for (let j = 0; j < B.length; j++)
-      out[i2 + j] = sumaPol(out[i2 + j], productoPol(A[i2], B[j]));
-  return normalizar2(out);
-}
-function negado2(p) {
-  return normalizar2(p.map((c) => c.map(negado)));
-}
-function potencia2(p, k) {
-  let r = constante2(UNO);
-  for (let i2 = 0; i2 < k; i2++)
-    r = producto22(r, p);
-  return r;
-}
-function sustituirY(p, f) {
-  const P4 = normalizar2(p);
-  let acc = NULO;
-  for (let j = P4.length - 1; j >= 0; j--)
-    acc = sumaPol(productoPol(acc, f), P4[j]);
-  return normalizar(acc);
-}
-function sustituirX(p, x) {
-  const P4 = normalizar2(p);
-  const out = [];
-  for (const c of P4) {
-    let acc = CERO;
-    for (let i2 = c.length - 1; i2 >= 0; i2--)
-      acc = suma(producto2(acc, x), c[i2]);
-    out.push(acc);
-  }
-  return normalizar(out);
-}
-function evaluarNum2(p, x, y) {
-  const P4 = normalizar2(p);
-  let acc = 0;
-  for (let j = P4.length - 1; j >= 0; j--) {
-    let cx = 0;
-    const c = P4[j];
-    for (let i2 = c.length - 1; i2 >= 0; i2--)
-      cx = cx * x + Number(c[i2].n) / Number(c[i2].d);
-    acc = acc * y + cx;
-  }
-  return acc;
-}
-function resultanteY(p, q) {
-  const A = normalizar2(p), B = normalizar2(q);
-  const m = gradoY(A), n = gradoY(B);
-  if (m < 0 || n < 0)
-    return NULO;
-  if (m === 0)
-    return potenciaPol(A[0], n);
-  if (n === 0)
-    return potenciaPol(B[0], m);
-  const dim = m + n;
-  const M = [];
-  for (let i2 = 0; i2 < n; i2++) {
-    const fila = new Array(dim).fill(NULO);
-    for (let j = 0; j <= m; j++)
-      fila[i2 + j] = A[m - j];
-    M.push(fila);
-  }
-  for (let i2 = 0; i2 < m; i2++) {
-    const fila = new Array(dim).fill(NULO);
-    for (let j = 0; j <= n; j++)
-      fila[i2 + j] = B[n - j];
-    M.push(fila);
-  }
-  return determinanteBareiss(M, dim);
-}
-function determinanteBareiss(M, dim) {
-  let signoDet = 1;
-  let anterior = [UNO];
-  for (let k = 0; k < dim - 1; k++) {
-    if (esNulo(M[k][k])) {
-      let cambio = -1;
-      for (let i2 = k + 1; i2 < dim; i2++)
-        if (!esNulo(M[i2][k])) {
-          cambio = i2;
-          break;
-        }
-      if (cambio === -1)
-        return NULO;
-      const t2 = M[k];
-      M[k] = M[cambio];
-      M[cambio] = t2;
-      signoDet = -signoDet;
-    }
-    for (let i2 = k + 1; i2 < dim; i2++) {
-      for (let j = k + 1; j < dim; j++) {
-        const num = restaPol(productoPol(M[i2][j], M[k][k]), productoPol(M[i2][k], M[k][j]));
-        M[i2][j] = esNulo(anterior) ? num : dividir(num, anterior).coc;
-      }
-      M[i2][k] = NULO;
-    }
-    anterior = M[k][k];
-  }
-  const det2 = M[dim - 1][dim - 1];
-  return signoDet === 1 ? normalizar(det2) : normalizar(det2.map(negado));
-}
-function compartenComponente(p, q) {
-  const A = normalizar2(p), B = normalizar2(q);
-  if (esNulo2(A) || esNulo2(B))
-    return false;
-  if (gradoY(A) === 0 && gradoY(B) === 0) {
-    const { resto } = dividir(A[0], B[0]);
-    return esNulo(resto) || esNulo(dividir(B[0], A[0]).resto);
-  }
-  if (gradoY(A) === 0 || gradoY(B) === 0)
-    return false;
-  return esNulo(resultanteY(A, B));
-}
-
-// src/math/extraer.ts
-var entera = (p) => ({ num: p, den: constante2(UNO) });
-var GRADO_MAXIMO = 8;
-function desParen4(n) {
-  return n.type === "ParenthesisNode" ? desParen4(n.content) : n;
-}
-function constanteDe(n) {
-  if (n.type !== "ConstantNode")
-    return null;
-  const v = n.value;
-  if (typeof v !== "number" || !Number.isFinite(v))
-    return null;
-  return desdeDecimal(String(v)) ?? desdeNumero(v);
-}
-function exponenteEntero2(n) {
-  const e3 = desParen4(n);
-  if (e3.type === "ConstantNode" && Number.isInteger(e3.value))
-    return e3.value;
-  if (e3.type === "OperatorNode" && e3.op === "-" && e3.args.length === 1) {
-    const dentro2 = desParen4(e3.args[0]);
-    if (dentro2.type === "ConstantNode" && Number.isInteger(dentro2.value))
-      return -dentro2.value;
-  }
-  return null;
-}
-function fraccionDe(n) {
-  const nodo = desParen4(n);
-  switch (nodo.type) {
-    case "ConstantNode": {
-      const k = constanteDe(nodo);
-      return k === null ? null : entera(constante2(k));
-    }
-    case "SymbolNode":
-      if (nodo.name === "x")
-        return entera(X2);
-      if (nodo.name === "y")
-        return entera(Y2);
-      return null;
-    case "OperatorNode": {
-      if (nodo.op === "-" && nodo.args.length === 1) {
-        const a2 = fraccionDe(nodo.args[0]);
-        return a2 === null ? null : { num: negado2(a2.num), den: a2.den };
-      }
-      if (nodo.args.length !== 2)
-        return null;
-      const a = fraccionDe(nodo.args[0]);
-      if (a === null)
-        return null;
-      if (nodo.op === "^") {
-        const k = exponenteEntero2(nodo.args[1]);
-        if (k === null)
-          return null;
-        if (k >= 0)
-          return { num: potencia2(a.num, k), den: potencia2(a.den, k) };
-        if (esNulo2(a.num))
-          return null;
-        return { num: potencia2(a.den, -k), den: potencia2(a.num, -k) };
-      }
-      const b = fraccionDe(nodo.args[1]);
-      if (b === null)
-        return null;
-      switch (nodo.op) {
-        case "+":
-          return {
-            num: suma2(producto22(a.num, b.den), producto22(b.num, a.den)),
-            den: producto22(a.den, b.den)
-          };
-        case "-":
-          return {
-            num: resta2(producto22(a.num, b.den), producto22(b.num, a.den)),
-            den: producto22(a.den, b.den)
-          };
-        case "*":
-          return { num: producto22(a.num, b.num), den: producto22(a.den, b.den) };
-        case "/":
-          if (esNulo2(b.num))
-            return null;
-          return { num: producto22(a.num, b.den), den: producto22(a.den, b.num) };
-        default:
-          return null;
-      }
-    }
-    default:
-      return null;
-  }
-}
-function ecuacionAPolinomio(ecuacion) {
-  const partes = ecuacion.split("=");
-  if (partes.length > 2)
-    return null;
-  const preparar = (s) => {
-    const limpio = s.trim();
-    if (limpio === "")
-      return null;
-    try {
-      return parse2(insertarProductoImplicito(normalizarEntrada(limpio)));
-    } catch {
-      return null;
-    }
-  };
-  let izquierda;
-  let derecha;
-  if (partes.length === 2) {
-    const a = preparar(partes[0]), b = preparar(partes[1]);
-    if (!a || !b)
-      return null;
-    izquierda = fraccionDe(a);
-    derecha = fraccionDe(b);
-  } else {
-    const a = preparar(partes[0]);
-    if (!a)
-      return null;
-    izquierda = entera(Y2);
-    derecha = fraccionDe(a);
-  }
-  if (!izquierda || !derecha)
-    return null;
-  const p = resta2(producto22(izquierda.num, derecha.den), producto22(derecha.num, izquierda.den));
-  const denominador = producto22(izquierda.den, derecha.den);
-  if (esNulo2(p)) {
-    return null;
-  }
-  if (Math.max(gradoX(p), gradoY(p)) > GRADO_MAXIMO)
-    return null;
-  return { p, denominador };
-}
-
-// src/math/numerico.ts
-var DOMINIO_X = [-100, 100];
-var MUESTRAS5 = 4e4;
-function funcionExplicita(ecuacion) {
-  const partes = ecuacion.split("=");
-  let derecha;
-  if (partes.length === 1)
-    derecha = partes[0];
-  else if (partes.length === 2) {
-    const izq = partes[0].trim();
-    const der = partes[1].trim();
-    if (izq === "y")
-      derecha = der;
-    else if (der === "y")
-      derecha = izq;
-    else
-      return null;
-  } else
-    return null;
-  try {
-    const f = compilarFuncion(insertarProductoImplicito(normalizarEntrada(derecha)), "x");
-    return (x) => {
-      const v = f(x);
-      return typeof v === "number" ? v : NaN;
-    };
-  } catch {
-    return null;
-  }
-}
-function bisecar(h, a, b) {
-  let lo = a, hi = b;
-  let flo = h(lo);
-  if (!Number.isFinite(flo))
-    return null;
-  for (let i2 = 0; i2 < 80; i2++) {
-    const m2 = (lo + hi) / 2;
-    const fm2 = h(m2);
-    if (!Number.isFinite(fm2))
-      return null;
-    if (fm2 === 0)
-      return m2;
-    if (flo * fm2 < 0) {
-      hi = m2;
-    } else {
-      lo = m2;
-      flo = fm2;
-    }
-    if (hi === lo || hi - lo <= Math.abs(m2) * Number.EPSILON)
-      break;
-  }
-  const m = (lo + hi) / 2;
-  const fm = h(m);
-  if (!Number.isFinite(fm))
-    return null;
-  const escala2 = Math.max(1, Math.abs(h(m + 1e-6)), Math.abs(h(m - 1e-6)));
-  return Math.abs(fm) < 1e-6 * escala2 || Math.abs(fm) < 1e-9 ? m : null;
-}
-function pulir(h, x0) {
-  let x = x0;
-  for (let i2 = 0; i2 < 6; i2++) {
-    const paso = Math.max(1e-10, Math.abs(x) * 1e-10);
-    const d = (h(x + paso) - h(x - paso)) / (2 * paso);
-    if (!Number.isFinite(d) || d === 0)
-      break;
-    const nx = x - h(x) / d;
-    if (!Number.isFinite(nx) || Math.abs(nx - x) > Math.max(1, Math.abs(x)))
-      break;
-    if (nx === x)
-      break;
-    x = nx;
-  }
-  return Math.abs(h(x)) <= Math.abs(h(x0)) ? x : x0;
-}
-function resolverNumerico(ecuacionA, ecuacionB) {
-  const f = funcionExplicita(ecuacionA);
-  const g = funcionExplicita(ecuacionB);
-  if (!f || !g)
-    return { tipo: "noResoluble" };
-  const h = (x) => f(x) - g(x);
-  const [x0, x1] = DOMINIO_X;
-  const paso = (x1 - x0) / MUESTRAS5;
-  const crudas = [];
-  let xPrev = x0;
-  let hPrev = h(xPrev);
-  for (let i2 = 1; i2 <= MUESTRAS5; i2++) {
-    const x = x0 + i2 * paso;
-    const hx = h(x);
-    if (Number.isFinite(hPrev) && Number.isFinite(hx)) {
-      if (hx === 0)
-        crudas.push(x);
-      else if (hPrev * hx < 0) {
-        const r = bisecar(h, xPrev, x);
-        if (r !== null)
-          crudas.push(r);
-      }
-    }
-    xPrev = x;
-    hPrev = hx;
-  }
-  const puntos = [];
-  for (const cruda of crudas) {
-    const x = pulir(h, cruda);
-    const y = f(x);
-    if (!Number.isFinite(x) || !Number.isFinite(y))
-      continue;
-    if (puntos.some((p) => Math.abs(p.x - x) <= 10 * paso))
-      continue;
-    puntos.push({ x, y });
-  }
-  puntos.sort((a, b) => a.x - b.x);
-  return { tipo: "puntos", puntos };
-}
-
-// src/math/resolverSistema.ts
-var TOL_REL4 = 1e-9;
-function dX(p) {
-  return normalizar2(p.map((c) => {
-    const out = [];
-    for (let i2 = 1; i2 < c.length; i2++)
-      out.push({ n: c[i2].n * BigInt(i2), d: c[i2].d });
-    return normalizar(out);
-  }));
-}
-function dY(p) {
-  const P4 = normalizar2(p);
-  const out = [];
-  for (let j = 1; j < P4.length; j++)
-    out.push(normalizar(P4[j].map((c) => ({ n: c.n * BigInt(j), d: c.d }))));
-  return normalizar2(out);
-}
-function pulirNewton(p, q, x0, y0) {
-  const px2 = dX(p), py2 = dY(p), qx = dX(q), qy = dY(q);
-  let x = x0, y = y0;
-  for (let i2 = 0; i2 < 12; i2++) {
-    const fp = evaluarNum2(p, x, y), fq = evaluarNum2(q, x, y);
-    if (!Number.isFinite(fp) || !Number.isFinite(fq))
-      return { x: x0, y: y0 };
-    if (fp === 0 && fq === 0)
-      break;
-    const a = evaluarNum2(px2, x, y), b = evaluarNum2(py2, x, y);
-    const c = evaluarNum2(qx, x, y), d = evaluarNum2(qy, x, y);
-    const det2 = a * d - b * c;
-    if (!Number.isFinite(det2) || det2 === 0)
-      break;
-    const nx = x - (fp * d - fq * b) / det2;
-    const ny = y - (a * fq - c * fp) / det2;
-    if (!Number.isFinite(nx) || !Number.isFinite(ny))
-      break;
-    if (nx === x && ny === y)
-      break;
-    x = nx;
-    y = ny;
-  }
-  const antes = Math.abs(evaluarNum2(p, x0, y0)) + Math.abs(evaluarNum2(q, x0, y0));
-  const ahora = Math.abs(evaluarNum2(p, x, y)) + Math.abs(evaluarNum2(q, x, y));
-  return ahora <= antes ? { x, y } : { x: x0, y: y0 };
-}
-function escala(p, x, y) {
-  let s = 1;
-  for (const c of p)
-    for (const k of c)
-      s = Math.max(s, Math.abs(aNumero3(k)));
-  const m = Math.max(1, Math.abs(x), Math.abs(y));
-  return s * m ** Math.max(1, gradoY(p) + 1);
-}
-function verificar(p, q, denP, denQ, x, y) {
-  if (!Number.isFinite(x) || !Number.isFinite(y))
-    return false;
-  const rp = Math.abs(evaluarNum2(p, x, y)), rq = Math.abs(evaluarNum2(q, x, y));
-  if (!(rp <= TOL_REL4 * escala(p, x, y)) || !(rq <= TOL_REL4 * escala(q, x, y)))
-    return false;
-  for (const d of [denP, denQ]) {
-    if (esNulo2(d))
-      return false;
-    const v = Math.abs(evaluarNum2(d, x, y));
-    if (v <= 1e-12 * escala(d, x, y))
-      return false;
-  }
-  return true;
-}
-function ordenadasDe(p, q, xExacta, xr) {
-  const py2 = sustituirX(p, xr);
-  const qy = sustituirX(q, xr);
-  if (esNulo(py2) && esNulo(qy))
-    return [];
-  if (xExacta !== null) {
-    if (esNulo(py2))
-      return raicesReales(qy).map((r) => ({ y: r.valor, exacta: r.exacto }));
-    if (esNulo(qy))
-      return raicesReales(py2).map((r) => ({ y: r.valor, exacta: r.exacto }));
-    const g = mcdPol(py2, qy);
-    if (grado(g) < 1)
-      return [];
-    return raicesReales(g).map((r) => ({ y: r.valor, exacta: r.exacto }));
-  }
-  const rp = raicesReales(py2), rq = raicesReales(qy);
-  const out = [];
-  for (const a of rp) {
-    for (const b of rq) {
-      const tol = 1e-6 * Math.max(1, Math.abs(a.valor));
-      if (Math.abs(a.valor - b.valor) <= tol)
-        out.push({ y: (a.valor + b.valor) / 2, exacta: null });
-    }
-  }
-  return out;
-}
-function ordenarYUnificar(puntos) {
-  const orden = [...puntos].sort((a, b) => a.x - b.x || a.y - b.y);
-  const out = [];
-  for (const s of orden) {
-    const repetido = out.some((o) => {
-      const escalaXY = Math.max(1, Math.abs(o.x), Math.abs(o.y));
-      return Math.abs(o.x - s.x) <= 1e-9 * escalaXY && Math.abs(o.y - s.y) <= 1e-9 * escalaXY;
-    });
-    if (!repetido)
-      out.push(s);
-  }
-  return out;
-}
-function resolverSistema(ecuacionA, ecuacionB) {
-  const A = ecuacionAPolinomio(ecuacionA);
-  const B = ecuacionAPolinomio(ecuacionB);
-  if (!A || !B)
-    return { tipo: "noResoluble" };
-  const p = A.p, q = B.p;
-  if (compartenComponente(p, q))
-    return { tipo: "solape" };
-  const explicita2 = despejarY(p) ?? despejarY(q);
-  const otra = despejarY(p) !== null ? q : p;
-  const enX = explicita2 !== null ? sustituirY(otra, explicita2) : resultanteY(p, q);
-  if (esNulo(enX))
-    return { tipo: "solape" };
-  const raices2 = raicesReales(enX);
-  const puntos = [];
-  for (const r of raices2) {
-    const xr = r.exacto ?? r.b;
-    for (const cand of ordenadasDe(p, q, r.exacto, xr)) {
-      const pulido = r.exacto !== null && cand.exacta !== null ? { x: r.valor, y: cand.y } : pulirNewton(p, q, r.valor, cand.y);
-      if (!verificar(p, q, A.denominador, B.denominador, pulido.x, pulido.y))
-        continue;
-      puntos.push({
-        x: pulido.x,
-        y: pulido.y,
-        exactoX: r.exacto,
-        exactoY: cand.exacta
-      });
-    }
-  }
-  return { tipo: "puntos", puntos: ordenarYUnificar(puntos) };
-}
-function resolverBloque(ecuaciones) {
-  if (ecuaciones.length < 2)
-    return { tipo: "noResoluble", puntos: [], aproximado: false };
-  const partes = ecuaciones.map((ec) => separarRestriccion(ec));
-  const todos = [];
-  let aproximado = false;
-  let algunaResuelta = false;
-  for (let i2 = 0; i2 < partes.length; i2++) {
-    for (let j = i2 + 1; j < partes.length; j++) {
-      const a = partes[i2], b = partes[j];
-      const recortes = [a.restriccion, b.restriccion];
-      const admitir = (p) => enDominio(p, recortes);
-      const exacto = resolverSistema(a.expr, b.expr);
-      if (exacto.tipo === "solape")
-        return { tipo: "solape", puntos: [], aproximado: false };
-      if (exacto.tipo === "puntos") {
-        algunaResuelta = true;
-        todos.push(...exacto.puntos.filter(admitir));
-        continue;
-      }
-      const numerico = resolverNumerico(a.expr, b.expr);
-      if (numerico.tipo === "noResoluble")
-        continue;
-      algunaResuelta = true;
-      aproximado = true;
-      for (const p of numerico.puntos)
-        if (admitir(p))
-          todos.push({ ...p, exactoX: null, exactoY: null });
-    }
-  }
-  if (!algunaResuelta)
-    return { tipo: "noResoluble", puntos: [], aproximado: false };
-  return { tipo: "puntos", puntos: ordenarYUnificar(todos), aproximado };
-}
-function enDominio(p, recortes) {
-  for (const r of recortes) {
-    if (!r)
-      continue;
-    if (r.variable === "x" && !dentro(r, p.x))
-      return false;
-    if (r.variable === "y" && !dentro(r, p.y))
-      return false;
-  }
-  return true;
-}
-function despejarY(p) {
-  const P4 = normalizar2(p);
-  if (gradoY(P4) !== 1)
-    return null;
-  const coef = P4[1];
-  if (grado(coef) !== 0)
-    return null;
-  const k = coef[0];
-  if (esCero2(k))
-    return null;
-  return normalizar(P4[0].map((c) => ({ n: -c.n * k.d, d: c.d * k.n })).map(
-    (c) => c.d < 0n ? { n: -c.n, d: -c.d } : c
-  )).map((c) => rac(c.n, c.d));
+function solucionATexto(p) {
+  const x = p.exactoX !== null ? aTextoE(p.exactoX) : formatearNumero(p.x);
+  const y = p.exactoY !== null ? aTextoE(p.exactoY) : formatearNumero(p.y);
+  return `(${x}, ${y})`;
 }
 
 // src/host-obsidian/info/plano.ts
-function montarInfoSistema(wrap, lado, iconoChip, exclusion, visibles, paraMotor) {
+function montarInfoSistema(plugin, wrap, lado, iconoChip, exclusion, visibles, paraMotor, ctx, limpieza) {
   const btnSolucion = wrap.createDiv();
   ponerTooltip(btnSolucion, t().botones.solucionesSistema);
   btnSolucion.style.cssText = estiloChipInfo(lado);
   montarIcono(btnSolucion, "info", iconoChip);
-  const popSolucion = wrap.createDiv();
+  const popSolucion = wrap.createDiv({ cls: CLASE_POPOVER_INFO });
   popSolucion.style.cssText = estiloPopoverInfo(lado);
   exclusion.registrar(() => popSolucion.setCssStyles({ display: "none" }));
   const sistemaPeriodico = visibles.some((ec) => ec.split("=").some((lado2) => tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado2.trim())))));
-  const MIN_PERIODICO = 3;
   const MAX_LISTA = 20;
   const refrescarSolucion = () => {
     popSolucion.empty();
@@ -62691,12 +64228,14 @@ function montarInfoSistema(wrap, lado, iconoChip, exclusion, visibles, paraMotor
       return;
     }
     const pts = r.puntos;
-    if (r.aproximado && sistemaPeriodico && pts.length >= MIN_PERIODICO) {
+    if (infinitasPorPeriodicidad(r, sistemaPeriodico)) {
       popSolucion.createDiv({ text: t().solucion.infinitasPeriodico });
       return;
     }
     if (pts.length === 0) {
-      popSolucion.createDiv({ text: t().solucion.sinSolucion });
+      popSolucion.createDiv({
+        text: r.parcial ? t().solucion.sinSolucionParcial : t().solucion.sinSolucion
+      });
       return;
     }
     popSolucion.createDiv({
@@ -62704,9 +64243,15 @@ function montarInfoSistema(wrap, lado, iconoChip, exclusion, visibles, paraMotor
       attr: { style: "font-weight:600; margin-bottom:4px;" }
     });
     for (const p of pts.slice(0, MAX_LISTA)) {
-      const x = p.exactoX !== null ? aTexto(p.exactoX) : formatearNumero(p.x);
-      const y = p.exactoY !== null ? aTexto(p.exactoY) : formatearNumero(p.y);
-      popSolucion.createDiv({ text: `(${x}, ${y})` });
+      const linea = popSolucion.createDiv({ attr: { style: "margin:2px 0;" } });
+      pintarMathEnLinea(
+        plugin,
+        linea,
+        solucionALatex(p),
+        ctx.sourcePath,
+        limpieza,
+        solucionATexto(p)
+      );
     }
     if (pts.length > MAX_LISTA) {
       popSolucion.createDiv({
@@ -62715,8 +64260,15 @@ function montarInfoSistema(wrap, lado, iconoChip, exclusion, visibles, paraMotor
       });
     }
     if (r.aproximado) {
+      const exploradas = r.exploradas.length > 0 ? r.exploradas.join(", ") : "x";
       popSolucion.createDiv({
-        text: t().solucion.enIntervalo(String(DOMINIO_X[0]), String(DOMINIO_X[1])),
+        text: t().solucion.enIntervalo(String(DOMINIO_X[0]), String(DOMINIO_X[1]), exploradas),
+        attr: { style: "margin-top:4px; opacity:0.6;" }
+      });
+    }
+    if (r.parcial) {
+      popSolucion.createDiv({
+        text: t().solucion.parcial,
         attr: { style: "margin-top:4px; opacity:0.6;" }
       });
     }
@@ -62736,7 +64288,7 @@ function montarInfoSistema(wrap, lado, iconoChip, exclusion, visibles, paraMotor
   });
   return alRecalcularFinal;
 }
-function montarInfoGeometrico(wrap, lado, iconoChip, exclusion, graficadas, parametros, escenaViva, camaraViva) {
+function montarInfoGeometrico(plugin, wrap, lado, iconoChip, exclusion, graficadas, parametros, ecuacionViva, ctx, limpieza) {
   let tipo;
   try {
     tipo = construirObjeto(graficadas[0], "info").tipo;
@@ -62769,64 +64321,43 @@ function montarInfoGeometrico(wrap, lado, iconoChip, exclusion, graficadas, para
     return infoParam;
   };
   const esTrig = !acotadaPorPeriodo && graficadas[0].split("=").some((lado2) => tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado2.trim()))));
+  let ecuacionCache = null;
+  let notablesCache = null;
   const btnInfo = wrap.createDiv();
   ponerTooltip(btnInfo, t().botones.resumenNotables);
   btnInfo.style.cssText = estiloChipInfo(lado);
   montarIcono(btnInfo, "info", iconoChip);
-  const pop = wrap.createDiv();
+  const pop = wrap.createDiv({ cls: CLASE_POPOVER_INFO });
   pop.style.cssText = estiloPopoverInfo(lado);
   exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
+  const pintar = (linea, estilo) => pintarLineaPanel(
+    plugin,
+    pop.createDiv(estilo ? { attr: { style: estilo } } : void 0),
+    linea,
+    ctx.sourcePath,
+    limpieza
+  );
   const refrescarInfo = () => {
     pop.empty();
     if (infoPolar) {
       for (const linea of lineasPolar(infoPolar))
-        pop.createDiv({ text: linea });
+        pintar(linea);
       return;
     }
     const param = analisisParametrico();
     if (param) {
       for (const linea of lineasParametricas(param))
-        pop.createDiv({ text: linea });
+        pintar(linea);
       return;
     }
-    const r = escenaViva().resumenNotables(camaraViva().viewport());
-    const lineas = [];
-    const T = t().resumen;
-    const estIY = estadoGrupo(r.interseccionesY.length, esTrig);
-    if (estIY === "infinitas")
-      lineas.push(T.interseccionesYInfinitas);
-    else if (estIY === "demasiadas")
-      lineas.push(T.interseccionesYDemasiadas);
-    else if (r.interseccionesY.length > 0)
-      for (const p of r.interseccionesY)
-        lineas.push(T.interseccionY(numeroATexto(p.punto.y)));
-    else
-      lineas.push(T.noCortaY);
-    const estR = estadoGrupo(r.raices.length, esTrig);
-    if (estR === "infinitas")
-      lineas.push(T.raicesInfinitas);
-    else if (estR === "demasiadas")
-      lineas.push(T.raicesDemasiadas);
-    else if (r.raices.length > 0)
-      lineas.push(T.raicesPrefijo + r.raices.map((p) => numeroATexto(p.punto.x)).join(", "));
-    else
-      lineas.push(T.noRaices);
-    const estV = estadoGrupo(r.vertices.length, esTrig);
-    if (estV === "infinitas")
-      lineas.push(T.verticesInfinitos);
-    else if (estV === "demasiadas")
-      lineas.push(T.verticesDemasiados);
-    else if (r.vertices.length > 0)
-      for (const v of r.vertices)
-        lineas.push(T.vertice(numeroATexto(v.punto.x), numeroATexto(v.punto.y)));
-    else
-      lineas.push(T.noVertices);
+    const ecuacion = ecuacionViva();
+    if (ecuacion !== ecuacionCache) {
+      ecuacionCache = ecuacion;
+      notablesCache = notablesDeImplicita(ecuacion);
+    }
+    const lineas = notablesCache === null ? [t().resumen.sinDeterminar] : lineasImplicita(notablesCache, esTrig);
     for (const linea of lineas)
-      pop.createDiv({ text: linea });
-    pop.createDiv({
-      text: T.enVista,
-      attr: { style: "margin-top:4px; opacity:0.6;" }
-    });
+      pintar(linea);
   };
   const alRecalcularFinal = () => {
     if (pop.style.display !== "none")
@@ -62845,12 +64376,12 @@ function montarInfoGeometrico(wrap, lado, iconoChip, exclusion, graficadas, para
 }
 
 // src/host-obsidian/blocks/trig.ts
-var import_obsidian6 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 
 // src/host-obsidian/plataforma.ts
-var import_obsidian5 = require("obsidian");
+var import_obsidian7 = require("obsidian");
 function esTactil() {
-  return import_obsidian5.Platform.isMobile;
+  return import_obsidian7.Platform.isMobile;
 }
 
 // src/trig/modeloTrig.ts
@@ -62887,13 +64418,13 @@ function referenciaDe(coterminal) {
   return DOS_PI4 - coterminal;
 }
 function razonesDe(coterminal, posicion) {
-  const exacto = {
+  const exacto2 = {
     "ejeX+": { sin: 0, cos: 1 },
     "ejeY+": { sin: 1, cos: 0 },
     "ejeX-": { sin: 0, cos: -1 },
     "ejeY-": { sin: -1, cos: 0 }
   };
-  const eje = exacto[posicion];
+  const eje = exacto2[posicion];
   const sin3 = eje ? eje.sin : Math.sin(coterminal);
   const cos3 = eje ? eje.cos : Math.cos(coterminal);
   const senoNulo = posicion === "ejeX+" || posicion === "ejeX-";
@@ -63032,8 +64563,8 @@ function fraccionDePi(rad) {
     return { signo: "", num: 0, den: 1 };
   let num = Math.abs(k);
   let den = 12;
-  const mcd8 = (a, b) => b === 0 ? a : mcd8(b, a % b);
-  const g = mcd8(num, den);
+  const mcd9 = (a, b) => b === 0 ? a : mcd9(b, a % b);
+  const g = mcd9(num, den);
   num /= g;
   den /= g;
   return { signo: k < 0 ? "-" : "", num, den };
@@ -63147,8 +64678,8 @@ function textoAngulo(m, unidad) {
     return textoGrados(m);
   if (unidad === "gradians")
     return `${textoGradianes(aGrados(m.radianes))} gon`;
-  const exacto = radianesExactoTexto(m.radianes);
-  return exacto !== null ? `${exacto} rad` : `${m.radianes.toFixed(4)} rad`;
+  const exacto2 = radianesExactoTexto(m.radianes);
+  return exacto2 !== null ? `${exacto2} rad` : `${m.radianes.toFixed(4)} rad`;
 }
 function textoGradianes(grados) {
   const g = grados * 10 / 9;
@@ -63482,7 +65013,7 @@ function indiceMasCercano(angulos, anguloPuntero) {
 // src/host-obsidian/blocks/trig.ts
 async function procesarTrig(motor, source, el, ctx) {
   const contenedor = el.createDiv({ cls: "lmath-container" });
-  const limpieza = new import_obsidian6.MarkdownRenderChild(contenedor);
+  const limpieza = new import_obsidian8.MarkdownRenderChild(contenedor);
   ctx.addChild(limpieza);
   motor.registrarRecarga(limpieza, source, el, ctx);
   const revelar = () => contenedor.setCssStyles({ visibility: "visible" });
@@ -63784,8 +65315,8 @@ async function procesarTrig(motor, source, el, ctx) {
         width: "26px",
         flex: "0 0 auto"
       });
-      const exacto = f.createDiv();
-      exacto.setCssStyles({ flex: "1 1 auto", textAlign: "right" });
+      const exacto2 = f.createDiv();
+      exacto2.setCssStyles({ flex: "1 1 auto", textAlign: "right" });
       const aprox = f.createDiv();
       aprox.setCssStyles({
         color: "var(--lmath-texto-apagado)",
@@ -63793,7 +65324,7 @@ async function procesarTrig(motor, source, el, ctx) {
         flex: "0 0 auto",
         textAlign: "right"
       });
-      celdas.push({ exacto, aprox });
+      celdas.push({ exacto: exacto2, aprox });
     }
     const grande = lectura.createDiv();
     const grandeTitulo = grande.createDiv();
@@ -63828,20 +65359,20 @@ async function procesarTrig(motor, source, el, ctx) {
           [m.razones.cos, ex?.cos ?? null],
           [m.razones.tan, ex?.tan ?? null]
         ];
-        valores.forEach(([valor, exacto], i2) => {
+        valores.forEach(([valor, exacto2], i2) => {
           celdas[i2].exacto.setText(
-            valor === null ? noDefinida : exacto ? exacto.txt : decimal(valor)
+            valor === null ? noDefinida : exacto2 ? exacto2.txt : decimal(valor)
           );
-          celdas[i2].aprox.setText(valor !== null && exacto ? `\u2248 ${decimal(valor)}` : "");
+          celdas[i2].aprox.setText(valor !== null && exacto2 ? `\u2248 ${decimal(valor)}` : "");
         });
       } else {
         const nombre = unica === "seno" ? "sin" : unica === "coseno" ? "cos" : "tan";
         const valor = unica === "seno" ? m.razones.sin : unica === "coseno" ? m.razones.cos : m.razones.tan;
-        const exacto = ex === null ? null : unica === "seno" ? ex.sin : unica === "coseno" ? ex.cos : ex.tan;
+        const exacto2 = ex === null ? null : unica === "seno" ? ex.sin : unica === "coseno" ? ex.cos : ex.tan;
         grandeTitulo.setText(`${nombre} ${textoAng}`);
         grandeTitulo.setCssStyles({ color: colorComponente(unica) });
-        grandeValor.setText(valor === null ? noDefinida : exacto ? exacto.txt : decimal(valor));
-        grandeAprox.setText(valor !== null && exacto ? `\u2248 ${decimal(valor)}` : "");
+        grandeValor.setText(valor === null ? noDefinida : exacto2 ? exacto2.txt : decimal(valor));
+        grandeAprox.setText(valor !== null && exacto2 ? `\u2248 ${decimal(valor)}` : "");
       }
     };
     const sincronizarColores = () => {
@@ -63976,10 +65507,10 @@ async function procesarTrig(motor, source, el, ctx) {
       const T = t().trig.info;
       const ex = derechoExacto[activo] ? razonesExactas(mostrados[activo]) : null;
       const radExacto = derechoExacto[activo] ? radianesExactoTexto(mostrados[activo]) : null;
-      const razon = (valor, exacto) => {
+      const razon = (valor, exacto2) => {
         if (valor === null)
           return T.noDefinida;
-        return exacto ? `${exacto.txt}  \u2248 ${dec(valor)}` : dec(valor);
+        return exacto2 ? `${exacto2.txt}  \u2248 ${dec(valor)}` : dec(valor);
       };
       const secciones = [
         {
@@ -64088,7 +65619,7 @@ async function procesarTrig(motor, source, el, ctx) {
 }
 
 // src/host-obsidian/blocks/vector.ts
-var import_obsidian7 = require("obsidian");
+var import_obsidian9 = require("obsidian");
 
 // src/vector/bloqueVector.ts
 var NOMBRE = /^[A-Za-z][A-Za-z0-9]*(?:_(?:\{[A-Za-z0-9+-]*\}|[A-Za-z0-9]))?'*$/;
@@ -64410,7 +65941,7 @@ function encuadreDeDibujo(dibujo, semiYDefecto, aspecto) {
 var DOS_PI5 = 2 * Math.PI;
 var EPS_REL = 1e-12;
 var entero = (v) => Number.isFinite(v) && Number.isInteger(v);
-var mcd7 = (a, b) => b === 0 ? a || 1 : mcd7(b, a % b);
+var mcd8 = (a, b) => b === 0 ? a || 1 : mcd8(b, a % b);
 function raizTexto(n) {
   if (!entero(n) || n < 0)
     return null;
@@ -64430,7 +65961,7 @@ function raizTexto(n) {
 function racionalTexto(num, den) {
   if (!entero(num) || !entero(den) || den === 0)
     return null;
-  const g = mcd7(Math.abs(num), Math.abs(den));
+  const g = mcd8(Math.abs(num), Math.abs(den));
   const n = num / g, d = den / g;
   return d === 1 ? String(n) : `${n}/${d}`;
 }
@@ -64467,43 +65998,43 @@ function analizarFlecha(f) {
 function analizarPar(a, b) {
   const [ax, ay] = a.componentes;
   const [bx, by] = b.componentes;
-  const exacto = entero(ax) && entero(ay) && entero(bx) && entero(by);
+  const exacto2 = entero(ax) && entero(ay) && entero(bx) && entero(by);
   const escalarV = ax * bx + ay * by;
   const detV = ax * by - ay * bx;
-  const producto3 = a.modulo.valor * b.modulo.valor;
-  const angulo = producto3 > 0 ? Math.atan2(Math.abs(detV), escalarV) : null;
+  const producto4 = a.modulo.valor * b.modulo.valor;
+  const angulo = producto4 > 0 ? Math.atan2(Math.abs(detV), escalarV) : null;
   return {
     rolA: a.rol,
     rolB: b.rol,
-    escalar: { valor: escalarV, exacto: exacto ? String(escalarV) : null },
-    determinante: { valor: detV, exacto: exacto ? String(detV) : null },
+    escalar: { valor: escalarV, exacto: exacto2 ? String(escalarV) : null },
+    determinante: { valor: detV, exacto: exacto2 ? String(detV) : null },
     angulo,
     areaParalelogramo: {
       valor: Math.abs(detV),
-      exacto: exacto ? String(Math.abs(detV)) : null
+      exacto: exacto2 ? String(Math.abs(detV)) : null
     },
     areaTriangulo: {
       valor: Math.abs(detV) / 2,
-      exacto: exacto ? racionalTexto(Math.abs(detV), 2) : null
+      exacto: exacto2 ? racionalTexto(Math.abs(detV), 2) : null
     },
-    relacion: producto3 === 0 ? null : Math.abs(escalarV) <= EPS_REL * producto3 ? "perpendicular" : Math.abs(detV) <= EPS_REL * producto3 ? "paralelo" : null
+    relacion: producto4 === 0 ? null : Math.abs(escalarV) <= EPS_REL * producto4 ? "perpendicular" : Math.abs(detV) <= EPS_REL * producto4 ? "paralelo" : null
   };
 }
 function analizarPuntos(a, b) {
   const [ax, ay] = a.en;
   const [bx, by] = b.en;
   const dx = bx - ax, dy = by - ay;
-  const exacto = entero(ax) && entero(ay) && entero(bx) && entero(by);
+  const exacto2 = entero(ax) && entero(ay) && entero(bx) && entero(by);
   const mx = racionalTexto(ax + bx, 2), my = racionalTexto(ay + by, 2);
   return {
     rolA: a.rol,
     rolB: b.rol,
     distancia: {
       valor: Math.hypot(dx, dy),
-      exacto: exacto ? raizTexto(dx * dx + dy * dy) : null
+      exacto: exacto2 ? raizTexto(dx * dx + dy * dy) : null
     },
     medio: [(ax + bx) / 2, (ay + by) / 2],
-    medioExacto: exacto && mx !== null && my !== null ? [mx, my] : null
+    medioExacto: exacto2 && mx !== null && my !== null ? [mx, my] : null
   };
 }
 function analizarDibujo(dibujo) {
@@ -64522,7 +66053,7 @@ function analizarDibujo(dibujo) {
 // src/host-obsidian/blocks/vector.ts
 async function procesarVector(motor, source, el, ctx) {
   const contenedor = el.createDiv({ cls: "lmath-container" });
-  const limpieza = new import_obsidian7.MarkdownRenderChild(contenedor);
+  const limpieza = new import_obsidian9.MarkdownRenderChild(contenedor);
   ctx.addChild(limpieza);
   motor.registrarRecarga(limpieza, source, el, ctx);
   const revelar = () => contenedor.setCssStyles({ visibility: "visible" });
@@ -64943,7 +66474,7 @@ var MotorExperimental = class {
     if (this.modo === "vector")
       return procesarVector(this, source, el, ctx);
     const contenedor = el.createDiv({ cls: "lmath-container" });
-    const limpieza = new import_obsidian8.MarkdownRenderChild(contenedor);
+    const limpieza = new import_obsidian10.MarkdownRenderChild(contenedor);
     ctx.addChild(limpieza);
     this.registrarRecarga(limpieza, source, el, ctx);
     const revelar = () => contenedor.setCssStyles({ visibility: "visible" });
@@ -64961,7 +66492,8 @@ var MotorExperimental = class {
     const degeneradaOrigen = funcionEscrita ? degeneradaDeEcuacion(funcionEscrita) : null;
     const derivadaExpr = this.derivada && visibles.length && !degeneradaOrigen ? derivarEcuacion(visibles[0]) : null;
     const integralDatos = this.integral ? extraerIntegral(escrito) : null;
-    const graficadas = (this.integral ? integralDatos ? [integralDatos.integrando] : [] : this.derivada ? derivadaExpr ? [derivadaExpr] : [] : visibles).map(paraMotor);
+    const fuentesGrafico = this.integral ? integralDatos ? [integralDatos.integrando] : [] : this.derivada ? derivadaExpr ? [derivadaExpr] : [] : visibles;
+    const graficadas = fuentesGrafico.map(paraMotor);
     const fuenteEscrita = this.integral ? integralDatos?.integrando ?? "" : this.derivada ? derivadaExpr ?? "" : escrito;
     const fuenteGrafico = paraMotor(fuenteEscrita);
     const tactil = esTactil();
@@ -65075,6 +66607,7 @@ var MotorExperimental = class {
           wrap,
           funcionEscrita,
           exprGraph,
+          ctx,
           reparto.ladoChip,
           exclusion
         );
@@ -65317,27 +66850,33 @@ var MotorExperimental = class {
     if (this.sistema) {
       hayChipInfo = true;
       alRecalcularFinal = montarInfoSistema(
+        this.plugin,
         wrap,
         lado,
         iconoChip,
         exclusion,
         visibles,
-        paraMotor
+        paraMotor,
+        ctx,
+        limpieza
       );
     }
     if (!this.sistema && !degenerada && graficadas.length > 0 && !exprGraph) {
       hayChipInfo = true;
       alRecalcularFinal = montarInfoGeometrico(
+        this.plugin,
         wrap,
         lado,
         iconoChip,
         exclusion,
         graficadas,
         parametros,
-        // Accesores, no valores: `escena` se rehace al mover un mando y `camara` se
-        // construye más arriba. Ver la nota de cabecera de `info/plano.ts`.
-        () => escena,
-        () => camara
+        // Accesor, no valor: la ecuación se sustituye en cada refresco, no una vez al montar,
+        // para que mover un deslizador cambie también lo que dice el cuadro. Ya no se le pasa
+        // ni la escena ni la cámara: este resumen sale de la ecuación (ver `info/plano.ts`).
+        () => paraMotor(fuentesGrafico[0] ?? ""),
+        ctx,
+        limpieza
       );
     }
     const btnFormula = wrap.createDiv();
@@ -65432,7 +66971,7 @@ var MotorExperimental = class {
     const seccion = ctx.getSectionInfo(el);
     if (!seccion)
       return;
-    const vista = this.plugin.app.workspace.getActiveViewOfType(import_obsidian8.MarkdownView);
+    const vista = this.plugin.app.workspace.getActiveViewOfType(import_obsidian10.MarkdownView);
     if (!vista || vista.file?.path !== ctx.sourcePath)
       return;
     const finDelCuerpo = () => {
@@ -65488,7 +67027,7 @@ async function registrarFuenteLora(_plugin) {
 }
 
 // main.ts
-var LMathPlugin = class extends import_obsidian9.Plugin {
+var LMathPlugin = class extends import_obsidian11.Plugin {
   constructor() {
     super(...arguments);
     // Selector del motor para el bloque obs-graph. `true` → motor nuevo (src/core/);
@@ -65517,40 +67056,61 @@ var LMathPlugin = class extends import_obsidian9.Plugin {
     for (const oyente of [...this.oyentesAjustes])
       oyente();
   }
+  /**
+   * Registra UN bloque bajo todos sus nombres (el histórico `obs-*` y el nuevo `_graph`), para
+   * que durante la transición las dos sintaxis rindan exactamente lo mismo.
+   *
+   * El try/catch no es decorativo. El identificador de bloque es una clave global compartida por
+   * todos los plugins instalados: si otro ya tomó uno de estos nombres, la llamada puede lanzar.
+   * Sin el catch esa excepción aborta `onload()` entera y se cae TODO el plugin —incluidos los
+   * `obs-*`, que llevan funcionando desde la 1.0.0— por culpa de un nombre nuevo. Con él se
+   * pierde solo ese nombre, queda dicho en la consola, y las notas de la gente siguen rindiendo.
+   */
+  registrarBloque(viejo, manejador) {
+    for (const nombre of nombresDe(viejo)) {
+      try {
+        this.registerMarkdownCodeBlockProcessor(nombre, manejador);
+      } catch (e3) {
+        console.warn(`LMath: no se pudo registrar el bloque "${nombre}"`, e3);
+      }
+    }
+  }
   async onload() {
     await this.cargarAjustes();
-    new import_obsidian9.Notice(t().aviso.cargado);
+    new import_obsidian11.Notice(t().aviso.cargado);
+    new import_obsidian11.Notice(`${tm().avisoTitulo}
+${tm().avisoCuerpo}`, 15e3);
     this.addSettingTab(new PestanaAjustesLMath(this.app, this));
     void registrarFuenteLora(this);
     const ajustes = () => this.ajustes;
     const graphEngine = new GraphEngine(this);
     const motorGraph = new MotorExperimental(this, "graph", ajustes);
-    this.registerMarkdownCodeBlockProcessor(
+    this.registrarBloque(
       "obs-graph",
       (source, el, ctx) => this.MOTOR_EXPERIMENTAL ? motorGraph.process(source, el, ctx) : graphEngine.process(source, el, ctx)
     );
     const motorSistema = new MotorExperimental(this, "system", ajustes);
-    this.registerMarkdownCodeBlockProcessor(
+    this.registrarBloque(
       "obs-system",
       (source, el, ctx) => motorSistema.process(source, el, ctx)
     );
     const motorDerivada = new MotorExperimental(this, "derivate", ajustes);
-    this.registerMarkdownCodeBlockProcessor(
+    this.registrarBloque(
       "obs-derivate",
       (source, el, ctx) => motorDerivada.process(source, el, ctx)
     );
     const motorIntegral = new MotorExperimental(this, "integral", ajustes);
-    this.registerMarkdownCodeBlockProcessor(
+    this.registrarBloque(
       "obs-integral",
       (source, el, ctx) => motorIntegral.process(source, el, ctx)
     );
     const motorTrig = new MotorExperimental(this, "trig", ajustes);
-    this.registerMarkdownCodeBlockProcessor(
+    this.registrarBloque(
       "obs-trig",
       (source, el, ctx) => motorTrig.process(source, el, ctx)
     );
     const motorVector = new MotorExperimental(this, "vector", ajustes);
-    this.registerMarkdownCodeBlockProcessor(
+    this.registrarBloque(
       "obs-vector",
       (source, el, ctx) => motorVector.process(source, el, ctx)
     );

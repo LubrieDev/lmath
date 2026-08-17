@@ -205,9 +205,13 @@ export class MotorExperimental implements Motor {
     // final del reparto, y no en el source de entrada, porque por el camino han pasado el panel y
     // la derivación simbólica, y los dos quieren ver los nombres: una derivada de `A\sin x` es
     // `A\cos x`, no `(1)\cos x`.
-    const graficadas = (this.integral
+    // Las ecuaciones que se grafican, ANTES de sustituir. Se guardan porque hay quien las
+    // necesita VIVAS: el ⓘ de una implícita vuelve a resolverlas en cada refresco, y con la
+    // sustitución hecha de una vez seguiría describiendo la curva de antes de tocar el mando.
+    const fuentesGrafico = this.integral
       ? (integralDatos ? [integralDatos.integrando] : [])
-      : this.derivada ? (derivadaExpr ? [derivadaExpr] : []) : visibles).map(paraMotor);
+      : this.derivada ? (derivadaExpr ? [derivadaExpr] : []) : visibles;
+    const graficadas = fuentesGrafico.map(paraMotor);
     // La fuente del plano en dos versiones: con los nombres (`fuenteEscrita`, que es la que hay
     // que volver a sustituir cada vez que un mando se mueve) y con los valores puestos.
     const fuenteEscrita = this.integral
@@ -402,7 +406,7 @@ export class MotorExperimental implements Motor {
       // f, que es de quien trata el bloque (ver `analisisDerivada`).
       else if (this.derivada && funcionEscrita)
         hayChipInfo = montarBotonInfoDerivada(
-          this, wrap, funcionEscrita, exprGraph, reparto.ladoChip, exclusion);
+          this, wrap, funcionEscrita, exprGraph, ctx, reparto.ladoChip, exclusion);
       else {
         montarBotonInfo(this, wrap, exprGraph, ctx, reparto.ladoChip, exclusion);
         hayChipInfo = true;
@@ -780,8 +784,11 @@ export class MotorExperimental implements Motor {
     // está dicho de qué se sale y por qué. El refrescador vuelve en cada pasada final.
     if (this.sistema) {
       hayChipInfo = true;
+      // `ctx` y `limpieza` van porque las soluciones se pintan en KaTeX y el cuadro se
+      // REPINTA: el componente del bloque es el que sostiene esos renders (ver
+      // `pintarMathEnLinea`), en vez de uno nuevo por refresco.
       alRecalcularFinal = montarInfoSistema(
-        wrap, lado, iconoChip, exclusion, visibles, paraMotor);
+        this.plugin, wrap, lado, iconoChip, exclusion, visibles, paraMotor, ctx, limpieza);
     }
 
     // ── Botón ⓘ GEOMÉTRICO (obs-graph, curva NO explícita) ──────────────────
@@ -793,10 +800,11 @@ export class MotorExperimental implements Motor {
     if (!this.sistema && !degenerada && graficadas.length > 0 && !exprGraph) {
       hayChipInfo = true;
       alRecalcularFinal = montarInfoGeometrico(
-        wrap, lado, iconoChip, exclusion, graficadas, parametros,
-        // Accesores, no valores: `escena` se rehace al mover un mando y `camara` se
-        // construye más arriba. Ver la nota de cabecera de `info/plano.ts`.
-        () => escena, () => camara);
+        this.plugin, wrap, lado, iconoChip, exclusion, graficadas, parametros,
+        // Accesor, no valor: la ecuación se sustituye en cada refresco, no una vez al montar,
+        // para que mover un deslizador cambie también lo que dice el cuadro. Ya no se le pasa
+        // ni la escena ni la cámara: este resumen sale de la ecuación (ver `info/plano.ts`).
+        () => paraMotor(fuentesGrafico[0] ?? ""), ctx, limpieza);
     }
 
     // ── Botón f(x): despliega la fórmula SOBRE el plano (solo en bloque estrecho) ──────

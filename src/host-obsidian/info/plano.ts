@@ -1,59 +1,62 @@
 // ─────────────────────────────────────────────
-// host-obsidian · info/plano — los dos cuadros ⓘ que dependen de la VISTA
+// host-obsidian · info/plano — los dos cuadros ⓘ que se REFRESCAN
 // ─────────────────────────────────────────────
 //
-// Los ⓘ de `info/botones.ts` describen una fórmula y se escriben una vez. Estos dos no:
-// leen lo que hay en el plano AHORA —las soluciones del sistema con el valor vivo de cada
-// parámetro, los puntos notables de la vista actual— y por eso devuelven un refrescador que
-// `process()` vuelve a llamar en cada pasada final.
+// Los ⓘ de `info/botones.ts` describen una fórmula y se escriben una vez. Estos dos no: lo que
+// dicen depende del valor VIVO de cada parámetro, así que devuelven un refrescador que
+// `process()` vuelve a llamar en cada pasada final, y las ecuaciones entran como ACCESORES y no
+// como valores —capturarlas dejaría el cuadro describiendo la curva de antes de tocar el mando—.
 //
-// `escena` se REASIGNA cuando se mueve un mando, y `camara` se construye después de
-// declararse, así que ambas entran como ACCESORES y no como valores: capturarlas dejaría el
-// cuadro describiendo la escena de antes de tocar el deslizador.
+// Lo que ya NO depende es la VISTA. Los dos cuadros responden desde las ecuaciones escritas:
+// el del sistema desde que las soluciones las calcula `src/math/`, y el geométrico desde que
+// los puntos notables de una implícita salen de resolver tres sistemas (`notablesDeImplicita`)
+// en vez de mirar la polilínea trazada dentro del encuadre. Por eso ninguno de los dos recibe
+// ya la cámara, y por eso el segundo ha dejado de terminar en «En la vista actual».
+
+import type {
+  MarkdownRenderChild, MarkdownPostProcessorContext,
+} from "obsidian";
 
 import type { ExclusionPopover } from "./contratos";
-import { estiloChipInfo, estiloPopoverInfo } from "../ui/estilos";
-import { ponerTooltip, montarIcono } from "../ui/controles";
-import { lineasPolar, lineasParametricas } from "../analysis/lineasAnalisis";
+import { estiloChipInfo, estiloPopoverInfo, CLASE_POPOVER_INFO } from "../ui/estilos";
+import { ponerTooltip, montarIcono, pintarMathEnLinea, pintarLineaPanel } from "../ui/controles";
+import type { PluginConAjustes } from "../ajustes";
+import { lineasPolar, lineasParametricas, lineasImplicita } from "../analysis/lineasAnalisis";
+import { notablesDeImplicita, type NotablesImplicita } from "../../math/notablesImplicita";
 import { t } from "../../i18n";
 import { normalizarEntrada } from "../../parser";
-import { tieneTrigonometria, estadoGrupo } from "../../analisis";
+import { tieneTrigonometria } from "../../analisis";
 import { insertarProductoImplicito } from "../../core/parsing/productoImplicito";
 import { construirObjeto, expresionPolar, expresionesParametricas } from "../../core/parsing/construirObjeto";
 import { analizarPolar } from "../../core/analysis/analisisPolar";
 import { analizarParametrico, type AnalisisParametrico } from "../../core/analysis/analisisParametrico";
-import { numeroATexto } from "../../core/analysis/formatoNumero";
-import { formatearNumero } from "../../core/rendering/overlay/Overlay";
 import type { Parametro } from "../../core/parsing/parametros";
-import type { Camara } from "../../core/interaction/Camara";
-import type { crearMotor } from "../../core/app/composicion";
 import { resolverBloque } from "../../math/resolverSistema";
 import { DOMINIO_X } from "../../math/numerico";
-import { aTexto as racionalATexto } from "../../math/racional";
-
-// La escena es la MISMA que compone `process()`; el tipo se deriva de su fábrica en vez de
-// reescribirse aquí, para que no pueda quedarse desfasado. `crearMotorSistema` devuelve este
-// mismo tipo —las dos componen la misma escena, con proveedores distintos—, así que basta una.
-type Escena = ReturnType<typeof crearMotor>;
+import { infinitasPorPeriodicidad } from "./infinitasPeriodicas";
+import { solucionALatex, solucionATexto } from "./latexSolucion";
 
 /**
  * ⓘ de obs-system: las intersecciones que el motor matemático deduce de las ecuaciones
  * ESCRITAS (no de la geometría trazada). Devuelve el refrescador para las pasadas finales.
  */
 export function montarInfoSistema(
+  plugin: PluginConAjustes,
   wrap: HTMLElement,
   lado: number,
   iconoChip: number,
   exclusion: ExclusionPopover,
   visibles: readonly string[],
-  paraMotor: (s: string) => string
+  paraMotor: (s: string) => string,
+  ctx: MarkdownPostProcessorContext,
+  limpieza: MarkdownRenderChild
 ): () => void {
 const btnSolucion = wrap.createDiv();
 ponerTooltip(btnSolucion, t().botones.solucionesSistema);
 btnSolucion.style.cssText = estiloChipInfo(lado);
 montarIcono(btnSolucion, "info", iconoChip);
 
-const popSolucion = wrap.createDiv();
+const popSolucion = wrap.createDiv({ cls: CLASE_POPOVER_INFO });
 popSolucion.style.cssText = estiloPopoverInfo(lado);
 exclusion.registrar(() => popSolucion.setCssStyles({ display: "none" }));
 
@@ -65,9 +68,6 @@ exclusion.registrar(() => popSolucion.setCssStyles({ display: "none" }));
 const sistemaPeriodico = visibles.some((ec) =>
   ec.split("=").some((lado) =>
     tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado.trim())))));
-// Nº de soluciones halladas EN EL INTERVALO EXPLORADO a partir del cual se concluye que el
-// sistema las repite sin fin. Ya no cuenta las de la vista: la vista no entra en esto.
-const MIN_PERIODICO = 3;
 
 const MAX_LISTA = 20; // cap visual; los marcadores del plano no se capan
 /**
@@ -115,14 +115,21 @@ const refrescarSolucion = () => {
     return;
   }
   const pts = r.puntos;
-  // Infinitas por PERIODICIDAD. Solo puede pasar por el camino numérico: un sistema
-  // polinómico no es periódico, así que sus soluciones son finitas y ya están todas.
-  if (r.aproximado && sistemaPeriodico && pts.length >= MIN_PERIODICO) {
+  // Infinitas por PERIODICIDAD, con el criterio de `infinitasPeriodicas.ts`: no basta con que
+  // haya una trigonométrica —`y = sin x` ∩ `y = x/2` tiene exactamente tres soluciones y se
+  // anunciaban como infinitas—, las soluciones tienen que seguir apareciendo hasta el borde de
+  // lo explorado.
+  if (infinitasPorPeriodicidad(r, sistemaPeriodico)) {
     popSolucion.createDiv({ text: t().solucion.infinitasPeriodico });
     return;
   }
   if (pts.length === 0) {
-    popSolucion.createDiv({ text: t().solucion.sinSolucion });
+    // «No se cortan» es una AFIRMACIÓN, y solo se puede hacer si se ha mirado en todas partes.
+    // Con alguna pareja sin resolver, la lista vacía no dice que no haya soluciones: dice que no
+    // se han encontrado, que es otra cosa.
+    popSolucion.createDiv({
+      text: r.parcial ? t().solucion.sinSolucionParcial : t().solucion.sinSolucion,
+    });
     return;
   }
   popSolucion.createDiv({
@@ -130,11 +137,18 @@ const refrescarSolucion = () => {
     attr: { style: "font-weight:600; margin-bottom:4px;" },
   });
   for (const p of pts.slice(0, MAX_LISTA)) {
-    // La forma EXACTA cuando la hay (`0`, `3/2`), y el decimal cuando no. Es lo que
-    // distingue este panel del anterior: `0` en vez de `8.4e-6`.
-    const x = p.exactoX !== null ? racionalATexto(p.exactoX) : formatearNumero(p.x);
-    const y = p.exactoY !== null ? racionalATexto(p.exactoY) : formatearNumero(p.y);
-    popSolucion.createDiv({ text: `(${x}, ${y})` });
+    // La forma EXACTA cuando la hay, y el decimal solo cuando no la hay. Es lo que distingue
+    // este panel del anterior: `0` en vez de `8.4e-6`, y `(7 - √13)/2` en vez de `1.697`. El
+    // decimal deja de ser la respuesta y pasa a ser el último recurso.
+    //
+    // Y se pinta como MATEMÁTICA, no como texto: en cuanto la coordenada es una fracción con
+    // un radical dentro, el texto plano obliga a contar paréntesis para saber dónde acaba el
+    // numerador y cuál es la coma que separa el par. La raya de fracción lo dice sola.
+    // Sin tamaño propio: el cuadro de soluciones se lee como los otros cuatro ⓘ, y el tamaño
+    // de su matemática es el que ya tenían las líneas compuestas de aquellos.
+    const linea = popSolucion.createDiv({ attr: { style: "margin:2px 0;" } });
+    pintarMathEnLinea(
+      plugin, linea, solucionALatex(p), ctx.sourcePath, limpieza, solucionATexto(p));
   }
   if (pts.length > MAX_LISTA) {
     popSolucion.createDiv({
@@ -142,12 +156,23 @@ const refrescarSolucion = () => {
       attr: { style: "opacity:0.6;" },
     });
   }
-  // El pie solo aparece cuando de verdad hay algo que matizar. Un sistema polinómico no
-  // lleva ninguno: su lista es completa sobre ℝ y añadirle una coletilla sugeriría una
-  // limitación que no tiene.
+  // Los pies solo aparecen cuando de verdad hay algo que matizar, y son DOS cosas distintas:
+  // de dónde salen los valores (`aproximado`, con su intervalo) y si se enumeró todo
+  // (`parcial`). Un sistema polinómico resuelto entero no lleva ninguno: su lista es completa
+  // sobre ℝ y añadirle una coletilla sugeriría una limitación que no tiene.
   if (r.aproximado) {
+    // La variable que de verdad se barrió: el camino numérico recorre x cuando las curvas son
+    // `y = f(x)` y recorre y cuando están tumbadas (`x = g(y)`). Escribir siempre «x» sería
+    // prometer un intervalo que no se ha explorado.
+    const exploradas = r.exploradas.length > 0 ? r.exploradas.join(", ") : "x";
     popSolucion.createDiv({
-      text: t().solucion.enIntervalo(String(DOMINIO_X[0]), String(DOMINIO_X[1])),
+      text: t().solucion.enIntervalo(String(DOMINIO_X[0]), String(DOMINIO_X[1]), exploradas),
+      attr: { style: "margin-top:4px; opacity:0.6;" },
+    });
+  }
+  if (r.parcial) {
+    popSolucion.createDiv({
+      text: t().solucion.parcial,
       attr: { style: "margin-top:4px; opacity:0.6;" },
     });
   }
@@ -166,19 +191,26 @@ btnSolucion.addEventListener("click", (e) => {
 }
 
 /**
- * ⓘ geométrico de obs-graph para las curvas que NO son y=f(x) (implícitas, polares,
- * paramétricas): el resumen sale de la geometría cacheada, o del análisis propio de r(θ)
- * y de (x(t), y(t)) cuando la curva tiene uno. Devuelve el refrescador.
+ * ⓘ de obs-graph para las curvas que NO son y=f(x): el análisis propio de r(θ) y de
+ * (x(t), y(t)) cuando la curva tiene uno, y para una implícita, lo que se deduce de su
+ * ECUACIÓN. Devuelve el refrescador.
+ *
+ * Ya no recibe la escena ni la cámara, y esa ausencia es el cambio: mientras las tuvo, el
+ * resumen de una implícita salía de la polilínea trazada y recortada al encuadre, así que la
+ * respuesta cambiaba al mover el plano y el cuadro tenía que terminar diciendo «En la vista
+ * actual». Sin esa puerta no se puede volver a hacer sin querer.
  */
 export function montarInfoGeometrico(
+  plugin: PluginConAjustes,
   wrap: HTMLElement,
   lado: number,
   iconoChip: number,
   exclusion: ExclusionPopover,
   graficadas: readonly string[],
   parametros: readonly Parametro[],
-  escenaViva: () => Escena,
-  camaraViva: () => Camara
+  ecuacionViva: () => string,
+  ctx: MarkdownPostProcessorContext,
+  limpieza: MarkdownRenderChild
 ): () => void {
 // ¿La curva está ACOTADA por su período? Las paramétricas/polares se trazan
 // sobre UN período (dominio [0, 2π] por defecto): son un conjunto acotado, así
@@ -236,14 +268,27 @@ const analisisParametrico = (): AnalisisParametrico | null => {
 const esTrig = !acotadaPorPeriodo && graficadas[0].split("=").some((lado) =>
   tieneTrigonometria(insertarProductoImplicito(normalizarEntrada(lado.trim()))));
 
+// Caché del análisis de la implícita, indexado por la ecuación CON los parámetros puestos
+// (ver el uso, más abajo).
+let ecuacionCache: string | null = null;
+let notablesCache: NotablesImplicita | null = null;
+
 const btnInfo = wrap.createDiv();
 ponerTooltip(btnInfo, t().botones.resumenNotables);
 btnInfo.style.cssText = estiloChipInfo(lado);
 montarIcono(btnInfo, "info", iconoChip);
 
-const pop = wrap.createDiv();
+const pop = wrap.createDiv({ cls: CLASE_POPOVER_INFO });
 pop.style.cssText = estiloPopoverInfo(lado);
 exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
+
+// Las líneas de este cuadro llevan la matemática marcada entre `$…$` y se componen con
+// KaTeX; el componente que sostiene esos renders es el del BLOQUE, porque el cuadro se
+// repinta en cada pasada final (ver `pintarLineaPanel`).
+const pintar = (linea: string, estilo?: string) =>
+  pintarLineaPanel(
+    plugin, pop.createDiv(estilo ? { attr: { style: estilo } } : undefined),
+    linea, ctx.sourcePath, limpieza);
 
 const refrescarInfo = () => {
   pop.empty();
@@ -251,47 +296,34 @@ const refrescarInfo = () => {
   // Ramas propias (polar y paramétrica): resumen intrínseco de la curva, sin el pie
   // "en la vista actual" —no lo está: describen la curva entera sobre su intervalo—.
   if (infoPolar) {
-    for (const linea of lineasPolar(infoPolar)) pop.createDiv({ text: linea });
+    for (const linea of lineasPolar(infoPolar)) pintar(linea);
     return;
   }
   const param = analisisParametrico();
   if (param) {
-    for (const linea of lineasParametricas(param)) pop.createDiv({ text: linea });
+    for (const linea of lineasParametricas(param)) pintar(linea);
     return;
   }
 
-  const r = escenaViva().resumenNotables(camaraViva().viewport());
-  const lineas: string[] = [];
+  // El resumen de una IMPLÍCITA sale de su ECUACIÓN, no del trazado ni del encuadre: son tres
+  // sistemas que el motor matemático ya sabe resolver (ver `notablesDeImplicita`). Por eso este
+  // cuadro ya no termina en «En la vista actual»: no describe una vista.
+  //
+  // Se cachea por la ecuación con los parámetros ya puestos. El refrescador se llama en cada
+  // pasada final, y resolver tres sistemas por pasada para volver a escribir lo mismo sería
+  // tirar el trabajo; mover un deslizador cambia esa cadena y el caché se renueva solo.
+  const ecuacion = ecuacionViva();
+  if (ecuacion !== ecuacionCache) {
+    ecuacionCache = ecuacion;
+    notablesCache = notablesDeImplicita(ecuacion);
+  }
+  const lineas = notablesCache === null
+    // Ni siquiera es una ecuación de dos lados: no hay curva de la que afirmar nada, y
+    // callar es la única respuesta honesta.
+    ? [t().resumen.sinDeterminar]
+    : lineasImplicita(notablesCache, esTrig);
 
-  const T = t().resumen;
-  const estIY = estadoGrupo(r.interseccionesY.length, esTrig);
-  if (estIY === "infinitas") lineas.push(T.interseccionesYInfinitas);
-  else if (estIY === "demasiadas") lineas.push(T.interseccionesYDemasiadas);
-  else if (r.interseccionesY.length > 0)
-    for (const p of r.interseccionesY)
-      lineas.push(T.interseccionY(numeroATexto(p.punto.y)));
-  else lineas.push(T.noCortaY);
-
-  const estR = estadoGrupo(r.raices.length, esTrig);
-  if (estR === "infinitas") lineas.push(T.raicesInfinitas);
-  else if (estR === "demasiadas") lineas.push(T.raicesDemasiadas);
-  else if (r.raices.length > 0)
-    lineas.push(T.raicesPrefijo + r.raices.map((p) => numeroATexto(p.punto.x)).join(", "));
-  else lineas.push(T.noRaices);
-
-  const estV = estadoGrupo(r.vertices.length, esTrig);
-  if (estV === "infinitas") lineas.push(T.verticesInfinitos);
-  else if (estV === "demasiadas") lineas.push(T.verticesDemasiados);
-  else if (r.vertices.length > 0)
-    for (const v of r.vertices)
-      lineas.push(T.vertice(numeroATexto(v.punto.x), numeroATexto(v.punto.y)));
-  else lineas.push(T.noVertices);
-
-  for (const linea of lineas) pop.createDiv({ text: linea });
-  pop.createDiv({
-    text: T.enVista,
-    attr: { style: "margin-top:4px; opacity:0.6;" },
-  });
+  for (const linea of lineas) pintar(linea);
 };
 const alRecalcularFinal = () => {
   if (pop.style.display !== "none") refrescarInfo();

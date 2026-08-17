@@ -16,7 +16,57 @@
    ───────────────────────────────────────────── */
 .lmath-container {
   --lmath-superficie: var(--background-primary);
-  --lmath-panel: var(--background-secondary);
+  /* Material de los PANELES: el del bloque (con la fórmula), el cuadro ⓘ, el menú y la tarjeta
+     flotante del móvil. Va del fondo de la NOTA, no del secundario del tema.
+
+     Con el secundario, el panel era la barra lateral y el plano la nota, y en los temas donde
+     el secundario es MÁS CLARO que el primario —el Obsidian oscuro de fábrica lo es— el bloque
+     salía como un rectángulo gris claro alrededor de un plano oscuro. Con el primario, el
+     panel y el plano son la misma materia que la nota que los rodea, que es lo que el bloque
+     quiere parecer: una figura DENTRO del texto, no una ventana pegada encima.
+     `--lmath-superficie` apunta a lo mismo a propósito; lo que separa las dos mitades es la
+     línea de `.lmath-grafica`, no un cambio de color.
+     Nada se pierde por el camino: todo lo que FLOTA sobre el plano (cuadro ⓘ, menú, tarjeta)
+     lleva su `border` y su `box-shadow`, y el propio bloque lleva borde y esquinas redondeadas,
+     así que ninguno depende de este color para verse. Y el contraste del texto pasa a ser el
+     par que el tema ya garantiza legible, `--text-normal` sobre `--background-primary`.
+
+     Encima de ese fondo de nota lleva un LEVANTE corto: lo justo para que el hueco alrededor de
+     la tarjeta se despegue de ella y del plano, sin volver al gris de barra lateral del que se
+     vino huyendo. Se levanta hacia `--text-normal` —no hacia el blanco— porque así el gesto es
+     el mismo en los dos temas: acercar el fondo a la tinta es «separarse del fondo» tanto si la
+     tinta es clara como si es oscura, y en claro esto da un gris de panel en vez de no hacer
+     nada. Es el mismo recurso que usan los tokens "-activo" de más abajo.
+     El 5% es el mando: con el `#1e1e1e` del Obsidian oscuro deja el hueco en `#272727`, un
+     escalón que se ve contra la tarjeta (`#181818`) sin llamar la atención por su cuenta. */
+  --lmath-panel: var(--background-primary);
+  --lmath-panel: color-mix(in srgb, var(--background-primary) 95%, var(--text-normal));
+  /* TARJETA: la caja de la fórmula y el cuadro ⓘ, que son los dos objetos que se posan SOBRE
+     el panel y tienen que leerse como una capa aparte. Por debajo de él.
+
+     Se mide contra el fondo de la NOTA y no contra `--lmath-panel`, que es lo que parecería
+     natural. A propósito: el panel lleva su propio levante, y encadenar los dos cálculos haría
+     que subir el hueco alrededor de la tarjeta subiera TAMBIÉN la tarjeta, con lo que el mando
+     de arriba no separaría nada —los dos se moverían juntos y la distancia entre ellos sería
+     la misma—. Anclados los dos al mismo sitio, cada mando mueve una sola capa y la distancia
+     entre ambas es la suma de los dos: hoy `#272727` el hueco contra `#181818` la tarjeta.
+
+     El escalón se hace con `color-mix` hacia el negro y no apuntando a otra variable del tema
+     porque ninguna sirve: `--background-secondary` es más CLARA que la primaria en unos temas
+     y más oscura en otros, así que la tarjeta salía hundida o levantada según quién mirase. El
+     negro aquí no es un color del diseño —no fija ningún tono contra el tema, igual que
+     `--lmath-velo`—: es la operación «oscurece esto un poco», y el resultado sigue siendo el
+     color del tema. En un tema claro el mismo cálculo da la tarjeta gris sobre el fondo
+     blanco, que es lo que una tarjeta hace ahí.
+
+     Ese 80% es el ÚNICO mando: bajarlo hunde más la tarjeta, subirlo la acerca al panel. Está
+     donde está porque el margen es estrecho en oscuro —el fondo del Obsidian de fábrica es
+     `#1e1e1e`, así que un 95% movería la tarjeta un solo nivel de gris y no se vería—; con un
+     80% baja a `#181818`, que ya se lee como una capa aparte sin llegar a mancha negra.
+     La primera declaración es el respaldo si `color-mix` no está disponible (mismo patrón que
+     los tokens "-activo" de abajo): plana, pero válida. */
+  --lmath-tarjeta: var(--background-primary);
+  --lmath-tarjeta: color-mix(in srgb, var(--background-primary) 80%, black);
   --lmath-borde: var(--background-modifier-border);
   --lmath-texto: var(--text-normal);
   --lmath-texto-tenue: var(--text-muted);
@@ -209,6 +259,24 @@
 
 .lmath-info {
   display: none;
+}
+
+/* Las líneas de un cuadro ⓘ llevan su matemática entre `$…$` y las compone KaTeX a través de
+   `MarkdownRenderer`, que envuelve cada una en un `<p>` con los márgenes de párrafo de
+   Obsidian. `pintarLineaPanel` desenvuelve ese `<p>`, pero lo hace en el `.then()` del render,
+   y el cuadro se muestra ANTES de que esa promesa resuelva.
+
+   Sin esta regla, entre los dos momentos el usuario ve el cuadro con sus líneas separadas por
+   los márgenes: cinco líneas pasaban de ~96px a más de 200px, chocaban con el `max-height` del
+   popover y sacaban barra de desplazamiento. Al resolver los renders el cuadro encogía de
+   golpe. Con los márgenes a cero mide lo mismo en los dos estados y no hay salto.
+
+   Es la misma regla que ya tenía el panel LaTeX de la izquierda (`.lmath-latex p`, arriba),
+   que renderiza markdown desde mucho antes; los cuadros ⓘ solo empezaron a hacerlo al pasar
+   sus líneas a LaTeX, y se quedaron sin ella. El desenvoltorio del `<p>` sigue haciendo falta:
+   esto iguala la ALTURA, y aquello deja la línea en el flujo del cuadro como texto. */
+.lmath-container .lmath-info-pop p {
+  margin: 0;
 }
 
 .lmath-aviso {
@@ -438,4 +506,103 @@
   font-weight: 600;
   color: var(--lmath-texto);
   font-variant-numeric: tabular-nums;
+}
+
+/* ─────────────────────────────────────────────
+   TEMPORAL · Estilos del modal de migración (migracion/ModalMigracion.ts)
+   ─────────────────────────────────────────────
+
+   El código de la migración vive aparte, en `migracion/`, pero su CSS no puede: Obsidian solo carga
+   el `styles.css` de la raíz del plugin. Este bloque se borra ENTERO junto con la herramienta,
+   el día que los `obs-*` dejen de aceptarse; no hay nada más del producto que dependa de él.
+
+   Solo variables del tema de Obsidian: ni un literal de color. Un modal es marco, no plano, así
+   que aquí no entra `paleta.ts` (ver la regla de arquitectura de color del proyecto). */
+
+.lmath-mig p {
+  margin: 0.6em 0;
+}
+
+.lmath-mig-tabla {
+  width: auto;
+  margin: 0.8em 0;
+  border-collapse: collapse;
+  font-size: var(--font-ui-small);
+}
+
+.lmath-mig-tabla th,
+.lmath-mig-tabla td {
+  padding: 0.15em 0.9em 0.15em 0;
+  text-align: left;
+  border: none;
+}
+
+.lmath-mig-tabla th {
+  color: var(--text-muted);
+  font-weight: var(--font-normal);
+}
+
+.lmath-mig-flecha {
+  color: var(--text-faint);
+  padding-right: 0.6em;
+}
+
+.lmath-mig-nuevo {
+  color: var(--text-accent);
+}
+
+.lmath-mig-calma,
+.lmath-mig-estado {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.lmath-mig-resumen {
+  font-weight: var(--font-semibold);
+}
+
+/* La lista puede tener cientos de notas: se le pone techo y su propio scroll para que el modal
+   no crezca fuera de la pantalla y los botones sigan siendo alcanzables. */
+.lmath-mig-lista {
+  max-height: 14em;
+  overflow-y: auto;
+  margin: 0.5em 0 0.9em;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+}
+
+.lmath-mig-fila {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5em;
+  padding: 0.25em 0.7em;
+  font-size: var(--font-ui-small);
+}
+
+.lmath-mig-fila:not(:last-child) {
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.lmath-mig-ruta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lmath-mig-cuenta {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.lmath-mig-aviso {
+  color: var(--text-warning);
+  font-size: var(--font-ui-small);
+}
+
+.lmath-mig-botones {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6em;
+  margin-top: 1.2em;
 }

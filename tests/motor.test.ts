@@ -35,5 +35,7 @@ import "./modules/restriccion.test";    // restricción de dominio: `expr {a ≤
 import "./modules/parametros.test";     // parámetros declarados: `A = 1` + `f(x) = A\sin x`
 import "./modules/crosshair.test";      // la y del crosshair: evaluada en explícitas, rama en el resto
 import "./modules/mate.test";           // motor matemático: racionales, polinomios y sistemas
+import "./modules/dominio.test";        // condiciones de dominio y fidelidad de las transformaciones
+import "./modules/paneles-info.test";   // cuadros ⓘ: prosa fuera, matemática entre `$…$`
 
 resumen();

@@ -1,13 +1,14 @@
 {
   "name": "lmath",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Graph functions, systems, derivatives and integrals in interactive blocks, explore the unit circle, and typeset vector notation.",
   "main": "main.js",
   "scripts": {
     "build": "esbuild main.ts --bundle --outfile=main.js --external:obsidian --format=cjs --platform=node --target=es2020 --loader:.ttf=dataurl",
     "test": "esbuild tests/motor.test.ts --bundle --platform=node --format=cjs --outfile=tests/.bundle.cjs && node tests/.bundle.cjs",
     "test:zoom": "esbuild tests/zoom.test.ts --bundle --platform=node --format=cjs --outfile=tests/.bundle.zoom.cjs && node tests/.bundle.zoom.cjs",
-    "test:todo": "npm run test && npm run test:zoom",
+    "test:migracion": "esbuild migracion/pruebas.ts --bundle --platform=node --format=cjs --outfile=migracion/.bundle.cjs && node migracion/.bundle.cjs",
+    "test:todo": "npm run test && npm run test:zoom && npm run test:migracion",
     "trazar": "esbuild tools/trazar.ts --bundle --platform=node --format=cjs --outfile=tools/.trazar.cjs",
     "huella": "esbuild tools/huellaTrazado.ts --bundle --platform=node --format=cjs --outfile=tools/.huella.cjs",
     "medir": "esbuild tools/medirTrazado.ts --bundle --platform=node --format=cjs --outfile=tools/.medir.cjs",

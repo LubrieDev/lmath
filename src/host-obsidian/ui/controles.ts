@@ -11,6 +11,7 @@ import {
   MarkdownRenderChild,
   MarkdownRenderer,
   setTooltip,
+  type Component,
   type MarkdownPostProcessorContext,
 } from "obsidian";
 
@@ -113,14 +114,57 @@ export function montarEtiquetaMath(
   plugin: PluginConAjustes,
   el: HTMLElement, tex: string, ctx: MarkdownPostProcessorContext
 ): void {
-  el.empty();
   // Lifecycle propio atado al bloque (via ctx): NUNCA el plugin como componente
   // (su vida es demasiado larga → fuga). Obsidian lo descarga al quitar el bloque.
   const hijo = new MarkdownRenderChild(el);
   ctx.addChild(hijo);
-  void MarkdownRenderer.render(plugin.app, `$${tex}$`, el, ctx.sourcePath, hijo)
+  pintarMathEnLinea(plugin, el, tex, ctx.sourcePath, hijo);
+}
+
+/**
+ * Lo mismo, pero con el COMPONENTE puesto desde fuera: pinta `$tex$` en `el` y desenvuelve el
+ * `<p>` para que quede en línea. Es la variante para lo que se REPINTA —un cuadro que se
+ * refresca en cada pasada—, donde crear un `MarkdownRenderChild` por render iría acumulando
+ * hijos en el bloque; con el componente del bloque (`limpieza`) hay uno solo y se descarga con
+ * él. Es el mismo trato que se da al panel de fórmula, que también se repinta.
+ *
+ * `respaldo` es el texto que queda si el render NO llega a completarse: un cuadro que se queda
+ * en blanco es peor que uno feo, y aquí lo que se pinta es el resultado, no un adorno.
+ */
+export function pintarMathEnLinea(
+  plugin: PluginConAjustes,
+  el: HTMLElement, tex: string, sourcePath: string,
+  componente: Component, respaldo?: string
+): void {
+  pintarLineaPanel(plugin, el, `$${tex}$`, sourcePath, componente, respaldo);
+}
+
+/**
+ * Una LÍNEA de un cuadro ⓘ, que mezcla prosa y matemática: `Intersección Y: $\left(0,\
+ * \frac{\pi}{2}\right)$`. La prosa se queda en la fuente del panel y lo que va entre `$`
+ * se compone con KaTeX.
+ *
+ * Es el mismo trato que reciben las fórmulas del panel izquierdo, y la razón de que la
+ * frontera la marquen los `$` y no un campo aparte es que solo el TEXTO sabe dónde está: en
+ * «Raíces: …» la matemática es la lista, y en «Máximo en θ = …» es la igualdad entera. Cada
+ * idioma pone sus delimitadores donde le corresponden y este módulo no tiene que adivinarlo.
+ *
+ * Sin `$` no se llama al renderizador: una línea de prosa pura («No hay raíces reales») se
+ * pinta como texto y se ahorra el viaje.
+ */
+export function pintarLineaPanel(
+  plugin: PluginConAjustes,
+  el: HTMLElement, linea: string, sourcePath: string,
+  componente: Component, respaldo?: string
+): void {
+  el.empty();
+  if (!linea.includes("$")) { el.setText(linea); return; }
+  void MarkdownRenderer.render(plugin.app, linea, el, sourcePath, componente)
     .then(() => {
+      // El renderizador envuelve en `<p>`, que es un bloque con sus márgenes: se desenvuelve
+      // para que la línea quede en el flujo del cuadro como cualquier otra.
       const p = el.querySelector("p");
       if (p) { while (p.firstChild) el.appendChild(p.firstChild); p.remove(); }
-    });
+    })
+    .catch(() => { el.setText(respaldo ?? linea); });
 }

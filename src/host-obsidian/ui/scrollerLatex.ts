@@ -116,9 +116,9 @@ export function crearScrollerLatex(
   // Construye un ÁREA de scroll horizontal AUTÓNOMA dentro de `padre`: su propio
   // desbordamiento, fades laterales, rueda y observador de tamaño. El `estilo` fija
   // solo su aspecto: "enmarcado" la envuelve en una caja redondeada y algo más oscura
-  // que el panel (`--lmath-superficie`, la primaria del tema sobre la secundaria del
-  // panel: el mismo escalón de material que usa Obsidian para sus tarjetas, y el mismo
-  // color con el que degradan los fades laterales); "plano" la deja sin recuadro
+  // que el panel (`--lmath-tarjeta`, un escalón por debajo de `--lmath-panel`; ver el
+  // token en styles.css, y ojo: es también el color con el que degradan los fades
+  // laterales, así que los dos se mueven juntos o el borde del fade canta); "plano" la deja sin recuadro
   // llenando el hueco (reservado a futuros
   // paneles; el panel actual usa siempre "enmarcado"). `compartirAlto` es un eje
   // ORTOGONAL al estilo (layout, no aspecto): true → la tarjeta reparte a partes iguales la
@@ -150,7 +150,7 @@ export function crearScrollerLatex(
       "position:relative; overflow:hidden; min-height:0; " + flexMarco +
       (enmarcado
         ? " border:1px solid var(--lmath-borde); border-radius:12px; " +
-          "background:var(--lmath-superficie);"
+          "background:var(--lmath-tarjeta);"
         : "");
 
     // Área scrolleable (hereda el tamaño de fuente KaTeX por la clase). Centra la
@@ -174,7 +174,7 @@ export function crearScrollerLatex(
     fadeOverlay.style.cssText =
       "position:absolute; inset:0; pointer-events:none; overflow:hidden; " +
       (enmarcado ? "border-radius:12px;" : "");
-    const fadeColor = "var(--lmath-superficie)";
+    const fadeColor = "var(--lmath-tarjeta)";
     const fadeIzq = fadeOverlay.createDiv();
     fadeIzq.style.cssText =
       "position:absolute; top:0; bottom:0; left:0; width:32px; opacity:0; " +

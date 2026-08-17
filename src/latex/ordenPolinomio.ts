@@ -71,6 +71,28 @@ function gradoEnX(n: Nodo): number | null {
  * las subexpresiones anidadas (denominadores, bases de potencia) se pintan como las produce
  * mathjs (evita reordenar, p. ej., el denominador de una derivada de cociente).
  */
+/**
+ * Separa el signo VISIBLE de un término de su cuerpo: `−e` → (−1, `e`), `−2·e` → (−1, `2·e`).
+ *
+ * Un término negativo puede llevar el menos delante (`−e`) o pegado a su primer factor
+ * (`−2·e`, que es como sale de `flip`), y las dos formas son el mismo signo. Reconocerlas es lo
+ * que permite reensamblar con una RESTA en vez de con una suma de un negativo.
+ */
+function signoDelTermino(n: Nodo): { signo: number; nodo: Nodo } {
+  if (n.type === "OperatorNode" && n.args.length === 1 && n.op === "-") {
+    const dentro = signoDelTermino(n.args[0]);
+    return { signo: -dentro.signo, nodo: dentro.nodo };
+  }
+  if (n.type === "OperatorNode" && n.args.length === 2 && (n.op === "*" || n.op === "/")) {
+    const izq = signoDelTermino(n.args[0]);
+    if (izq.signo < 0) {
+      const fn = n.op === "*" ? "multiply" : "divide";
+      return { signo: -1, nodo: opNodo(n.op, fn, [izq.nodo, n.args[1]], n.implicit) };
+    }
+  }
+  return { signo: 1, nodo: n };
+}
+
 export function ordenarPolinomioDescendente(node: Nodo): Nodo {
   // Aplana la cadena aditiva de nivel superior en términos con su signo (+/−).
   const terminos: { signo: number; nodo: Nodo }[] = [];
@@ -78,7 +100,16 @@ export function ordenarPolinomioDescendente(node: Nodo): Nodo {
     if (n.type === "OperatorNode" && n.args.length === 2 && (n.op === "+" || n.op === "-")) {
       aplanar(n.args[0], signo);
       aplanar(n.args[1], n.op === "-" ? -signo : signo);
-    } else terminos.push({ signo, nodo: n });
+      return;
+    }
+    // El signo que el término lleva EN LA CARA pertenece al término, no al nodo. Sin esto,
+    // `−e + x` se aplanaba como «+ (−e)» y el reensamblado lo encadenaba con una SUMA,
+    // produciendo `x + −e` —que mathjs pinta `x+-e`—: el signo quedaba escondido dentro del
+    // nodo y el reensamblado, que sí sabe restar, nunca se enteraba de que tocaba restar.
+    // Se nota con los términos simbólicos (`e`, `π`, `z`, `−2e`) y no con los numéricos,
+    // porque esos el despejador ya los entrega ordenados y aquí no se reordena nada.
+    const { signo: propio, nodo: cuerpo } = signoDelTermino(n);
+    terminos.push({ signo: signo * propio, nodo: cuerpo });
   };
   aplanar(node, 1);
   if (terminos.length < 2) return node; // no es una suma: nada que reordenar

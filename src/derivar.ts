@@ -3,6 +3,7 @@ import { derivative, parse, simplify, type MathNode } from "mathjs";
 import { normalizarEntrada, contieneYLibre } from "./parser";
 import { insertarProductoImplicito } from "./core/parsing/productoImplicito";
 import { exprALatex } from "./latex";
+import { mismaFuncion } from "./math/dominio";
 import { simplificarEcuaciones } from "./simplificar";
 import { racionalizarFracciones, combinarFracciones, resimbolizarConstantes, terminos as terminosAditivos, profundidadFraccion, opNodo, constNodo, simboloNodo, funcNodo, type Nodo } from "./formatoExpr";
 import { compilarFuncion } from "./evaluador";
@@ -135,25 +136,16 @@ export function extraerFuncion(ec: string): string | null {
 const REGLAS_DERIVADA: unknown[] = ["sqrt(n1)^2 -> n1"]
   .concat((simplify as unknown as { rules: unknown[] }).rules as never[]);
 
-// Muestras para la guardia de equivalencia: valores "anodinos" (no enteros, ambos
-// signos, cerca y lejos del origen) para no caer justo en raíces o simetrías.
-const PUNTOS_EQUIVALENCIA = [-7.3, -2.6, -1.2, -0.7, -0.3, 0.4, 1.1, 2.7, 5.8, 11.4];
-
-/** ¿Las dos expresiones (strings mathjs) definen la MISMA función de x sobre la
- *  muestra? Exige coincidir también en dónde NO son finitas (fidelidad de dominio:
- *  una simplificación que "rellene" huecos del dominio queda rechazada). */
-function derivadasEquivalentes(a: string, b: string): boolean {
-  try {
-    const fa = compilarFuncion(a, VAR), fb = compilarFuncion(b, VAR);
-    return PUNTOS_EQUIVALENCIA.every((x) => {
-      const va = fa(x) as number, vb = fb(x) as number;
-      const finA = typeof va === "number" && Number.isFinite(va);
-      const finB = typeof vb === "number" && Number.isFinite(vb);
-      if (!finA || !finB) return finA === finB;
-      return Math.abs(va - vb) <= 1e-8 * (1 + Math.abs(va));
-    });
-  } catch { return false; }
-}
+/**
+ * ¿Las dos expresiones (strings mathjs) definen la MISMA función: mismo valor y mismo dominio?
+ *
+ * Es el guardián compartido de `math/dominio`, el mismo que usa el simplificador. Aquí decide
+ * si una forma más corta de la derivada se adopta, y hace falta que mire el dominio y no solo
+ * los valores: la regla `√u² → u` que limpia lo que deja la regla de la cadena AMPLÍA el
+ * dominio, y las candidatas de una derivada de cociente pueden RELLENAR un agujero —la derivada
+ * de `x²/x` se reducía a `1`, que existe en x=0, donde la función no—.
+ */
+const derivadasEquivalentes = mismaFuncion;
 
 /** Factores de un PRODUCTO de nivel superior (solo `*`, no `/`): `a*b*c` → [a,b,c]. La
  *  división NO se reparte (sería la regla del cociente, que mathjs ya combina bien). */

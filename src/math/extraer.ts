@@ -35,6 +35,7 @@ import {
   producto2, resta2, suma2,
 } from "./polinomio2";
 import { UNO } from "./racional";
+import { constanteExacta } from "./simbolico/constanteExacta";
 
 /** Una expresión como cociente de dos polinomios. `den` nunca es el polinomio nulo. */
 interface Fraccion {
@@ -91,6 +92,21 @@ function exponenteEntero(n: Nodo): number | null {
 function fraccionDe(n: Nodo): Fraccion | null {
   const nodo = desParen(n);
 
+  /**
+   * Último intento antes de rendirse: un subárbol SIN VARIABLES que resulta ser un racional
+   * exacto es un coeficiente como cualquier otro, esté escrito como esté (`nthRoot(64, 3)` es 4).
+   * Rechazarlo por llevar un radical delante sacaba del carril exacto a sistemas que sí son
+   * polinómicos.
+   *
+   * Se llama SOLO donde el recorrido normal iba a devolver `null`, y no en cada nodo: como
+   * recorre el subárbol entero, hacerlo en todos convertiría el lector en cuadrático sin
+   * reconocer ni una expresión más.
+   */
+  const comoConstante = (): Fraccion | null => {
+    const k = constanteExacta(nodo);
+    return k === null ? null : entera(constante2(k));
+  };
+
   switch (nodo.type) {
     case "ConstantNode": {
       const k = constanteDe(nodo);
@@ -113,7 +129,7 @@ function fraccionDe(n: Nodo): Fraccion | null {
         // La base puede ser cualquier cosa, pero el exponente tiene que ser un entero: `x^y` y
         // `x^(1/2)` no son polinomios y aquí no se aproximan.
         const k = exponenteEntero(nodo.args[1]);
-        if (k === null) return null;
+        if (k === null) return comoConstante();   // `8^(2/3)` es 4: constante, aunque no entera
         if (k >= 0) return { num: potencia2(a.num, k), den: potencia2(a.den, k) };
         if (esNulo2(a.num)) return null;                    // 0 elevado a negativo
         return { num: potencia2(a.den, -k), den: potencia2(a.num, -k) };
@@ -137,8 +153,9 @@ function fraccionDe(n: Nodo): Fraccion | null {
       }
     }
     default:
-      // FunctionNode (sin, log, sqrt, abs…) y todo lo demás: no es polinómico.
-      return null;
+      // FunctionNode (sin, log, sqrt, abs…) y todo lo demás: no es polinómico… salvo que sea
+      // una CONSTANTE disfrazada (`sqrt(16)`, `nthRoot(64,3)`, `abs(-3)`).
+      return comoConstante();
   }
 }
 

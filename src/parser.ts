@@ -216,6 +216,48 @@ function reemplazarComandoLlaves(
   return expr;
 }
 
+/**
+ * Como `reemplazarComandoLlaves`, pero para un nombre de FUNCIÓN, que trae dos problemas que
+ * un `\comando` no tiene.
+ *
+ * **Puede venir sin barra.** `tan{x}` es notación informal, se escribe a mano y MathJS la
+ * rechaza ("Unexpected operator {"), así que hay que aceptar las dos formas.
+ *
+ * **Y por eso hace falta mirar a la izquierda.** Sin barra que lo delimite, el `sin` de
+ * `asin{…}` casaría y la inversa se quedaría sin su argumento. Se admite el principio de la
+ * cadena, la barra del propio comando, o un carácter que no forme parte de un identificador.
+ * Con barra no hace falta comprobar nada: la barra ya marca dónde empieza el nombre.
+ *
+ * Ojo con `h`: `sinh{x}` no casa con `sin{` (entre medias está la `h`), y lo mismo `cosh`,
+ * `tanh`, `sech` y `coth`. La comprobación por la izquierda no las cubriría, pero es que no
+ * hace falta —el `{` inmediato ya las descarta—.
+ */
+function reemplazarFuncionLlaves(
+  expr: string,
+  nombre: string,
+  envolver: (arg: string) => string,
+): string {
+  const marca = `${nombre}{`;
+  let desde = 0;
+  for (;;) {
+    const idx = expr.indexOf(marca, desde);
+    if (idx === -1) return expr;
+    const conBarra = idx > 0 && expr[idx - 1] === "\\";
+    const inicio = conBarra ? idx - 1 : idx;
+    const previo = inicio === 0 ? "" : expr[inicio - 1];
+    if (!conBarra && previo !== "" && /[A-Za-z0-9\\]/.test(previo)) {
+      desde = idx + nombre.length;   // es el final de otro identificador (`asin{`), no el nuestro
+      continue;
+    }
+    const inicioLlave = idx + nombre.length;
+    const fin = encontrarLlaveCierre(expr, inicioLlave);
+    if (fin === -1) return expr;     // llave sin cerrar: se deja tal cual, como el resto del parser
+    const reemplazo = envolver(expr.slice(inicioLlave + 1, fin));
+    expr = expr.slice(0, inicio) + reemplazo + expr.slice(fin + 1);
+    desde = inicio + reemplazo.length;
+  }
+}
+
 // Envoltorios TIPOGRÁFICOS de LaTeX: no aportan matemática, solo cómo se ve el texto.
 // `\operatorname{sech}`/`\mathrm{e}` se desenvuelven (su contenido SÍ es matemática: un
 // nombre de función o una constante); `\text{…}` es prosa y se BORRA con su contenido.
@@ -804,18 +846,25 @@ export function normalizarEntrada(raw: string): string {
     new RegExp(`\\\\(${TRIG_PATRON})\\s*\\\\frac\\{([^}]+)\\}\\{([^}]+)\\}`, "g"),
     "$1(($2)/($3))"
   );
-  expr = expr.replace(
-    new RegExp(`\\\\(${TRIG_PATRON})\\s*\\{([^{}]+)\\}`, "g"),
-    "$1($2)"
-  );
-  // Trig SIN backslash con argumento en llaves (`tan{x}` → `tan(x)`): notación informal
-  // que MathJS no acepta (dejaría `tan{x}` → "Unexpected operator {"). La guarda inicial
-  // —principio de cadena o carácter que NO es identificador ni `\`— evita casar el `tan`
-  // de `atan{` (ya convertido por las inversas) y la forma con backslash (regla de arriba).
-  expr = expr.replace(
-    new RegExp(`(^|[^A-Za-z0-9\\\\])(${TRIG_PATRON})\\s*\\{([^{}]+)\\}`, "g"),
-    "$1$2($3)"
-  );
+  // Argumento en llaves, CON o SIN barra (`\sin{x}`, y el informal `tan{x}` que MathJS no
+  // acepta). Llaves BALANCEADAS, que es lo que la regex plana `\{([^{}]+)\}` no podía dar:
+  // ese argumento suele traer llaves dentro —otra trigonométrica, una raíz, un exponente— y
+  // ahí no casaba nada. `\cos{\tan{\sin{x}}}` y `\sin{\sqrt{x}}` no se dibujaban.
+  //
+  // Y no se arreglaba pasando la regla dos veces. `convertirRaices` corre DESPUÉS de este
+  // punto, así que cuando llegamos aquí `\sin{\sqrt{x}}` sigue teniendo las llaves de la raíz
+  // puestas y ninguna pasada plana las salva; hay que contar niveles. El logaritmo tuvo este
+  // mismo problema y se resolvió igual (`reemplazarComandoLlaves`, `\ln{\sqrt{…}}`), pero la
+  // familia trigonométrica se quedó fuera de aquel cambio.
+  //
+  // La lista incluye las HIPERBÓLICAS, que nunca estuvieron en esta regla: `\sinh{x}` salía
+  // `sinh{x}` y no compilaba, igual que las otras. Van aquí y NO en `FUNCIONES_TRIG` porque
+  // esa lista es la de la conversión a radianes, y el argumento de un seno hiperbólico no es
+  // un ángulo: `\sinh{30}` es 30, no 30°. Ninguna se pisa con su versión sin `h` —lo que se
+  // busca es `sin{` literal, y en `sinh{` entre el nombre y la llave está la `h`—.
+  const FUNCIONES_LLAVES = [...TRIG_PATRON.split("|"), "sinh", "cosh", "tanh", "sech", "csch", "coth"];
+  for (const fn of FUNCIONES_LLAVES)
+    expr = reemplazarFuncionLlaves(expr, fn, (a) => `${fn}(${a})`);
   // Solo si tras el número NO viene un símbolo (`\cos 5t`, `\sin 3\theta`): ahí el número
   // es el COEFICIENTE del argumento, no el argumento entero — lo resuelve la regla general
   // de argumento sin agrupar (abajo), que toma la corrida completa (`cos(5t)`). Sin el

@@ -218,3 +218,45 @@ export function fusionarRadicalesEnProducto(node: Nodo): Nodo {
   const llanos = salida.filter((f) => factorRadical(f) === null);
   return [...llanos, ...raices].reduce((acc, f) => opNodo("*", "multiply", [acc, f]));
 }
+
+/**
+ * Baja el signo de un menos unario al PRIMER FACTOR de su producto: `−(π·x)` → `(−π)·x`.
+ *
+ * El despejador serializa cada término negativo envolviendo su cuerpo (`-(pi * x) / (6)`), que es
+ * lo correcto para un string re-parseable. Al pintarlo salía a la vista un paréntesis que nadie
+ * escribiría: el numerador salía como -(\pi x) dentro de la fracción, con un paréntesis
+ * escalable que además crecía con ella.
+ *
+ * Quitar el paréntesis a secas no basta: mathjs lo REPONE al imprimir, porque en su tabla de
+ * precedencias el menos unario liga más fuerte que el producto y `-pi * x` volvería a leerse
+ * `(-pi) * x`. Como esa lectura es justamente la que vale lo mismo, la salida es construirla:
+ * con el signo ya en el primer factor no hay nada que proteger y el paréntesis desaparece solo.
+ *
+ * Solo se toca lo que no cambia de valor. `−(a+b)` y `−(−a)` se quedan como están —ahí el
+ * paréntesis ES la expresión—, y una potencia tampoco se toca: `−(x²)` no es `(−x)²`.
+ */
+export function sinParentesisDeMenosUnario(node: Nodo): Nodo {
+  /** El nodo sin sus paréntesis envolventes. */
+  const desnudo = (n: Nodo): Nodo => (n.type === "ParenthesisNode" ? desnudo(n.content) : n);
+
+  /** `−n`, con el signo colocado donde no obligue a parentizar. */
+  const negar = (n: Nodo): Nodo => {
+    const cuerpo = desnudo(n);
+    if (cuerpo.type === "OperatorNode" && cuerpo.args.length === 2 && cuerpo.op === "*") {
+      // El signo viaja al primer factor; el resto del producto no se toca (ni su
+      // `implicit`, que es lo que decide si se pinta `2x` o `2\cdot x`).
+      return opNodo("*", "multiply", [negar(cuerpo.args[0]), cuerpo.args[1]], cuerpo.implicit);
+    }
+    // Un COCIENTE se queda con el menos fuera. Es la convención que el panel ya defiende
+    // (`d/dx 1/x` se lee `−1/x²`, no `(−1)/x²`) y además no necesita ayuda: una fracción bajo
+    // un menos no lleva paréntesis, que es lo único que se vino a quitar aquí.
+    // Suma, resta y otro menos unario: el paréntesis hace falta, se deja tal cual.
+    if (cuerpo.type === "OperatorNode"
+        && (cuerpo.args.length === 1 || cuerpo.op === "+" || cuerpo.op === "-"))
+      return opNodo("-", "unaryMinus", [n]);
+    return opNodo("-", "unaryMinus", [cuerpo]);
+  };
+
+  return node.transform((n: Nodo): Nodo =>
+    n.type === "OperatorNode" && n.args.length === 1 && n.op === "-" ? negar(n.args[0]) : n);
+}

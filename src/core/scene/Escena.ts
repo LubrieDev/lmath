@@ -24,7 +24,6 @@ import {
 } from "../analysis/lecturaRama";
 import { interseccionesDeGeometrias, MAX_PUNTOS } from "../analysis/interseccionesRamas";
 import { recortarRegion } from "../analysis/areaBajoRama";
-import { resumenPuntosNotables, type ResumenNotables } from "../analysis/puntosNotablesDeRama";
 import { colorCurva } from "../rendering/paleta";
 import { semiYAutoencuadre, semiYAcotado } from "./autoencuadre";
 import { aMundoX } from "./viewport-utils";
@@ -378,18 +377,11 @@ export class Escena {
     return true;
   }
 
-  /**
-   * Resumen COMPLETO (sin el cap de dibujo) de los puntos notables de la curva
-   * SELECCIONADA, recalculado de su geometría cacheada. Para el panel ⓘ de
-   * obs-graph con curvas no explícitas: ahí "demasiados" se RESUME en texto
-   * ("infinitas raíces", …) en vez de omitirse como hace el plano. `viewport`
-   * habilita las raíces de extremo de rama (misma semántica que el dibujo).
-   */
-  resumenNotables(viewport: Viewport): ResumenNotables {
-    const it = this.items[this.seleccion];
-    if (!it) return { raices: [], vertices: [], interseccionesY: [] };
-    return resumenPuntosNotables(it.geometria.ramas, it.geometria.ramas[0]?.objetoId ?? "", viewport);
-  }
+  // Aquí vivía `resumenNotables(viewport)`, que devolvía los puntos notables de la curva
+  // seleccionada leídos de su GEOMETRÍA cacheada y recortados al encuadre. Lo consumía un solo
+  // sitio —el ⓘ de obs-graph con curvas no explícitas—, y ese cuadro ya no pregunta por el
+  // dibujo: resuelve la ecuación (`math/notablesImplicita`). Se ha ido con él, porque mientras
+  // el método existiera seguiría estando disponible la respuesta que depende de la ventana.
 
   /** Número de curvas del sistema (objetos de la escena). */
   numeroCurvas(): number {

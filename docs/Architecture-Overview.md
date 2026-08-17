@@ -1,7 +1,7 @@
 # LMath — Architecture Overview
 
-**Technical guide for version 1.4.0.** This map describes one version and is meant to be
-edited along with the code; treat anything it says as true *of 1.4.0* and check it against the
+**Technical guide for version 1.5.0.** This map describes one version and is meant to be
+edited along with the code; treat anything it says as true *of 1.5.0* and check it against the
 paths it names. Companion to the
 [Technical Reference](https://github.com/LubrieDev/lmath/blob/main/docs/TECHNICAL-REFERENCE.md),
 which has the detail.
@@ -114,13 +114,30 @@ between vertices. Both are now answered here.
 | `polinomio.ts` | Polynomials in one variable over ℚ: gcd, square-free part, **Sturm sequences**, Cauchy bound, real-root isolation and refinement, exact rational roots. Sturm is what makes "all the real roots" a claim with a theorem behind it rather than an estimate — a sampling sweep cannot see a double root at all. |
 | `polinomio2.ts` | Two variables, and elimination: substitution when a curve is explicit, **resultant** (Sylvester + fraction-free Bareiss) when neither is. |
 | `extraer.ts` | Written equation → exact polynomial, or `null`. Carries fractions of polynomials, so `y = 1/x` stays on the exact path. Returning `null` is an answer: it sends the pair to the numeric route rather than approximating in silence. |
-| `numerico.ts` | The non-polynomial route: deterministic sweep over a **constant** interval (±100), bisection, Newton, root/pole discrimination. Not complete over ℝ — no algorithm is — and the panel states the interval it searched. |
+| `numerico.ts` | The non-polynomial route: deterministic sweep over a **constant** interval (±100), bisection, Newton, root/pole discrimination. Handles the three explicit shapes — `y = f(x)` against `y = g(x)` (sweep x), `x = f(y)` against `x = g(y)` (sweep y), and the mixed pair by **composition** (`f(g(y)) = y`) — so a vertical line is no longer out of reach. The last two are opt-in (`simetrico`) because they would otherwise pre-empt the exact answers the branch stage produces. Not complete over ℝ — no algorithm is — and the panel states the interval and the variable it searched. |
+| `ramas.ts` | Written equation → the N equations it really represents. Reuses the solver for `y` (transposing x↔y when the unknown is the other one), expands the ± through `expandirDobleSigno`, and separates the `dom` domain guards so the caller can apply them as a predicate. This is the seam that was missing: the tracer already consumed equations in this form, the solver did not, and that asymmetry made the answer depend on how the user wrote the equation. |
+| `simbolico/` | Exact values beyond ℚ. `valorExacto.ts` is the quadratic field `a + b√d` (canonical, so `√8` becomes `2√2` and `1/√2` becomes `√2/2` by construction); `raicesSimbolicas.ts` recovers the closed form of a polynomial's real roots by pairing conjugates and **verifying the candidate quadratic by exact division**; `polinomioExacto.ts` evaluates ℚ[x] inside that field; `constanteExacta.ts` recognises constants that are rational however they are written (`nthRoot(64,3)` is 4). |
 | `resolverSistema.ts` | Classify, eliminate, solve, **verify**. Verification is not a formality: elimination genuinely produces false candidates (a resultant works over ℂ; clearing denominators invents solutions where the curve does not exist). Also applies the domain restriction, which is separated before solving and re-applied after. |
 | `ordenada.ts` | The exact ordinate reader for the crosshair. Only for explicit `y = f(x)`; returns `null` otherwise, and the caller keeps reading the polyline. |
 
-**Where the boundary is.** Exact and complete over ℝ for polynomial and rational systems.
-Viewport-independent but interval-bounded for the rest. Silent about a non-polynomial implicit
-curve rather than guessing. Parametric and polar curves do not reach it at all.
+**Where the boundary is.** Exact and complete over ℝ for polynomial and rational systems, and the
+coordinates keep their **closed form** when they have one of degree ≤ 2 — `(7−√13)/2`, not
+`1.6972243622680054`. Degree ≥ 3 (∛2), two different radicals (√2+√3) and transcendentals (π, e) have
+no representation here and come out as decimals, marked as such. Viewport-independent but
+interval-bounded for the rest. Silent about a non-polynomial implicit curve rather than guessing.
+Parametric and polar curves do not reach it at all.
+
+**The four rungs**, in the order `resolverBloque` tries them: exact direct → numeric direct → branches
+→ symmetric numeric. The order is a contract, not a preference: each rung can solve things the next
+one solves *worse*, so promoting any of them turns exact answers into approximate ones. That is not a
+hypothesis — widening the second rung did exactly that, and the tests now pin it.
+
+**Above the ladder, the `±` is expanded** (1.5.0). `y = ±⁴√(1−x⁴)` is not an equation but the family
+of two, and the tracing side always knew that — it is why the plot draws both halves. The solver did
+not, so a system whose two curves are odd listed one of its two symmetric crossings while the plot
+drew the other: two halves of one engine disagreeing about how many curves are written. Branches stay
+**grouped** by the equation they came from and pairing is group against group, never a branch against
+its own sibling: where the two halves meet, the curve is closing on itself, not crossing another one.
 
 ---
 
@@ -177,6 +194,17 @@ Its own path too, and the smallest in the plugin: four modules, no state, no cam
 | `host-obsidian/{ajustes,fuentes,plataforma}.ts` | Settings tab, embedded fonts, touch detection. |
 | `i18n/` | One file per language (`en`, `es`, `pt`) implementing the contract in `textos.ts`; `index.ts` is the runtime and the only door. Adding a language is adding a file. |
 | `engines/obs-graph/` | Legacy WebGL engine, kept behind a compile-time flag as a fallback. |
+| `migracion/` | **Temporary.** The block rename (`obs-graph` → `_graph`) and the tool that rewrites notes still using the old syntax. Ships in **1.5.0 only**; the whole folder goes in 2.0.0 — along with the settings button, the startup notice, the `styles.css` TEMPORAL block and the acceptance of the `obs-*` names. It is at the repo root and not in `.dev/` because `.dev/` is gitignored and this code ships. |
+
+**Colour has one rule**: the frame is the theme's (`--lmath-*` tokens on `.lmath-container`, each
+resolving to an Obsidian variable), the plot is ours (`paleta.ts`, two hand-tuned palettes, because
+six curve hues must stay distinguishable and no theme variable promises that). No colour literal
+outside those two places. Since 1.5.0 the chrome is three layers deep and all three are defined
+against the *note* — surface = `--background-primary`, panel = that lifted toward the ink, card and
+ⓘ popover = that sunk toward black — and never against `--background-secondary`, whose relation to
+the primary flips from theme to theme. The card is measured against the note rather than against
+the panel on purpose: chained, raising one would raise the other and the layers would never
+separate.
 
 > **Why the host is split this way.** Not to make files shorter. `MotorExperimental` was a class
 > with three fields and forty methods, and the methods did not touch the fields — so they were
@@ -227,3 +255,9 @@ Its own path too, and the smallest in the plugin: four modules, no state, no cam
 | `npm run test:zoom` | Zoom-out sweep: the curve must not vanish or flicker. |
 | `npm run fuzz` | Differential fuzzer for solver soundness. The `UNSOUND` column must stay at zero. |
 | `npm run bateria` | Graduated battery for solver completeness and domain. |
+| `npm run test:migracion` | The rename scanner. **Temporary**, goes with `migracion/`. |
+| `.dev/sondas/` (no script) | Corpus sweep over a real vault's hand-written blocks. Asserts no expected values — it hunts exceptions, empty curves, mute panels and non-finite coordinates. Reads one particular vault, which is why it has no `package.json` entry. |
+
+> A green suite is not a proof. The corpus sweep found defects in modules the suite already
+> covered, with the suite green: it checked the answers the engine had been asked for, and the
+> sweep asked different questions of the same code.

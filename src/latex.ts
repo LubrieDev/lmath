@@ -29,6 +29,7 @@ import { OPCIONES_TEX, limpiarTex, normalizarPotenciasRacionales } from "./latex
 import { ordenarPolinomioDescendente } from "./latex/ordenPolinomio";
 import {
   agruparFuncionesDesnudasEnProducto, fusionarRadicalesEnProducto,
+  sinParentesisDeMenosUnario,
 } from "./latex/agrupaciones";
 
 export { OPCIONES_TEX, limpiarTex, quitarLlavesExternas } from "./latex/nodoATex";
@@ -57,9 +58,10 @@ function ladoALatex(lado: string): string {
     // `^{1/q}` sueltos y a la vista), luego se funden los radicales del mismo índice, y solo
     // entonces se agrupan las funciones desnudas y se ordena el polinomio.
     const arbol = ordenarPolinomioDescendente(
-      agruparFuncionesDesnudasEnProducto(
-        fusionarRadicalesEnProducto(
-          normalizarPotenciasRacionales(parse(norm) as unknown as Nodo))));
+      sinParentesisDeMenosUnario(
+        agruparFuncionesDesnudasEnProducto(
+          fusionarRadicalesEnProducto(
+            normalizarPotenciasRacionales(parse(norm) as unknown as Nodo)))));
     return limpiarTex(arbol.toTex(OPCIONES_TEX));
   } catch {
     return norm;

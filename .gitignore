@@ -158,3 +158,4 @@ tests/.bundle.bateria.cjs
 tests/.bundle.mate.cjs
 
 .dev/
+migracion/.bundle.cjs
