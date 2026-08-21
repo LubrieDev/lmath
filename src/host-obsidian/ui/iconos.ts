@@ -24,6 +24,36 @@ export const ICONO = {
   // Los mandos de los parámetros declarados: una píldora con su manija, que es exactamente lo
   // que abre el botón.
   deslizadores: "M201-360q-53 0-86.5-33.5T81-480q0-53 33.5-86.5T201-600h558q53 0 86.5 33.5T879-480q0 53-33.5 86.5T759-360H201Zm365-60h197q26 0 43-17t17-43q0-34-17-47t-43-13H566v120Z",
+  // El PLANO CARTESIANO: los dos ejes cruzados en el origen, con punta de flecha en los
+  // sentidos positivos (derecha y arriba), que es como se dibuja en cualquier pizarra. Dibujado
+  // a mano —Material Symbols no trae este símbolo—, con el grosor de asta del resto del juego
+  // (60 unidades, el mismo de las barras del + y del −) para que no cante al lado de ellos.
+  //
+  // Las flechas no son adorno: sin ellas, dos astas cruzadas a 15px son EL MISMO DIBUJO que el
+  // chip de acercar (+). Son lo único que distingue un icono del otro a tamaño de chip, y por
+  // eso son gruesas (160×100) en vez de la punta fina que pediría el dibujo a tamaño grande.
+  //
+  // Marcas de escala en los ejes se probaron y se descartaron: a 15px una marca de 40 unidades
+  // mide 0,6px y solo ensucia el cruce.
+  //
+  // Las cuatro subtrayectorias giran en el MISMO sentido a propósito. La punta pisa su asta
+  // (para que no quede costura entre las dos), y con `nonzero` dos trozos que se solapan girando
+  // al revés se restan: la muesca saldría justo en la unión.
+  cartesian_plane: "M480-870l80 100h-160l80-100ZM450-790h60v670h-60v-670ZM120-510h670v60H120v-60ZM870-480l-100 80v-160l100 80Z",
+  // Circulo unitario: la otra cara de `obs-trig`, como `cartesian_plane` lo es del resto.
+  //
+  // El ANILLO se dibuja con dos circunferencias de sentidos OPUESTOS: con `nonzero`, la
+  // interior resta y abre el hueco. Los dos ejes van en el mismo sentido que la exterior, asi
+  // que al cruzar ese hueco vuelven a sumar y la cruz se ve DENTRO del circulo — que es
+  // justamente el dibujo, y no un circulo con dos rabos.
+  //
+  // Sin puntas de flecha, y no por descuido: en `cartesian_plane` son lo unico que separa dos
+  // astas cruzadas del chip de acercar (+), pero aqui esa distincion la hace el circulo. A
+  // tamano de chip (15-20px) una punta mas solo ensucia el cruce.
+  //
+  // Los ejes sobresalen 60 unidades del circulo por cada lado: pegados al borde se leerian
+  // como radios en vez de como ejes.
+  unit_circle: "M480-810a330 330 0 1 1 0 660a330 330 0 1 1 0-660ZM480-750a270 270 0 1 0 0 540a270 270 0 1 0 0-540ZM90-510h780v60H90zM450-870h60v780h-60z",
 } as const;
 
 /**

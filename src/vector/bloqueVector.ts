@@ -26,7 +26,7 @@
 // así que una componente acepta exactamente lo mismo que cualquier otro bloque de LMath:
 // `\frac{1}{2}`, `2\pi`, `\sqrt{2}`, `-3`.
 
-import { evaluarConstante } from "../evaluador";
+import { evaluarConstante } from "../CAS/api-legado";
 import { numeroATexto } from "../core/analysis/formatoNumero";
 
 /**

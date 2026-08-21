@@ -13,8 +13,13 @@
 //   • `latex/ordenPolinomio.ts`  orden descendente de grado
 //   • `latex/agrupaciones.ts`    funciones desnudas y radicales fusionados en un producto
 //
-// El módulo REEXPORTA lo público de esas tres piezas, así que quien importe de `./latex`
-// —incluido `GraphEngine`, que no se toca— no cambia ni una línea.
+// El módulo REEXPORTA lo público de esas tres piezas, así que quien importe de `./latex` no
+// cambia ni una línea.
+//
+// `GraphEngine` era la excepción: imprimía por su cuenta con `parse(...).toTex(...)`, y por
+// tanto no recibía ninguna mejora tipográfica hecha aquí. Desde E3.5 usa `exprALatex` como
+// todos, así que este archivo es el ÚNICO impresor del plugin —que es la condición para que
+// sustituirlo más adelante sea una operación con un solo punto de cambio—.
 
 import { parse } from "mathjs";
 

@@ -2,44 +2,8 @@
 
 LMath is an [Obsidian](https://obsidian.md) plugin for graphing functions, systems of equations, derivatives and integrals directly inside your notes: each graphing block shows the formula rendered in LaTeX (KaTeX) on the left, and an interactive Cartesian plane (pan, zoom, crosshair, rail mode) on the right. The `_trig` block shares that frame but not the plane: it draws the unit circle in a fixed view, with no camera, and puts its controls where the formula would be. The `_vector` block shares the frame too, but shows one card per line instead of one formula per block, and only opens a plane when there is something to draw.
 
----
-
-## The block names changed in 1.5.0
-
-| Until 1.4.0 | From 1.5.0 |
-|---|---|
-| ` ```obs-graph ` | ` ```_graph ` |
-| ` ```obs-system ` | ` ```_system ` |
-| ` ```obs-derivate ` | ` ```_derivate ` |
-| ` ```obs-integral ` | ` ```_integral ` |
-| ` ```obs-trig ` | ` ```_trig ` |
-| ` ```obs-vector ` | ` ```_vector ` |
-
-**Nothing you already wrote breaks in 1.5.0.** Both spellings render, side by side, so a note
-written two years ago keeps working after you update. Everything below uses the new names.
-
-**To convert your notes:** *Settings → LMath → **Update notes***. It scans the vault, shows you
-what it found — how many notes, how many blocks, which files — and asks before writing anything.
-Only the fence line changes; nothing inside a block is touched.
-
-> ⚠️ **The button is temporary, and so is the old syntax.** Both ship in **1.5.0**. In **2.0.0**
-> the old names stop being accepted **entirely** — a note still written `obs-graph` will not
-> render — **and the button is gone with them**, so there will be nothing left to convert your
-> notes automatically. If you have blocks written the old way, run it while you are on 1.5.0.
-
-**Why change them at all.** A code-block identifier is a global key shared by every plugin you
-have installed. `graph` bare is among the easiest names for someone else to have taken, and
-whoever loses that draw stops rendering with no warning to anybody. The names needed a prefix that
-marks them as this plugin's without being a word another plugin would want. The first attempt was
-`graph*`, which does not work — Obsidian does not preserve the asterisk from a fence's info
-string, so the registered key never matches what is written in the note. `\graph` and `.graph`
-fail the same way. The underscore survives the round trip and still marks the block at a glance.
-
----
-
 ## Contents
 
-- [The block names changed in 1.5.0](#the-block-names-changed-in-150)
 - [Available blocks](#available-blocks)
 - [Features](#features)
 - [Cover](#cover)
@@ -309,6 +273,19 @@ form rather than as decimals, but only if the angle earned it: either the block 
 or in terms of π, or you reached it with the block's own controls. A decimal typed by hand stays a
 decimal, so `θ = 0.5236` never claims to be π/6.
 
+**On a narrow block it has two faces**, like the other blocks: the `f(x)` button in the bottom-left
+corner swaps the circle for the formula panel, which takes exactly the space the circle occupied.
+Its glyph shows where it takes you — `f(x)` towards the formula, a unit circle back — because
+nothing is posed on top of anything to be dismissed.
+
+What does **not** swap is the strip at the foot: the sine/cosine/tangent boxes, the θ reading and
+the slider are the block's controls, and they stay usable with the formula up, as do the angle-unit
+chip and ▶. Only the **ⓘ** steps aside while the formula is showing, and it returns with the circle.
+
+On a touch device there is also a **✎** chip in the top-left corner that jumps to the block's
+source, the same one the other blocks have. On desktop it is not mounted: Obsidian's own `</>`
+already does that job.
+
 The angle unit is on the block's own chip and in [Settings](#settings); the drag magnet has no chip
 and is set only in [Settings](#settings), though `Alt` suspends it for a single drag.
 
@@ -416,8 +393,8 @@ there, not new objects. There is no `u+v` in it, because you did not write one.
 separates them behind the same button bar `_derivate` and `_integral` use — the main button
 shows what the block declares, one card each, and the menu (☰) leads to `\overrightarrow{AB}` on
 its own. A block without a difference has no bar in its panel, which is still the common case.
-On a narrow block the whole panel moves behind an `f(x)` button over the plane, as in the other
-blocks.
+On a narrow block the panel becomes the block's other face, opened with the `f(x)` button in the
+bottom-left corner of the plane, as in the other blocks.
 
 ### More input examples (_graph, _derivate, _integral)
 
@@ -570,6 +547,18 @@ function**, so it is the same value at any zoom and any pan. On implicit, parame
 curves it is still read off the traced polyline — there "the y at this x" has no single answer —
 and there the last digits do move with the view.
 
+Since 2.0.0 the readout also **shows what it knows**. It used to print through the formatter meant
+for axis tick marks, which gives four significant figures: `1.4905` and `1.4899` both came out
+`1.49`, and anything over a thousand collapsed to `1.2e+3`. Now an evaluated reading gets six
+significant figures with its trailing zeros kept, so two nearby heights stay apart and the decimal
+count does not jump from pixel to pixel. A reading that was interpolated keeps the shorter format,
+because its last digits are noise from the tracing rather than information.
+
+The same idea runs through the **ⓘ** panels, where each number is printed according to how it was
+obtained: `f(0)`, the slope at the origin and the limits you wrote on an integral are *calculated*
+and get six figures, while roots, vertices and areas are *estimated* by numeric methods and keep
+four — showing more of those would be showing noise.
+
 ### Functions with many notable points
 
 In periodic functions such as `sin(x)` or `tan(x)`, the roots and vertices are infinite and are not drawn individually. Instead, an **ⓘ** button appears in the corner of the graph and shows a summary when clicked.
@@ -635,9 +624,7 @@ Under **Trigonometric circle**, for `_trig`:
 - **Angle unit** — degrees, radians or gradians (degrees by default). Presentation only: it changes how angles are *written*, never how a block is read, so a bare number is still radians whatever you pick. Each `_trig` block also has a **θᴅ / θʀ / θɢ** chip that overrides it for that block until the note is re-rendered. It is also the unit of the angles in the ⓘ panel of `_vector`, which has no chip of its own.
 - **Snap to notable angles** — whether dragging the point snaps to the multiples of 15° (on by default). Hold **`Alt`** while dragging to suspend it for that gesture, without coming back here to turn it off. There is no chip for this one; it is set here or not at all.
 
-Under **Block syntax**:
-
-- **Update notes** — rewrites the `obs-*` fences of your whole vault to the new `_*` names (see [The block names changed in 1.5.0](#the-block-names-changed-in-150)). **This row is temporary**: it exists in 1.5.0 and disappears in 2.0.0, the same release that stops accepting the old names. It is the only setting here that changes your notes, and it asks first.
+No setting here ever writes to your notes.
 
 ---
 
@@ -673,7 +660,9 @@ Under **Block syntax**:
   - Above degree 8 the exact path steps aside to keep the panel from stalling, and the numeric one takes over.
   - With three or more equations, what is listed are the crossings **between pairs** of curves, not the points common to all of them. That was already the meaning before and it did not change.
   - The **markers on the plane** still come from the traced geometry. The difference from the listed value is millionths of a pixel, so it is invisible, but it is there.
-- **The same mistake was in the crosshair, and only half of it is fixed.** The `f(x)` it showed was interpolated between the vertices of the plotted polyline, so it changed with the zoom: on `y=exp(x)` at `x=2.1` it read `8.16617` at one zoom and `8.17678` at another. On explicit curves it is now evaluated from the function. On implicit, parametric and polar curves it is still interpolated, and `y = ±√(…)` is excluded too, since two branches have no single `y` per `x`. Refining those onto the curve is not implemented.
+- **The same mistake was in the crosshair, and only half of it is fixed.** The `f(x)` it showed was interpolated between the vertices of the plotted polyline, so it changed with the zoom: on `y=exp(x)` at `x=2.1` it read `8.16617` at one zoom and `8.17678` at another. On explicit curves it is now evaluated from the function. On implicit, parametric and polar curves it is still interpolated, and `y = ±√(…)` is excluded too, since two branches have no single `y` per `x`. Refining those onto the curve is not implemented. Since 2.0.0 those readings are at least **marked** as interpolated, so they no longer claim more precision than they have — but the number itself still moves with the view.
+- **Writing the same power three ways draws three different curves.** `x^{2/3}` gives the full cusp, `x^(2/3)` only its right half, and `x^\frac{2}{3}` is `x²/3` — a different function altogether. The rule that reads a fractional exponent as a real cube root only fires when the exponent is written in **braces**. Known, measured, and not fixed in this release: the fix changes what already-written notes draw.
+- **`\sin^{-1}x` without parentheses draws nothing.** It is read as the symbol `asin` multiplied by `x`, which is undefined everywhere. Write `\sin^{-1}(x)` or `\arcsin x`.
 
 ---
 

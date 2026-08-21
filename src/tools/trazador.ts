@@ -17,9 +17,8 @@ import {
   integralOperadorLatex,
   integralValorLatex,
   integralPrimitivaLatex,
-  cuerpoAreaLatexExacto,
-  etiquetaIntegral,
 } from "../integral";
+import { cuerpoAreaLatexExacto, etiquetaIntegral } from "../host-obsidian/analysis/areaIntegral";
 
 // ─────────────────────────────────────────────
 // Trazador de transformaciones (herramienta de desarrollo)

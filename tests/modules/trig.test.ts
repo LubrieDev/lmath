@@ -8,6 +8,13 @@
 
 import { describe, test, assert, igual, aprox } from "../runner";
 import {
+  techoPopover, estiloPopoverInfo, ALTO_MAX_POPOVER,
+} from "../../src/host-obsidian/ui/estilos";
+import {
+  aplicarCajaPanel, ALTO_CONTROLES_TRIG, type Reparto,
+} from "../../src/host-obsidian/ui/reparto";
+import { ICONO } from "../../src/host-obsidian/ui/iconos";
+import {
   modeloDeAngulo, coterminalPrincipal, posicionDe, referenciaDe, aRadianes, aGrados, DOS_PI,
 } from "../../src/trig/modeloTrig";
 import {
@@ -670,5 +677,153 @@ describe("obs-trig · componentes dibujables", () => {
       igual(new Set(colores).size, 3, `colores distintos en tema ${tema}:`);
     }
     fijarTemaPlano(true);
+  });
+});
+
+// ─────────────────────────────────────────────
+// El techo del popover ⓘ sube con el cromo
+// ─────────────────────────────────────────────
+//
+// El fallo que esto fija se veía en un teléfono y no en el escritorio, y no era falta de
+// scroll: el panel llevaba `overflow-y:auto` desde siempre. Era que su ALTO MÁXIMO se calculaba
+// una sola vez, al crear el elemento, para la posición SIN subir.
+//
+// En el bloque estrecho el cromo sube por encima de la franja de controles (86 px), así que el
+// hueco por encima del panel encoge de 209 px a 123. El techo seguía diciendo 200. Con un
+// contenido de ~150 px el panel no superaba su propio máximo —luego su scroll NO se activaba— y
+// simplemente crecía por encima del bloque, donde el `overflow:hidden` del contenedor le cortaba
+// la primera fila. La fila cortada era INALCANZABLE: ni se veía ni se podía desplazar hasta ella.
+
+describe("trig · el popover ⓘ no puede medir más que el hueco que tiene encima", () => {
+  test("el techo ENCOGE cuando el panel sube", () => {
+    // Es la propiedad que se rompió: mover el `bottom` sin mover el techo.
+    const abajo = techoPopover(44);            // reparto ancho
+    const arriba = techoPopover(44 + 86);      // estrecho: el cromo sube la franja entera
+    assert(abajo !== arriba, `el techo no cambió al subir: ${abajo}`);
+    assert(abajo.includes("100% - 52px"), abajo);
+    assert(arriba.includes("100% - 138px"), arriba);
+  });
+
+  test("deja 8 px de aire por encima, sea cual sea la posición", () => {
+    for (const bajo of [8, 44, 130, 200]) {
+      assert(techoPopover(bajo).includes(`100% - ${bajo + 8}px`), `bajo=${bajo}`);
+    }
+  });
+
+  test("el tope fijo sigue mandando donde hay sitio de sobra", () => {
+    // En escritorio el plano es grande y el `min()` se queda con los 200 px: el cuadro no debe
+    // estirarse por tener hueco, solo encogerse por no tenerlo.
+    assert(techoPopover(44).startsWith(`min(${ALTO_MAX_POPOVER}px,`), techoPopover(44));
+  });
+
+  test("el estilo inicial del popover usa ESA misma función, no una copia", () => {
+    // Sin esto, arreglar el techo en un sitio y no en el otro deja el fallo vivo en el primer
+    // fotograma, que es exactamente como llegó aquí.
+    assert(estiloPopoverInfo(30).includes(`max-height:${techoPopover(8 + 30 + 6)}`),
+      estiloPopoverInfo(30));
+  });
+});
+
+// ─────────────────────────────────────────────
+// Las DOS CARAS: el plano o la fórmula, en el mismo rectángulo
+// ─────────────────────────────────────────────
+//
+// En estrecho `obs-trig` deja de posar una tarjeta sobre el círculo y pasa al modo de dos caras
+// que ya usaban los demás bloques. La diferencia con ellos es la franja de controles: las tres
+// casillas, la lectura de θ y el deslizador viven DENTRO del plano pero **no son contenido**,
+// son el mando del bloque, y siguen a la vista con la fórmula delante.
+//
+// Por eso el panel no ocupa el bloque entero sino el rectángulo del PLANO, y quien marca dónde
+// acaba es `huecoInferior` — que vale 0 en todos los demás, así que su caja no se mueve.
+
+/** Un panel de mentira: `aplicarCajaPanel` solo escribe `style.cssText`. */
+const panelFalso = (): HTMLElement =>
+  ({ style: { cssText: "" } } as unknown as HTMLElement);
+
+const cajaDelPanel = (r: Partial<Reparto>): string => {
+  const panel = panelFalso();
+  aplicarCajaPanel({ estrecho: true, abierto: true, panel, ladoChip: 30, ...r } as Reparto);
+  return panel.style.cssText;
+};
+
+describe("trig · el panel de la fórmula ocupa el rectángulo del PLANO, no el del bloque", () => {
+  test("deja libre al pie la franja de controles", () => {
+    const caja = cajaDelPanel({ panelCompleto: true, huecoInferior: ALTO_CONTROLES_TRIG });
+    assert(caja.includes("top:0; left:0; right:0; bottom:86px"), caja);
+    // Y ocupa TODO el ancho: no es una tarjeta con márgenes, es la otra cara.
+    assert(!caja.includes("border-radius"), `no debe llevar marco de tarjeta: ${caja}`);
+    assert(!caja.includes("box-shadow"), `no debe llevar sombra de tarjeta: ${caja}`);
+  });
+
+  test("en los demás bloques la caja NO se mueve", () => {
+    // `huecoInferior` vale 0 fuera de obs-trig, así que el panel sigue cubriendo el bloque
+    // entero, exactamente como antes de que esta rama supiera de franjas.
+    const caja = cajaDelPanel({ panelCompleto: true });
+    assert(caja.includes("top:0; left:0; right:0; bottom:0px"), caja);
+  });
+
+  test("declara ancho y alto aunque no los necesite", () => {
+    // La trampa documentada de esta función: la hoja fija `width:50%` a `.lmath-latex`, y un
+    // estilo en línea solo pisa lo que ESCRIBE. Callarlos deja el panel a media anchura.
+    const caja = cajaDelPanel({ panelCompleto: true, huecoInferior: ALTO_CONTROLES_TRIG });
+    assert(caja.includes("width:auto"), caja);
+    assert(caja.includes("height:auto"), caja);
+  });
+
+  test("cerrado no se muestra, pero conserva su caja", () => {
+    const caja = cajaDelPanel({
+      panelCompleto: true, huecoInferior: ALTO_CONTROLES_TRIG, abierto: false,
+    });
+    assert(caja.includes("display:none"), caja);
+    assert(caja.includes("bottom:86px"), caja);
+  });
+
+  test("el panel va por DEBAJO de los mandos que lo sobreviven", () => {
+    // El ⓘ se retira en modo fórmula, pero θ/unidad, ▶ y el propio botón siguen ahí. Si el panel
+    // quedara por encima, la clase que los deja visibles no serviría de nada: se verían tapados.
+    // El panel es 6; esos tres chips llevan 7 en `blocks/trig.ts`.
+    const caja = cajaDelPanel({ panelCompleto: true, huecoInferior: ALTO_CONTROLES_TRIG });
+    assert(caja.includes("z-index:6"), caja);
+  });
+});
+
+// ─────────────────────────────────────────────
+// El icono del círculo unitario
+// ─────────────────────────────────────────────
+//
+// Existe dos veces —como cadena en `ui/iconos.ts`, que es la que se pinta, y como archivo en
+// `assets/icons/custom/`, que es la que se abre para editarlo— y ese es exactamente el riesgo:
+// retocar el dibujo en el editor y olvidar copiarlo al código deja dos verdades para un solo
+// glifo. La prueba compara las dos.
+
+declare const require: (m: string) => { readFileSync(p: string, e: string): string };
+
+describe("trig · el icono del círculo unitario", () => {
+  test("es la otra cara del botón f(x), como `cartesian_plane` lo es en los demás bloques", () => {
+    assert(typeof ICONO.unit_circle === "string" && ICONO.unit_circle.length > 0,
+      "no está registrado en ICONO");
+    assert("cartesian_plane" in ICONO, "el hermano de la familia desapareció");
+  });
+
+  test("el ARCHIVO y la cadena que se pinta son el mismo dibujo", () => {
+    const svg = require("fs").readFileSync("assets/icons/custom/unit_circle.svg", "utf8");
+    const m = /\sd="([^"]+)"/.exec(svg);
+    assert(m !== null, "el svg no tiene path");
+    igual(m![1], ICONO.unit_circle, "el archivo y el código dibujan cosas distintas");
+  });
+
+  test("el anillo lleva las dos circunferencias en sentidos OPUESTOS", () => {
+    // Es lo que abre el hueco con la regla `nonzero`. Con los dos arcos en el mismo sentido
+    // saldría un disco macizo y el icono sería una moneda con una cruz encima.
+    const d = ICONO.unit_circle;
+    assert(d.includes("0 1 1"), `falta el arco horario (exterior): ${d}`);
+    assert(d.includes("0 1 0"), `falta el arco antihorario (interior): ${d}`);
+  });
+
+  test("los ejes cruzan el círculo y sobresalen por los dos lados", () => {
+    // El círculo va de 150 a 810 sobre una caja de 960; los ejes de 90 a 870.
+    const d = ICONO.unit_circle;
+    assert(d.includes("M90-510h780"), `el eje X no abarca el círculo: ${d}`);
+    assert(d.includes("M450-870h60v780"), `el eje Y no abarca el círculo: ${d}`);
   });
 });

@@ -1,0 +1,391 @@
+── x^2 - 1
+  norm  x^2 - 1
+  simplif  x ^ 2 - 1
+  deriv  2 * x
+  integ  (x ^ 3) / (3) - x
+  latex  x^{2}-1
+  latexSimp  x^{2}-1
+
+── (x+1)^2 - x^2
+  norm  (x+1)^2 - x^2
+  simplif  2 * x + 1
+  deriv  2
+  integ  ((x + 1) ^ 3) / (3) - (x ^ 3) / (3)
+  latex  {\left( x+1\right)}^{2}-x^{2}
+  latexSimp  2x+1
+
+── (x+1)^3
+  norm  (x+1)^3
+  simplif  x ^ 3 + 3 * x ^ 2 + 3 * x + 1
+  deriv  3 * (x + 1) ^ 2
+  integ  ((x + 1) ^ 4) / (4)
+  latex  {\left( x+1\right)}^{3}
+  latexSimp  x^{3}+3x^{2}+3x+1
+
+── x^2 + 2*x + 1
+  norm  x^2 + 2*x + 1
+  simplif  x ^ 2 + 2 * x + 1
+  deriv  2 * (x + 1)
+  integ  (x ^ 3) / (3) + x ^ 2 + x
+  latex  x^{2}+2x+1
+  latexSimp  x^{2}+2x+1
+
+── (x^2 - 1)/(x - 1)
+  norm  (x^2 - 1)/(x - 1)
+  simplif  (x ^ 2 - 1) / (x - 1)
+  deriv  ((x ^ 2 - 2 * x + 1)) / ((x - (1)) ^ 2)
+  integ  ∅
+  latex  \frac{x^{2}-1}{x-1}
+  latexSimp  \frac{x^{2}-1}{x-1}
+
+── (x^3 - 1)/(x - 1)
+  norm  (x^3 - 1)/(x - 1)
+  simplif  (x ^ 3 - 1) / (x - 1)
+  deriv  ((2 * x ^ 3 - 3 * x ^ 2 + 1)) / ((x - (1)) ^ 2)
+  integ  ∅
+  latex  \frac{x^{3}-1}{x-1}
+  latexSimp  \frac{x^{3}-1}{x-1}
+
+── x/x
+  norm  x/x
+  simplif  x / x
+  deriv  0
+  integ  x
+  latex  \frac{x}{x}
+  latexSimp  \frac{x}{x}
+
+── 0*x
+  norm  0*x
+  simplif  0
+  deriv  0
+  integ  0
+  latex  0x
+  latexSimp  0
+
+── (x^2 - 4)/(x^2 - 4*x + 4)
+  norm  (x^2 - 4)/(x^2 - 4*x + 4)
+  simplif  (x ^ 2 - 4) / (x ^ 2 - 4 * x + 4)
+  deriv  ((-4 * x ^ 2 + 16 * x - 16)) / (((x ^ 2 + 4) - (4 * x)) ^ 2)
+  integ  ∅
+  latex  \frac{x^{2}-4}{x^{2}-4x+4}
+  latexSimp  \frac{x^{2}-4}{x^{2}-4x+4}
+
+── 1/(x-1) + 1/(x+1)
+  norm  1/(x-1) + 1/(x+1)
+  simplif  2 * x / (x ^ 2 - 1)
+  deriv  -((x - 1) ^ (-2) + (x + 1) ^ (-2))
+  integ  log(abs(x - 1), e) + log(abs(x + 1), e)
+  latex  \frac{1}{x-1}+\frac{1}{x+1}
+  latexSimp  \frac{2x}{x^{2}-1}
+
+── (x^2+1)/(x*(x+2))
+  norm  (x^2+1)/(x*(x+2))
+  simplif  (x ^ 2 + 1) / (x ^ 2 + 2 * x)
+  deriv  (2 * (x ^ 2 - x - 1)) / (x ^ 2 * (x + 2) ^ 2)
+  integ  ∅
+  latex  \frac{x^{2}+1}{x\left( x+2\right)}
+  latexSimp  \frac{x^{2}+1}{x^{2}+2x}
+
+── 1/(1 + 1/(1 + x))
+  norm  1/(1 + 1/(1 + x))
+  simplif  1/(1 + 1/(1 + x))
+  deriv  (1 / (x + 1) + 1) ^ (-2) / (x + 1) ^ 2
+  integ  ∅
+  latex  \frac{1}{1+\frac{1}{1+ x}}
+  latexSimp  \frac{1}{1+\frac{1}{1+ x}}
+
+── sqrt(x)/(x+1)
+  norm  sqrt(x)/(x+1)
+  simplif  sqrt(x) / (x + 1)
+  deriv  ((-x + 1)) / (2 * sqrt(x) * (x + 1) ^ 2)
+  integ  ∅
+  latex  \frac{\sqrt{x}}{x+1}
+  latexSimp  \frac{\sqrt{x}}{x+1}
+
+── sqrt(2)*sqrt(3)
+  norm  sqrt(2)*sqrt(3)
+  simplif  sqrt(6)
+  deriv  0
+  integ  sqrt(6) * x
+  latex  \sqrt{2\cdot 3}
+  latexSimp  \sqrt{6}
+
+── sqrt(8) + sqrt(18)
+  norm  sqrt(8) + sqrt(18)
+  simplif  5 * sqrt(2)
+  deriv  0
+  integ  5 * sqrt(2) * x
+  latex  \sqrt{8}+\sqrt{18}
+  latexSimp  5\sqrt{2}
+
+── sqrt(x^2 + 1)
+  norm  sqrt(x^2 + 1)
+  simplif  sqrt(x ^ 2 + 1)
+  deriv  x / sqrt(x ^ 2 + 1)
+  integ  ∅
+  latex  \sqrt{x^{2}+1}
+  latexSimp  \sqrt{x^{2}+1}
+
+── nthRoot(x^3, 3)
+  norm  nthRoot(x^3, 3)
+  simplif  nthRoot(x ^ 3, 3)
+  deriv  1
+  integ  ∅
+  latex  \sqrt[3]{x^{3}}
+  latexSimp  \sqrt[3]{x^{3}}
+
+── (1+sqrt(5))/2 + (1-sqrt(5))/2
+  norm  (1+sqrt(5))/2 + (1-sqrt(5))/2
+  simplif  1
+  deriv  0
+  integ  x
+  latex  \frac{1+\sqrt{5}}{2}+\frac{1-\sqrt{5}}{2}
+  latexSimp  1
+
+── x^(1/2)
+  norm  x^(1/2)
+  simplif  x ^ (1 / 2)
+  deriv  (x ^ (-1 / 2)) / (2)
+  integ  (2 * x ^ (3 / 2)) / (3)
+  latex  \sqrt{x}
+  latexSimp  \sqrt{x}
+
+── x^(2/3)
+  norm  x^(2/3)
+  simplif  x ^ (2 / 3)
+  deriv  (2 * x ^ (-1 / 3)) / (3)
+  integ  (3 * x ^ 1.6666666666666665) / (5)
+  latex  \sqrt[3]{x^{2}}
+  latexSimp  \sqrt[3]{x^{2}}
+
+── e^(2*log(x, e))
+  norm  e^(2*log(x, e))
+  simplif  e ^ (2 * log(x, e))
+  deriv  2 * e ^ (2 * log(x, e)) / x
+  integ  ∅
+  latex  e^{2\ln x}
+  latexSimp  e^{2\ln x}
+
+── log(8, 2)
+  norm  log(8, 2)
+  simplif  3
+  deriv  0
+  integ  3 * x
+  latex  \log_{2} 8
+  latexSimp  3
+
+── log(x, 10)
+  norm  log(x, 10)
+  simplif  log(x, 10)
+  deriv  1 / log(10, e) / x
+  integ  ∅
+  latex  \log_{10} x
+  latexSimp  \log_{10} x
+
+── e^(3*x)
+  norm  e^(3*x)
+  simplif  e ^ (3 * x)
+  deriv  3 * e ^ (3 * x)
+  integ  (e ^ (3 * x)) / (3 * log(e, e))
+  latex  e^{3x}
+  latexSimp  e^{3x}
+
+── 3^x
+  norm  3^x
+  simplif  3 ^ x
+  deriv  3 ^ x * log(3, e)
+  integ  3 ^ x / log(3, e)
+  latex  3^{x}
+  latexSimp  3^{x}
+
+── x*e^x
+  norm  x*e^x
+  simplif  e ^ x * x
+  deriv  e ^ x * (x + 1)
+  integ  ∅
+  latex  x{e}^{x}
+  latexSimp  e^{x}x
+
+── log(x, e)
+  norm  log(x, e)
+  simplif  log(x, e)
+  deriv  1 / x
+  integ  ∅
+  latex  \ln x
+  latexSimp  \ln x
+
+── sin(x)/cos(x)
+  norm  sin(x)/cos(x)
+  simplif  sin(x) / cos(x)
+  deriv  sin(x) ^ 2 / cos(x) ^ 2 + 1
+  integ  -log(abs(cos(x)), e)
+  latex  \frac{\sin x}{\cos x}
+  latexSimp  \frac{\sin x}{\cos x}
+
+── 2*sin(x)*cos(x)
+  norm  2*sin(x)*cos(x)
+  simplif  2 * sin(x) * cos(x)
+  deriv  2 * cos(x) ^ 2 - 2 * sin(x) ^ 2
+  integ  ∅
+  latex  2\sin x\cos x
+  latexSimp  2\sin x\cos x
+
+── sin(x)^2
+  norm  sin(x)^2
+  simplif  sin(x) ^ 2
+  deriv  2 * cos(x) * sin(x)
+  integ  ∅
+  latex  \sin^{2} x
+  latexSimp  \sin^{2} x
+
+── sin(pi/6)
+  norm  sin(pi/6)
+  simplif  sin(pi / 6)
+  deriv  0
+  integ  sin(pi / 6) * x
+  latex  \sin\left(\frac{\pi}{6}\right)
+  latexSimp  \sin\left(\frac{\pi}{6}\right)
+
+── sin(x)^2 + cos(x)^2
+  norm  sin(x)^2 + cos(x)^2
+  simplif  1
+  deriv  0
+  integ  ∅
+  latex  \sin^{2} x+\cos^{2} x
+  latexSimp  1
+
+── tan(x)
+  norm  tan(x)
+  simplif  tan(x)
+  deriv  sec(x) ^ 2
+  integ  -log(abs(cos(x)), e)
+  latex  \tan x
+  latexSimp  \tan x
+
+── asin(x)
+  norm  asin(x)
+  simplif  asin(x)
+  deriv  1 / sqrt(1 - x ^ 2)
+  integ  ∅
+  latex  \arcsin x
+  latexSimp  \arcsin x
+
+── sin(2*x)
+  norm  sin(2*x)
+  simplif  sin(2 * x)
+  deriv  2 * cos(2 * x)
+  integ  (-cos(2 * x)) / (2)
+  latex  \sin\left(2x\right)
+  latexSimp  \sin\left(2x\right)
+
+── abs(x)
+  norm  abs(x)
+  simplif  abs(x)
+  deriv  abs(x) / x
+  integ  ∅
+  latex  \left| x\right|
+  latexSimp  \left| x\right|
+
+── abs(x^2)
+  norm  abs(x^2)
+  simplif  abs(x ^ 2)
+  deriv  2 * abs(x ^ 2) / x
+  integ  ∅
+  latex  \left|x^{2}\right|
+  latexSimp  \left|x^{2}\right|
+
+── sqrt(x^2)
+  norm  sqrt(x^2)
+  simplif  abs(x)
+  deriv  x / sqrt(x ^ 2)
+  integ  ∅
+  latex  \sqrt{x^{2}}
+  latexSimp  \left| x\right|
+
+── floor(x)
+  norm  floor(x)
+  simplif  floor(x)
+  deriv  0
+  integ  ∅
+  latex  \left\lfloor x\right\rfloor
+  latexSimp  \left\lfloor x\right\rfloor
+
+── 1/(x^2 - 1)
+  norm  1/(x^2 - 1)
+  simplif  1 / (x ^ 2 - 1)
+  deriv  -(2 * x / (x ^ 2 - 1) ^ 2)
+  integ  ∅
+  latex  \frac{1}{x^{2}-1}
+  latexSimp  \frac{1}{x^{2}-1}
+
+── 1/(x^2 + 1)
+  norm  1/(x^2 + 1)
+  simplif  1 / (x ^ 2 + 1)
+  deriv  -(2 * x / (x ^ 2 + 1) ^ 2)
+  integ  atan(x)
+  latex  \frac{1}{x^{2}+1}
+  latexSimp  \frac{1}{x^{2}+1}
+
+── x*sqrt(x^2 + 1)
+  norm  x*sqrt(x^2 + 1)
+  simplif  x * sqrt(x ^ 2 + 1)
+  deriv  sqrt(x ^ 2 + 1) + x ^ 2 / sqrt(x ^ 2 + 1)
+  integ  ∅
+  latex  x\sqrt{x^{2}+1}
+  latexSimp  x\sqrt{x^{2}+1}
+
+── e^(x^2)
+  norm  e^(x^2)
+  simplif  e ^ x ^ 2
+  deriv  2 * e ^ x ^ 2 * x
+  integ  ∅
+  latex  e^{x^{2}}
+  latexSimp  e^{x^{2}}
+
+── sin(sqrt(x^2+1))
+  norm  sin(sqrt(x^2+1))
+  simplif  sin(sqrt(x ^ 2 + 1))
+  deriv  x * cos(sqrt(x ^ 2 + 1)) / sqrt(x ^ 2 + 1)
+  integ  ∅
+  latex  \sin\left(\sqrt{x^{2}+1}\right)
+  latexSimp  \sin\left(\sqrt{x^{2}+1}\right)
+
+── log(sqrt(x)+1, e)
+  norm  log(sqrt(x)+1, e)
+  simplif  log(sqrt(x) + 1, e)
+  deriv  (1) / (2 * sqrt(x) * (sqrt(x) + 1))
+  integ  ∅
+  latex  \ln\left(\sqrt{x}+1\right)
+  latexSimp  \ln\left(\sqrt{x}+1\right)
+
+── x^x
+  norm  x^x
+  simplif  x ^ x
+  deriv  x ^ x * (log(x) + 1)
+  integ  ∅
+  latex  x^{x}
+  latexSimp  x^{x}
+
+── pi*x
+  norm  pi*x
+  simplif  pi * x
+  deriv  pi
+  integ  (pi * x ^ 2) / (2)
+  latex  \pi{x}
+  latexSimp  \pi{x}
+
+── 5*pi*x - x*pi
+  norm  5*pi*x - x*pi
+  simplif  4 * pi * x
+  deriv  4 * pi
+  integ  2 * pi * x ^ 2
+  latex  5\pi{x}- x\pi
+  latexSimp  4\pi{x}
+
+── (x^2 + 5*x - x)*pi
+  norm  (x^2 + 5*x - x)*pi
+  simplif  pi * x ^ 2 + 4 * pi * x
+  deriv  pi * (2 * x + 4)
+  integ  pi * (2 * x ^ 2 + x ^ 3 / 3)
+  latex  \left(x^{2}+5x- x\right)\pi
+  latexSimp  \pi{x}^{2}+4\pi{x}

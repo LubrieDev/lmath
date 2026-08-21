@@ -20,15 +20,20 @@ import type { Viewport } from "../../core/contracts";
 // a su propio módulo y ahora se pueden probar sin montar un bloque.
 import {
   SEMI_Y_VECTOR, ANCHO_MINIMO_COLUMNAS, PROPORCION_PLANO_FLOTANTE, altoPanelPorTarjetas,
-  ladoChip, ladoIcono, aplicarCajaPanel, esTemaOscuro, type Reparto,
+  ladoChip, ladoIcono, huecoChips, aplicarCajaPanel, avisarCambioDeReparto, esTemaOscuro,
+  type Reparto,
 } from "../ui/reparto";
+// El chip ✎ y el salto al código de la nota: el mismo cromo táctil que monta obs-graph.
+import { montarChipEditar } from "../ui/edicionBloque";
+// Y su botón f(x), la puerta al panel cuando el bloque es estrecho.
+import { montarBotonFormula } from "../ui/botonFormula";
 // Capa de INTERFAZ del adaptador (`./ui/`): cromo, controles y el panel de fórmula. Eran
 // métodos privados de esta clase y ninguno usaba `this` más que para llegar al plugin, así
 // que son funciones libres: se leen sin la clase delante y se reutilizan desde los bloques.
 import { estiloChipInfo, estiloPopoverInfo } from "../ui/estilos";
 import { ponerTooltip, montarIcono, montarEtiquetaMath } from "../ui/controles";
 import { crearScrollerLatex } from "../ui/scrollerLatex";
-import { esTactil } from "../plataforma";
+import { esTactil, esMovilVertical } from "../plataforma";
 import { t } from "../../i18n";
 import { Crosshair } from "../../core/rendering/Crosshair";
 import { fijarTemaPlano } from "../../core/rendering/paleta";
@@ -62,10 +67,9 @@ import { montarPanelVistas } from "../ui/paneles";
  *     tiene nada que dibujar, y un plano vacío al lado no es neutro: promete un dibujo que no
  *     llega. En ese caso el panel se queda el bloque entero y aquí se acaba el trabajo.
  *
- * Lo que NO tiene, y no por falta de tiempo: ni cámara, ni chips de zoom, ni panel ⓘ, ni
- * opciones. Un conjunto de flechas se conoce entero de antemano, así que la vista se calcula
- * una vez (`encuadreDeDibujo`) y no hay nada que explorar; y el bloque no se configura, igual
- * que obs-trig, porque sin sintaxis de opciones no hay dónde colgar la siguiente.
+ * Cámara, chips de zoom y panel ⓘ SÍ tiene, desde la 1.4.0: un vector largo junto a uno corto
+ * no se puede mirar sin acercarse, que es la queja que abrió aquello. Lo que sigue sin tener es
+ * OPCIONES, igual que obs-trig: sin sintaxis donde declararlas no hay dónde colgar la primera.
  */
 export async function procesarVector(
   motor: Motor,
@@ -112,6 +116,8 @@ export async function procesarVector(
   const reparto: Reparto = {
     estrecho: false, abierto: false, panel: null, ladoChip: ladoChip(tactil),
     alto,
+    // En estrecho el bloque tiene DOS MODOS —el plano o las tarjetas—, igual que obs-graph.
+    panelCompleto: true,
   };
   /**
    * El panel: con dos vistas, la barra de toggle compartida con obs-derivate y obs-integral;
@@ -156,13 +162,16 @@ export async function procesarVector(
   const aplicarReparto = () => {
     const ancho = contenedor.clientWidth;
     if (ancho <= 0) return;
-    const estrecho = ancho < ANCHO_MINIMO_COLUMNAS;
+    // Mismos dos disparadores que en obs-graph: el ancho, y el móvil en vertical aunque pase del
+    // umbral (ver `esMovilVertical`).
+    const estrecho = ancho < ANCHO_MINIMO_COLUMNAS || esMovilVertical();
     if (estrecho === reparto.estrecho && ancho === anchoAplicado) return;
     anchoAplicado = ancho;
     reparto.estrecho = estrecho;
     if (!estrecho) reparto.abierto = false;
     contenedor.toggleClass("lmath-estrecho", estrecho);
     aplicarCajaPanel(reparto);
+    avisarCambioDeReparto(reparto);   // lo escucha el panel de vistas (ver `ui/reparto`)
     sincronizarBotonFormula();
     wrap.style.height = estrecho
       ? `${Math.round(ancho * PROPORCION_PLANO_FLOTANTE)}px`
@@ -177,6 +186,13 @@ export async function procesarVector(
     // motor pinta el suyo (`Crosshair.dibujarCursorCruz`); con el dedo no hay cursor que
     // sustituir, así que se deja el de siempre. Ver la nota larga en `process`.
     cursor: tactil ? "default" : "none",
+    // El dedo mueve el PLANO, en los dos ejes, y dos dedos hacen zoom: el navegador no se queda
+    // ningún gesto que empiece aquí. Faltaba desde la 1.4.0, que es la versión que le dio cámara
+    // a este bloque: sin esto el navegador se quedaba TODOS los toques para desplazar la nota, y
+    // ni el paneo ni el pellizco llegaban nunca a la cámara. Va SOLO en el lienzo, no en el
+    // bloque: los toques que empiezan en los márgenes o sobre el panel de la fórmula siguen
+    // desplazando la nota con normalidad.
+    touchAction: "none",
   });
   const ctx2d = canvas.getContext("2d");
   if (!ctx2d) {
@@ -302,7 +318,12 @@ export async function procesarVector(
     // abre la barra lateral. El aspecto influye en el encuadre ideal, sí, pero menos que
     // perder la vista que uno acaba de ajustar a mano.
     if (primera) {
-      const semiY = encuadreDeDibujo(dibujo, SEMI_Y_VECTOR, ancho / altoPx) ?? SEMI_Y_VECTOR;
+      // El cromo se descuenta SOLO en táctil, que es donde los chips miden 30px y de verdad se
+      // comen el plano; con ratón miden 22 y el encuadre se queda exactamente como estaba (el
+      // `undefined` hace que el cálculo no cambie ni un decimal).
+      const semiY = encuadreDeDibujo(dibujo, SEMI_Y_VECTOR, ancho / altoPx,
+        tactil ? { margenPx: huecoChips(reparto.ladoChip), altoPx } : undefined)
+        ?? SEMI_Y_VECTOR;
       camara.fijarEncuadreBase(semiY);
     }
     pintar();
@@ -349,7 +370,6 @@ export async function procesarVector(
   ponerTooltip(btnMenosV, t().botones.alejar);
   btnMenosV.style.cssText = estiloZoomV(6 + 2 * escalonV);
   montarIcono(btnMenosV, "alejar", iconoChipV);
-  const columnaZoomV = [btnInicioV, btnMasV, btnMenosV];
   btnInicioV.addEventListener("click", () => camara.volverAVistaBase());
   // Pulsar hace UNA muesca; mantener la repite a cadencia fija hasta soltar. Mismo esquema que
   // en `process` (pointer capture para no perder el `pointerup` fuera del botón).
@@ -374,44 +394,8 @@ export async function procesarVector(
   // El ⓘ se monta más abajo, pero el botón f(x) necesita poder cerrarlo: los dos cuadros se
   // abren sobre el mismo plano y son excluyentes, como en el resto de los bloques.
   let cerrarInfo: () => void = () => { /* aún no hay panel ⓘ */ };
-
-  // ── Botón f(x): la única puerta al panel cuando el bloque es ESTRECHO ─────────────────
-  // En reparto ancho las tarjetas están siempre a la vista y el botón se esconde. Mismo
-  // formato y mismo sitio que el de obs-trig, para que sea el mismo botón en los dos bloques.
-  {
-    const ladoF = reparto.ladoChip;
-    const btnFormula = wrap.createDiv({ text: "f(x)" });
-    ponerTooltip(btnFormula, t().botones.verFormula);
-    const estiloFormula = () => {
-      btnFormula.style.cssText =
-        `position:absolute; bottom:8px; left:8px; width:${ladoF}px; height:${ladoF}px; ` +
-        "display:flex; align-items:center; justify-content:center; font-size:10px; " +
-        "line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; " +
-        `font-family:"Lora", var(--font-interface); ` +
-        (reparto.abierto
-          ? "color:var(--lmath-acento-contraste); background:var(--lmath-acento); " +
-            "border:1px solid var(--lmath-acento);"
-          : "color:var(--lmath-acento-suave); background:var(--lmath-chip); " +
-            "border:1px solid var(--lmath-acento-borde);") +
-        (reparto.estrecho ? "" : "display:none;");
-      // La tarjeta flotante llega casi hasta arriba: con ella abierta, la columna de zoom
-      // quedaría por debajo. Se retira mientras dura la lectura y vuelve al cerrar, igual
-      // que en obs-graph.
-      for (const b of columnaZoomV) b.setCssStyles({ display: reparto.abierto ? "none" : "flex" });
-    };
-    estiloFormula();
-    sincronizarBotonFormula = estiloFormula;
-    btnFormula.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      reparto.abierto = !reparto.abierto;
-      if (reparto.abierto) cerrarInfo();
-      aplicarCajaPanel(reparto);
-      estiloFormula();
-      // La tarjeta flotante se dibuja ENCIMA del lienzo, y el navegador no repinta el canvas
-      // al descubrirlo: hay que repintarlo nosotros para que no quede un rectángulo viejo.
-      pintar();
-    });
-  }
+  // Y al revés: el ⓘ tiene que poder cerrar la fórmula. La rellena el botón f(x) al montarse.
+  let cerrarFormula: () => void = () => { /* aún no hay panel flotante */ };
 
   // ── Sin nada que dibujar: el plano se vela y DICE por qué ────────────────────────────
   // El plano está siempre, incluso cuando no hay ninguna flecha que poner en él. La
@@ -438,12 +422,47 @@ export async function procesarVector(
   // ── Panel ⓘ: lo que se DEDUCE de lo escrito ──────────────────────────────────────────
   cerrarInfo = montarBotonInfoVector(motor, wrap, dibujo, reparto.ladoChip, () => {
     // Abrir el ⓘ cierra la fórmula flotante: comparten sitio y atención sobre el mismo plano.
-    if (!reparto.abierto) return;
-    reparto.abierto = false;
-    aplicarCajaPanel(reparto);
-    sincronizarBotonFormula();
-    pintar();
+    cerrarFormula();
   });
+
+  // ── Botón f(x): la única puerta al panel cuando el bloque es ESTRECHO ─────────────────
+  // El mismo de obs-graph, pieza incluida (`ui/botonFormula`): abajo a la derecha, a la
+  // izquierda del ⓘ, con la `f(x)` compuesta por KaTeX y convirtiéndose en ✕ mientras el panel
+  // está abierto. Hasta ahora este bloque tenía el suyo —a la izquierda, en texto plano y sin
+  // cambiar de glifo—, así que el mismo control se comportaba de dos maneras según el bloque.
+  //
+  // Se monta DESPUÉS del ⓘ porque su posición depende de si hay chip al que apartarse. Con el
+  // bloque sin dibujo (`!conPlano`) no hay ⓘ —`analizarDibujo` devuelve null exactamente en el
+  // mismo caso en que `hayDibujo` dice que no— y el botón ocupa la esquina él solo.
+  {
+    // Abrir y cerrar la fórmula es SIEMPRE esto: el botón f(x), el ⓘ al abrirse y el toque
+    // limpio sobre el plano pasan por aquí, así que no hay tres sitios que puedan discrepar
+    // sobre qué significa cerrarla.
+    const alternarFormula = (abrir: boolean) => {
+      if (reparto.abierto === abrir) return;
+      reparto.abierto = abrir;
+      if (abrir) cerrarInfo();
+      aplicarCajaPanel(reparto);
+      sincronizarBotonFormula();
+      // La tarjeta flotante se dibuja ENCIMA del lienzo, y el navegador no repinta el canvas
+      // al descubrirlo: hay que repintarlo nosotros para que no quede un rectángulo viejo.
+      pintar();
+    };
+    // El botón lleva puesto el apagado del plano (la clase `lmath-modo-formula`), así que aquí
+    // no queda ninguna lista de chips que esconder a mano: los apaga la hoja de estilos.
+    sincronizarBotonFormula = montarBotonFormula(
+      motor.plugin, wrap, ctx, reparto, () => alternarFormula(!reparto.abierto));
+    sincronizarBotonFormula();
+    cerrarFormula = () => alternarFormula(false);
+  }
+
+  // ── Chip de EDITAR (solo táctil) ─────────────────────────────────────────────────────
+  // El porqué, el sitio y el salto al editor viven en `ui/edicionBloque`, compartidos con
+  // obs-graph: el `</>` de Obsidian necesita hover y el lienzo se queda los toques, así que sin
+  // este chip un obs-vector renderizado en el teléfono no tenía ninguna puerta a su fuente.
+  // Es el ÚNICO chip que acompaña a la fórmula en el modo fórmula: ahí no hay plano, pero sigue
+  // habiendo un bloque escrito, y corregirlo es justo lo que se puede querer hacer mirándolo.
+  if (tactil) montarChipEditar(motor.plugin, wrap, contenedor, ctx, reparto.ladoChip);
 
   revelar();
 }

@@ -14,7 +14,7 @@ import {
 import {
   bloqueVectorALatex, entradaALatex, rotuloALatex, PLANTILLA_VACIA,
 } from "../../src/vector/latexVector";
-import { encuadreDeDibujo } from "../../src/vector/renderVector";
+import { encuadreDeDibujo, recortarSegmento } from "../../src/vector/renderVector";
 import { analizarDibujo } from "../../src/vector/analisisVector";
 
 /** La única entrada de un bloque de una línea (los tests de abajo leen casi siempre así). */
@@ -358,5 +358,70 @@ describe("obs-vector · el encuadre", () => {
     igual(encuadreDeDibujo({ flechas: [], marcas: [] }, 7, ASPECTO), null, "dibujo vacío:");
     const nulo = dibujoDeBloque(parsearBloqueVector("v=(0,0)"));
     igual(encuadreDeDibujo(nulo, 7, ASPECTO), null, "vector nulo:");
+  });
+});
+
+// ─────────────────────────────────────────────
+// El RECORTE del trazo al lienzo
+// ─────────────────────────────────────────────
+//
+// Con mucho zoom los extremos del vector se van a millones de píxeles y el rasterizador del
+// canvas, que trabaja en coma fija, deja de ser fiable: la línea salía con otra inclinación o
+// no salía. El recorte es lo que impide que esas coordenadas lleguen al canvas.
+//
+// La propiedad que hay que defender no es "corta bien", es que **el ángulo no cambia**: los dos
+// extremos devueltos tienen que caer sobre la recta original. Eso es lo que se mide aquí.
+describe("obs-vector · recorte del trazo al lienzo", () => {
+  const CAJA = { anchoPx: 400, altoPx: 300 };
+  /** Distancia del punto (x,y) a la recta que pasa por P0 y P1, en píxeles. */
+  const desviacion = (
+    x: number, y: number, x0: number, y0: number, x1: number, y1: number
+  ): number => {
+    const dx = x1 - x0, dy = y1 - y0;
+    return Math.abs((x - x0) * dy - (y - y0) * dx) / Math.hypot(dx, dy);
+  };
+
+  test("un segmento que ya cabe entero no se toca", () => {
+    const r = recortarSegmento(10, 20, 300, 200, CAJA);
+    igual(r?.join(","), "10,20,300,200", "segmento interior:");
+  });
+
+  test("un segmento entero fuera no se dibuja", () => {
+    igual(recortarSegmento(2000, 10, 3000, 200, CAJA), null, "a la derecha:");
+    igual(recortarSegmento(10, -5000, 300, -4000, CAJA), null, "por encima:");
+  });
+
+  test("EL BUG: con extremos a millones de píxeles, el ángulo se conserva", () => {
+    // Un vector cualquiera visto con un zoom brutal: los dos extremos caen lejísimos, y el
+    // trozo que de verdad cruza la pantalla es una franja diminuta de esa recta.
+    const x0 = -12_345_678, y0 = -6_172_839;
+    const x1 = 23_456_789, y1 = 11_728_394;
+    const r = recortarSegmento(x0, y0, x1, y1, CAJA);
+    assert(r !== null, "el segmento cruza el lienzo, no puede descartarse");
+    if (r === null) return;
+    // 1. Lo que se le pasa al canvas ya es del tamaño del lienzo (y no millones).
+    for (const v of r) assert(Math.abs(v) < 1e4, `coordenada aún enorme: ${v}`);
+    // 2. Y sigue siendo LA MISMA RECTA: los dos extremos recortados caen sobre ella.
+    aprox(desviacion(r[0], r[1], x0, y0, x1, y1), 0, 1e-6, "extremo inicial fuera de la recta:");
+    aprox(desviacion(r[2], r[3], x0, y0, x1, y1), 0, 1e-6, "extremo final fuera de la recta:");
+  });
+
+  test("un segmento vertical (dx = 0) se recorta igual", () => {
+    const r = recortarSegmento(200, -9_000_000, 200, 9_000_000, CAJA);
+    assert(r !== null, "una vertical que cruza el lienzo se dibuja");
+    if (r === null) return;
+    igual(r[0], 200, "x del extremo inicial:");
+    igual(r[2], 200, "x del extremo final:");
+    assert(r[1] < r[3], "los extremos conservan el sentido del trazo");
+  });
+
+  test("el orden de los extremos se respeta (la punta va donde iba)", () => {
+    const r = recortarSegmento(1_000_000, 150, -1_000_000, 150, CAJA);
+    assert(r !== null && r[0] > r[2], "un trazo de derecha a izquierda no se invierte");
+  });
+
+  test("un segmento con coordenadas no finitas no se dibuja", () => {
+    igual(recortarSegmento(0, 0, Infinity, 100, CAJA), null, "infinito:");
+    igual(recortarSegmento(NaN, 0, 100, 100, CAJA), null, "NaN:");
   });
 });

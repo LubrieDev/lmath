@@ -37,5 +37,11 @@ import "./modules/crosshair.test";      // la y del crosshair: evaluada en expl�
 import "./modules/mate.test";           // motor matemático: racionales, polinomios y sistemas
 import "./modules/dominio.test";        // condiciones de dominio y fidelidad de las transformaciones
 import "./modules/paneles-info.test";   // cuadros ⓘ: prosa fuera, matemática entre `$…$`
+import "./modules/oro.test";           // volcado dorado del CAS + autodiagnóstico del oráculo
+import "./modules/frontera.test";      // la fachada de src/CAS/ es la única puerta
+import "./modules/lector.test";        // el lector propio (E4): gramática y divergencia cero
+import "./modules/nucleo.test";        // núcleo simbólico: hash, orden total y puente con mathjs
+import "./modules/normal.test";        // forma canónica estructural: idempotencia, valor y dominio
+import "./modules/algebraico.test";    // números algebraicos exactos y el camino de vuelta a expresión
 
 resumen();

@@ -6,8 +6,8 @@
 // DOM ni el adaptador: entran ecuaciones, salen ecuaciones. Reutiliza el MISMO pipeline
 // que los botones del panel, así que no hay dos definiciones de "despejar".
 
-import { despejarEcuaciones } from "../../despejar";
-import { simplificarEcuaciones } from "../../simplificar";
+import { despejarEcuaciones } from "../../CAS/api-legado";
+import { simplificarEcuaciones } from "../../CAS/api-legado";
 import type { AjustesTransformaciones } from "../ajustes";
 
 /**

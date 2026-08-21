@@ -19,10 +19,10 @@ import { ladoIcono } from "../ui/reparto";
 import { lineasResumen, lineasDerivada, lineasIntegral } from "../analysis/lineasAnalisis";
 import { t } from "../../i18n";
 import { simplify } from "mathjs";
-import { normalizarEntrada } from "../../parser";
-import { compilarFuncion } from "../../evaluador";
+import { normalizarEntrada } from "../../CAS/api-legado";
+import { compilarFuncion } from "../../CAS/api-legado";
 import { analizarFuncion, tieneTrigonometria } from "../../analisis";
-import { extraerIntegral, evaluarLimite } from "../../integral";
+import { extraerIntegral, evaluarLimite } from "../../CAS/api-legado";
 import { analizarDerivada } from "../../core/analysis/analisisDerivada";
 import { analizarIntegral } from "../../core/analysis/analisisIntegral";
 import { crearFuncionReal } from "../../core/fields/funcionRealMathjs";
@@ -161,28 +161,37 @@ export function montarBotonInfoIntegral(
  */
 export function montarBotonInfo(
   motor: Motor,
-  wrap: HTMLElement, expr: string, ctx: MarkdownPostProcessorContext,
+  wrap: HTMLElement, expresionViva: () => string, ctx: MarkdownPostProcessorContext,
   lado: number, exclusion: ExclusionPopover
-): void {
-  // Defensivo: si `expr` no compila como f(x) (p.ej. una tupla paramétrica que se
-  // colara), NO lanzar —abortaría el render del plano—, simplemente no montar el ⓘ.
-  let evalX: (x: number) => number;
-  // mathjs puede devolver un Complex (sqrt(-1)…) → fuera del dominio real = NaN
-  // (mismo contrato que `crearFuncionReal`); aquí solo se usa como f(x) numérica.
-  try {
-    const evalXRaw = compilarFuncion(expr, "x");
-    evalX = (x) => { const v = evalXRaw(x); return typeof v === "number" ? v : NaN; };
-  } catch { return; }
-  // Función idénticamente cero (simplifica a "0"): TODO x es raíz y la intersección
-  // Y es (0,0). Se detecta como en el GraphEngine, con simplify sobre la expresión.
-  let idénticamenteCero = false;
-  try { idénticamenteCero = simplify(expr).toString() === "0"; } catch { /* no simplificable */ }
+): () => void {
+  /**
+   * Las líneas del resumen para UNA expresión, o `null` si no compila como f(x) (p.ej. una
+   * tupla paramétrica que se colara). No lanza nunca: una excepción aquí abortaría el render
+   * del plano entero.
+   */
+  const lineasDe = (expr: string): string[] | null => {
+    let evalX: (x: number) => number;
+    // mathjs puede devolver un Complex (sqrt(-1)…) → fuera del dominio real = NaN
+    // (mismo contrato que `crearFuncionReal`); aquí solo se usa como f(x) numérica.
+    try {
+      const evalXRaw = compilarFuncion(expr, "x");
+      evalX = (x) => { const v = evalXRaw(x); return typeof v === "number" ? v : NaN; };
+    } catch { return null; }
+    // Función idénticamente cero (simplifica a "0"): TODO x es raíz y la intersección
+    // Y es (0,0). Se detecta como en el GraphEngine, con simplify sobre la expresión.
+    let idénticamenteCero = false;
+    try { idénticamenteCero = simplify(expr).toString() === "0"; } catch { /* no simplificable */ }
 
-  // La redacción vive con las otras cuatro, en `analysis/lineasAnalisis`: cada línea es PROSA
-  // con la matemática marcada entre `$…$`. Un punto notable es una expresión matemática y en
-  // texto plano se lee peor —`(0, π/2)` obliga a decidir si esa barra divide o separa—.
-  const lineas = lineasResumen(
-    analizarFuncion(evalX), evalX(0), tieneTrigonometria(expr), idénticamenteCero);
+    // La redacción vive con las otras cuatro, en `analysis/lineasAnalisis`: cada línea es PROSA
+    // con la matemática marcada entre `$…$`. Un punto notable es una expresión matemática y en
+    // texto plano se lee peor —`(0, π/2)` obliga a decidir si esa barra divide o separa—.
+    return lineasResumen(
+      analizarFuncion(evalX), evalX(0), tieneTrigonometria(expr), idénticamenteCero);
+  };
+
+  // Si ni siquiera la expresión de partida compila, no se monta el ⓘ: el bloque se queda sin
+  // chip, como antes. El refrescador que se devuelve es entonces un no-op.
+  if (lineasDe(expresionViva()) === null) return () => { /* no hay cuadro que refrescar */ };
 
   const btnInfo = wrap.createDiv();
   ponerTooltip(btnInfo, t().botones.resumenNotables);
@@ -193,16 +202,32 @@ export function montarBotonInfo(
   pop.style.cssText = estiloPopoverInfo(lado);
   exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
 
+  // UN solo componente para todos los repintados, creado aquí y no en cada refresco: las
+  // líneas pasan por `MarkdownRenderer` y un hijo por pasada se iría acumulando en el bloque
+  // mientras se mueve un mando. Es el mismo trato que reciben el panel de fórmula y el ⓘ del
+  // sistema, que también se repintan.
+  const hijo = new MarkdownRenderChild(pop);
+  ctx.addChild(hijo);
+
   // Se rellena al ABRIRLO por primera vez, no al montar el bloque. Antes se pintaba en el
   // montaje porque eran divs de texto y no costaban nada; ahora cada línea con matemática
   // pasa por el compositor, y una nota con varios bloques pagaría ese trabajo por cuadros
   // que quizá nadie abre. Los otros dos ⓘ ya se rellenaban así.
-  let montado = false;
+  //
+  // Y se REHACE cuando la expresión cambia, que es lo que ocurre al mover un parámetro: el
+  // cuadro describe la curva que está en el plano AHORA. Se compara la expresión ya sustituida
+  // en vez de recalcular por si acaso, porque analizar una función no es gratis y el
+  // refrescador se llama en cada pasada final del trazado, se haya movido algo o no.
+  let exprPintada: string | null = null;
   const rellenar = () => {
-    if (montado) return;
-    montado = true;
-    const hijo = new MarkdownRenderChild(pop);
-    ctx.addChild(hijo);
+    const expr = expresionViva();
+    if (expr === exprPintada) return;
+    const lineas = lineasDe(expr);
+    // Una expresión que deja de compilar a media sesión (un mando que la lleva a un caso
+    // imposible) no borra lo último bueno que se dijo: se queda como estaba.
+    if (lineas === null) return;
+    exprPintada = expr;
+    pop.empty();
     for (const l of lineas)
       pintarLineaPanel(motor.plugin, pop.createDiv(), l, ctx.sourcePath, hijo);
   };
@@ -213,4 +238,8 @@ export function montarBotonInfo(
     if (!abierto) { exclusion.alAbrir(); rellenar(); }   // la fórmula flotante y este cuadro no conviven
     pop.setCssStyles({ display: abierto ? "none" : "block" });
   });
+
+  // Con el cuadro ABIERTO y un mando moviéndose, se rehace en cada pasada final. Cerrado no se
+  // toca: al abrirlo, `rellenar` ya trae la expresión del momento.
+  return () => { if (pop.style.display !== "none") rellenar(); };
 }

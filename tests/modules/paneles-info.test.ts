@@ -20,9 +20,10 @@ import {
 } from "../../src/host-obsidian/analysis/lineasAnalisis";
 import { notablesDeImplicita } from "../../src/math/notablesImplicita";
 import {
-  numeroALatex, puntoALatex, intervaloALatex, listaALatex,
+  numeroALatex, puntoALatex, intervaloALatex, listaALatex, formatearLectura,
 } from "../../src/core/analysis/formatoNumero";
 import { analizarDerivada } from "../../src/core/analysis/analisisDerivada";
+import type { AnalisisIntegral } from "../../src/core/analysis/analisisIntegral";
 import { analizarIntegral } from "../../src/core/analysis/analisisIntegral";
 import { analizarPolar } from "../../src/core/analysis/analisisPolar";
 import { analizarParametrico } from "../../src/core/analysis/analisisParametrico";
@@ -319,5 +320,150 @@ describe("paneles ⓘ · las piezas compuestas se escriben enteras", () => {
     igual(numeroALatex(-Math.PI / 4), "-\\frac{\\pi}{4}");
     igual(numeroALatex(2.99994), "3");
     igual(numeroALatex(Infinity), "\\infty");
+  });
+});
+
+// ─────────────────────────────────────────────
+// La PRECISIÓN según de dónde venga el número
+// ─────────────────────────────────────────────
+//
+// Todos los números del panel pasaban por la misma política: 4 decimales, y reconocimiento de
+// forma cerrada con tolerancia 1e-4. La política es correcta —y la cabecera de `formatoNumero.ts`
+// la justifica bien— **para los valores ESTIMADOS**: una raíz sale de una bisección y un vértice
+// de un ajuste parabólico, así que su cuarta cifra ya venía con error y mostrar más sería inventar.
+//
+// El problema es que por ahí pasaban también valores EVALUADOS. La intersección con el eje Y es
+// `f(0)`: no se estima, se calcula. Aplicarle el redondeo de un estimado le quitaba información
+// que sí existía —`2.99888…` se imprimía `2.9989`— y, peor, le permitía saltar a una forma cerrada
+// que estaba a 1e-4, una distancia enorme para un número exacto.
+//
+// Lo que se defiende aquí es que las dos políticas coexisten y que cada número recibe la suya.
+
+describe("paneles ⓘ · la precisión depende de la PROCEDENCIA del número", () => {
+  fijarIdioma("es");
+
+  const resumenCon = (interseccionY: number, extra: Partial<{
+    raices: number[]; vertices: Array<{ x: number; y: number; tipo: "min" | "max" }>;
+  }> = {}) => lineasResumen(
+    { raices: extra.raices ?? [], vertices: extra.vertices ?? [], intervalosRaiz: [] },
+    interseccionY, false, false);
+
+  /** Un análisis de integral mínimo: solo importan los límites y las singularidades. */
+  const integralCon = (
+    a: number, b: number, extra: Partial<AnalisisIntegral> = {}
+  ): AnalisisIntegral => ({
+    a, b, valor: 1, impropia: false, singularidades: [], invertido: false,
+    signo: 1, cruces: [], areaPositiva: null, areaNegativa: null, promedio: null, ...extra,
+  });
+
+  test("EL CASO: f(0)=2.99888… se escribe entero, no redondeado a 2.9989", () => {
+    igual(resumenCon(2.99888123)[0], "Intersección Y: $\\left(0,\\ 2.99888\\right)$");
+  });
+
+  test("un f(0) que NO es 3 ya no se anuncia como 3", () => {
+    // Con la tolerancia de un estimado (1e-4) este valor saltaba a "3": a un número calculado
+    // eso le cambia la tercera cifra decimal y afirma una exactitud que no tiene.
+    igual(resumenCon(2.9999412)[0], "Intersección Y: $\\left(0,\\ 2.99994\\right)$");
+  });
+
+  test("pero un f(0) que SÍ es entero sigue saliendo entero", () => {
+    // La procedencia cambia la TOLERANCIA, no la política de reconocer formas cerradas: un 3
+    // exacto sigue escribiéndose "3" y no "3.00000".
+    igual(resumenCon(3)[0], "Intersección Y: $\\left(0,\\ 3\\right)$");
+    igual(resumenCon(-1)[0], "Intersección Y: $\\left(0,\\ -1\\right)$");
+  });
+
+  test("y un f(0) que SÍ es π/2 sigue saliendo π/2", () => {
+    // `arccot x` corta en π/2 de verdad: el doble que sale de evaluarlo ES π/2 hasta el último
+    // bit, así que entra de sobra en la tolerancia estrecha. Lo que ya no entra es un 1.5708
+    // escrito a mano, que está a 2.7e-8 y no es el mismo número.
+    igual(resumenCon(Math.PI / 2)[0], "Intersección Y: $\\left(0,\\ \\frac{\\pi}{2}\\right)$");
+    // Sale `1.5708` y no `1.57080`: el panel recorta los ceros de relleno (los conserva el
+    // readout del crosshair, que es donde sirven). No se pierde ninguna cifra —la sexta ERA el
+    // cero— y lo que importa se mantiene: es un decimal, no π/2.
+    igual(numeroALatex(1.5707963, "evaluado"), "1.5708", "un π/2 truncado NO es π/2");
+    igual(numeroALatex(1.5707963), "\\frac{\\pi}{2}", "medido sí lo reconoce, y hace bien");
+  });
+
+  test("las RAÍCES conservan la política de estimado: 4 decimales", () => {
+    // Salen de una bisección. La quinta cifra sería ruido del método, no del número.
+    igual(resumenCon(0, { raices: [2.99888123] })[1], "Raíces: $2.9989$");
+    igual(numeroALatex(2.99888123), "2.9989");
+  });
+
+  test("los VÉRTICES conservan su tolerancia de reconocimiento", () => {
+    // Un vértice real en 3 aterriza en 2.99994 por el ajuste parabólico, y ahí escribir "3" no
+    // afirma nada que el número no dijera: por debajo de 1e-4 el estimador no los distingue.
+    const lineas = resumenCon(0, { vertices: [{ x: 2.9999412, y: -1.000007, tipo: "min" }] });
+    igual(lineas[2], "Vértice mínimo: $\\left(3,\\ -1\\right)$");
+  });
+
+  // ── La auditoría de los ~38 números de los paneles ──────────────────────────────────
+  //
+  // La intersección Y fue el caso que se reportó, pero era UNA instancia. Al recorrer el
+  // archivo entero salieron cinco sitios más cuyo número tampoco se estima. La clasificacion
+  // completa, con el porqué de cada uno, está en la cabecera de `lineasAnalisis.ts`.
+
+  test("los LÍMITES de una integral son lo que se escribió, no una medida", () => {
+    // `evaluarLimite` compila y evalúa lo que hay en `\int_{a}^{b}`. Con la política de
+    // estimados, un límite de 1.234e-5 se imprimía «0» y el panel rotulaba el intervalo
+    // `0 <= x <= 0`, que no es el que se escribió.
+    igual(lineasIntegral(integralCon(0, 0.00001234), "x", "")[1], "$0 \\le x \\le 1.234e-5$");
+    igual(lineasIntegral(integralCon(Math.SQRT2, 2), "x", "")[1], "$1.41421 \\le x \\le 2$");
+  });
+
+  test("y siguen reconociendo su forma cerrada", () => {
+    // La procedencia cambia la TOLERANCIA, no la política: un límite que es π sigue siendo π.
+    igual(lineasIntegral(integralCon(0, Math.PI), "x", "")[1], "$0 \\le x \\le \\pi$");
+  });
+
+  test("las SINGULARIDADES de una impropia son esos mismos límites", () => {
+    const A = integralCon(0, Math.SQRT2, { impropia: true, singularidades: [Math.SQRT2] });
+    igual(lineasIntegral(A, "x", "")[0], "Integral definida · impropia en $x = 1.41421$, converge");
+  });
+
+  test("la PENDIENTE EN EL ORIGEN es una evaluación, no un ajuste", () => {
+    // `df` es la derivada SIMBÓLICA ya compilada, así que `df(0)` trae todas sus cifras. Es el
+    // mismo caso que `f(0)`, y estaba con la política de estimados.
+    const A = analizarDerivada((x) => x / 3, () => 1 / 3);
+    igual(lineasDerivada(A, false)[1].texto, "Pendiente en $x = 0$: $0.333333$");
+  });
+
+  test("pero los CRÍTICOS del mismo panel siguen siendo estimados", () => {
+    // La mitad interesante de la auditoría es la que NO cambia: un crítico sale de un ajuste
+    // parabólico y su quinta cifra es ruido del método. Que convivan las dos politicas en el
+    // mismo cuadro es lo correcto, y esta prueba lo fija.
+    const A = analizarDerivada(
+      (x) => x * x - 2 * x * Math.SQRT2, (x) => 2 * x - 2 * Math.SQRT2);
+    igual(lineasDerivada(A, false)[2].texto, "Punto crítico: $x = 1.4142$ (mínimo local)");
+  });
+
+  test("el PANEL recorta los ceros de relleno; el readout del crosshair los conserva", () => {
+    // Dos sitios, dos necesidades. En el crosshair el número cambia mientras mueves el cursor:
+    // con ancho fijo se distinguen 1.49050 y 1.48990 y la cuenta de decimales no baila. En un
+    // panel el número es estático, no compite con nada, y los ceros solo estorbaban —una
+    // pendiente de 0,05 se leía `0.0500000`—.
+    igual(formatearLectura(0.5, "evaluado"), "0.500000", "crosshair: con relleno");
+    igual(numeroALatex(0.5, "evaluado"), "0.5", "panel: sin relleno");
+    igual(formatearLectura(1234.5, "evaluado"), "1234.50");
+    igual(numeroALatex(1234.5, "evaluado"), "1234.5");
+    igual(numeroALatex(0.00001234, "evaluado"), "1.234e-5", "también recorta la MANTISA");
+  });
+
+  test("recortar no pierde ninguna cifra significativa", () => {
+    // Es la condición que hace el recorte inofensivo: los dos valores que colapsaban en `1.49`
+    // siguen distinguiéndose, que era todo lo que había que conservar.
+    igual(numeroALatex(1.4905, "evaluado"), "1.4905");
+    igual(numeroALatex(1.4899, "evaluado"), "1.4899");
+    igual(numeroALatex(2.995732273553991, "evaluado"), "2.99573", "y lo que tiene 6 cifras, las mantiene");
+  });
+
+  test("la procedencia por DEFECTO es `medido`: ningún llamador cambia sin pedirlo", () => {
+    // Las seis funciones del módulo aceptan `origen` y todas lo tienen en "medido" por defecto.
+    // Es lo que hace que este cambio no moviera ni una línea de los demás paneles.
+    igual(numeroALatex(2.99888123), numeroALatex(2.99888123, "medido"));
+    igual(puntoALatex(1.00004, 2.99888123), "\\left(1,\\ 2.9989\\right)");
+    igual(listaALatex([2.99888123, 1.5707963]), "2.9989,\\ \\frac{\\pi}{2}");
+    igual(intervaloALatex(2.99888123, 4), "\\left(2.9989,\\ 4\\right)");
   });
 });

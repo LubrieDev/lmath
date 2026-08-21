@@ -81,6 +81,70 @@ function geometriaFlecha(vp: Viewport, f: Flecha): GeometriaFlecha {
 }
 
 /**
+ * Margen alrededor del lienzo dentro del cual todavía se dibuja. No es cero porque un trazo
+ * recortado justo en el borde deja ver el corte (el `lineCap`, el grosor), y porque la punta
+ * mide 12 px: recortando con holgura, lo que se ve dentro del lienzo es idéntico a lo que se
+ * vería sin recortar.
+ */
+const MARGEN_RECORTE_PX = 64;
+
+/**
+ * Lo ÚNICO que hace falta saber del viewport para recortar: su tamaño en píxeles. Se pide así, y
+ * no el `Viewport` entero, porque el recorte es geometría de pantalla pura —no sabe de dominios
+ * ni de escalas— y con esto se puede probar sin construir una cámara.
+ */
+export interface CajaLienzo {
+  readonly anchoPx: number;
+  readonly altoPx: number;
+}
+
+/** ¿Cae este punto de pantalla dentro del lienzo (con el margen de holgura)? */
+function dentroDelLienzo(caja: CajaLienzo, x: number, y: number): boolean {
+  const m = MARGEN_RECORTE_PX;
+  return Number.isFinite(x) && Number.isFinite(y)
+    && x >= -m && x <= caja.anchoPx + m && y >= -m && y <= caja.altoPx + m;
+}
+
+/**
+ * Recorta un segmento de PANTALLA a la caja del lienzo (Liang–Barsky), o `null` si no la toca.
+ *
+ * Existe por un fallo muy concreto: con mucho zoom, los extremos de un vector se van a millones
+ * de píxeles —el vector sigue midiendo (2,1), pero un píxel vale una millonésima de unidad— y el
+ * rasterizador del canvas deja de ser fiable ahí. Trabaja en coma fija (típicamente 24.8), así
+ * que pasado el rango representable el trazo sale con OTRA inclinación o directamente no sale.
+ * Es exactamente lo que se veía: la línea del vector cambiaba de ángulo o desaparecía al acercar.
+ *
+ * Recortar en JavaScript, en doble precisión, deja el problema en la puerta: al canvas solo le
+ * llegan coordenadas del tamaño del lienzo, y el ÁNGULO se conserva exacto porque los dos puntos
+ * devueltos están sobre la recta original —no se redondea la dirección, se acortan los extremos—.
+ *
+ * No cambia lo que se ve: la parte recortada caía fuera de la pantalla de todos modos.
+ */
+export function recortarSegmento(
+  x0: number, y0: number, x1: number, y1: number, caja: CajaLienzo
+): [number, number, number, number] | null {
+  if (![x0, y0, x1, y1].every(Number.isFinite)) return null;
+  const m = MARGEN_RECORTE_PX;
+  const minX = -m, maxX = caja.anchoPx + m, minY = -m, maxY = caja.altoPx + m;
+
+  const dx = x1 - x0, dy = y1 - y0;
+  // `t0`/`t1` acotan el trozo VISIBLE del segmento, parametrizado como P(t) = P0 + t·(P1−P0)
+  // con t en [0,1]: cada borde de la caja recorta ese intervalo por un lado.
+  let t0 = 0, t1 = 1;
+  const borde = (p: number, q: number): boolean => {
+    if (p === 0) return q >= 0;          // paralelo a este borde: solo importa de qué lado cae
+    const r = q / p;
+    if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+    else { if (r < t0) return false; if (r < t1) t1 = r; }
+    return true;
+  };
+  if (!borde(-dx, x0 - minX) || !borde(dx, maxX - x0)
+    || !borde(-dy, y0 - minY) || !borde(dy, maxY - y0)) return null;
+
+  return [x0 + t0 * dx, y0 + t0 * dy, x0 + t1 * dx, y0 + t1 * dy];
+}
+
+/**
  * Una flecha: el trazo y su punta.
  *
  * El trazo se ACORTA la longitud de la punta antes de dibujarse. Con la línea entera por debajo
@@ -98,6 +162,7 @@ function dibujarFlecha(ctx: CanvasRenderingContext2D, vp: Viewport, f: Flecha): 
   const g = geometriaFlecha(vp, f);
 
   if (g.largo < 0.5) {
+    if (!dentroDelLienzo(vp, g.x1, g.y1)) return;
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(g.x1, g.y1, RADIO_MARCA_PX, 0, 2 * Math.PI);
@@ -109,13 +174,22 @@ function dibujarFlecha(ctx: CanvasRenderingContext2D, vp: Viewport, f: Flecha): 
   const punta = Math.min(PUNTA_PX, g.largo * 0.5);
   const bx = g.x1 - g.ux * punta, by = g.y1 - g.uy * punta;
 
-  ctx.strokeStyle = color;
-  ctx.lineWidth = GROSOR_PX;
-  ctx.lineCap = "butt";
-  ctx.beginPath();
-  ctx.moveTo(g.x0, g.y0);
-  ctx.lineTo(bx, by);
-  ctx.stroke();
+  // El trazo se recorta al lienzo ANTES de mandarlo al canvas. Ver `recortarSegmento`: con
+  // mucho zoom los extremos se van a millones de píxeles y el rasterizador deja de ser fiable.
+  const trazo = recortarSegmento(g.x0, g.y0, bx, by, vp);
+  if (trazo) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = GROSOR_PX;
+    ctx.lineCap = "butt";
+    ctx.beginPath();
+    ctx.moveTo(trazo[0], trazo[1]);
+    ctx.lineTo(trazo[2], trazo[3]);
+    ctx.stroke();
+  }
+
+  // La punta solo se dibuja si su vértice está a la vista; si no, sus tres puntos estarían tan
+  // lejos como el extremo y volveríamos a pedirle al canvas coordenadas que no sabe tratar.
+  if (!dentroDelLienzo(vp, g.x1, g.y1)) return;
 
   const ancho = (PUNTA_ANCHO_PX * punta) / PUNTA_PX;   // la punta encoge entera, no solo de largo
   ctx.fillStyle = color;
@@ -131,6 +205,7 @@ function dibujarFlecha(ctx: CanvasRenderingContext2D, vp: Viewport, f: Flecha): 
  *  que alguien lo escriba— y sin coordenadas rotuladas: ya están en su tarjeta. */
 function dibujarMarca(ctx: CanvasRenderingContext2D, vp: Viewport, m: Marca): void {
   const [x, y] = aPantalla(vp, m.en);
+  if (!dentroDelLienzo(vp, x, y)) return;
   ctx.fillStyle = css(colorCurva(m.rol));
   ctx.beginPath();
   ctx.arc(x, y, RADIO_MARCA_PX, 0, 2 * Math.PI);
@@ -199,6 +274,17 @@ export function dibujarVectores(
 }
 
 /**
+ * Franja de cada borde del plano ocupada por los chips, para que el encuadre no deje el dibujo
+ * debajo de ellos. `altoPx` es el alto del lienzo; el ancho sale del aspecto.
+ */
+export interface CromoDelPlano {
+  /** Píxeles que ocupa el cromo desde el borde (chip + sus dos márgenes). */
+  margenPx: number;
+  /** Alto del lienzo en píxeles CSS. */
+  altoPx: number;
+}
+
+/**
  * Semirrango vertical con el que la vista deja TODO el dibujo dentro, o `null` si la vista por
  * defecto ya lo consigue.
  *
@@ -213,7 +299,8 @@ export function dibujarVectores(
  * lado solo porque midan 1,5 en vez de 2.
  */
 export function encuadreDeDibujo(
-  dibujo: DibujoVector, semiYDefecto: number, aspecto: number
+  dibujo: DibujoVector, semiYDefecto: number, aspecto: number,
+  cromo?: CromoDelPlano
 ): number | null {
   let maxX = 0, maxY = 0;
   const mirar = (p: readonly [number, number]) => {
@@ -231,9 +318,48 @@ export function encuadreDeDibujo(
   // El semirrango vertical que hace falta para que quepan las dos extensiones. La horizontal se
   // convierte a vertical por el aspecto porque la cámara deriva domX de domY (celdas 1:1): pedir
   // "que quepa maxX" es pedir un semirrango vertical de maxX/aspecto.
-  const necesario = Math.max(maxY, maxX / Math.max(aspecto, 1e-6)) * MARGEN;
+  const asp = Math.max(aspecto, 1e-6);
+  const necesario = Math.max(maxY, maxX / asp) * MARGEN;
   if (!Number.isFinite(necesario) || necesario <= 0) return null;
-  // Ya cabe holgado en la vista de siempre y no llena menos de un tercio: no se toca nada.
-  if (necesario <= semiYDefecto && necesario >= semiYDefecto / 3) return null;
-  return necesario;
+  // Ya cabe holgado en la vista de siempre y no llena menos de un tercio: la vista no se toca.
+  // La decisión se toma sobre el plano LIBRE, sin descontar el cromo, y a propósito: es la regla
+  // de "no cambiar el zoom por poca cosa", y hacerla depender del tamaño de los chips habría
+  // dado zooms distintos en el móvil y en el escritorio para el MISMO dibujo.
+  const elegido = necesario <= semiYDefecto && necesario >= semiYDefecto / 3
+    ? semiYDefecto
+    : necesario;
+
+  // Y, elegida la vista, se aleja lo JUSTO para que nada quede debajo de los chips. Va después
+  // y no dentro del cálculo de arriba porque son dos preguntas distintas: aquella es "¿qué zoom
+  // enseña bien este dibujo?" y esta, "¿lo tapa el cromo?". Mezclarlas hacía que un vector
+  // cruzara el umbral del tercio por culpa de los chips y saltara de golpe a la vista por
+  // defecto, que es un cambio mucho mayor que el que hacía falta.
+  const seguro = Math.max(elegido, semiYSinCromo(maxX, maxY, asp, cromo) * MARGEN);
+  // `null` sigue significando "quédate con la vista de siempre".
+  return seguro === semiYDefecto ? null : seguro;
+}
+
+/**
+ * Los chips del plano (🏠/+/− arriba a la derecha, ⓘ abajo a la derecha, f(x) y ✎ a la
+ * izquierda) se posan SOBRE el lienzo, así que hay una franja de cada borde donde el dibujo
+ * existe pero no se ve. Con el zoom ajustado al propio dibujo, el vértice de una flecha aterriza
+ * justo ahí: un `v=(2,1)` encuadrado a su medida ponía la punta debajo del botón de acercar.
+ *
+ * Devuelve el semirrango vertical MÍNIMO que deja el dibujo entero dentro de la zona limpia. Sin
+ * cromo declarado devuelve 0, que en el `Math.max` de arriba no cambia nada: en el escritorio los
+ * chips son la mitad de grandes y el encuadre se queda exactamente como estaba.
+ *
+ * El descuento es simétrico —dos franjas por eje— porque hay chips en las cuatro esquinas, y la
+ * vista está centrada en el origen: descontar solo el lado donde hoy están los botones ataría el
+ * encuadre a la colocación actual del cromo.
+ */
+function semiYSinCromo(
+  maxX: number, maxY: number, asp: number, cromo?: CromoDelPlano
+): number {
+  if (!cromo || cromo.margenPx <= 0 || cromo.altoPx <= 0) return 0;
+  const anchoPx = asp * cromo.altoPx;
+  // El suelo del 25 % evita que un plano diminuto (o unos chips enormes) dividan por casi cero y
+  // manden el zoom al infinito: antes que un encuadre absurdo, uno apretado.
+  const util = (px: number) => Math.max(0.25, (px - 2 * cromo.margenPx) / px);
+  return Math.max(maxY / util(cromo.altoPx), maxX / (asp * util(anchoPx)));
 }

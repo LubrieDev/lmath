@@ -74,11 +74,28 @@ export const CLASE_POPOVER_INFO = "lmath-info-pop";
  * posados sobre el bloque, y que compartan color es lo que los hace leerse como una capa y no
  * como dos accidentes. Si uno cambia, cambia el otro: el color se toca en el token, no aquí.
  */
+/** Tope fijo del popover ⓘ. Manda en escritorio, donde el plano es grande. */
+export const ALTO_MAX_POPOVER = 200;
+
+/**
+ * El alto máximo que puede tener un popover cuyo borde inferior está a `bajo` píxeles del
+ * suelo del plano: nunca más que el hueco que le queda por encima, dejando 8 de aire.
+ *
+ * Es una función y no un literal porque `bajo` **cambia después de crear el elemento**: en el
+ * bloque estrecho el cromo sube por encima de la franja de controles, y quien mueva el `bottom`
+ * tiene que mover el techo con él. Cuando no se hacía, el panel conservaba el presupuesto de la
+ * posición sin subir, crecía por encima del bloque y `.lmath-container` —`overflow:hidden`— le
+ * cortaba la primera fila. Y no se salvaba solo: al no superar su propio máximo, su
+ * `overflow-y:auto` no llegaba a activarse, así que lo cortado era INALCANZABLE.
+ */
+export const techoPopover = (bajo: number): string =>
+  `min(${ALTO_MAX_POPOVER}px, calc(100% - ${bajo + 8}px))`;
+
 export function estiloPopoverInfo(lado: number): string {
   const bajo = 8 + lado + 6;
   return `position:absolute; bottom:${bajo}px; right:8px; display:none; ` +
     "max-width:min(260px, calc(100% - 16px)); " +
-    `max-height:min(200px, calc(100% - ${bajo + 8}px)); ` +
+    `max-height:${techoPopover(bajo)}; ` +
     "overflow-y:auto; padding:8px 10px; box-sizing:border-box; " +
     "background:var(--lmath-tarjeta); border:1px solid var(--lmath-borde); " +
     "border-radius:6px; font-size:11px; line-height:1.5; " +

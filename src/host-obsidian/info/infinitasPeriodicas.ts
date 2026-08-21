@@ -28,8 +28,8 @@
 // el panel lista las que encontró, que es cierto), pero ya no anuncia infinitas ante uno que
 // tiene tres. El error que puede cometer dejó de ser el que miente.
 
-import { DOMINIO_X } from "../../math/numerico";
-import type { ResultadoBloque } from "../../math/resolverSistema";
+import { DOMINIO_X } from "../../CAS/api-legado";
+import type { ResultadoBloque } from "../../CAS/api-legado";
 
 /** Nº de soluciones a partir del cual se plantea siquiera la pregunta. */
 const MIN_PERIODICO = 3;

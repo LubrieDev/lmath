@@ -23,7 +23,9 @@ import { CICLO_UNIDAD } from "../ui/iconos";
 // Capa de INTERFAZ del adaptador (`./ui/`): cromo, controles y el panel de fórmula. Eran
 // métodos privados de esta clase y ninguno usaba `this` más que para llegar al plugin, así
 // que son funciones libres: se leen sin la clase delante y se reutilizan desde los bloques.
-import { estiloChipInfo, estiloPopoverInfo } from "../ui/estilos";
+import { estiloChipInfo, estiloPopoverInfo, techoPopover } from "../ui/estilos";
+// El chip ✎ y el salto al código de la nota: el mismo cromo táctil que montan los demás.
+import { montarChipEditar } from "../ui/edicionBloque";
 import {
   ponerTooltip, montarIcono, montarGlifoUnidad, montarEtiquetaMath, ponerEtiquetaAccesible,
 } from "../ui/controles";
@@ -130,6 +132,10 @@ export async function procesarTrig(
   const tactil = esTactil();
   const reparto: Reparto = {
     estrecho: false, abierto: false, panel: null, ladoChip: ladoChip(tactil),
+    // DOS CARAS en estrecho: el plano o la formula, nunca una tarjeta posada sobre la otra.
+    // Puede pedirlo porque el panel respeta `huecoInferior`, asi que ocupa el rectangulo del
+    // PLANO y deja al pie la franja de controles, que es mando y no contenido.
+    panelCompleto: true,
   };
 
   // ── Panel de CONTROL ──────────────────────────────────────────────────────────────────
@@ -259,7 +265,10 @@ export async function procesarTrig(
   });
   // Chips que viven pegados al borde INFERIOR del plano. En estrecho suben por encima de la
   // franja de controles; si no, el deslizador quedaría debajo de ellos y sería intocable.
-  const anclajesAbajo: Array<{ el: HTMLElement; base: number }> = [];
+  // `techo` marca a los que además tienen un ALTO MÁXIMO que depende de dónde estén: un panel
+  // no puede medir más que el hueco que le queda por encima, y ese hueco ENCOGE cuando el cromo
+  // sube. Un chip no lo necesita —su lado es fijo—; un popover sí.
+  const anclajesAbajo: Array<{ el: HTMLElement; base: number; techo?: boolean }> = [];
   const chipsAbajo = {
     push: (el: HTMLElement) => anclajesAbajo.push({ el, base: 8 }),
   };
@@ -268,7 +277,15 @@ export async function procesarTrig(
   lienzoColocado = (estrecho: boolean) => {
     canvas.style.height = estrecho ? `calc(100% - ${ALTO_CONTROLES_TRIG}px)` : "100%";
     const extra = estrecho ? ALTO_CONTROLES_TRIG : 0;
-    for (const { el, base } of anclajesAbajo) el.style.bottom = `${base + extra}px`;
+    for (const { el, base, techo } of anclajesAbajo) {
+      const bajo = base + extra;
+      el.style.bottom = `${bajo}px`;
+      // El techo se recalcula CON el `bottom`, no una sola vez al crear el elemento. Con el
+      // plano en 261 px y un chip táctil, subir el cromo deja 123 px de hueco donde el estilo
+      // inicial había presupuestado 209: el panel crecía hasta salirse del bloque y perdía su
+      // primera fila por el `overflow:hidden` del contenedor. Ver `techoPopover`.
+      if (techo) el.style.maxHeight = techoPopover(bajo);
+    }
   };
   lienzoColocado(reparto.estrecho);
   // Enfocable para que el teclado pueda conducir el ángulo. `Navegacion` no se monta en este
@@ -323,6 +340,9 @@ export async function procesarTrig(
   let actualizarPanel: () => void = () => { /* aún no hay panel que refrescar */ };
   // La rellena el popover ⓘ al montarse; hasta entonces, pintar no tiene a quién avisar.
   let refrescarInfo: () => void = () => { /* aún no hay panel ⓘ */ };
+  // El cuadro ⓘ es lo UNICO que se retira al pasar a la formula: los demas mandos siguen a la
+  // vista. Se cierra de verdad, no se esconde, para que al volver al circulo no reaparezca solo.
+  let cerrarInfo: () => void = () => { /* aún no hay panel ⓘ */ };
   // ¿Está corriendo la animación? Lo consulta el botón de play para saber qué icono poner y el
   // arrastre para detenerla, así que vive aquí arriba aunque el bucle se monte más abajo.
   let animando = false;
@@ -640,11 +660,15 @@ export async function procesarTrig(
     // de alto, borrosa. Con θ y su subíndice el glifo es prácticamente cuadrado (363×378), así
     // que esa razón desapareció y la pastilla solo dejaba aire a los lados.
     const anchoU = altoU;
-    const btnUnidad = wrap.createDiv();
+    // `lmath-sobre-panel`: sobrevive al modo formula. La unidad del angulo se puede cambiar
+    // con la formula delante, aunque el circulo no se este viendo.
+    const btnUnidad = wrap.createDiv({ cls: "lmath-sobre-panel" });
     btnUnidad.style.cssText =
       `position:absolute; top:6px; right:8px; width:${anchoU}px; height:${altoU}px; ` +
       "display:flex; align-items:center; justify-content:center; " +
-      `line-height:1; border-radius:${altoU / 2}px; cursor:pointer; user-select:none; z-index:5; ` +
+      // z-index 7: por ENCIMA del panel de la formula (6). Sobrevive al cambio de cara, asi
+      // que tiene que estar delante de la cara nueva y no debajo.
+      `line-height:1; border-radius:${altoU / 2}px; cursor:pointer; user-select:none; z-index:7; ` +
       "color:var(--lmath-acento-suave); background:var(--lmath-chip); " +
       "border:1px solid var(--lmath-acento-borde);";
     const sincronizarUnidad = () => {
@@ -679,15 +703,16 @@ export async function procesarTrig(
     // 60°/s: una vuelta cada seis segundos. Fija, y no una opción del bloque — la velocidad a
     // la que gira una ilustración no es una propiedad del ángulo que se escribió.
     const velocidad = aRadianes(60);   // rad/s
-    const btnPlay = wrap.createDiv();
+    const btnPlay = wrap.createDiv({ cls: "lmath-sobre-panel" });
     chipsAbajo.push(btnPlay);
     btnPlay.style.cssText =
       `position:absolute; bottom:8px; left:${8 + ladoP + 6}px; ` +
       `width:${ladoP}px; height:${ladoP}px; ` +
       "display:flex; align-items:center; justify-content:center; line-height:1; " +
       "color:var(--lmath-acento-suave); background:var(--lmath-chip); " +
+      // z-index 7: ver la nota del chip de unidad.
       "border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; " +
-      "user-select:none; z-index:5;";
+      "user-select:none; z-index:7;";
     const sincronizarPlay = () => {
       btnPlay.empty();
       montarIcono(btnPlay, animando ? "pausar" : "reproducir", ladoIcono(ladoP));
@@ -751,14 +776,42 @@ export async function procesarTrig(
   // pero no habría forma de verla.
   {
     const ladoF = reparto.ladoChip;
-    const btnFormula = wrap.createDiv({ text: "f(x)" });
-    ponerTooltip(btnFormula, t().botones.verFormula);
+    // `lmath-sobre-panel`: es el interruptor entre las dos caras, así que es justo lo único que
+    // no puede desaparecer con una de ellas.
+    const btnFormula = wrap.createDiv({ cls: "lmath-sobre-panel" });
+
+    /** ¿Estamos EN la cara de la fórmula? */
+    const enModoFormula = () => reparto.estrecho && reparto.abierto;
+
+    /**
+     * El glifo dice A DÓNDE LLEVA, no qué hay ahora.
+     *
+     * Con las dos caras no hay nada posado sobre nada: una ✕ diría que hay algo que quitar de
+     * encima, y no lo hay. Así que enseña `f(x)` cuando llevará a la fórmula y el CÍRCULO
+     * UNITARIO cuando devolverá al círculo — el mismo criterio con el que los demás bloques
+     * enseñan el plano cartesiano, con el icono de esta familia.
+     *
+     * Solo se repinta cuando CAMBIA: esto se llama en cada sincronización del reparto.
+     */
+    const glifoFormula = () => {
+      const nombre = enModoFormula() ? "circulo" : "formula";
+      if (btnFormula.dataset.glifo === nombre) return;
+      btnFormula.dataset.glifo = nombre;
+      btnFormula.empty();
+      if (nombre === "formula") btnFormula.setText("f(x)");
+      else montarIcono(btnFormula, "unit_circle", ladoIcono(ladoF));
+      ponerTooltip(btnFormula, nombre === "formula"
+        ? t().botones.verFormula
+        : t().botones.verCirculo);
+    };
+
     const estiloFormula = () => {
       btnFormula.style.cssText =
         `position:absolute; bottom:${sueloChips()}px; left:8px; ` +
         `width:${ladoF}px; height:${ladoF}px; ` +
         "display:flex; align-items:center; justify-content:center; font-size:10px; " +
-        "line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; " +
+        // z-index 7: es el interruptor entre las dos caras, asi que va por encima de las dos.
+        "line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:7; " +
         `font-family:"Lora", var(--font-interface); ` +
         (reparto.abierto
           ? "color:var(--lmath-acento-contraste); background:var(--lmath-acento); " +
@@ -767,15 +820,33 @@ export async function procesarTrig(
             "border:1px solid var(--lmath-acento-borde);") +
         (reparto.estrecho ? "" : "display:none;");
     };
-    estiloFormula();
-    sincronizarBotonFormula = estiloFormula;
+    /**
+     * Todo lo que hay que rehacer cuando cambia la cara: el estilo del botón, su glifo y —lo
+     * que de verdad hace el intercambio— la clase del plano.
+     *
+     * `lmath-modo-formula` apaga TODO el contenido del plano y deja solo lo marcado
+     * `lmath-sobre-panel`. Es una regla de la hoja de estilos y no una lista de elementos que ir
+     * escondiendo a mano: así un chip nuevo nace ya apagado en vez de aparecer flotando sobre la
+     * fórmula, y decidir que sobreviva es una decisión explícita en su `createDiv`.
+     */
+    const sincronizarFormula = () => {
+      estiloFormula();
+      glifoFormula();
+      wrap.toggleClass("lmath-modo-formula", enModoFormula());
+    };
+    sincronizarFormula();
+    sincronizarBotonFormula = sincronizarFormula;
     btnFormula.addEventListener("click", (ev) => {
       ev.stopPropagation();
       reparto.abierto = !reparto.abierto;
+      // El ⓘ es el único mando que NO sobrevive al cambio de cara, así que se cierra de verdad
+      // en vez de quedarse abierto detrás: si no, al volver al círculo reaparecería solo, con
+      // valores de un ángulo que quizá ya no es el que se estaba mirando.
+      if (enModoFormula()) cerrarInfo();
       aplicarCajaPanel(reparto);
-      estiloFormula();
-      // La tarjeta flotante se dibuja ENCIMA del lienzo, y el navegador no repinta el canvas
-      // al descubrirlo: hay que repintarlo nosotros para que no quede un rectángulo viejo.
+      sincronizarFormula();
+      // El panel se dibuja ENCIMA del lienzo, y el navegador no repinta el canvas al
+      // descubrirlo: hay que repintarlo nosotros para que no quede un rectángulo viejo.
       pintar();
     });
   }
@@ -798,7 +869,7 @@ export async function procesarTrig(
 
     const pop = wrap.createDiv();
     pop.style.cssText = estiloPopoverInfo(ladoI);
-    anclajesAbajo.push({ el: pop, base: 8 + ladoI + 6 });
+    anclajesAbajo.push({ el: pop, base: 8 + ladoI + 6, techo: true });
 
     let visible = false;
     // Solo la primera abierta. El conjunto sobrevive a los refrescos: plegar una sección y
@@ -930,6 +1001,11 @@ export async function procesarTrig(
     // Solo se reconstruye si está ABIERTO: durante un arrastre con el popover cerrado no hay
     // ninguna razón para calcular ni pintar nada de esto.
     refrescarInfo = () => { if (visible) construir(); };
+    cerrarInfo = () => {
+      if (!visible) return;
+      visible = false;
+      pop.setCssStyles({ display: "none" });
+    };
 
     // El chip es lo ÚNICO que abre y cierra este cuadro. No hay listener de "clic fuera": esto
     // no es un menú que estorbe hasta que se elige algo, sino una lectura que se consulta
@@ -944,6 +1020,22 @@ export async function procesarTrig(
       pop.setCssStyles({ display: visible ? "block" : "none" });
     });
   }
+
+  // ── Chip ✎: la puerta al CÓDIGO del bloque ───────────────────────────────────────────
+  // Solo en táctil: con ratón el `</>` de Obsidian ya lleva a la fuente, y aparece al pasar por
+  // encima. En el teléfono ese botón no existe, y el lienzo se queda los toques que empiezan
+  // sobre él (`touch-action:none`, que es lo que permite mover el ángulo con el dedo), así que
+  // sin este chip un `obs-trig` renderizado en el móvil no tenía NINGUNA puerta a lo que uno
+  // escribió: se podía leer, pero no corregir.
+  //
+  // Es el último de los tres bloques en heredarlo, y llega con una línea porque el chip salió de
+  // `MotorExperimental` a su propio módulo. Nació sin él en la 1.3.2 justo por lo contrario: era
+  // un método privado de esa clase, y lo que no se comparte no se hereda.
+  //
+  // Sobrevive al modo fórmula (`lmath-sobre-panel`, dentro de `montarChipEditar`): ahí no hay
+  // círculo, pero sigue habiendo un bloque escrito, y corregirlo es justo lo que se puede querer
+  // hacer mirándolo. Va arriba a la IZQUIERDA, la única esquina que el panel deja despejada.
+  if (tactil) montarChipEditar(motor.plugin, wrap, contenedor, ctx, reparto.ladoChip);
 
   // Los chips de abajo se registran a medida que se montan, o sea DESPUÉS del primer
   // `aplicarReparto`. Una última colocación los pone donde toca si el bloque nació estrecho;

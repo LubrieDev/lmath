@@ -22,17 +22,17 @@ import { estiloChipInfo, estiloPopoverInfo, CLASE_POPOVER_INFO } from "../ui/est
 import { ponerTooltip, montarIcono, pintarMathEnLinea, pintarLineaPanel } from "../ui/controles";
 import type { PluginConAjustes } from "../ajustes";
 import { lineasPolar, lineasParametricas, lineasImplicita } from "../analysis/lineasAnalisis";
-import { notablesDeImplicita, type NotablesImplicita } from "../../math/notablesImplicita";
+import { notablesDeImplicita, type NotablesImplicita } from "../../CAS/api-legado";
 import { t } from "../../i18n";
-import { normalizarEntrada } from "../../parser";
+import { normalizarEntrada } from "../../CAS/api-legado";
 import { tieneTrigonometria } from "../../analisis";
 import { insertarProductoImplicito } from "../../core/parsing/productoImplicito";
 import { construirObjeto, expresionPolar, expresionesParametricas } from "../../core/parsing/construirObjeto";
 import { analizarPolar } from "../../core/analysis/analisisPolar";
 import { analizarParametrico, type AnalisisParametrico } from "../../core/analysis/analisisParametrico";
 import type { Parametro } from "../../core/parsing/parametros";
-import { resolverBloque } from "../../math/resolverSistema";
-import { DOMINIO_X } from "../../math/numerico";
+import { resolverBloque } from "../../CAS/api-legado";
+import { DOMINIO_X } from "../../CAS/api-legado";
 import { infinitasPorPeriodicidad } from "./infinitasPeriodicas";
 import { solucionALatex, solucionATexto } from "./latexSolucion";
 

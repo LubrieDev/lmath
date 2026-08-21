@@ -1,19 +1,20 @@
 # LMath — Architecture Overview
 
-**Technical guide for version 1.5.0.** This map describes one version and is meant to be
-edited along with the code; treat anything it says as true *of 1.5.0* and check it against the
+**Technical guide for version 2.0.0.** This map describes one version and is meant to be
+edited along with the code; treat anything it says as true *of 2.0.0* and check it against the
 paths it names. Companion to the
 [Technical Reference](https://github.com/LubrieDev/lmath/blob/main/docs/TECHNICAL-REFERENCE.md),
 which has the detail.
 
 Six Obsidian code blocks, one symbolic layer, one geometry engine, one math engine — and two
-blocks that use neither the geometry engine nor the pipeline.
+blocks that use neither the geometry engine nor the pipeline. Since 2.0.0 there is also a seventh
+thing in the tree, `src/CAS/`, which is a replacement for the symbolic layer and **does not run**.
 
 ---
 
 ## Pipeline
 
-The four **graphing** blocks (`obs-graph`, `obs-system`, `obs-derivate`, `obs-integral`):
+The four **graphing** blocks (`_graph`, `_system`, `_derivate`, `_integral`):
 
 ```
 block source
@@ -29,7 +30,7 @@ block source
     │                                    └──────→ LaTeX          renderer + overlay
 ```
 
-`obs-trig` and `obs-vector` branch off at the first step and share none of it — no equation
+`_trig` and `_vector` branch off at the first step and share none of it — no equation
 split, no `ObjetoMatematico`, no oracle, no provider, no camera. A unit circle is an `arc()` and
 a vector is a segment; a sampled polyline would draw either one worse:
 
@@ -45,7 +46,7 @@ block source
     │                          angle slider                   no camera, no zoom
 ```
 
-`obs-vector` takes the same shortcut, with two differences of its own: the block is a **list**
+`_vector` takes the same shortcut, with two differences of its own: the block is a **list**
 (one line, one card — not one formula per block), and its plane, while always present, only has
 something on it when a line has numbers to draw:
 
@@ -75,7 +76,12 @@ Dependencies point inward. Enforced by import discipline.
 | **1** | Numeric geometry — tracing, discovery, analysis, scene, rendering | no | canvas only |
 | **1b** | Math engine (`src/math/`) — exact arithmetic, real roots, systems | only to read an equation | no |
 | **2** | Symbolic layer — parsing, algebra, LaTeX | yes | no |
+| **2′** | `src/CAS/` — the replacement symbolic core. **Not in the production path**; nothing in Rings 0–3 depends on it | only through one bridge | no |
 | **3** | Host — Obsidian plugin, settings, panels | indirect | yes |
+
+Ring 2′ is the only one whose boundary is enforced by tests rather than by discipline
+(`tests/modules/frontera.test.ts`), and it is enforced in **both** directions: nothing outside
+`src/CAS/` may reach past its two façades, and nothing inside may depend on the interface.
 
 ---
 
@@ -187,14 +193,15 @@ Its own path too, and the smallest in the plugin: four modules, no state, no cam
 | `main.ts` | Registers the six block languages and the settings tab. One string discriminant per block selects the mode. |
 | `host-obsidian/MotorExperimental.ts` | The adapter proper: `process(source, el, ctx)` for the four blocks that plot a curve, plus the class the plugin instantiates. Everything it owns is three things — the plugin, the mode, a getter for the live settings — declared as the `Motor` contract in `contexto.ts`. |
 | `host-obsidian/contexto.ts` | What a block needs from the adapter, and nothing more. The modules below depend on this interface rather than on the class, which is what keeps the graph acyclic. |
-| `host-obsidian/blocks/` | `obs-trig` and `obs-vector` end to end. Neither uses the geometry engine — a unit circle is closed-form and a vector is a segment — so they share only the frame. |
-| `host-obsidian/ui/` | Chrome (`estilos`), small controls (`controles`), the parameter slider (`deslizador`), the toggle bar (`menu`), the formula panel (`scrollerLatex`), the panel mounts (`paneles`) and the layout arithmetic (`reparto`). Free functions: none of them read adapter state. |
+| `host-obsidian/blocks/` | `_trig` and `_vector` end to end. Neither uses the geometry engine — a unit circle is closed-form and a vector is a segment — so they share only the frame. |
+| `host-obsidian/ui/` | Chrome (`estilos`), small controls (`controles`), the parameter slider (`deslizador`), the toggle bar (`menu`), the formula panel (`scrollerLatex`), the door to it on a narrow block (`botonFormula`), the door to the block's source (`edicionBloque`), the panel mounts (`paneles`) and the layout arithmetic (`reparto`). Free functions: none of them read adapter state. |
 | `host-obsidian/info/` | The ⓘ chips. `botones` describes a formula and is written once; `plano` reads the plane as it is now — the system's solutions with each parameter's live value, the notable points of the current view — and hands back a refresher. |
 | `host-obsidian/analysis/` | The pure half of the adapter: block classification, the wording of the ⓘ panels, the automatic transformations. No DOM, so it is testable without mounting a block. |
 | `host-obsidian/{ajustes,fuentes,plataforma}.ts` | Settings tab, embedded fonts, touch detection. |
 | `i18n/` | One file per language (`en`, `es`, `pt`) implementing the contract in `textos.ts`; `index.ts` is the runtime and the only door. Adding a language is adding a file. |
 | `engines/obs-graph/` | Legacy WebGL engine, kept behind a compile-time flag as a fallback. |
-| `migracion/` | **Temporary.** The block rename (`obs-graph` → `_graph`) and the tool that rewrites notes still using the old syntax. Ships in **1.5.0 only**; the whole folder goes in 2.0.0 — along with the settings button, the startup notice, the `styles.css` TEMPORAL block and the acceptance of the `obs-*` names. It is at the repo root and not in `.dev/` because `.dev/` is gitignored and this code ships. |
+| `src/host-obsidian/nombresBloque.ts` | The six block identifiers and the one function that answers which names a block responds to. It used to live in a `migracion/` folder at the repo root, alongside the scanner and rewriter that converted notes from `obs-*` to `_*`; **that campaign was retired from the published tree in 2.0.0** and its code is kept out of the repo, in `.dev/migracion/`. The reason was not tidiness: its vault walk called `getMarkdownFiles()`, which Obsidian's review flags as *Vault Enumeration*, and that check is **static** — hiding the button behind a flag did not silence it, only cutting the import did. This table was never migration, so it stayed. |
+| `CAS/` | **Built and not in the production path.** The replacement symbolic core: a real expression type with hashes, an exact numeric tower, a function registry, a structural canonical form, general algebraic numbers, and its own reader. None of it appears in `main.js` — verified by symbol. Two doors out (`api.ts`, `api-legado.ts`) and boundary tests that enforce them. Its seven invariants and the whole staged plan are in §19 of the Technical Reference. |
 
 **Colour has one rule**: the frame is the theme's (`--lmath-*` tokens on `.lmath-container`, each
 resolving to an Obsidian variable), the plot is ours (`paleta.ts`, two hand-tuned palettes, because
@@ -208,7 +215,7 @@ separate.
 
 > **Why the host is split this way.** Not to make files shorter. `MotorExperimental` was a class
 > with three fields and forty methods, and the methods did not touch the fields — so they were
-> functions wearing a class. Making that explicit is what let `obs-trig` and `obs-vector` become
+> functions wearing a class. Making that explicit is what let `_trig` and `_vector` become
 > modules of their own instead of a third of somebody else's file.
 
 ---
@@ -229,13 +236,31 @@ separate.
   stable.
 - **Fail visibly, fail flat.** A labelled veil instead of a wrong or partial answer.
 - **Exactness comes from provenance, not proximity.** A closed form is shown only when the
-  text asked for one; a decimal stays a decimal however close it passes to π/6.
-- **One number, one way of writing it.** The same quantity may not read differently on two
-  surfaces at the same time.
+  text asked for one; a decimal stays a decimal however close it passes to π/6. *Widened in
+  2.0.0:* provenance now also decides **how many figures may be shown** and **how far a value may
+  be snapped to a closed form** — 6 figures and 1e-12 for a number that was evaluated, 4 and 1e-4
+  for one that was estimated by a numeric method. How many of a number's figures mean anything is
+  not a property of the format; it is a property of how it was obtained, and only whoever computed
+  it knows.
+- **One number, one rounding — presentation may still differ.** *Amended in 2.0.0, because the
+  original wording ("the same quantity may not read differently on two surfaces") is no longer
+  literally true.* The same quantity may not be **rounded** differently on two surfaces at the same
+  time: that would be two answers. It may be **presented** differently where the surface's job
+  differs — the crosshair readout keeps its padding zeros because the number changes as the cursor
+  moves and a fixed width is what keeps two nearby heights apart, while a panel trims them because
+  a static number competes with nothing. `3.00000` and `3` are the same answer; `2.9989` and
+  `2.99888` would not be.
 - **Looking is not editing.** No interaction in any block rewrites the note.
+- **A narrow block has two faces, not a stack.** *All six since 2.0.0.* The formula panel is the
+  block's other side, not a card posed over the plane, so the button that swaps them names its
+  **destination** (`f(x)` / the plane / the unit circle) and never a ✕ — a ✕ would claim there is
+  something on top to dismiss. What survives the swap is a stylesheet rule and not a list of
+  elements: a chip added tomorrow is born hidden in formula mode, and surviving is an explicit
+  decision where it is created. The block's **controls** are not its content — `_trig`'s strip of
+  ratio boxes, θ reading and slider stays usable in both faces, and the panel stops above it.
 - **Say only what was written.** A block never invents what the author left out: `AB` without
   both points declared stays a product, and a point is drawn as a dot, not as a position vector.
-  What is *deduced* from a drawing (the ⓘ of `obs-vector`) is a property of what is already
+  What is *deduced* from a drawing (the ⓘ of `_vector`) is a property of what is already
   there — a magnitude, an angle — never a new object: there is no `u+v` in it.
 - **The drawing is not the source of truth.** *Added in 1.4.0, after breaking it twice.* The
   viewport, the polyline and the sampling exist to visualize; when a question can be answered
@@ -245,18 +270,24 @@ separate.
   geometry*, which is right for implicit and parametric curves and wrong wherever the expression
   can simply be evaluated.
 
+  *Where it still holds in 2.0.0:* on a curve with no exact reader — implicit, parametric, polar,
+  or any block with more than one curve — the height under the cursor is still interpolated from
+  the polyline and still moves with the zoom. What changed is that the scene now **says so**
+  (`lecturaEnCurva` returns the provenance alongside the value), so at least such a reading no
+  longer claims six figures it does not have. Making it exact needs the solver of E5.
+
 ---
 
 ## Tests
 
 | Command | Covers |
 |---|---|
-| `npm run test` | Engine, symbolic, `obs-trig`, `obs-vector` and math-engine units. Run on every change. |
+| `npm run test` | Engine, symbolic, `_trig`, `_vector` and math-engine units. Run on every change. |
 | `npm run test:zoom` | Zoom-out sweep: the curve must not vanish or flicker. |
 | `npm run fuzz` | Differential fuzzer for solver soundness. The `UNSOUND` column must stay at zero. |
 | `npm run bateria` | Graduated battery for solver completeness and domain. |
-| `npm run test:migracion` | The rename scanner. **Temporary**, goes with `migracion/`. |
-| `.dev/sondas/` (no script) | Corpus sweep over a real vault's hand-written blocks. Asserts no expected values — it hunts exceptions, empty curves, mute panels and non-finite coordinates. Reads one particular vault, which is why it has no `package.json` entry. |
+| `npm run oro` | Regenerates the symbolic core's golden dumps and reports what changed, classified as cosmetic / mathematical / scope / exactness / undecidable. Deliberate, never automatic: a golden file that regenerates itself proves nothing. |
+| `.dev/sondas/` (no script) | Probes, not tests: they measure and print rather than assert. The vault sweep (hand-written blocks from a real vault, hunting exceptions, empty curves, mute panels and non-finite coordinates); `medirFronteras.ts` (the layer graph — edges, inversions, cycles, transitive closures); `sondaLecturas.ts` and `sondaPaneles.ts` (what each formatter actually prints, so documentation quotes measured strings instead of remembered ones); `auditarDocs.cjs` (every identifier and path the docs cite, checked against the source). None has a `package.json` entry — they are run on demand with `esbuild --bundle` + `node`. |
 
 > A green suite is not a proof. The corpus sweep found defects in modules the suite already
 > covered, with the suite green: it checked the answers the engine had been asked for, and the

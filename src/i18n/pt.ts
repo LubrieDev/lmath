@@ -78,6 +78,8 @@ export const PT: Textos = {
     resumenDerivada: "O que diz a derivada de f",
     original: "Original",
     verFormula: "Ver a fórmula",
+    verPlano: "Ver o plano",
+    verCirculo: "Ver o círculo",
     cerrarFormula: "Ocultar a fórmula",
     editarBloque: "Editar o bloco",
     transformaciones: "Transformações",

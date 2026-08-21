@@ -11,8 +11,8 @@
 // Este módulo es PURO —de un punto sale un string LaTeX— para poder afirmarlo en las pruebas
 // sin montar un bloque ni pedirle nada a Obsidian. Quien lo pinta es `info/plano.ts`.
 
-import type { Solucion } from "../../math/resolverSistema";
-import { aLatexE, aTextoE } from "../../math/simbolico/valorExacto";
+import type { Solucion } from "../../CAS/api-legado";
+import { aLatexE, aTextoE } from "../../CAS/api-legado";
 import { formatearNumero } from "../../core/rendering/overlay/Overlay";
 
 /**

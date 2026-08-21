@@ -1,0 +1,799 @@
+── y = 3*x + 1
+  norm  y = 3*x + 1
+  simplif  y = 3 * x + 1
+  despeje  y = 3 * x + 1
+  ramas  ["y = 3 * x + 1"]
+  latex  y=3x+1
+  latexDesp  y=3x+1
+
+── 2*y + 3*x = 6
+  norm  2*y + 3*x = 6
+  simplif  2 * y + 3 * x = 6
+  despeje  y = (-3 * x) / (2) + 3
+  ramas  ["y = (-3 * x) / (2) + 3"]
+  latex  3x+2y=6
+  latexDesp  y=\frac{-3x}{2}+3
+
+── y/3 - x = 1
+  norm  y/3 - x = 1
+  simplif  y / 3 - x = 1
+  despeje  y = 3 * x + 3
+  ramas  ["y = 3 * x + 3"]
+  latex  - x+\frac{y}{3}=1
+  latexDesp  y=3x+3
+
+── -y = x^2 - 4
+  norm  -y = x^2 - 4
+  simplif  -y = x ^ 2 - 4
+  despeje  y = -x ^ 2 + 4
+  ramas  ["y = -x ^ 2 + 4"]
+  latex  - y=x^{2}-4
+  latexDesp  y=-x^{2}+4
+
+── 5*y = 2*x - 7
+  norm  5*y = 2*x - 7
+  simplif  5 * y = 2 * x - 7
+  despeje  y = (2 * x) / (5) - (7) / (5)
+  ramas  ["y = (2 * x) / (5) - (7) / (5)"]
+  latex  5y=2x-7
+  latexDesp  y=\frac{2x}{5}-\frac{7}{5}
+
+── x*y = 4
+  norm  x*y = 4
+  simplif  x * y = 4
+  despeje  y = 4 / x
+  ramas  ["y = 4 / x"]
+  latex  xy=4
+  latexDesp  y=\frac{4}{x}
+
+── y/(x+1) = 2
+  norm  y/(x+1) = 2
+  simplif  y / (x + 1) = 2
+  despeje  y = 2 * x + 2
+  ramas  ["y = 2 * x + 2"]
+  latex  \frac{y}{x+1}=2
+  latexDesp  y=2x+2
+
+── x^2 + y^2 = 9
+  norm  x^2 + y^2 = 9
+  simplif  x ^ 2 + y ^ 2 = 9
+  despeje  y = pm(sqrt((9 - x ^ 2)))
+  ramas  ["y = (1*(sqrt((9 - x ^ 2))))","y = (-1*(sqrt((9 - x ^ 2))))"]
+  latex  x^{2}+y^{2}=9
+  latexDesp  y=\pm \sqrt{9-x^{2}}
+
+── x^2 - y^2 = 4
+  norm  x^2 - y^2 = 4
+  simplif  x ^ 2 - y ^ 2 = 4
+  despeje  y = pm(sqrt((x ^ 2 - 4)))
+  ramas  ["y = (1*(sqrt((x ^ 2 - 4))))","y = (-1*(sqrt((x ^ 2 - 4))))"]
+  latex  x^{2}-y^{2}=4
+  latexDesp  y=\pm \sqrt{x^{2}-4}
+
+── y^3 = x + 1
+  norm  y^3 = x + 1
+  simplif  y ^ 3 = x + 1
+  despeje  y = nthRoot(x + 1, 3)
+  ramas  ["y = nthRoot(x + 1, 3)"]
+  latex  y^{3}=x+1
+  latexDesp  y=\sqrt[3]{x+1}
+
+── y^4 = x^2
+  norm  y^4 = x^2
+  simplif  y ^ 4 = x ^ 2
+  despeje  y = pm(nthRoot(x ^ 2, 4))
+  ramas  ["y = (1*(nthRoot(x ^ 2, 4)))","y = (-1*(nthRoot(x ^ 2, 4)))"]
+  latex  y^{4}=x^{2}
+  latexDesp  y=\pm \sqrt[4]{x^{2}}
+
+── x - sqrt(y) = 2
+  norm  x - sqrt(y) = 2
+  simplif  x - sqrt(y) = 2
+  despeje  y = dom(((x - 2))^2, x - 2)
+  ramas  ["y = dom(((x - 2))^2, x - 2)"]
+  latex  x-\sqrt{y}=2
+  latexDesp  y={\left( x-2\right)}^{2},\quad x \ge 2
+
+── sqrt(y) = x - 3
+  norm  sqrt(y) = x - 3
+  simplif  sqrt(y) = x - 3
+  despeje  y = dom(((x - 3))^2, x - 3)
+  ramas  ["y = dom(((x - 3))^2, x - 3)"]
+  latex  \sqrt{y}=x-3
+  latexDesp  y={\left( x-3\right)}^{2},\quad x \ge 3
+
+── cbrt(y) = x
+  norm  cbrt(y) = x
+  simplif  cbrt(y) = x
+  despeje  y = (x)^3
+  ramas  ["y = (x)^3"]
+  latex  \sqrt[3]{y}=x
+  latexDesp  y=x^{3}
+
+── log(y) = x
+  norm  log(y, 10) = x
+  simplif  log(y, 10) = x
+  despeje  y = (10)^((x))
+  ramas  ["y = (10)^((x))"]
+  latex  \log_{10} y=x
+  latexDesp  y={10}^{x}
+
+── e^y = x
+  norm  e^y = x
+  simplif  e ^ y = x
+  despeje  y = log((x), e)
+  ramas  ["y = log((x), e)"]
+  latex  e^{y}=x
+  latexDesp  y=\ln x
+
+── 2^y = x
+  norm  2^y = x
+  simplif  2 ^ y = x
+  despeje  y = log((x), 2)
+  ramas  ["y = log((x), 2)"]
+  latex  2^{y}=x
+  latexDesp  y=\log_{2} x
+
+── sinh(y) = x
+  norm  sinh(y) = x
+  simplif  sinh(y) = x
+  despeje  y = asinh((x))
+  ramas  ["y = asinh((x))"]
+  latex  \sinh y=x
+  latexDesp  y=\operatorname{arcsinh} x
+
+── abs(y) = x^2
+  norm  abs(y) = x^2
+  simplif  abs(y) = x ^ 2
+  despeje  y = pm(x ^ 2)
+  ramas  ["y = (1*(x ^ 2))","y = (-1*(x ^ 2))"]
+  latex  \left| y\right|=x^{2}
+  latexDesp  y=\pm x^{2}
+
+── 1/y = x
+  norm  1/y = x
+  simplif  1 / y = x
+  despeje  y = ((1)) / ((x))
+  ramas  ["y = ((1)) / ((x))"]
+  latex  \frac{1}{y}=x
+  latexDesp  y=\frac{1}{x}
+
+── (y+1)^3 = x
+  norm  (y+1)^3 = x
+  simplif  y ^ 3 + 3 * y ^ 2 + 3 * y + 1 = x
+  despeje  y = nthRoot(x, 3) - 1
+  ramas  ["y = nthRoot(x, 3) - 1"]
+  latex  {\left( y+1\right)}^{3}=x
+  latexDesp  y=\sqrt[3]{x}-1
+
+── (2*y - 3)^3 = x
+  norm  (2*y - 3)^3 = x
+  simplif  8 * y ^ 3 - 36 * y ^ 2 + 54 * y - 27 = x
+  despeje  y = ((nthRoot(x, 3) + 3)) / (2)
+  ramas  ["y = ((nthRoot(x, 3) + 3)) / (2)"]
+  latex  {\left(2y-3\right)}^{3}=x
+  latexDesp  y=\frac{\sqrt[3]{x}+3}{2}
+
+── exp(y^3) = x
+  norm  exp(y^3) = x
+  simplif  exp(y ^ 3) = x
+  despeje  y = cbrt(log((x), e))
+  ramas  ["y = cbrt(log((x), e))"]
+  latex  \exp\left(y^{3}\right)=x
+  latexDesp  y=\sqrt[3]{\ln x}
+
+── e^(y^2) = x
+  norm  e^(y^2) = x
+  simplif  e ^ y ^ 2 = x
+  despeje  y = dom(pm(sqrt(log((x), e))), log((x), e))
+  ramas  ["y = dom((1*(sqrt(log((x), e)))), log((x), e))","y = dom((-1*(sqrt(log((x), e)))), log((x), e))"]
+  latex  e^{y^{2}}=x
+  latexDesp  y=\pm \sqrt{\ln x},\quad \ln x \ge 0
+
+── log(y^3 + 1) = x
+  norm  log(y^3 + 1, 10) = x
+  simplif  log(y ^ 3 + 1, 10) = x
+  despeje  y = cbrt(((10)^((x))) - (1))
+  ramas  ["y = cbrt(((10)^((x))) - (1))"]
+  latex  \log_{10}\left(y^{3}+1\right)=x
+  latexDesp  y=\sqrt[3]{{10}^{x}-1}
+
+── log(y)^2 = x
+  norm  log(y, 10)^2 = x
+  simplif  log(y, 10) ^ 2 = x
+  despeje  y = (10)^(dom(pm(sqrt((x))), x))
+  ramas  ["y = (10)^(dom((1*(sqrt((x)))), x))","y = (10)^(dom((-1*(sqrt((x)))), x))"]
+  latex  {\log_{10} y}^{2}=x
+  latexDesp  y={10}^{\pm \sqrt{x}},\quad x \ge 0
+
+── sqrt(y^3 - 2) = x
+  norm  sqrt(y^3 - 2) = x
+  simplif  sqrt(y ^ 3 - 2) = x
+  despeje  y = cbrt((dom(((x))^2, x)) + (2))
+  ramas  ["y = cbrt((dom(((x))^2, x)) + (2))"]
+  latex  \sqrt{y^{3}-2}=x
+  latexDesp  y=\sqrt[3]{x^{2}+2},\quad x \ge 0
+
+── nthRoot(y^3 - 2, 4) = x
+  norm  nthRoot(y^3 - 2, 4) = x
+  simplif  nthRoot(y ^ 3 - 2, 4) = x
+  despeje  y = cbrt((dom(((x))^4, x)) + (2))
+  ramas  ["y = cbrt((dom(((x))^4, x)) + (2))"]
+  latex  \sqrt[4]{y^{3}-2}=x
+  latexDesp  y=\sqrt[3]{x^{4}+2},\quad x \ge 0
+
+── sqrt(log(y)) = x
+  norm  sqrt(log(y, 10)) = x
+  simplif  sqrt(log(y, 10)) = x
+  despeje  y = (10)^(dom(((x))^2, x))
+  ramas  ["y = (10)^(dom(((x))^2, x))"]
+  latex  \sqrt{\log_{10} y}=x
+  latexDesp  y={10}^{x^{2}},\quad x \ge 0
+
+── exp(sqrt(y)) = x
+  norm  exp(sqrt(y)) = x
+  simplif  exp(sqrt(y)) = x
+  despeje  y = dom((log((x), e))^2, log((x), e))
+  ramas  ["y = dom((log((x), e))^2, log((x), e))"]
+  latex  \exp\left(\sqrt{y}\right)=x
+  latexDesp  y={\ln x}^{2},\quad \ln x \ge 0
+
+── (y^3 + 1)^2 = x
+  norm  (y^3 + 1)^2 = x
+  simplif  y ^ 6 + 2 * y ^ 3 + 1 = x
+  despeje  y = cbrt((dom(pm(sqrt((x))), x)) - (1))
+  ramas  ["y = cbrt((dom((1*(sqrt((x)))), x)) - (1))","y = cbrt((dom((-1*(sqrt((x)))), x)) - (1))"]
+  latex  {\left(y^{3}+1\right)}^{2}=x
+  latexDesp  y=\sqrt[3]{\pm \sqrt{x}-1},\quad x \ge 0
+
+── sinh(y^3) = x
+  norm  sinh(y^3) = x
+  simplif  sinh(y ^ 3) = x
+  despeje  y = cbrt(asinh((x)))
+  ramas  ["y = cbrt(asinh((x)))"]
+  latex  \sinh\left(y^{3}\right)=x
+  latexDesp  y=\sqrt[3]{\operatorname{arcsinh} x}
+
+── atanh(y) = x
+  norm  atanh(y) = x
+  simplif  atanh(y) = x
+  despeje  y = tanh((x))
+  ramas  ["y = tanh((x))"]
+  latex  \operatorname{arctanh} y=x
+  latexDesp  y=\tanh x
+
+── cbrt(y + 2) = x - 1
+  norm  cbrt(y + 2) = x - 1
+  simplif  cbrt(y + 2) = x - 1
+  despeje  y = (((x - 1))^3) - (2)
+  ramas  ["y = (((x - 1))^3) - (2)"]
+  latex  \sqrt[3]{y+2}=x-1
+  latexDesp  y={\left( x-1\right)}^{3}-2
+
+── 2*sqrt(y) = x
+  norm  2*sqrt(y) = x
+  simplif  2 * sqrt(y) = x
+  despeje  y = dom(((x)/((2)))^2, x)
+  ramas  ["y = dom(((x)/((2)))^2, x)"]
+  latex  2\sqrt{y}=x
+  latexDesp  y=\left({\frac{x}{2}}\right)^{2},\quad x \ge 0
+
+── sqrt(y) = x/2
+  norm  sqrt(y) = x/2
+  simplif  sqrt(y) = x / 2
+  despeje  y = dom((x / 2)^2, x)
+  ramas  ["y = dom((x / 2)^2, x)"]
+  latex  \sqrt{y}=\frac{x}{2}
+  latexDesp  y=\left({\frac{x}{2}}\right)^{2},\quad x \ge 0
+
+── sqrt(y) = -x/3
+  norm  sqrt(y) = -x/3
+  simplif  sqrt(y) = -x / 3
+  despeje  y = dom((-x / 3)^2, -x)
+  ramas  ["y = dom((-x / 3)^2, -x)"]
+  latex  \sqrt{y}=\frac{- x}{3}
+  latexDesp  y=\left({\frac{- x}{3}}\right)^{2},\quad x \le 0
+
+── sqrt(y) = x^2 + 1
+  norm  sqrt(y) = x^2 + 1
+  simplif  sqrt(y) = x ^ 2 + 1
+  despeje  y = ((x ^ 2 + 1))^2
+  ramas  ["y = ((x ^ 2 + 1))^2"]
+  latex  \sqrt{y}=x^{2}+1
+  latexDesp  y={\left(x^{2}+1\right)}^{2}
+
+── sqrt(y) = 2*abs(x)
+  norm  sqrt(y) = 2*abs(x)
+  simplif  sqrt(y) = 2 * abs(x)
+  despeje  y = (2 * abs(x))^2
+  ramas  ["y = (2 * abs(x))^2"]
+  latex  \sqrt{y}=2\left| x\right|
+  latexDesp  y={\left(2\left| x\right|\right)}^{2}
+
+── tan(y) + x = 2
+  norm  tan(y) + x = 2
+  simplif  tan(y) + x = 2
+  despeje  y = atan((2 - x)) + fam(k, pi)
+  ramas  ["y = atan((2 - x)) + fam(k, pi)"]
+  latex  x+\tan y=2
+  latexDesp  y=\arctan\left(2- x\right)+k\pi,\quad k\in\mathbb{Z}
+
+── sin(y) = x
+  norm  sin(y) = x
+  simplif  sin(y) = x
+  despeje  y = pi/2 + pm(acos(x)) + fam(k, 2*pi)
+  ramas  ["y = pi/2 + (1*(acos(x))) + fam(k, 2*pi)","y = pi/2 + (-1*(acos(x))) + fam(k, 2*pi)"]
+  latex  \sin y=x
+  latexDesp  y=\frac{\pi}{2} \pm \arccos x+2k\pi,\quad k\in\mathbb{Z}
+
+── cos(y) = x
+  norm  cos(y) = x
+  simplif  cos(y) = x
+  despeje  y = pm(acos(x)) + fam(k, 2*pi)
+  ramas  ["y = (1*(acos(x))) + fam(k, 2*pi)","y = (-1*(acos(x))) + fam(k, 2*pi)"]
+  latex  \cos y=x
+  latexDesp  y=\pm \arccos x+2k\pi,\quad k\in\mathbb{Z}
+
+── cos(y)*2 = x
+  norm  cos(y)*2 = x
+  simplif  2 * cos(y) = x
+  despeje  y = pm(acos((x)/((2)))) + fam(k, 2*pi)
+  ramas  ["y = (1*(acos((x)/((2))))) + fam(k, 2*pi)","y = (-1*(acos((x)/((2))))) + fam(k, 2*pi)"]
+  latex  2\cos y=x
+  latexDesp  y=\pm \arccos\left(\frac{x}{2}\right)+2k\pi,\quad k\in\mathbb{Z}
+
+── sin(2*y) = x
+  norm  sin(2*y) = x
+  simplif  sin(2 * y) = x
+  despeje  y = (pi/2 + pm(acos((x))) + fam(k, 2*pi)) / (2)
+  ramas  ["y = (pi/2 + (1*(acos((x)))) + fam(k, 2*pi)) / (2)","y = (pi/2 + (-1*(acos((x)))) + fam(k, 2*pi)) / (2)"]
+  latex  \sin\left(2y\right)=x
+  latexDesp  y=\frac{\frac{\pi}{2} \pm \arccos x+2k\pi}{2},\quad k\in\mathbb{Z}
+
+── tan(2*y) + x = 2
+  norm  tan(2*y) + x = 2
+  simplif  tan(2 * y) + x = 2
+  despeje  y = (atan(((2)) - (x)) + fam(k, pi)) / (2)
+  ramas  ["y = (atan(((2)) - (x)) + fam(k, pi)) / (2)"]
+  latex  x+\tan\left(2y\right)=2
+  latexDesp  y=\frac{\arctan\left(2- x\right)+k\pi}{2},\quad k\in\mathbb{Z}
+
+── sin(x + y) = 0
+  norm  sin(x + y) = 0
+  simplif  sin(x + y) = 0
+  despeje  y = fam(k, pi) - x
+  ramas  ["y = fam(k, pi) - x"]
+  latex  \sin\left( x+ y\right)=0
+  latexDesp  y=- x+k\pi,\quad k\in\mathbb{Z}
+
+── cot(y) = x
+  norm  cot(y) = x
+  simplif  cot(y) = x
+  despeje  y = acot(x) + fam(k, pi)
+  ramas  ["y = acot(x) + fam(k, pi)"]
+  latex  \cot y=x
+  latexDesp  y=\operatorname{arccot} x+k\pi,\quad k\in\mathbb{Z}
+
+── abs(y) = x - 1
+  norm  abs(y) = x - 1
+  simplif  abs(y) = x - 1
+  despeje  y = dom(pm(x - 1), x - 1)
+  ramas  ["y = dom((1*(x - 1)), x - 1)","y = dom((-1*(x - 1)), x - 1)"]
+  latex  \left| y\right|=x-1
+  latexDesp  y=\pm\left( x-1\right),\quad x \ge 1
+
+── 2*abs(y) = x
+  norm  2*abs(y) = x
+  simplif  2 * abs(y) = x
+  despeje  y = dom(pm((x) / (2)), x)
+  ramas  ["y = dom((1*((x) / (2))), x)","y = dom((-1*((x) / (2))), x)"]
+  latex  2\left| y\right|=x
+  latexDesp  y=\pm \frac{x}{2},\quad x \ge 0
+
+── abs(y)^2 = x
+  norm  abs(y)^2 = x
+  simplif  y ^ 2 = x
+  despeje  y = dom(pm(sqrt(x)), x)
+  ramas  ["y = dom((1*(sqrt(x))), x)","y = dom((-1*(sqrt(x))), x)"]
+  latex  {\left| y\right|}^{2}=x
+  latexDesp  y=\pm \sqrt{x},\quad x \ge 0
+
+── abs(y) = x^2 - 2
+  norm  abs(y) = x^2 - 2
+  simplif  abs(y) = x ^ 2 - 2
+  despeje  y = dom(pm(x ^ 2 - 2), x ^ 2 - 2)
+  ramas  ["y = dom((1*(x ^ 2 - 2)), x ^ 2 - 2)","y = dom((-1*(x ^ 2 - 2)), x ^ 2 - 2)"]
+  latex  \left| y\right|=x^{2}-2
+  latexDesp  y=\pm\left(x^{2}-2\right),\quad x^{2}-2 \ge 0
+
+── sqrt(abs(y)) = x
+  norm  sqrt(abs(y)) = x
+  simplif  sqrt(abs(y)) = x
+  despeje  y = dom(pm((x)^2), x)
+  ramas  ["y = dom((1*((x)^2)), x)","y = dom((-1*((x)^2)), x)"]
+  latex  \sqrt{\left| y\right|}=x
+  latexDesp  y=\pm x^{2},\quad x \ge 0
+
+── 1/abs(x) + 1/abs(y) = 1
+  norm  1/abs(x) + 1/abs(y) = 1
+  simplif  1 / abs(x) + 1 / abs(y) = 1
+  despeje  y = dom(pm((abs(x)) / ((abs(x) - (1)))), 1 - 1 / abs(x))
+  ramas  ["y = dom((1*((abs(x)) / ((abs(x) - (1))))), 1 - 1 / abs(x))","y = dom((-1*((abs(x)) / ((abs(x) - (1))))), 1 - 1 / abs(x))"]
+  latex  \frac{1}{\left| x\right|}+\frac{1}{\left| y\right|}=1
+  latexDesp  y=\pm \frac{\left| x\right|}{\left| x\right|-1},\quad 1-\frac{1}{\left| x\right|} \ge 0
+
+── 1/(x^2 + y^2) = 3
+  norm  1/(x^2 + y^2) = 3
+  simplif  1 / (x ^ 2 + y ^ 2) = 3
+  despeje  y = pm(sqrt((((1)) / ((3)) - x ^ 2)))
+  ramas  ["y = (1*(sqrt((((1)) / ((3)) - x ^ 2))))","y = (-1*(sqrt((((1)) / ((3)) - x ^ 2))))"]
+  latex  \frac{1}{x^{2}+y^{2}}=3
+  latexDesp  y=\pm \sqrt{\frac{1}{3}-x^{2}}
+
+── x^2*y^2 + x^2 + y^2 = 4
+  norm  x^2*y^2 + x^2 + y^2 = 4
+  simplif  x ^ 2 * y ^ 2 + x ^ 2 + y ^ 2 = 4
+  despeje  y = pm(sqrt((-x ^ 2 + 4) / (x ^ 2 + 1)))
+  ramas  ["y = (1*(sqrt((-x ^ 2 + 4) / (x ^ 2 + 1))))","y = (-1*(sqrt((-x ^ 2 + 4) / (x ^ 2 + 1))))"]
+  latex  x^{2}{y}^{2}+x^{2}+y^{2}=4
+  latexDesp  y=\pm \sqrt{\frac{-x^{2}+4}{x^{2}+1}}
+
+── y^4 + x^2 = 5
+  norm  y^4 + x^2 = 5
+  simplif  y ^ 4 + x ^ 2 = 5
+  despeje  y = pm(nthRoot((5 - x ^ 2), 4))
+  ramas  ["y = (1*(nthRoot((5 - x ^ 2), 4)))","y = (-1*(nthRoot((5 - x ^ 2), 4)))"]
+  latex  x^{2}+y^{4}=5
+  latexDesp  y=\pm \sqrt[4]{5-x^{2}}
+
+── cbrt(y^2) = 1 - cbrt(x^2)
+  norm  cbrt(y^2) = 1 - cbrt(x^2)
+  simplif  cbrt(y ^ 2) = 1 - cbrt(x ^ 2)
+  despeje  y = pm(sqrt(((1 - cbrt(x ^ 2)))^3))
+  ramas  ["y = (1*(sqrt(((1 - cbrt(x ^ 2)))^3)))","y = (-1*(sqrt(((1 - cbrt(x ^ 2)))^3)))"]
+  latex  \sqrt[3]{y^{2}}=1-\sqrt[3]{x^{2}}
+  latexDesp  y=\pm \left(1-\sqrt[3]{x^{2}}\right)\sqrt{1-\sqrt[3]{x^{2}}}
+
+── abs(y) = pm(x)
+  norm  abs(y) = pm(x)
+  simplif  abs(y) = pm(x)
+  despeje  y = dom(pm2(pm(x)), pm(x))
+  ramas  ["y = dom((1*((1*(x)))), (1*(x)))","y = dom((-1*((1*(x)))), (1*(x)))","y = dom((1*((-1*(x)))), (-1*(x)))","y = dom((-1*((-1*(x)))), (-1*(x)))"]
+  latex  \left| y\right|=\pm  x
+  latexDesp  y=\pm \pm  x,\quad \pm  x \ge 0
+
+── y^2 = pm(x)
+  norm  y^2 = pm(x)
+  simplif  y ^ 2 = pm(x)
+  despeje  y = pm2(sqrt(pm(x)))
+  ramas  ["y = (1*(sqrt((1*(x)))))","y = (-1*(sqrt((1*(x)))))","y = (1*(sqrt((-1*(x)))))","y = (-1*(sqrt((-1*(x)))))"]
+  latex  y^{2}=\pm  x
+  latexDesp  y=\pm \sqrt{\pm  x}
+
+── sqrt(abs(y)) = pm(x)
+  norm  sqrt(abs(y)) = pm(x)
+  simplif  sqrt(abs(y)) = pm(x)
+  despeje  y = dom(pm2((pm(x))^2), pm(x))
+  ramas  ["y = dom((1*(((1*(x)))^2)), (1*(x)))","y = dom((-1*(((1*(x)))^2)), (1*(x)))","y = dom((1*(((-1*(x)))^2)), (-1*(x)))","y = dom((-1*(((-1*(x)))^2)), (-1*(x)))"]
+  latex  \sqrt{\left| y\right|}=\pm  x
+  latexDesp  y=\pm {\pm  x}^{2},\quad \pm  x \ge 0
+
+── abs((y+1)^2 - 3) = x
+  norm  abs((y+1)^2 - 3) = x
+  simplif  abs((y + 1) ^ 2 - 3) = x
+  despeje  y = (dom(pm2(sqrt((dom(pm((x)), x)) + (3))), (dom(pm((x)), x)) + (3))) - (1)
+  ramas  ["y = (dom((1*(sqrt((dom((1*((x))), x)) + (3)))), (dom((1*((x))), x)) + (3))) - (1)","y = (dom((-1*(sqrt((dom((1*((x))), x)) + (3)))), (dom((1*((x))), x)) + (3))) - (1)","y = (dom((1*(sqrt((dom((-1*((x))), x)) + (3)))), (dom((-1*((x))), x)) + (3))) - (1)","y = (dom((-1*(sqrt((dom((-1*((x))), x)) + (3)))), (dom((-1*((x))), x)) + (3))) - (1)"]
+  latex  \left|{\left( y+1\right)}^{2}-3\right|=x
+  latexDesp  y=\pm \sqrt{\pm  x+3}-1,\quad \pm  x+3 \ge 0,\quad x \ge 0
+
+── abs(abs(y) - 3) = x
+  norm  abs(abs(y) - 3) = x
+  simplif  abs(abs(y) - 3) = x
+  despeje  y = dom(pm2((dom(pm((x)), x)) + (3)), (dom(pm((x)), x)) + (3))
+  ramas  ["y = dom((1*((dom((1*((x))), x)) + (3))), (dom((1*((x))), x)) + (3))","y = dom((-1*((dom((1*((x))), x)) + (3))), (dom((1*((x))), x)) + (3))","y = dom((1*((dom((-1*((x))), x)) + (3))), (dom((-1*((x))), x)) + (3))","y = dom((-1*((dom((-1*((x))), x)) + (3))), (dom((-1*((x))), x)) + (3))"]
+  latex  \left|\left| y\right|-3\right|=x
+  latexDesp  y=\pm\left(\pm  x+3\right),\quad \pm  x+3 \ge 0,\quad x \ge 0
+
+── cos(y)^2 - cos(y) = x
+  norm  cos(y)^2 - cos(y) = x
+  simplif  cos(y) ^ 2 - cos(y) = x
+  despeje  y = pm2(acos(((1) + pm(sqrt(4 * x + 1))) / (2))) + fam(k, 2*pi)
+  ramas  ["y = (1*(acos(((1) + (1*(sqrt(4 * x + 1)))) / (2)))) + fam(k, 2*pi)","y = (-1*(acos(((1) + (1*(sqrt(4 * x + 1)))) / (2)))) + fam(k, 2*pi)","y = (1*(acos(((1) + (-1*(sqrt(4 * x + 1)))) / (2)))) + fam(k, 2*pi)","y = (-1*(acos(((1) + (-1*(sqrt(4 * x + 1)))) / (2)))) + fam(k, 2*pi)"]
+  latex  \cos^{2} y-\cos y=x
+  latexDesp  y=\pm \arccos\left(\frac{1\pm \sqrt{4x+1}}{2}\right)+2k\pi,\quad k\in\mathbb{Z}
+
+── sin(y)^2 = x
+  norm  sin(y)^2 = x
+  simplif  sin(y) ^ 2 = x
+  despeje  y = pm2(acos(pm(sqrt(1 - x)))) + fam(k, 2*pi)
+  ramas  ["y = (1*(acos((1*(sqrt(1 - x)))))) + fam(k, 2*pi)","y = (-1*(acos((1*(sqrt(1 - x)))))) + fam(k, 2*pi)","y = (1*(acos((-1*(sqrt(1 - x)))))) + fam(k, 2*pi)","y = (-1*(acos((-1*(sqrt(1 - x)))))) + fam(k, 2*pi)"]
+  latex  \sin^{2} y=x
+  latexDesp  y=\pm \arccos\left(\pm \sqrt{1- x}\right)+2k\pi,\quad k\in\mathbb{Z}
+
+── 3*y^2 + 2*x*y + x^2 - 4 = 0
+  norm  3*y^2 + 2*x*y + x^2 - 4 = 0
+  simplif  3 * y ^ 2 + 2 * x * y + x ^ 2 - 4 = 0
+  despeje  y = (-2 * x + pm(sqrt(-8 * x ^ 2 + 48)))/(6)
+  ramas  ["y = (-2 * x + (1*(sqrt(-8 * x ^ 2 + 48))))/(6)","y = (-2 * x + (-1*(sqrt(-8 * x ^ 2 + 48))))/(6)"]
+  latex  x^{2}+2xy+3y^{2}-4=0
+  latexDesp  y=\frac{-2x \pm \sqrt{-8x^{2}+48}}{6}
+
+── y^2 - 2*x*y + x^2 - 9 = 0
+  norm  y^2 - 2*x*y + x^2 - 9 = 0
+  simplif  y ^ 2 + x ^ 2 - 2 * x * y - 9 = 0
+  despeje  y = x + pm(3)
+  ramas  ["y = x + (1*(3))","y = x + (-1*(3))"]
+  latex  x^{2}-2xy+y^{2}-9=0
+  latexDesp  y=x \pm 3
+
+── x*y^2 + y + x = 0
+  norm  x*y^2 + y + x = 0
+  simplif  x * y ^ 2 + y + x = 0
+  despeje  y = (-1 + pm(sqrt(-4 * x ^ 2 + 1)))/(2 * x)
+  ramas  ["y = (-1 + (1*(sqrt(-4 * x ^ 2 + 1))))/(2 * x)","y = (-1 + (-1*(sqrt(-4 * x ^ 2 + 1))))/(2 * x)"]
+  latex  x{y}^{2}+ x+ y=0
+  latexDesp  y=\frac{-1\pm \sqrt{-4x^{2}+1}}{2x}
+
+── (x^2 + y^2)^2 - 2*(x^2 - y^2) = 0
+  norm  (x^2 + y^2)^2 - 2*(x^2 - y^2) = 0
+  simplif  x ^ 4 + 2 * x ^ 2 * y ^ 2 + y ^ 4 + 2 * y ^ 2 - 2 * x ^ 2 = 0
+  despeje  y = pm(sqrt((-(x ^ 2 + 1)) + (sqrt(4 * x ^ 2 + 1))))
+  ramas  ["y = (1*(sqrt((-(x ^ 2 + 1)) + (sqrt(4 * x ^ 2 + 1)))))","y = (-1*(sqrt((-(x ^ 2 + 1)) + (sqrt(4 * x ^ 2 + 1)))))"]
+  latex  {\left(x^{2}+y^{2}\right)}^{2}-2\left(x^{2}-y^{2}\right)=0
+  latexDesp  y=\pm \sqrt{-\left(x^{2}+1\right)+\sqrt{4x^{2}+1}}
+
+── sin(1/(x^2 + y^2)) = 0
+  norm  sin(1/(x^2 + y^2)) = 0
+  simplif  sin(1 / (x ^ 2 + y ^ 2)) = 0
+  despeje  y = pm(sqrt((((1)) / ((famN(k, pi))) - x ^ 2)))
+  ramas  ["y = (1*(sqrt((((1)) / ((famN(k, pi))) - x ^ 2))))","y = (-1*(sqrt((((1)) / ((famN(k, pi))) - x ^ 2))))"]
+  latex  \sin\left(\frac{1}{x^{2}+y^{2}}\right)=0
+  latexDesp  y=\pm \sqrt{\frac{1}{k\pi}-x^{2}},\quad k\in\mathbb{N}
+
+── sqrt(tan(y) + 1) = x
+  norm  sqrt(tan(y) + 1) = x
+  simplif  sqrt(tan(y) + 1) = x
+  despeje  y = atan((dom(((x))^2, x)) - (1)) + fam(k, pi)
+  ramas  ["y = atan((dom(((x))^2, x)) - (1)) + fam(k, pi)"]
+  latex  \sqrt{\tan y+1}=x
+  latexDesp  y=\arctan\left(x^{2}-1\right)+k\pi,\quad x \ge 0,\quad k\in\mathbb{Z}
+
+── cos(x + y) + cos(x - y) = 1
+  norm  cos(x + y) + cos(x - y) = 1
+  simplif  cos(x + y) + cos(x - y) = 1
+  despeje  y = pm(acos((1) / (2 * cos(x)))) + fam(k, 2*pi)
+  ramas  ["y = (1*(acos((1) / (2 * cos(x))))) + fam(k, 2*pi)","y = (-1*(acos((1) / (2 * cos(x))))) + fam(k, 2*pi)"]
+  latex  \cos\left( x+ y\right)+\cos\left( x- y\right)=1
+  latexDesp  y=\pm \arccos\left(\frac{1}{2\cos x}\right)+2k\pi,\quad k\in\mathbb{Z}
+
+── sqrt(y) = (x+1)/(-2)
+  norm  sqrt(y) = (x+1)/(-2)
+  simplif  sqrt(y) = -x / 2 - 1 / 2
+  despeje  y = dom(((x + 1) / (-2))^2, -(x + 1))
+  ramas  ["y = dom(((x + 1) / (-2))^2, -(x + 1))"]
+  latex  \sqrt{y}=\frac{x+1}{-2}
+  latexDesp  y=\left({\frac{x+1}{-2}}\right)^{2},\quad x \le -1
+
+── sqrt(y) = -x^2 - 1
+  norm  sqrt(y) = -x^2 - 1
+  simplif  sqrt(y) = -x ^ 2 - 1
+  despeje  sqrt(y) = -x ^ 2 - 1
+  ramas  ["sqrt(y) = -x ^ 2 - 1"]
+  latex  \sqrt{y}=-x^{2}-1
+  latexDesp  \sqrt{y}=-x^{2}-1
+
+── (x^2 + y^2 - 1)^3 = x^2*y^3
+  norm  (x^2 + y^2 - 1)^3 = x^2*y^3
+  simplif  (x ^ 2 + y ^ 2 - 1) ^ 3 = x ^ 2 * y ^ 3
+  despeje  y = (nthRoot(x ^ 2, 3) + pm(sqrt(nthRoot(x ^ 4, 3) + 4 - 4 * x ^ 2)))/(2)
+  ramas  ["y = (nthRoot(x ^ 2, 3) + (1*(sqrt(nthRoot(x ^ 4, 3) + 4 - 4 * x ^ 2))))/(2)","y = (nthRoot(x ^ 2, 3) + (-1*(sqrt(nthRoot(x ^ 4, 3) + 4 - 4 * x ^ 2))))/(2)"]
+  latex  {\left(x^{2}+y^{2}-1\right)}^{3}=x^{2}{y}^{3}
+  latexDesp  y=\frac{\sqrt[3]{x^{2}} \pm \sqrt{x\sqrt[3]{x}+4-4x^{2}}}{2}
+
+── exp(sqrt(log(y^3 + 2))) = x
+  norm  exp(sqrt(log(y^3 + 2, 10))) = x
+  simplif  exp(sqrt(log(y ^ 3 + 2, 10))) = x
+  despeje  y = cbrt(((10)^(dom((log((x), e))^2, log((x), e)))) - (2))
+  ramas  ["y = cbrt(((10)^(dom((log((x), e))^2, log((x), e)))) - (2))"]
+  latex  \exp\left(\sqrt{\log_{10}\left(y^{3}+2\right)}\right)=x
+  latexDesp  y=\sqrt[3]{{10}^{{\ln x}^{2}}-2},\quad \ln x \ge 0
+
+── log(exp(y^3) + 1) = x
+  norm  log(exp(y^3) + 1, 10) = x
+  simplif  log(exp(y ^ 3) + 1, 10) = x
+  despeje  y = cbrt(log(((10)^((x))) - (1), e))
+  ramas  ["y = cbrt(log(((10)^((x))) - (1), e))"]
+  latex  \log_{10}\left(\exp\left(y^{3}\right)+1\right)=x
+  latexDesp  y=\sqrt[3]{\ln\left({10}^{x}-1\right)}
+
+── sqrt(sqrt(y) + 1) = x
+  norm  sqrt(sqrt(y) + 1) = x
+  simplif  sqrt(sqrt(y) + 1) = x
+  despeje  y = dom(((dom(((x))^2, x)) - (1))^2, (dom(((x)) ^ 2, x)) - (1))
+  ramas  ["y = dom(((dom(((x))^2, x)) - (1))^2, (dom(((x)) ^ 2, x)) - (1))"]
+  latex  \sqrt{\sqrt{y}+1}=x
+  latexDesp  y={\left(x^{2}-1\right)}^{2},\quad x^{2}-1 \ge 0,\quad x \ge 0
+
+── (3*(y+1)^3 - 2)^3 = x^2 + 1
+  norm  (3*(y+1)^3 - 2)^3 = x^2 + 1
+  simplif  (3 * (y + 1) ^ 3 - 2) ^ 3 = x ^ 2 + 1
+  despeje  y = nthRoot((nthRoot(x ^ 2 + 1, 3) + 2) / 3, 3) - 1
+  ramas  ["y = nthRoot((nthRoot(x ^ 2 + 1, 3) + 2) / 3, 3) - 1"]
+  latex  {\left(3{\left( y+1\right)}^{3}-2\right)}^{3}=x^{2}+1
+  latexDesp  y=\sqrt[3]{\frac{\sqrt[3]{x^{2}+1}+2}{3}}-1
+
+── 2*sinh(3*y - 1) + 4 = x^2
+  norm  2*sinh(3*y - 1) + 4 = x^2
+  simplif  2 * sinh(3 * y - 1) + 4 = x ^ 2
+  despeje  y = ((asinh((((x ^ 2 - 4)) / ((2))))) + (1)) / (3)
+  ramas  ["y = ((asinh((((x ^ 2 - 4)) / ((2))))) + (1)) / (3)"]
+  latex  2\sinh\left(3y-1\right)+4=x^{2}
+  latexDesp  y=\frac{\operatorname{arcsinh}\left(\frac{x^{2}-4}{2}\right)+1}{3}
+
+── nthRoot((y^5 + 1)^3, 3) = x
+  norm  nthRoot((y^5 + 1)^3, 3) = x
+  simplif  nthRoot((y ^ 5 + 1) ^ 3, 3) = x
+  despeje  y = nthRoot((cbrt(((x))^3)) - (1), 5)
+  ramas  ["y = nthRoot((cbrt(((x))^3)) - (1), 5)"]
+  latex  \sqrt[3]{{\left(y^{5}+1\right)}^{3}}=x
+  latexDesp  y=\sqrt[5]{\sqrt[3]{x^{3}}-1}
+
+── 1/(1 + 1/(1 + y)) = x
+  norm  1/(1 + 1/(1 + y)) = x
+  simplif  1/(1 + 1/(1 + y)) = x
+  despeje  y = ((1)) / ((((1)) / ((x)) - 1)) - 1
+  ramas  ["y = ((1)) / ((((1)) / ((x)) - 1)) - 1"]
+  latex  \frac{1}{1+\frac{1}{1+ y}}=x
+  latexDesp  y=\frac{1}{\frac{1}{x}-1}-1
+
+── atanh(tanh(y) ) = x - 1
+  norm  atanh(tanh(y) ) = x - 1
+  simplif  atanh(tanh(y)) = x - 1
+  despeje  y = x - 1
+  ramas  ["y = x - 1"]
+  latex  \operatorname{arctanh}\left(\tanh y\right)=x-1
+  latexDesp  y=x-1
+
+── (x^2+1)*y^3 + (x-2) = 0
+  norm  (x^2+1)*y^3 + (x-2) = 0
+  simplif  x ^ 2 * y ^ 3 + y ^ 3 + x - 2 = 0
+  despeje  y = nthRoot(((2 - x))/((x ^ 2 + 1)), 3)
+  ramas  ["y = nthRoot(((2 - x))/((x ^ 2 + 1)), 3)"]
+  latex  \left(x^{2}+1\right)y^{3}+ x-2=0
+  latexDesp  y=\sqrt[3]{\frac{2- x}{x^{2}+1}}
+
+── 4*(cos(x)+cos(y)) + 2*cos(x+y) + 2*cos(x-y) - 2*cos(2*x) - 2*cos(2*y) - 7 = 0
+  norm  4*(cos(x)+cos(y)) + 2*cos(x+y) + 2*cos(x-y) - 2*cos(2*x) - 2*cos(2*y) - 7 = 0
+  simplif  2 * (cos(x + y) + cos(x - y)) + 4 * (cos(x) + cos(y)) - 7 - 2 * (cos(2 * y) + cos(2 * x)) = 0
+  despeje  y = pm2(acos(((cos(x) + 1) + pm(sqrt(1 - 3 * (cos(x) - 1) ^ 2))) / (2))) + fam(k, 2*pi)
+  ramas  ["y = (1*(acos(((cos(x) + 1) + (1*(sqrt(1 - 3 * (cos(x) - 1) ^ 2)))) / (2)))) + fam(k, 2*pi)","y = (-1*(acos(((cos(x) + 1) + (1*(sqrt(1 - 3 * (cos(x) - 1) ^ 2)))) / (2)))) + fam(k, 2*pi)","y = (1*(acos(((cos(x) + 1) + (-1*(sqrt(1 - 3 * (cos(x) - 1) ^ 2)))) / (2)))) + fam(k, 2*pi)","y = (-1*(acos(((cos(x) + 1) + (-1*(sqrt(1 - 3 * (cos(x) - 1) ^ 2)))) / (2)))) + fam(k, 2*pi)"]
+  latex  4\left(\cos x+\cos y\right)+2\cos\left( x+ y\right)+2\cos\left( x- y\right)-2\cos\left(2x\right)-2\cos\left(2y\right)-7=0
+  latexDesp  y=\pm \arccos\left(\frac{\cos x+1\pm \sqrt{1-3{\left(\cos x-1\right)}^{2}}}{2}\right)+2k\pi,\quad k\in\mathbb{Z}
+
+── sqrt(x^2 + y^2) = 3
+  norm  sqrt(x^2 + y^2) = 3
+  simplif  sqrt(x ^ 2 + y ^ 2) = 3
+  despeje  y = dom(pm(sqrt((((3))^2) - (x ^ 2))), (((3)) ^ 2) - (x ^ 2))
+  ramas  ["y = dom((1*(sqrt((((3))^2) - (x ^ 2)))), (((3)) ^ 2) - (x ^ 2))","y = dom((-1*(sqrt((((3))^2) - (x ^ 2)))), (((3)) ^ 2) - (x ^ 2))"]
+  latex  \sqrt{x^{2}+y^{2}}=3
+  latexDesp  y=\pm \sqrt{3^{2}-x^{2}},\quad -3 \le x \le 3
+
+── abs(y - x) + 0*y = 2
+  norm  abs(y - x) + 0*y = 2
+  simplif  abs(y - x) = 2
+  despeje  abs(y - x) + 0 * y = 2
+  ramas  ["abs(y - x) + 0 * y = 2"]
+  latex  \left| y- x\right|+0y=2
+  latexDesp  \left| y- x\right|+0y=2
+
+── y^y = x
+  norm  y^y = x
+  simplif  y ^ y = x
+  despeje  y ^ y = x
+  ramas  ["y ^ y = x"]
+  latex  y^{y}=x
+  latexDesp  y^{y}=x
+
+── y + e^y = x
+  norm  y + e^y = x
+  simplif  y + e ^ y = x
+  despeje  y + e ^ y = x
+  ramas  ["y + e ^ y = x"]
+  latex  y+e^{y}=x
+  latexDesp  y+e^{y}=x
+
+── y*e^y = x
+  norm  y*e^y = x
+  simplif  e ^ y * y = x
+  despeje  y * e ^ y = x
+  ramas  ["y * e ^ y = x"]
+  latex  y{e}^{y}=x
+  latexDesp  y{e}^{y}=x
+
+── log(y) + y = x
+  norm  log(y, 10) + y = x
+  simplif  log(y, 10) + y = x
+  despeje  log(y, 10) + y = x
+  ramas  ["log(y, 10) + y = x"]
+  latex  \log_{10} y+ y=x
+  latexDesp  \log_{10} y+ y=x
+
+── sin(y) + y = x
+  norm  sin(y) + y = x
+  simplif  sin(y) + y = x
+  despeje  sin(y) + y = x
+  ramas  ["sin(y) + y = x"]
+  latex  \sin y+ y=x
+  latexDesp  \sin y+ y=x
+
+── tan(y) + y = x
+  norm  tan(y) + y = x
+  simplif  tan(y) + y = x
+  despeje  tan(y) + y = x
+  ramas  ["tan(y) + y = x"]
+  latex  \tan y+ y=x
+  latexDesp  \tan y+ y=x
+
+── y^5 + y = x
+  norm  y^5 + y = x
+  simplif  y ^ 5 + y = x
+  despeje  y ^ 5 + y = x
+  ramas  ["y ^ 5 + y = x"]
+  latex  y^{5}+ y=x
+  latexDesp  y^{5}+ y=x
+
+── y^5 + x*y + 1 = 0
+  norm  y^5 + x*y + 1 = 0
+  simplif  y ^ 5 + x * y + 1 = 0
+  despeje  y ^ 5 + x * y = -1
+  ramas  ["y ^ 5 + x * y = -1"]
+  latex  xy+y^{5}+1=0
+  latexDesp  xy+y^{5}=-1
+
+── y^7 - y^2 = x
+  norm  y^7 - y^2 = x
+  simplif  y ^ 7 - y ^ 2 = x
+  despeje  y ^ 7 - y ^ 2 = x
+  ramas  ["y ^ 7 - y ^ 2 = x"]
+  latex  y^{7}-y^{2}=x
+  latexDesp  y^{7}-y^{2}=x
+
+── sin(y) + cos(2*y) + y = x
+  norm  sin(y) + cos(2*y) + y = x
+  simplif  sin(y) + cos(2 * y) + y = x
+  despeje  sin(y) + cos(2 * y) + y = x
+  ramas  ["sin(y) + cos(2 * y) + y = x"]
+  latex  \sin y+\cos\left(2y\right)+ y=x
+  latexDesp  \sin y+\cos\left(2y\right)+ y=x
+
+── x^3 + y^3 = 3*x*y
+  norm  x^3 + y^3 = 3*x*y
+  simplif  x ^ 3 + y ^ 3 = 3 * x * y
+  despeje  y ^ 3 - 3 * x * y = -x ^ 3
+  ramas  ["y ^ 3 - 3 * x * y = -x ^ 3"]
+  latex  x^{3}+y^{3}=3xy
+  latexDesp  -\left(3xy\right)+y^{3}=-x^{3}
+
+── abs(abs((y+1)^2 - 3) - 2) = x
+  norm  abs(abs((y+1)^2 - 3) - 2) = x
+  simplif  abs(abs((y + 1) ^ 2 - 3) - 2) = x
+  despeje  abs(abs((y + 1) ^ 2 - 3) - 2) = x
+  ramas  ["abs(abs((y + 1) ^ 2 - 3) - 2) = x"]
+  latex  \left|\left|{\left( y+1\right)}^{2}-3\right|-2\right|=x
+  latexDesp  \left|\left|{\left( y+1\right)}^{2}-3\right|-2\right|=x
+
+── y^y + y = x
+  norm  y^y + y = x
+  simplif  y ^ y + y = x
+  despeje  y ^ y + y = x
+  ramas  ["y ^ y + y = x"]
+  latex  y^{y}+ y=x
+  latexDesp  y^{y}+ y=x
+
+── gamma(y) = x
+  norm  gamma(y) = x
+  simplif  gamma(y) = x
+  despeje  gamma(y) = x
+  ramas  ["gamma(y) = x"]
+  latex  \Gamma\left( y\right)=x
+  latexDesp  \Gamma\left( y\right)=x

@@ -10,11 +10,12 @@ import {
   type AjustesTransformaciones,
   type PluginConAjustes,
 } from "./src/host-obsidian/ajustes";
-// Renombrado de los bloques (`obs-graph` → `_graph`). Vive en `migracion/`, que es código
-// TEMPORAL: se publica SOLO en la 1.5.0 y se borra entero en la 2.0.0 junto con
-// la aceptación de los nombres `obs-*`. Estos dos imports se van con él.
-import { nombresDe } from "./migracion/nombres";
-import { tm } from "./migracion/textos";
+// Los nombres bajo los que responde cada bloque. Desde la 2.0.0, uno solo: el nuevo. La tabla
+// vivía en `migracion/`, con el escáner y el reescritor que convertían las notas de `obs-*` a
+// `_*`; esa campaña terminó y su código salió del árbol publicado —está guardado en
+// `.dev/migracion/`, ver el LEEME de esa carpeta—, pero la tabla no era migración: es lo que
+// registra los bloques, y se quedó.
+import { nombresDe } from "./src/host-obsidian/nombresBloque";
 
 // ─────────────────────────────────────────────
 // Plugin principal
@@ -51,8 +52,8 @@ export default class LMathPlugin extends Plugin implements PluginConAjustes {
   }
 
   /**
-   * Registra UN bloque bajo todos sus nombres (el histórico `obs-*` y el nuevo `_graph`), para
-   * que durante la transición las dos sintaxis rindan exactamente lo mismo.
+   * Registra UN bloque bajo los nombres que `nombresDe` dé por vigentes. Desde la 2.0.0 es uno
+   * solo, el nuevo; en la 1.5.0 eran dos, y el bucle es lo que sobrevive de aquella transición.
    *
    * El try/catch no es decorativo. El identificador de bloque es una clave global compartida por
    * todos los plugins instalados: si otro ya tomó uno de estos nombres, la llamada puede lanzar.
@@ -81,13 +82,9 @@ export default class LMathPlugin extends Plugin implements PluginConAjustes {
     await this.cargarAjustes();
     new Notice(t().aviso.cargado);
 
-    // Aviso del renombrado de los bloques, EN CADA CARGA (TEMPORAL, se va con la herramienta de
-    // migración). Fue una sola vez por instalación hasta que se vio el problema de esa cuenta:
-    // el arranque es justo el momento en que hay tres avisos apilados, así que el único que
-    // había se gastaba sin que nadie lo leyera y no volvía nunca. Mientras la migración siga
-    // pendiente, repetirlo es lo que hace que la gente acabe enterándose; la fila permanente de
-    // los ajustes sigue estando para quien lo cierre igual.
-    new Notice(`${tm().avisoTitulo}\n${tm().avisoCuerpo}`, 15000);
+    // Aquí hubo un aviso del renombrado en cada carga, mientras duró la transición a `_*`. Se
+    // retiró con ella: la 2.0.0 es la versión que la 1.5.0 anunció, ya no registra los nombres
+    // viejos, y no queda transición de la que avisar.
     this.addSettingTab(new PestanaAjustesLMath(this.app, this));
 
     // Fuente Lora para el texto de la interfaz del plugin (se aplica en styles.css,

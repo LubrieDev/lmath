@@ -17,6 +17,38 @@
 //   • Los números pasan por `numeroALatex`, que devuelve π donde toca y quita el ruido del
 //     último dígito de los cálculos numéricos.
 //
+// ── La PROCEDENCIA de cada número, decidida una a una ────────────────────────────────────
+// `numeroALatex` y compañía piden un `Origen` porque «cuántas cifras son de fiar» no es una
+// propiedad del formato sino de cómo se obtuvo el número (ver la cabecera de `formatoNumero`).
+// El valor por defecto es `"medido"` —la política conservadora— y aquí está escrito, sitio por
+// sitio, cuál es la excepción y por qué. La lista se hizo recorriendo los ~38 sitios de este
+// archivo; si se añade un número nuevo, la pregunta que hay que contestar es esta.
+//
+// **EVALUADOS** (6 cifras significativas, tolerancia de forma cerrada 1e-12):
+//
+//   intersección con el eje Y     `f(0)`: se evalúa, no se estima.
+//   pendiente en el origen        `df(0)`, y `df` es la derivada SIMBÓLICA ya compilada.
+//   límites de la integral        lo que escribió el usuario, por `evaluarLimite`.
+//   singularidades de la impropia son esos mismos límites (`[lo,hi].filter(...)`).
+//   intervalo del parámetro       el dominio del objeto, `[0, 2π]` salvo que se declare otro.
+//   rango de análisis             las constantes de `RANGO`. Sin efecto visible: son enteros.
+//
+// **MEDIDOS** — y esto no es el descarte, es la mitad interesante de la clasificación. Cada
+// uno de estos números trae error de su método y enseñarle seis cifras sería enseñar ruido:
+//
+//   raíces                        bisección.
+//   vértices, críticos            ajuste parabólico.
+//   inflexiones                   extremos de f′, o sea otro ajuste.
+//   puntos no derivables          salto lateral medido a dos distancias.
+//   tramos de monotonía           delimitados por los críticos de arriba.
+//   valor de la integral, áreas   cuadratura.
+//   cruces de signo, promedio     derivados de esa cuadratura.
+//   longitud de arco              cuadratura sobre la polilínea.
+//   periodo, desfase              ajuste de armónicos sobre un muestreo.
+//   rMin/rMax, θ de esos extremos búsqueda sobre muestreo.
+//   ángulos de paso por el polo   ceros de r(θ) hallados numéricamente.
+//   caja envolvente (xMin…yMax)   extremos del muestreo.
+//
 // Y una línea NO es texto plano: es prosa con la matemática marcada entre `$…$`, que
 // `pintarLineaPanel` compone con KaTeX. Los valores que se interpolan son LaTeX y los
 // delimitadores los pone cada mensaje traducido, porque solo el texto sabe hasta dónde llega
@@ -27,7 +59,7 @@ import { t } from "../../i18n";
 import {
   estadoGrupo, raicesALatex, type Vertice, type IntervaloRaiz,
 } from "../../analisis";
-import { cuerpoAreaLatexExacto } from "../../integral";
+import { cuerpoAreaLatexExacto } from "./areaIntegral";
 import {
   numeroALatex, puntoALatex, intervaloALatex, listaALatex,
 } from "../../core/analysis/formatoNumero";
@@ -35,10 +67,10 @@ import type { AnalisisPolar, PatronPolar } from "../../core/analysis/analisisPol
 import type { AnalisisParametrico, FamiliaParametrica } from "../../core/analysis/analisisParametrico";
 import type { AnalisisDerivada, TipoCritico } from "../../core/analysis/analisisDerivada";
 import type { AnalisisIntegral } from "../../core/analysis/analisisIntegral";
-import type { NotablesImplicita } from "../../math/notablesImplicita";
-import type { ResultadoBloque, Solucion } from "../../math/resolverSistema";
-import { DOMINIO_X } from "../../math/numerico";
-import { aLatexE } from "../../math/simbolico/valorExacto";
+import type { NotablesImplicita } from "../../CAS/api-legado";
+import type { ResultadoBloque, Solucion } from "../../CAS/api-legado";
+import { DOMINIO_X } from "../../CAS/api-legado";
+import { aLatexE } from "../../CAS/api-legado";
 import { infinitasPorPeriodicidad } from "../info/infinitasPeriodicas";
 
 /**
@@ -69,13 +101,16 @@ export function lineasResumen(
   const T = t().resumen;
   const lineas: string[] = [];
   if (identicamenteCero) {
-    lineas.push(T.interseccionY(puntoALatex(0, 0)));
+    lineas.push(T.interseccionY(puntoALatex(0, 0, "evaluado")));
     lineas.push(T.identicamenteCero);
     return lineas;
   }
 
+  // `"evaluado"`: la intersección con el eje Y no se estima, es `f(0)` calculada. Las raíces y
+  // los vértices de más abajo se quedan en `"medido"` —bisección y ajuste parabólico— y con ellos
+  // los 4 decimales de siempre, porque ahí la quinta cifra sería ruido del método y no del número.
   lineas.push(Number.isFinite(interseccionY)
-    ? T.interseccionY(puntoALatex(0, interseccionY))
+    ? T.interseccionY(puntoALatex(0, interseccionY, "evaluado"))
     : T.interseccionYNoDefinida);
 
   // Un TRAMO de raíces (x∈[0,1) de ⌊x⌋) cuenta como UN elemento del grupo, no como sus
@@ -313,7 +348,7 @@ export function lineasParametricas(a: AnalisisParametrico): string[] {
 
   // Intervalo, cierre y periodo en una sola línea: son la misma pregunta —cuánta curva
   // hay y cuándo se repite— y por separado gastan tres de las siete que caben.
-  const trozos = [T.intervalo(numeroALatex(a.tMin), numeroALatex(a.tMax))];
+  const trozos = [T.intervalo(numeroALatex(a.tMin, "evaluado"), numeroALatex(a.tMax, "evaluado"))];
   if (a.cerrada) trozos.push(T.cerrada);
   if (a.periodo !== null) {
     trozos.push(a.periodoExcedeDominio
@@ -375,7 +410,7 @@ export function lineasDerivada(
   const push = (texto: string, sangrado?: boolean) => lineas.push({ texto, sangrado });
 
   if (A.pendienteEn0 !== null)
-    push(T.pendienteEn0(numeroALatex(A.pendienteEn0)));
+    push(T.pendienteEn0(numeroALatex(A.pendienteEn0, "evaluado")));
 
   const nombreTipo = (tipo: TipoCritico): string => T.tipo[tipo];
   const estCriticos = estadoGrupo(A.criticos.length, esTrig);
@@ -421,7 +456,7 @@ export function lineasDerivada(
   }
 
   if (A.acotadoPorRango)
-    push(T.rangoAnalisis(numeroALatex(A.rango[0]), numeroALatex(A.rango[1])));
+    push(T.rangoAnalisis(numeroALatex(A.rango[0], "evaluado"), numeroALatex(A.rango[1], "evaluado")));
 
   return lineas;
 }
@@ -455,7 +490,7 @@ export function lineasIntegral(
   // converge —el valor de una impropia es aproximado, y quien lo lee merece saberlo—.
   const cabecera = [T.titulo];
   if (A.impropia && A.singularidades.length > 0)
-    cabecera.push(T.impropia(variable, listaALatex(A.singularidades)));
+    cabecera.push(T.impropia(variable, listaALatex(A.singularidades, "evaluado")));
   lineas.push(cabecera.join(" · "));
 
   // Intervalo NULO (a = b): la integral es 0 por definición y no hay región, ni signo, ni
@@ -466,7 +501,8 @@ export function lineasIntegral(
   }
 
   lineas.push(T.intervalo(
-    numeroALatex(Math.min(A.a, A.b)), numeroALatex(Math.max(A.a, A.b)), variable));
+    numeroALatex(Math.min(A.a, A.b), "evaluado"),
+    numeroALatex(Math.max(A.a, A.b), "evaluado"), variable));
   // Límites al revés: el intervalo se enseña ordenado (es la región que se ve sombreada),
   // así que hay que decir que el número lleva el signo cambiado respecto a esa región.
   if (A.invertido) lineas.push(T.limitesInvertidos);

@@ -124,6 +124,38 @@
   border-left: 0;
 }
 
+/* MODO FÓRMULA (solo en bloque estrecho): el bloque enseña la fórmula EN VEZ DEL PLANO, no
+   encima de él. El panel ya cubre la caja entera; esto apaga lo que hay debajo para que ni un
+   chip asome, ni pueda pulsarse a través, ni lo lea un lector de pantalla como si estuviera ahí.
+
+   `visibility` y no `display`: apagar el lienzo con `display:none` lo dejaría en 0×0, el
+   ResizeObserver lo remediría y la cámara recalcularía su encuadre por el aspecto — volver al
+   plano devolvería OTRA vista. Con `visibility` la caja no se mueve, así que ir y venir entre
+   los dos modos conserva el zoom y el encuadre exactos.
+
+   Es una regla y no una lista de elementos escondidos a mano desde el código: un chip que se
+   añada mañana nace apagado, en vez de aparecer flotando sobre la fórmula. Lo que quiera
+   sobrevivir tiene que decirlo (`lmath-sobre-panel`), que hoy son dos: el botón que devuelve al
+   plano y el ✎ que lleva al código. */
+.lmath-grafica.lmath-modo-formula > * {
+  visibility: hidden;
+}
+
+.lmath-grafica.lmath-modo-formula > .lmath-sobre-panel {
+  visibility: visible;
+}
+
+/* Y la franja de controles de `obs-trig`, que vive DENTRO del plano en estrecho pero no es
+   contenido suyo: es el mando del bloque (las tres casillas, la lectura de θ y el
+   deslizador). Sigue a la vista con la fórmula delante, igual que los chips marcados arriba.
+
+   Va como regla propia y no añadiéndole `lmath-sobre-panel` porque no está SOBRE el panel: está
+   debajo, en la franja que el panel deja libre al respetar `huecoInferior`. Compartir la clase
+   habría hecho que el nombre dejara de describir a sus dos usuarios. */
+.lmath-grafica.lmath-modo-formula > .lmath-trig-controles-pie {
+  visibility: visible;
+}
+
 /* Bloque SIN PLANO (un obs-vector que solo escribe: campos, notación suelta): el panel es el
    bloque entero y su alto lo pone el número de tarjetas, así que el mínimo de 261 sobra —con
    una sola tarjeta dejaría una franja vacía por debajo—. El `min-height` es lo único que se
@@ -332,7 +364,10 @@
   height: var(--lmath-slider-alto);
   flex: 0 0 auto;
   /* El dedo sobre el deslizador lo mueve; sin esto el navegador se queda el gesto para
-     desplazar la nota y el mando no responde en el móvil, que es donde más falta hace. */
+     desplazar la nota y el mando no responde en el móvil, que es donde más falta hace.
+     Esta es solo la MITAD del remedio: los gestos propios de Obsidian (deslizar para abrir
+     la barra lateral) son código suyo y no los gobierna `touch-action`, así que el evento se
+     detiene además en la raíz del deslizador. Ver la nota larga en `ui/deslizador.ts`. */
   touch-action: none;
   cursor: pointer;
   user-select: none;

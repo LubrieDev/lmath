@@ -13,8 +13,11 @@ import { fr } from "./comun";
 import { crearViewport } from "../../src/core/scene/viewport-utils";
 import { derivadaLatex, derivarExpr } from "../../src/derivar";
 import {
-  extraerIntegral, evaluarLimite, integralOperadorLatex, integralValorLatex, integralPrimitivaLatex, evaluarArea, cuerpoAreaLatex, cuerpoAreaLatexExacto, etiquetaIntegral,
+  extraerIntegral, evaluarLimite, integralOperadorLatex, integralValorLatex, integralPrimitivaLatex,
 } from "../../src/integral";
+import {
+  evaluarArea, cuerpoAreaLatex, cuerpoAreaLatexExacto, etiquetaIntegral,
+} from "../../src/host-obsidian/analysis/areaIntegral";
 import { integrarExpr } from "../../src/integrar";
 import {
   areaDefinida, recortarRegion, ETIQUETA_DIVERGENTE, ETIQUETA_FUERA_DOMINIO, ETIQUETA_LIMITES,

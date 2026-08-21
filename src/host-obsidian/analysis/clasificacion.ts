@@ -13,10 +13,10 @@
 // que cambia es de dónde vienen esos tres booleanos.
 
 import { t } from "../../i18n";
-import { normalizarEntrada, contieneYLibre, comandosNoSoportados } from "../../parser";
-import { compilarFuncion } from "../../evaluador";
-import { clasificarDegenerada, type FuncionDegenerada } from "../../degeneradas";
-import { etiquetaIntegral } from "../../integral";
+import { normalizarEntrada, contieneYLibre, comandosNoSoportados } from "../../CAS/api-legado";
+import { compilarFuncion } from "../../CAS/api-legado";
+import { clasificarDegenerada, type FuncionDegenerada } from "../../CAS/api-legado";
+import { etiquetaIntegral } from "./areaIntegral";
 import { construirObjeto } from "../../core/parsing/construirObjeto";
 import { insertarProductoImplicito } from "../../core/parsing/productoImplicito";
 import { funcionDelParametro, renombrarParametroAX } from "../../core/parsing/componentesParametricas";

@@ -16,8 +16,8 @@
 //     `-y`, exactamente igual que si estuvieran dentro de un obs-graph de la misma nota. Un
 //     bloque que compusiera su propia tipografía sería un bloque que se ve distinto.
 
-import { exprALatex, ecuacionALatex } from "../latex";
-import { comandosNoSoportados } from "../parser";
+import { exprALatex, ecuacionALatex } from "../CAS/api-legado";
+import { comandosNoSoportados } from "../CAS/api-legado";
 import type { BloqueVector, Entrada, Par } from "./bloqueVector";
 
 /** Marcador de "aquí no hay nada escrito", el mismo que usa el panel de obs-graph. */

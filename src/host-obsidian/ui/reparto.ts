@@ -10,18 +10,19 @@
 /** Estado del reparto y utilidades que lo aplican. Lo posee `process`. */
 
 // ── REPARTO del bloque: quién ocupa qué ────────────────────────────────────────────
-// Dos formas de repartir el sitio entre la fórmula y el plano, elegidas por el ANCHO DEL
-// CONTENEDOR y por nada más:
+// Dos formas de repartir el sitio entre la fórmula y el plano:
 //
 //   • COLUMNAS (ancho): la fórmula a la izquierda y el plano a la derecha, como siempre.
-//   • FLOTANTE (estrecho): el bloque ES el plano, y el panel de la fórmula pasa a una
-//     tarjeta superpuesta sobre él, que se abre y se cierra con el botón f(x).
+//   • ESTRECHO: el bloque no da para las dos cosas a la vez, así que enseña UNA. Con
+//     `panelCompleto` son dos MODOS (el plano, o la fórmula ocupando el bloque entero) y el
+//     botón de la esquina cambia de uno a otro; sin él, la fórmula es una tarjeta que se
+//     posa sobre el plano.
 //
-// El criterio es el ANCHO y NO el dispositivo, a propósito: el mismo teléfono en
-// horizontal da ~700px y ahí el reparto en columnas se ve igual de bien que en el
-// escritorio, mientras que un panel lateral estrecho en el escritorio sufre exactamente
-// lo mismo que un teléfono en vertical. Lo que sí depende del dispositivo (crosshair,
-// carril, cruz del cursor) va por otro camino: `plataforma.ts`.
+// Se entra en estrecho por DOS caminos independientes: que el contenedor no llegue a
+// `ANCHO_MINIMO_COLUMNAS` —un panel lateral del escritorio sufre lo mismo que un teléfono—, o
+// que sea un MÓVIL EN VERTICAL aunque pase del umbral (`esMovilVertical`, con el porqué). Lo
+// que NO entra por aquí es lo que depende de cómo se señala (crosshair, carril, cruz del
+// cursor): eso va por `plataforma.ts` y vale en cualquier orientación.
 //
 // El panel NO cambia de padre al cruzar el umbral: sigue siendo hermano del plano y solo
 // cambia su CAJA (de `width:50%` en el flujo a `position:absolute` fuera de él). Al salir
@@ -101,12 +102,19 @@ export function altoPanelPorTarjetas(n: number): number {
 }
 
 /**
- * Ancho de contenedor por debajo del cual se pasa al reparto FLOTANTE.
+ * Ancho de contenedor por debajo del cual se pasa al reparto ESTRECHO.
  *
  * No es un número redondo cualquiera: en columnas el plano se lleva ⅔ del bloque (el panel
  * pide 50% y el plano 100%), así que para que el plano no salga MÁS ALTO QUE ANCHO hace
  * falta ⅔·W ≥ 261 → W ≥ 392. Con 520 el plano nunca baja de 4:3, que es la forma mínima
  * en la que una gráfica se lee como una gráfica.
+ *
+ * Ojo con lo que este número NO dice. Está calibrado sobre la forma del PLANO, así que solo
+ * responde «¿la gráfica sigue pareciendo una gráfica?». Un móvil en vertical con 560px de
+ * contenedor la pasa —y deja la fórmula en una tira de 200px donde no cabe una integral—, y por
+ * eso la orientación es un segundo disparador y no un ajuste de este número: subirlo hasta
+ * cubrir ese teléfono se llevaría por delante paneles laterales del escritorio que hoy se ven
+ * perfectamente en columnas.
  */
 export const ANCHO_MINIMO_COLUMNAS = 520;
 
@@ -184,6 +192,47 @@ export interface Reparto {
    * así que su alto depende de cuántas haya (`altoPanelPorTarjetas`).
    */
   alto?: number;
+  /**
+   * En estrecho, ¿el panel ocupa el BLOQUE ENTERO en vez de ser una tarjeta flotante?
+   *
+   * Con él, el bloque estrecho tiene DOS MODOS excluyentes —el plano o la fórmula—, y el botón
+   * de la esquina cambia de uno a otro. Sin él, el de siempre: una tarjeta de 180px posada
+   * sobre un plano que se sigue viendo alrededor.
+   *
+   * Es un modo y no un ajuste: lo fija el bloque al construirse y no cambia en toda su vida. Lo
+   * piden `obs-graph` y familia, `obs-vector` y —desde que el panel respeta `huecoInferior`—
+   * también `obs-trig`, cuyos controles al pie del plano se quedan a la vista en los dos modos.
+   */
+  panelCompleto?: boolean;
+  /**
+   * Quién quiere enterarse de que el reparto ha CAMBIADO. Lo llena `alCambiarReparto` y lo
+   * recorre `avisarCambioDeReparto`; vive en el propio reparto, y no en una lista suelta del
+   * bloque, porque quien se apunta (el panel) se construye antes que quien avisa (el plano) y el
+   * reparto es lo único que los dos tienen ya en la mano cuando se conocen.
+   */
+  oyentes?: Array<() => void>;
+}
+
+/**
+ * Apunta a alguien a los cambios de reparto. Lo usa el panel de vistas para retirar la vista
+ * COMBINADA cuando el bloque se estrecha: esa decisión depende del ANCHO, que en el momento de
+ * construir el panel todavía no se ha medido, y que cambia sola al girar el teléfono.
+ *
+ * Sin baja: los oyentes viven exactamente lo que el reparto, que es un objeto del bloque y se va
+ * con él. Un `off` aquí solo daría a los bloques una obligación más que cumplir para nada.
+ */
+export function alCambiarReparto(reparto: Reparto, oyente: () => void): void {
+  (reparto.oyentes ??= []).push(oyente);
+}
+
+/**
+ * Avisa a los oyentes. La llaman los bloques con panel de fórmula desde su `aplicarReparto`, y
+ * DESPUÉS de escribir la caja del panel: quien reacciona quiere leer el reparto ya vigente, no
+ * uno a medio aplicar. `obs-trig` no la llama porque su panel es de control, no de vistas, y
+ * nadie se apunta.
+ */
+export function avisarCambioDeReparto(reparto: Reparto): void {
+  for (const oyente of reparto.oyentes ?? []) oyente();
 }
 
 /**
@@ -199,20 +248,58 @@ export interface Reparto {
 export function aplicarCajaPanel(reparto: Reparto): void {
   const panel = reparto.panel;
   if (!panel) return;
+
+  // OJO, y es la trampa de esta función: el panel lleva la clase `.lmath-latex`, y la hoja de
+  // estilos le fija `width:50%` (es su reparto en columnas, que es el caso normal). Un estilo
+  // en línea solo pisa las propiedades que ESCRIBE, así que toda rama de aquí abajo tiene que
+  // declarar SU ancho y SU alto aunque «no los necesite»: callarlos no los deja libres, los
+  // deja en el 50% de la hoja. Un panel a pantalla completa sin `width:auto` sale absoluto, de
+  // alto completo y de media anchura —y encima con el `right:0` descartado por sobrerrestricción—.
+  // Es el fallo que tuvo el modo fórmula al nacer.
+
+  // COLUMNAS: la mitad izquierda del flujo, la de siempre.
+  if (!reparto.estrecho) {
+    panel.style.cssText =
+      "position:relative; width:50%; " +
+      `height:${reparto.alto ?? ALTO_PANEL}px; padding:0; overflow:hidden;`;
+    return;
+  }
+
+  const visible = reparto.abierto ? "flex" : "none";
+
+  // MODO FÓRMULA: el panel ES el bloque. Ni margen, ni borde, ni sombra: no es una tarjeta
+  // posada encima de nada, es la otra cara del bloque, y el marco que se ve alrededor es el del
+  // propio bloque (`.lmath-container`, que además lo recorta con su radio y su `overflow`).
+  //
+  // Sin `inset:0` a medias: ocupa la caja entera, así que el plano de debajo no asoma por
+  // ningún borde y no hay que decidir qué trozo de gráfica se ve detrás de la fórmula.
+  if (reparto.panelCompleto) {
+    // El suelo lo pone `huecoInferior`, que vale 0 en todos los bloques menos en `obs-trig`.
+    // Ahí el plano cede su franja de pie a los controles —las tres casillas, la lectura de θ y
+    // el deslizador—, y esos NO son parte de la cara que se cambia: siguen a la vista en los
+    // dos modos, porque son el mando del bloque y no su contenido. Así que el panel ocupa el
+    // rectángulo del PLANO, no el del bloque.
+    const suelo = reparto.huecoInferior ?? 0;
+    panel.style.cssText =
+      `position:absolute; top:0; left:0; right:0; bottom:${suelo}px; ` +
+      "width:auto; height:auto; z-index:6; box-sizing:border-box; " +
+      `display:${visible}; padding:0; overflow:hidden; background:var(--lmath-panel);`;
+    return;
+  }
+
+  // TARJETA FLOTANTE: el panel se posa sobre un plano que se sigue viendo alrededor.
   // `huecoInferior` lo usa solo obs-trig, que en estrecho saca sus controles del panel y los
   // deja en una franja al pie del plano: sin este margen, la tarjeta flotante caería encima del
   // deslizador. Vale 0 en los demás bloques, así que su caja no se mueve un píxel.
   const suelo = huecoChips(reparto.ladoChip) + (reparto.huecoInferior ?? 0);
-  panel.style.cssText = reparto.estrecho
-    ? "position:absolute; z-index:6; box-sizing:border-box; " +
-      `display:${reparto.abierto ? "flex" : "none"}; ` +
-      `left:${MARGEN_FLOTANTE}px; right:${MARGEN_FLOTANTE}px; ` +
-      `bottom:${suelo}px; width:auto; height:${ALTO_PANEL_FLOTANTE}px; ` +
-      "padding:0; overflow:hidden; background:var(--lmath-panel); " +
-      "border:1px solid var(--lmath-borde); border-radius:12px; " +
-      "box-shadow:var(--lmath-sombra-flotante);"
-    : "position:relative; width:50%; " +
-      `height:${reparto.alto ?? ALTO_PANEL}px; padding:0; overflow:hidden;`;
+  panel.style.cssText =
+    "position:absolute; z-index:6; box-sizing:border-box; " +
+    `display:${visible}; ` +
+    `left:${MARGEN_FLOTANTE}px; right:${MARGEN_FLOTANTE}px; ` +
+    `bottom:${suelo}px; width:auto; height:${ALTO_PANEL_FLOTANTE}px; ` +
+    "padding:0; overflow:hidden; background:var(--lmath-panel); " +
+    "border:1px solid var(--lmath-borde); border-radius:12px; " +
+    "box-shadow:var(--lmath-sombra-flotante);";
 }
 
 // Iconos del plano (Material Symbols de Google, viewBox 0 -960 960 960). Se pintan como

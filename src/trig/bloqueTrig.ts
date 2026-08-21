@@ -18,9 +18,9 @@
 // RADIANES y el `°` es explícito (el normalizador ya lo convierte a `*(pi/180)`). Así `sin(30)`
 // significa lo mismo dentro de un obs-trig que dentro de un obs-graph de la misma nota.
 
-import { normalizarEntrada } from "../parser";
+import { normalizarEntrada } from "../CAS/api-legado";
 import { insertarProductoImplicito } from "../core/parsing/productoImplicito";
-import { compilarExpresion, evaluarConstante } from "../evaluador";
+import { compilarExpresion, evaluarConstante } from "../CAS/api-legado";
 import { aRadianes } from "./modeloTrig";
 import { fuenteSimbolica } from "./exactosTrig";
 // Solo el TIPO, que TypeScript borra al compilar: no crea dependencia en tiempo de ejecución del

@@ -4,11 +4,11 @@ import {
   Plugin,
   type MarkdownPostProcessorContext,
 } from "obsidian";
-import { parse, simplify } from "mathjs";
+import { simplify } from "mathjs";
 
-import { normalizarEntrada } from "../../parser";
-import { compilarFuncion } from "../../evaluador";
-import { limpiarTex, OPCIONES_TEX } from "../../latex";
+import { normalizarEntrada } from "../../CAS/api-legado";
+import { compilarFuncion } from "../../CAS/api-legado";
+import { exprALatex } from "../../CAS/api-legado";
 import {
   analizarFuncion,
   tieneTrigonometria,
@@ -16,7 +16,7 @@ import {
   construirPuntosNotables,
   type Vertice,
 } from "../../analisis";
-import { clasificarDegenerada, type FuncionDegenerada } from "../../degeneradas";
+import { clasificarDegenerada, type FuncionDegenerada } from "../../CAS/api-legado";
 import { crearPrograma, construirQuadStrip } from "../../webgl";
 import { muestrearFuncion } from "../../render/muestreoExplicito";
 
@@ -48,16 +48,18 @@ export class GraphEngine {
           // Renderizar LaTeX
           let latex = "f(x)=" + expr;
           try {
-            // "auto": mathjs pone sólo los paréntesis necesarios. Con "keep"
-            // conservaba los redundantes y x^{3^{\pi}} salía como
-            // x^{\left(3^{\left(\pi\right)}\right)} en vez de x^{3^{\pi}}.
-            // El handler aplica además la política tipográfica de funciones
-            // (\sin x sin paréntesis, \sin(x+1) con ellos): ver OPCIONES_TEX.
-            const tex = limpiarTex(parse(expr).toTex(OPCIONES_TEX));
-            // Con el bloque vacío, parse("") de mathjs devuelve el nodo "undefined"
-            // (toTex → "undefined"), que KaTeX pintaría como u·n·d·e·f… en cursiva.
-            // Lo mostramos como marcador de "sin función": \text{[...]}.
-            latex = "f(x)=" + (tex === "undefined" ? "\\text{[...]}" : tex);
+            // El impresor COMÚN, el mismo que usan los paneles del motor vivo. Antes esto
+            // llamaba a `parse(...).toTex(...)` por su cuenta, y era el único sitio del plugin
+            // con un SEGUNDO camino de impresión: un cambio en la tipografía se aplicaba en un
+            // motor y no en el otro sin que nada lo avisara.
+            //
+            // Medido sobre el corpus de expresiones: 48 de 49 casos ya salían idénticos por los
+            // dos caminos. El único que no era la fusión de radicales que el motor vivo ya hace,
+            // así que unificar acerca este panel al de al lado en vez de separarlo.
+            //
+            // `exprALatex` ya devuelve el marcador de "sin función" con la entrada vacía, así
+            // que el caso del bloque a medio escribir deja de necesitar su comprobación aparte.
+            latex = "f(x)=" + exprALatex(exprRaw);
           } catch (e) {
             console.warn("LMath: no se pudo generar LaTeX para", expr, e);
           }

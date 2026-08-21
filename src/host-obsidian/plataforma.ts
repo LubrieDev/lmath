@@ -35,3 +35,26 @@ import { Platform } from "obsidian";
 export function esTactil(): boolean {
   return Platform.isMobile;
 }
+
+/**
+ * ¿Es un móvil EN VERTICAL? Entonces el bloque va a dos modos (plano o fórmula) aunque el
+ * contenedor sea ancho.
+ *
+ * Esto es una CORRECCIÓN al criterio de solo-ancho, y conviene decir por qué. El umbral de 520
+ * px se calibró sobre la forma del PLANO: por debajo, en columnas, la gráfica bajaría de 4:3 y
+ * dejaría de leerse como una gráfica. Es un buen criterio para el plano y resulta ser uno malo
+ * para el TELÉFONO: hay móviles que en vertical dan más de 520 px de contenedor y ahí el reparto
+ * en columnas pasaba la comprobación —el plano cumple su 4:3— mientras la fórmula se quedaba en
+ * una tira de 200 px que no cabe ni una integral. Medir solo el ancho no distingue «hay sitio de
+ * sobra» de «hay sitio justo para una cosa, no para dos».
+ *
+ * En HORIZONTAL no se toca nada, y eso sigue siendo deliberado: el mismo teléfono girado da
+ * ~700 px y ahí el reparto de escritorio se ve bien; está verificado con una captura y pedido
+ * explícitamente. Por eso la condición lleva la orientación y no solo el dispositivo.
+ *
+ * `matchMedia` y no comparar `innerWidth`/`innerHeight`: es la orientación que declara el
+ * sistema, no una deducción a partir de dos números que el teclado en pantalla puede alterar.
+ */
+export function esMovilVertical(): boolean {
+  return Platform.isMobile && window.matchMedia("(orientation: portrait)").matches;
+}

@@ -220,8 +220,13 @@ export class Escena {
       // La `y` se resuelve AQUÍ y se le entrega ya calculada: en modo carril viene dada (la
       // misma que centró la cámara), y en modo libre sale de `yEnCurva`, que es quien sabe si
       // esta curva se evalúa o se interpola. El crosshair recibe un número y lo dibuja.
-      const y = yMundo !== undefined ? yMundo : this.yEnCurva(aMundoX(viewport, cursorPx));
-      this.crosshair.dibujar(viewport, cursorPx, this.items[this.seleccion], anclado, y);
+      // En modo carril la `y` viene dada y es la misma que centró la cámara: sale del mismo
+      // `lecturaEnCurva`, así que su procedencia es la de esta curva.
+      const lectura = this.lecturaEnCurva(aMundoX(viewport, cursorPx));
+      const y = yMundo !== undefined ? yMundo : lectura.y;
+      this.crosshair.dibujar(
+        viewport, cursorPx, this.items[this.seleccion], anclado, y, lectura.evaluada
+      );
     }
     // Cruz propia del cursor, en la posición REAL del ratón (encima de todo).
     // Independiente del crosshair: en modo carril el crosshair va en railX pero la
@@ -263,10 +268,24 @@ export class Escena {
    * de dónde viene la matemática.
    */
   yEnCurva(worldX: number): number | null {
+    return this.lecturaEnCurva(worldX).y;
+  }
+
+  /**
+   * Lo mismo que `yEnCurva`, pero diciendo además **de dónde salió el número**.
+   *
+   * Lo necesita quien vaya a ESCRIBIRLO: una `y` evaluada trae todas sus cifras buenas y se
+   * imprime con precisión de lectura; una interpolada entre dos vértices de la polilínea trae
+   * el error del trazado, y enseñarle seis cifras significativas sería enseñar cuatro cifras de
+   * ruido —además de hacerlas bailar con el zoom, porque la densidad de vértices depende del
+   * encuadre—. La precisión que se puede mostrar no es una decisión del renderer: es una
+   * propiedad de cómo se obtuvo el número, y el único sitio que lo sabe es este.
+   */
+  lecturaEnCurva(worldX: number): { y: number | null; evaluada: boolean } {
     const objeto = this.objetos[this.seleccion];
-    if (objeto?.lectorY) return objeto.lectorY(worldX);
+    if (objeto?.lectorY) return { y: objeto.lectorY(worldX), evaluada: true };
     const it = this.items[this.seleccion];
-    return it ? yEnRamas(it.geometria.ramas, worldX) : null;
+    return { y: it ? yEnRamas(it.geometria.ramas, worldX) : null, evaluada: false };
   }
 
   /** Ramas de la curva seleccionada listas para el carril. Con `recortar` (curvas con asíntota

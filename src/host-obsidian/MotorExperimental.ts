@@ -13,7 +13,6 @@
 
 import {
   MarkdownRenderChild,
-  MarkdownView,
   type MarkdownPostProcessorContext,
 } from "obsidian";
 
@@ -24,8 +23,8 @@ import { dividirEcuaciones } from "../core/parsing/dividirEcuaciones";
 import { separarParametros, sustituirParametros } from "../core/parsing/parametros";
 import { aPantallaX } from "../core/scene/viewport-utils";
 import { FACTOR_SONDEO } from "../core/scene/autoencuadre";
-import { extraerFuncion, derivarEcuacion } from "../derivar";
-import { extraerIntegral, evaluarLimite } from "../integral";
+import { extraerFuncion, derivarEcuacion } from "../CAS/api-legado";
+import { extraerIntegral, evaluarLimite } from "../CAS/api-legado";
 import {
   AJUSTES_POR_DEFECTO, type AjustesTransformaciones, type PluginConAjustes,
 } from "./ajustes";
@@ -36,9 +35,14 @@ import {
   clasificarBloque, degeneradaDeEcuacion, exprExplicita,
 } from "./analysis/clasificacion";
 import {
-  ALTO_PANEL, ANCHO_MINIMO_COLUMNAS, PROPORCION_PLANO_FLOTANTE, MARGEN_FLOTANTE, ladoChip,
-  ladoIcono, aplicarCajaPanel, esTemaOscuro, type Reparto,
+  ALTO_PANEL, ANCHO_MINIMO_COLUMNAS, PROPORCION_PLANO_FLOTANTE, ladoChip,
+  ladoIcono, aplicarCajaPanel, avisarCambioDeReparto, esTemaOscuro, type Reparto,
 } from "./ui/reparto";
+// El chip ✎ y el salto al código: cromo del plano que solo existe en táctil. Era un método
+// privado de esta clase, y por eso obs-trig y obs-vector nacieron sin él (ver `ui/edicionBloque`).
+import { montarChipEditar } from "./ui/edicionBloque";
+// El botón f(x) del reparto flotante, compartido con obs-vector.
+import { montarBotonFormula } from "./ui/botonFormula";
 import { montarPanelLatex, montarPanelDerivada, montarPanelIntegral } from "./ui/paneles";
 import { montarBotonInfo, montarBotonInfoDerivada, montarBotonInfoIntegral } from "./info/botones";
 import type { ExclusionPopover } from "./info/contratos";
@@ -52,8 +56,8 @@ export type { ModoBloque } from "./contexto";
 // Capa de INTERFAZ del adaptador (`./ui/`): cromo, controles y el panel de fórmula. Eran
 // métodos privados de esta clase y ninguno usaba `this` más que para llegar al plugin, así
 // que son funciones libres: se leen sin la clase delante y se reutilizan desde los bloques.
-import { ponerTooltip, montarIcono, montarEtiquetaMath } from "./ui/controles";
-import { esTactil } from "./plataforma";
+import { ponerTooltip, montarIcono } from "./ui/controles";
+import { esTactil, esMovilVertical } from "./plataforma";
 import { t, localizarVelo } from "../i18n";
 import { fijarTemaPlano } from "../core/rendering/paleta";
 
@@ -230,6 +234,9 @@ export class MotorExperimental implements Motor {
     // en cuanto hay una medida real del contenedor, más abajo.
     const reparto: Reparto = {
       estrecho: false, abierto: false, panel: null, ladoChip: ladoChip(tactil),
+      // En estrecho el bloque tiene DOS MODOS —el plano o la fórmula—, y el botón de la esquina
+      // cambia de uno a otro. Ver `Reparto.panelCompleto`.
+      panelCompleto: true,
     };
 
     // Mover un mando necesita la escena y la cámara, que se construyen mucho más abajo, así que
@@ -276,7 +283,10 @@ export class MotorExperimental implements Motor {
     const aplicarReparto = () => {
       const ancho = contenedor.clientWidth;
       if (ancho <= 0) return;            // aún sin layout: ya llegará el observador
-      const estrecho = ancho < ANCHO_MINIMO_COLUMNAS;
+      // Dos disparadores, no uno: el ancho (un panel lateral del escritorio también sufre) y el
+      // móvil en vertical, que puede pasar del umbral y aun así no tener sitio para dos cosas.
+      // Ver `esMovilVertical`.
+      const estrecho = ancho < ANCHO_MINIMO_COLUMNAS || esMovilVertical();
       // Con el reparto YA aplicado y el mismo ancho no hay nada que hacer. El ancho entra en
       // la comparación porque en flotante el ALTO del plano depende de él: cambiar de ancho
       // sin cruzar el umbral (girar entre dos tamaños estrechos) también obliga a recalcular.
@@ -289,6 +299,9 @@ export class MotorExperimental implements Motor {
       if (!estrecho) reparto.abierto = false;
       contenedor.toggleClass("lmath-estrecho", estrecho);
       aplicarCajaPanel(reparto);
+      // El panel de vistas escucha por aquí: la vista combinada (operador + resultado apilados)
+      // no cabe en la tarjeta flotante y se retira mientras el bloque esté estrecho.
+      avisarCambioDeReparto(reparto);
       sincronizarBotonFormula();
       wrap.style.height = estrecho
         ? `${Math.round(ancho * PROPORCION_PLANO_FLOTANTE)}px`
@@ -379,38 +392,51 @@ export class MotorExperimental implements Motor {
     // Botón ⓘ de obs-graph: resumen de puntos notables de la función (intersección
     // Y, raíces, vértices), con los estados "infinitas"/"demasiadas" del análisis.
     // Solo para una función explícita graficable (no en sistemas ni en degeneradas).
-    // Con PARÁMETROS no hay resumen ANALÍTICO. Ese panel se construye una vez con la expresión
-    // del momento —raíces, vértices, periodicidad—, y en cuanto un mando se mueve estaría
-    // describiendo una curva que ya no está en el plano. Devolver `null` aquí no deja al bloque
-    // sin ⓘ: lo pasa al resumen GEOMÉTRICO, que lee la geometría cacheada y se recalcula en cada
-    // pasada final, o sea que sigue vivo con el mando. Es mejor salida que callar, y por eso este
-    // caso no se resuelve como el de la restricción de dominio, donde sí hay que callar.
-    const exprGraph = parametros.length > 0 ? null : exprExplicita(graficadas, this.sistema);
-    // ¿Hay un chip en la esquina inferior derecha? Los tres ⓘ posibles (resumen de una
-    // explícita, resumen geométrico y soluciones del sistema) se excluyen entre sí y ocupan
-    // el mismo sitio; el botón f(x) se coloca A SU IZQUIERDA cuando existe alguno y en su
-    // lugar cuando no. Se anota al montarlos en vez de recalcular sus condiciones: una copia
-    // de esa lógica se desincronizaría en cuanto cambiara una de las tres.
-    let hayChipInfo = false;
-    if (exprGraph && !degenerada) {
+    // El resumen analítico YA NO se aparta cuando hay parámetros. Se apartaba porque se
+    // construía una vez y, al mover un mando, describía una curva que ya no estaba en el plano;
+    // ahora se rehace con la expresión viva en cada pasada final (ver `montarBotonInfo`). Aquel
+    // apaño tenía además un efecto que nadie quería: mandaba el bloque al resumen GEOMÉTRICO,
+    // que lee la curva con `notablesDeImplicita` —y esa exige una ecuación de DOS LADOS—. Una
+    // explícita como `(3x-1)/(x²-1) - Ax` no la tiene, así que el cuadro se quedaba en «hay
+    // puntos notables que el motor no ha podido determinar»: declarar un parámetro dejaba al
+    // bloque sin resumen.
+    const exprGraph = exprExplicita(graficadas, this.sistema);
+    /**
+     * La misma expresión, pero LEÍDA EN EL MOMENTO: con los parámetros sustituidos por lo que
+     * valen ahora. Es lo que hace que el cuadro siga al mando en vez de describir la curva con
+     * la que se abrió el bloque.
+     */
+    const exprGraphViva = (): string =>
+      exprExplicita([paraMotor(fuentesGrafico[0] ?? "")], this.sistema) ?? "";
+    // Los tres ⓘ posibles (resumen de una explícita, resumen geométrico y soluciones del
+    // sistema) se excluyen entre sí y ocupan el mismo sitio, la esquina inferior derecha.
+    // Los ⓘ de obs-derivate y obs-integral SÍ siguen cediendo el sitio cuando hay parámetros:
+    // esos dos no se rehacen (describen f y la operación, no la curva del plano), así que un
+    // mando los dejaría diciendo lo de antes. El de obs-graph ya no tiene ese problema.
+    const conParametros = parametros.length > 0;
+    const infoAnalitico = exprGraph !== null && !degenerada
+      && !(conParametros && (this.integral || this.derivada));
+    // Aviso a los cuadros ⓘ de que hay pasada final nueva: las soluciones del sistema pudieron
+    // cambiar, y el resumen de una explícita con parámetros describe otra curva. Lo rellena el
+    // ⓘ que se monte —cada uno devuelve el suyo—, y se declara aquí, antes que los tres, porque
+    // los tres pueden asignarlo.
+    let alRecalcularFinal: (() => void) | null = null;
+    if (infoAnalitico) {
       // obs-integral grafica el INTEGRANDO, así que sin este desvío el ⓘ describía a f como
       // una curva suelta —"corta el eje Y en 0", "raíces: 0", "sin vértices"— y no decía
       // nada de la integral, que es lo único que ese bloque afirma. Su panel propio habla
       // de la OPERACIÓN (intervalo, valor, qué mide ese número, valor medio).
       if (this.integral)
-        hayChipInfo = montarBotonInfoIntegral(
-          this, wrap, escrito, ctx, reparto.ladoChip, exclusion);
+        montarBotonInfoIntegral(this, wrap, escrito, ctx, reparto.ladoChip, exclusion);
       // obs-derivate grafica f′, así que el resumen heredado describía f′ como una curva
       // suelta. Los números eran los buenos con el nombre de otra función: sus raíces son
       // los puntos CRÍTICOS de f y sus vértices, las INFLEXIONES. Su panel propio habla de
       // f, que es de quien trata el bloque (ver `analisisDerivada`).
       else if (this.derivada && funcionEscrita)
-        hayChipInfo = montarBotonInfoDerivada(
+        montarBotonInfoDerivada(
           this, wrap, funcionEscrita, exprGraph, ctx, reparto.ladoChip, exclusion);
-      else {
-        montarBotonInfo(this, wrap, exprGraph, ctx, reparto.ladoChip, exclusion);
-        hayChipInfo = true;
-      }
+      else alRecalcularFinal = montarBotonInfo(
+        this, wrap, exprGraphViva, ctx, reparto.ladoChip, exclusion);
     }
 
 
@@ -470,9 +496,6 @@ export class MotorExperimental implements Motor {
       if (rafId === null) rafId = window.requestAnimationFrame(ejecutarFrame);
     };
     let timerFinal: number | null = null;
-    // Aviso al panel de solución (ⓘ, solo sistemas) de que hay pasada final nueva:
-    // las intersecciones pudieron cambiar. Se asigna al crear el panel, más abajo.
-    let alRecalcularFinal: (() => void) | null = null;
     const programarFinal = () => {      // al detenerse la cámara → pasada de máxima calidad
       if (timerFinal !== null) window.clearTimeout(timerFinal);
       timerFinal = window.setTimeout(() => {
@@ -661,9 +684,6 @@ export class MotorExperimental implements Motor {
     ponerTooltip(btnMenos, t().botones.alejar);
     btnMenos.style.cssText = estiloZoom(6 + 2 * escalonZoom);
     montarIcono(btnMenos, "alejar", iconoChip);
-    // Los tres se retiran juntos mientras el panel flotante está abierto: la tarjeta llega
-    // hasta arriba y quedarían debajo de ella. Ver `sincronizarBotonFormula`.
-    const columnaZoom = [btnInicio, btnMas, btnMenos];
     btnInicio.addEventListener("click", () => camara.volverAVistaBase());
     // Zoom por PULSACIÓN o por MANTENER: un toque hace UNA muesca; mantener pulsado la repite a
     // cadencia fija (zoomCentrado ya las acumula y suaviza → zoom continuo) hasta soltar. El
@@ -783,7 +803,6 @@ export class MotorExperimental implements Motor {
     // trazadas: ver la nota larga de `refrescarSolucion` en `info/plano.ts`, que es donde
     // está dicho de qué se sale y por qué. El refrescador vuelve en cada pasada final.
     if (this.sistema) {
-      hayChipInfo = true;
       // `ctx` y `limpieza` van porque las soluciones se pintan en KaTeX y el cuadro se
       // REPINTA: el componente del bloque es el que sostiene esos renders (ver
       // `pintarMathEnLinea`), en vez de uno nuevo por refresco.
@@ -797,8 +816,7 @@ export class MotorExperimental implements Motor {
     // resumen sale de la geometría cacheada o del análisis propio de la curva; el detalle
     // está en `montarInfoGeometrico` (`info/plano.ts`). La GUARDA se queda aquí porque es
     // lo que decide cuál de los dos ⓘ posibles se monta, y eso es cosa de este pipeline.
-    if (!this.sistema && !degenerada && graficadas.length > 0 && !exprGraph) {
-      hayChipInfo = true;
+    if (!this.sistema && !degenerada && graficadas.length > 0 && !infoAnalitico) {
       alRecalcularFinal = montarInfoGeometrico(
         this.plugin, wrap, lado, iconoChip, exclusion, graficadas, parametros,
         // Accesor, no valor: la ecuación se sustituye en cada refresco, no una vez al montar,
@@ -808,61 +826,9 @@ export class MotorExperimental implements Motor {
     }
 
     // ── Botón f(x): despliega la fórmula SOBRE el plano (solo en bloque estrecho) ──────
-    // En el reparto flotante el bloque es el plano, así que la fórmula necesita una puerta.
-    // Va abajo a la derecha, a la izquierda del ⓘ cuando lo hay: son los dos controles que
-    // ABREN algo, frente a los de arriba, que mueven la vista. Y como el ⓘ, se queda fuera
-    // del área que tapa el panel, para que su propio cierre nunca quede debajo.
-    //
-    // Sigue la regla de 1.2.9 del menú ☰: el botón muestra lo que hace AHORA —f(x) cuando
-    // abrirá, ✕ cuando cerrará—, con el tooltip y el resaltado a juego.
-    const btnFormula = wrap.createDiv();
-    // Se aparta del ⓘ cuando lo hay, en vez de llevar su posición escrita.
-    const derechaFormula = MARGEN_FLOTANTE + (hayChipInfo ? lado + MARGEN_FLOTANTE : 0);
-    const estiloBotonFormula = () => {
-      btnFormula.style.cssText =
-        `position:absolute; bottom:${MARGEN_FLOTANTE}px; right:${derechaFormula}px; ` +
-        `height:${lado}px; min-width:${lado}px; padding:0 8px; box-sizing:border-box; ` +
-        // El `display` va aquí y no en una llamada aparte: esta función escribe TODO el
-        // estilo del botón de una vez, y una visibilidad puesta desde fuera se perdería en
-        // el siguiente repintado del estado.
-        `display:${reparto.estrecho ? "flex" : "none"}; ` +
-        "align-items:center; justify-content:center; font-size:11px; line-height:1; " +
-        "border-radius:8px; cursor:pointer; user-select:none; z-index:7; " +
-        (reparto.abierto
-          ? "color:var(--lmath-texto); background:var(--lmath-chip-activo); " +
-            "border:1px solid var(--lmath-borde-activo);"
-          : "color:var(--lmath-texto-tenue); background:var(--lmath-chip); " +
-            "border:1px solid var(--lmath-borde);");
-    };
-    // El glifo solo se repinta cuando CAMBIA (`dataset`): la etiqueta matemática pasa por
-    // MarkdownRenderer, que no es gratis, y esto se llama en cada sincronización.
-    const pintarGlifoFormula = () => {
-      const nombre = reparto.abierto ? "cerrar" : "formula";
-      if (btnFormula.dataset.glifo === nombre) return;
-      btnFormula.dataset.glifo = nombre;
-      btnFormula.empty();
-      if (reparto.abierto) montarIcono(btnFormula, "cerrar", iconoChip);
-      else montarEtiquetaMath(this.plugin, btnFormula, "f(x)", ctx);
-      ponerTooltip(
-        btnFormula, reparto.abierto ? t().botones.cerrarFormula : t().botones.verFormula
-      );
-    };
-    // Lo crea el bloque de más abajo (solo en táctil); hasta entonces, null.
-    let btnEditar: HTMLElement | null = null;
-    sincronizarBotonFormula = () => {
-      estiloBotonFormula();
-      pintarGlifoFormula();
-      // El ✎ se retira con la fórmula abierta: quien ha desplegado el panel ya está en el
-      // flujo de la fórmula, así que el botón no lleva a ningún sitio nuevo y solo compite por
-      // la atención con lo que se ha venido a leer. Vuelve solo al cerrar.
-      btnEditar?.setCssStyles({ display: reparto.abierto ? "none" : "flex" });
-      // La tarjeta llega casi hasta arriba: con ella abierta, la columna de zoom quedaría
-      // por debajo. Se retira mientras dura la lectura y vuelve al cerrar. Es el precio de
-      // un panel grande, y el correcto: con la fórmula delante no se está navegando.
-      for (const b of columnaZoom) b.setCssStyles({ display: reparto.abierto ? "none" : "flex" });
-    };
-    sincronizarBotonFormula();
-
+    // El botón y sus dos estados viven en `ui/botonFormula`, compartidos con obs-vector; aquí
+    // queda lo que es de ESTE bloque: qué se cierra al abrir la fórmula y qué cromo se retira
+    // mientras está abierta.
     const alternarFormula = (abrir: boolean) => {
       if (reparto.abierto === abrir) return;
       reparto.abierto = abrir;
@@ -872,56 +838,19 @@ export class MotorExperimental implements Motor {
       aplicarCajaPanel(reparto);   // una sola función escribe caja Y visibilidad del panel
       sincronizarBotonFormula();
     };
+    // El botón lleva puesto el apagado del plano (la clase `lmath-modo-formula`), así que aquí
+    // no queda ninguna lista de chips que esconder a mano: los apaga la hoja de estilos.
+    sincronizarBotonFormula = montarBotonFormula(
+      this.plugin, wrap, ctx, reparto, () => alternarFormula(!reparto.abierto));
+    sincronizarBotonFormula();
     cerrarFormula = () => alternarFormula(false);
-    btnFormula.addEventListener("click", (e) => {
-      e.stopPropagation();
-      alternarFormula(!reparto.abierto);
-    });
-
-    // Tocar el PLANO cierra la fórmula. Pero solo un toque LIMPIO: un arrastre para
-    // desplazar la vista acaba emitiendo `click` igual que un toque, y cerrar el panel cada
-    // vez que se mueve el plano lo haría inservible. El panel NO cuelga del plano (es
-    // hermano suyo), así que tocar dentro de la fórmula no llega hasta aquí.
-    const TOQUE_QUIETO_PX = 8;
-    const TOQUE_MAX_MS = 500;
-    let toqueX = 0, toqueY = 0, toqueMs = 0;
-    wrap.addEventListener("pointerdown", (e) => {
-      toqueX = e.clientX; toqueY = e.clientY; toqueMs = e.timeStamp;
-    });
-    wrap.addEventListener("click", (e) => {
-      if (!reparto.abierto) return;
-      const quieto = Math.hypot(e.clientX - toqueX, e.clientY - toqueY) <= TOQUE_QUIETO_PX;
-      if (quieto && e.timeStamp - toqueMs <= TOQUE_MAX_MS) alternarFormula(false);
-    });
 
     // ── Chip de EDITAR (solo táctil) ──────────────────────────────────────────────────
-    // Obsidian ofrece su botón `</>` para ver el código de un bloque renderizado, pero
-    // aparece AL PASAR EL RATÓN: en el móvil no existe. Y nuestro lienzo se queda los toques
-    // (`touch-action:none`), así que el bloque se quedaba sin ninguna puerta a su fuente.
-    // Este chip la devuelve, y solo donde hace falta: con ratón el `</>` de Obsidian sigue
-    // siendo el camino, y no le añadimos un botón de más al plano.
-    //
-    // Va SOLO en la esquina superior izquierda, apartado de la fila de abajo. No es un control
-    // del plano como los demás: los de abajo a la derecha abren algo DENTRO del bloque y los de
-    // arriba a la derecha mueven la vista, mientras que este SALE del bloque, al código de la
-    // nota. Además es la única esquina que queda despejada con la fórmula abierta —el panel
-    // empieza justo por debajo—, y alinea con el 🏠 al otro lado.
-    if (tactil) {
-      btnEditar = wrap.createDiv();
-      ponerTooltip(btnEditar, t().botones.editarBloque);
-      btnEditar.style.cssText =
-        `position:absolute; top:6px; left:${MARGEN_FLOTANTE}px; ` +
-        `width:${lado}px; height:${lado}px; ` +
-        "display:flex; align-items:center; justify-content:center; line-height:1; " +
-        "border-radius:50%; cursor:pointer; user-select:none; z-index:7; " +
-        "color:var(--lmath-texto-tenue); background:var(--lmath-chip); " +
-        "border:1px solid var(--lmath-borde);";
-      montarIcono(btnEditar, "editar", iconoChip);
-      btnEditar.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.editarBloque(contenedor, ctx);
-      });
-    }
+    // El porqué, el sitio y el salto al editor viven en `ui/edicionBloque`, compartidos con
+    // obs-vector: es el mismo plano y el mismo problema en los dos. Es el ÚNICO chip que
+    // acompaña a la fórmula en el modo fórmula: ahí no hay plano, pero sigue habiendo un bloque
+    // escrito, y corregirlo es justo lo que se puede querer hacer mirándolo.
+    if (tactil) montarChipEditar(this.plugin, wrap, contenedor, ctx, lado);
 
     // Bloque terminado: reparto decidido, lienzo dimensionado, geometría trazada y pintada
     // (`redimensionar` → `pintar`, más el autoencuadre), y los controles ya colocados. Desde
@@ -929,64 +858,6 @@ export class MotorExperimental implements Motor {
     // no ha tenido ocasión de pintar nada a medias: el primer fotograma que se ve del bloque
     // es el definitivo, con la curva ya dentro.
     revelar();
-  }
-
-  /**
-   * Lleva el cursor al CÓDIGO de este bloque, que es lo que hace el `</>` de Obsidian en
-   * escritorio. Tres pasos, y ninguno se puede dar por hecho:
-   *
-   *  1. QUÉ LÍNEAS ocupa el bloque en el fichero: `getSectionInfo`. Devuelve null cuando el
-   *     bloque no vive en un fichero editable (una vista previa, un embebido, un canvas);
-   *     ahí no hay nada que editar y se sale sin hacer ruido.
-   *  2. QUÉ VISTA lo contiene: la activa, comprobando que sea del MISMO fichero. Sin esa
-   *     comprobación, tocar el chip de un bloque embebido movería el cursor de otra nota.
-   *  3. En LECTURA no hay cursor donde ponerlo, así que primero se pasa la vista a edición.
-   *     El salto se hace después, cuando el editor ya existe.
-   *
-   * El cursor cae DENTRO del cuerpo —nunca en las vallas ```—, así que en Live Preview el
-   * bloque se abre mostrando su fuente, que es lo que se venía a hacer. Y cae al FINAL del
-   * contenido, no al principio: se pulsa "editar" para seguir escribiendo, no para insertar
-   * algo por delante de lo que ya hay.
-   */
-  private editarBloque(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
-    const seccion = ctx.getSectionInfo(el);
-    if (!seccion) return;
-
-    const vista = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!vista || vista.file?.path !== ctx.sourcePath) return;
-
-    /**
-     * Final del CUERPO del bloque. `lineEnd` es la valla de cierre, así que la última línea
-     * escribible es la anterior; se comprueba que de verdad sea una valla en vez de darlo por
-     * hecho. Con el bloque VACÍO no hay ninguna línea de cuerpo (la valla de cierre va pegada
-     * a la de apertura) y se cae al comienzo del hueco: es lo único que se puede hacer sin
-     * inventarse una línea que el usuario no ha escrito.
-     */
-    const finDelCuerpo = (): { line: number; ch: number } => {
-      const editor = vista.editor;
-      const esValla = (n: number) => editor.getLine(n)?.trimStart().startsWith("```") ?? false;
-      const ultima = esValla(seccion.lineEnd) ? seccion.lineEnd - 1 : seccion.lineEnd;
-      if (ultima <= seccion.lineStart) return { line: seccion.lineStart + 1, ch: 0 };
-      return { line: ultima, ch: editor.getLine(ultima).length };
-    };
-
-    const irAlBloque = () => {
-      const destino = finDelCuerpo();
-      vista.editor.setCursor(destino);
-      // Tras cambiar de modo el bloque puede haber quedado fuera de pantalla, y en el móvil
-      // además sube el teclado: sin esto, el cursor acaba donde no se ve.
-      vista.editor.scrollIntoView({ from: destino, to: destino }, true);
-      vista.editor.focus();
-    };
-
-    if (vista.getMode() === "preview") {
-      // `setState` con el modo de edición; el editor no está listo hasta que la vista se
-      // reconstruye, así que el salto va en el `then`, no a continuación.
-      void vista.setState({ ...vista.getState(), mode: "source" }, { history: false })
-        .then(irAlBloque);
-    } else {
-      irAlBloque();
-    }
   }
 
 }

@@ -46337,549 +46337,6 @@ function contieneYLibre(exprNorm) {
   return /(?<![a-zA-Z0-9_])y(?![a-zA-Z0-9_])/.test(exprNorm);
 }
 
-// src/compiladorNativo.ts
-var MAX_VARIABLES = 2;
-var FUNCIONES_MATH = {
-  sin: Math.sin,
-  cos: Math.cos,
-  tan: Math.tan,
-  asin: Math.asin,
-  acos: Math.acos,
-  atan: Math.atan,
-  atan2: Math.atan2,
-  sinh: Math.sinh,
-  cosh: Math.cosh,
-  tanh: Math.tanh,
-  asinh: Math.asinh,
-  acosh: Math.acosh,
-  atanh: Math.atanh,
-  exp: Math.exp,
-  abs: Math.abs,
-  sign: Math.sign,
-  sqrt: Math.sqrt,
-  cbrt: Math.cbrt,
-  log10: Math.log10,
-  log2: Math.log2,
-  min: Math.min,
-  max: Math.max
-};
-var CONSTANTES = {
-  pi: Math.PI,
-  e: Math.E,
-  tau: 2 * Math.PI,
-  Infinity: Infinity,
-  NaN: NaN
-};
-var SIGNO_CENTINELA = new Map(CENTINELAS_SIGNO.map(([n, s]) => [n, s]));
-var PUNTOS_SONDA = [
-  0,
-  1,
-  -1,
-  2,
-  -2,
-  0.5,
-  -0.5,
-  1.5,
-  -1.5,
-  2.5,
-  -2.5,
-  3,
-  -3,
-  0.1,
-  -0.1,
-  1e-3,
-  -1e-3,
-  10,
-  -10,
-  100,
-  -100,
-  1e6,
-  -1e6,
-  1e-6,
-  -1e-6,
-  Math.PI,
-  -Math.PI,
-  Math.PI / 2,
-  -Math.PI / 2,
-  Math.E,
-  -Math.E,
-  0.1 * 30,
-  1 / 3,
-  -1 / 3,
-  0.7071067811865476,
-  -1.4142135623730951,
-  7.389056098930649,
-  0.36787944117144233,
-  123.456,
-  -987.654
-];
-function modNativo(a, b) {
-  return a - b * Math.floor(a / b);
-}
-function nthRootNativo(x, n) {
-  if (x < 0)
-    return Math.abs(n % 2) === 1 ? -Math.pow(-x, 1 / n) : NaN;
-  return Math.pow(x, 1 / n);
-}
-var floorRapido = FUNCIONES_ESCALON_RAPIDAS.floor;
-var ceilRapido = FUNCIONES_ESCALON_RAPIDAS.ceil;
-function binario(fn, p, q) {
-  switch (fn) {
-    case "add":
-      return (a, b) => p(a, b) + q(a, b);
-    case "subtract":
-      return (a, b) => p(a, b) - q(a, b);
-    case "multiply":
-      return (a, b) => p(a, b) * q(a, b);
-    case "divide":
-      return (a, b) => p(a, b) / q(a, b);
-    default:
-      return null;
-  }
-}
-function compilarNodo(nodo, variables) {
-  const n = nodo;
-  switch (n.type) {
-    case "ConstantNode": {
-      const v = n.value;
-      if (typeof v !== "number" || !Number.isFinite(v))
-        return null;
-      return () => v;
-    }
-    case "SymbolNode": {
-      const nombre = n.name ?? "";
-      const i2 = variables.indexOf(nombre);
-      if (i2 === 0)
-        return (a) => a;
-      if (i2 === 1)
-        return (_a, b) => b;
-      if (!(nombre in CONSTANTES))
-        return null;
-      const k = CONSTANTES[nombre];
-      return () => k;
-    }
-    case "ParenthesisNode":
-      return compilarNodo(n.content, variables);
-    case "OperatorNode": {
-      const args = compilarArgs(n.args, variables);
-      if (args === null || args.length === 0)
-        return null;
-      const fn = typeof n.fn === "string" ? n.fn : "";
-      const [p, q] = args;
-      if (fn === "unaryMinus")
-        return args.length === 1 ? (a, b) => -p(a, b) : null;
-      if (fn === "unaryPlus")
-        return args.length === 1 ? p : null;
-      if (fn === "pow")
-        return args.length === 2 ? (a, b) => Math.pow(p(a, b), q(a, b)) : null;
-      if (fn === "mod")
-        return args.length === 2 ? (a, b) => modNativo(p(a, b), q(a, b)) : null;
-      if (args.length < 2)
-        return null;
-      let acc = binario(fn, p, q);
-      for (let i2 = 2; i2 < args.length && acc !== null; i2++)
-        acc = binario(fn, acc, args[i2]);
-      return acc;
-    }
-    case "FunctionNode": {
-      const ref = n.fn;
-      const nombre = typeof ref === "string" ? ref : ref?.name ?? "";
-      const args = compilarArgs(n.args, variables);
-      if (args === null)
-        return null;
-      const [p, q] = args;
-      const unaria = args.length === 1;
-      const signo3 = SIGNO_CENTINELA.get(nombre);
-      if (signo3 !== void 0) {
-        if (!unaria)
-          return null;
-        return signo3 > 0 ? p : (a, b) => -p(a, b);
-      }
-      if (nombre === "dom") {
-        return args.length === 2 ? (a, b) => q(a, b) >= 0 ? p(a, b) : NaN : null;
-      }
-      if (nombre === "sec")
-        return unaria ? (a, b) => 1 / Math.cos(p(a, b)) : null;
-      if (nombre === "csc")
-        return unaria ? (a, b) => 1 / Math.sin(p(a, b)) : null;
-      if (nombre === "cot")
-        return unaria ? (a, b) => 1 / Math.tan(p(a, b)) : null;
-      if (nombre === "acot")
-        return unaria ? (a, b) => Math.PI / 2 - Math.atan(p(a, b)) : null;
-      if (nombre === "acsc")
-        return unaria ? (a, b) => Math.asin(1 / p(a, b)) : null;
-      if (nombre === "asec")
-        return unaria ? (a, b) => Math.acos(1 / p(a, b)) : null;
-      if (nombre === "floor")
-        return unaria ? (a, b) => floorRapido(p(a, b)) : null;
-      if (nombre === "ceil")
-        return unaria ? (a, b) => ceilRapido(p(a, b)) : null;
-      if (nombre === "log") {
-        if (unaria)
-          return (a, b) => Math.log(p(a, b));
-        if (args.length === 2)
-          return (a, b) => Math.log(p(a, b)) / Math.log(q(a, b));
-        return null;
-      }
-      if (nombre === "nthRoot") {
-        if (unaria)
-          return (a, b) => Math.cbrt(p(a, b));
-        if (args.length === 2)
-          return (a, b) => nthRootNativo(p(a, b), q(a, b));
-        return null;
-      }
-      const f = FUNCIONES_MATH[nombre];
-      if (!f || args.length === 0)
-        return null;
-      if (unaria)
-        return (a, b) => f(p(a, b));
-      if (args.length === 2)
-        return (a, b) => f(p(a, b), q(a, b));
-      return (a, b) => f(...args.map((g) => g(a, b)));
-    }
-    default:
-      return null;
-  }
-}
-function compilarArgs(args, variables) {
-  const salida = [];
-  for (const arg2 of args ?? []) {
-    const c = compilarNodo(arg2, variables);
-    if (c === null)
-      return null;
-    salida.push(c);
-  }
-  return salida;
-}
-function equivalentes(a, b) {
-  const va = typeof a === "number" ? a : NaN;
-  const naA = Number.isNaN(va), naB = Number.isNaN(b);
-  if (naA || naB)
-    return naA && naB;
-  if (!Number.isFinite(va) || !Number.isFinite(b))
-    return va === b;
-  return Math.abs(va - b) <= 1e-12 * Math.max(1, Math.abs(va), Math.abs(b));
-}
-function compilarNativo(expr, variables, referencia) {
-  if (variables.length > MAX_VARIABLES)
-    return null;
-  let candidata;
-  try {
-    const raiz = compilarNodo(parse2(expr), variables);
-    if (raiz === null)
-      return null;
-    candidata = variables.length === 2 ? (x, y) => raiz(x, y) : (x) => raiz(x, 0);
-  } catch {
-    return null;
-  }
-  const combinaciones = puntosDeSonda(variables.length);
-  for (const punto of combinaciones) {
-    let esperado;
-    try {
-      esperado = referencia(punto);
-    } catch {
-      esperado = NaN;
-    }
-    let obtenido;
-    try {
-      obtenido = candidata(...punto);
-    } catch {
-      return null;
-    }
-    if (!equivalentes(esperado, obtenido))
-      return null;
-  }
-  return candidata;
-}
-function puntosDeSonda(n) {
-  if (n <= 0)
-    return [[]];
-  if (n === 1)
-    return PUNTOS_SONDA.map((v) => [v]);
-  const puntos = [];
-  for (const v of PUNTOS_SONDA)
-    puntos.push(new Array(n).fill(v));
-  for (let d = 1; d < PUNTOS_SONDA.length; d++) {
-    const fila = [];
-    for (let k = 0; k < n; k++)
-      fila.push(PUNTOS_SONDA[d * (k + 1) % PUNTOS_SONDA.length]);
-    puntos.push(fila);
-  }
-  return puntos;
-}
-
-// src/core/parsing/productoImplicito.ts
-var FUNCIONES = /* @__PURE__ */ new Set([
-  "sin",
-  "cos",
-  "tan",
-  "sec",
-  "csc",
-  "cot",
-  "asin",
-  "acos",
-  "atan",
-  "acsc",
-  "asec",
-  "acot",
-  "atan2",
-  "sinh",
-  "cosh",
-  "tanh",
-  "asinh",
-  "acosh",
-  "atanh",
-  "sech",
-  "csch",
-  "coth",
-  // hiperbólicas recíprocas: mathjs las tiene, faltaban como átomo
-  "log",
-  "log10",
-  "log2",
-  "ln",
-  "exp",
-  "expm1",
-  "sqrt",
-  "cbrt",
-  "nthRoot",
-  "pow",
-  "hypot",
-  "abs",
-  "sign",
-  "floor",
-  "ceil",
-  "round",
-  "fix",
-  "gamma",
-  "factorial",
-  "min",
-  "max",
-  "mod",
-  "gcd",
-  "lcm",
-  // Centinelas del DOBLE SIGNO (`y = pm(sqrt(16-x²))` = ±√…), que emiten tanto el despeje
-  // par (despejar.ts) como el `\pm`/`\mp` escrito por el usuario (parser.ts). Son átomos
-  // (si no, se partirían en `p*m`), se evalúan en su rama principal (constantes.ts) y el
-  // motor los expande en las DOS ramas (motor/parsing/dobleSigno.ts). `toTex` los pinta
-  // `\pm` / `\mp` (latex.ts).
-  // `pm2`/`mp2` son el SEGUNDO eje de signo (dos ± independientes → cuatro curvas).
-  "pm",
-  "mp",
-  "pm2",
-  "mp2",
-  // Centinela de FAMILIA PERIÓDICA (`y = atan(g) + fam(k, pi)` = arctan(g)+kπ, k∈ℤ),
-  // que emite el despeje por inversión trig (despejeInverso.ts). Átomo (si no, se
-  // partiría en `f*a*m`); NO se evalúa ni se expande para graficar (el despeje es
-  // presentación: lo graficado es siempre la ecuación original). `toTex` lo pinta
-  // `k\pi`/`2k\pi` y añade la coletilla `, k∈ℤ` (latex.ts). `famN` es su hermano de
-  // dominio NATURAL (k∈ℕ): mismo render `k\pi`, pero la coletilla es `, k∈ℕ` —lo emite
-  // el despeje de `T(u)=0` cuando u>0 obliga a kπ>0 (`sin(1/(x²+y²))=0`, despejar.ts).
-  "fam",
-  "famN",
-  // Centinela de CONDICIÓN DE DOMINIO (`y = dom((x-27)², x-27)` = (x−27)² donde x−27≥0), que
-  // emite el despeje de las inversas de rango restringido (√ par, |·|). Átomo (si no, `d*o*m`);
-  // se evalúa a NaN fuera del dominio (constantes.ts) y `toTex` lo pinta como el cuerpo más la
-  // coletilla `, R≥0` (latex.ts). Lo graficado es siempre la original: el despeje es presentación.
-  "dom"
-]);
-var GRIEGAS = [
-  "alpha",
-  "beta",
-  "gamma",
-  "delta",
-  "epsilon",
-  "varepsilon",
-  "zeta",
-  "eta",
-  "iota",
-  "kappa",
-  "lambda",
-  "mu",
-  "nu",
-  "xi",
-  "omicron",
-  "rho",
-  "varrho",
-  "sigma",
-  "varsigma",
-  "upsilon",
-  "varphi",
-  "vartheta",
-  "chi",
-  "psi",
-  "omega",
-  "Gamma",
-  "Delta",
-  "Theta",
-  "Lambda",
-  "Xi",
-  "Pi",
-  "Sigma",
-  "Upsilon",
-  "Phi",
-  "Psi",
-  "Omega"
-];
-var CONSTANTES2 = /* @__PURE__ */ new Set([
-  "pi",
-  "theta",
-  "tau",
-  "phi",
-  "Infinity",
-  "NaN",
-  ...GRIEGAS
-]);
-var ATOMOS = [...FUNCIONES, ...CONSTANTES2].sort((a, b) => b.length - a.length);
-var esDigito = (c) => c >= "0" && c <= "9";
-var esLetra = (c) => /[a-zA-Z_]/.test(c);
-var esLetraODigito = (c) => /[a-zA-Z0-9_]/.test(c);
-function partirEnAtomos(run) {
-  const piezas = [];
-  let j = 0;
-  while (j < run.length) {
-    let atomo = null;
-    for (const a of ATOMOS) {
-      if (run.startsWith(a, j)) {
-        atomo = a;
-        break;
-      }
-    }
-    if (atomo) {
-      piezas.push(atomo);
-      j += atomo.length;
-    } else {
-      piezas.push(run[j]);
-      j++;
-    }
-  }
-  return piezas;
-}
-function expandir(run) {
-  return partirEnAtomos(run).join("*");
-}
-function sufijoFuncion(run) {
-  for (const f of ATOMOS) {
-    if (FUNCIONES.has(f) && run.endsWith(f))
-      return f;
-  }
-  return "";
-}
-function insertarProductoImplicito(expr) {
-  let out = "";
-  const prev = () => {
-    for (let k = out.length - 1; k >= 0; k--)
-      if (out[k] !== " ")
-        return out[k];
-    return "";
-  };
-  let ultimaFueFuncion = false;
-  let i2 = 0;
-  while (i2 < expr.length) {
-    const c = expr[i2];
-    const trasFuncion = ultimaFueFuncion;
-    ultimaFueFuncion = false;
-    if (c === "e" || c === "E") {
-      const p = prev();
-      const sig = expr[i2 + 1] ?? "";
-      const sig2 = expr[i2 + 2] ?? "";
-      const cientifica = (esDigito(p) || p === ".") && (esDigito(sig) || (sig === "+" || sig === "-") && esDigito(sig2));
-      if (cientifica) {
-        out += c;
-        i2++;
-        continue;
-      }
-    }
-    if (esLetra(c)) {
-      let j = i2;
-      while (j < expr.length && esLetraODigito(expr[j]))
-        j++;
-      const run = expr.slice(i2, j);
-      const p = prev();
-      if (esDigito(p) || p === ")" || p === "." || esLetra(p))
-        out += "*";
-      let k = j;
-      while (k < expr.length && expr[k] === " ")
-        k++;
-      const seguidoParen = expr[k] === "(";
-      if (seguidoParen) {
-        if (FUNCIONES.has(run)) {
-          out += run;
-          ultimaFueFuncion = true;
-        } else {
-          const fs = sufijoFuncion(run);
-          if (fs && /^[a-zA-Z]+$/.test(run.slice(0, run.length - fs.length))) {
-            const pref = run.slice(0, run.length - fs.length);
-            out += (pref ? expandir(pref) + "*" : "") + fs;
-            ultimaFueFuncion = true;
-          } else {
-            out += expandir(run) + "*";
-          }
-        }
-      } else {
-        out += expandir(run);
-      }
-      i2 = j;
-      continue;
-    }
-    if (c === "(") {
-      const p = prev();
-      if (!trasFuncion && (esDigito(p) || p === ")" || p === "."))
-        out += "*";
-      out += c;
-      i2++;
-      continue;
-    }
-    if (c === " ")
-      ultimaFueFuncion = trasFuncion;
-    out += c;
-    i2++;
-  }
-  return out;
-}
-
-// src/evaluador.ts
-function compilarExpresion(expr) {
-  const compilada2 = parse2(expr).compile();
-  return (scope) => {
-    try {
-      return compilada2.evaluate({
-        ...scope,
-        ...FUNCIONES_INVERSAS_EXTRA,
-        ...FUNCIONES_ESCALON_RAPIDAS,
-        ...FUNCIONES_SIGNO,
-        ...FUNCIONES_DOMINIO
-      });
-    } catch {
-      return NaN;
-    }
-  };
-}
-function compilarFuncion(expr, varName) {
-  const evaluar2 = compilarExpresion(expr);
-  const nativa = compilarNativo(expr, [varName], ([v]) => evaluar2({ [varName]: v }));
-  if (nativa)
-    return (v) => nativa(v);
-  return (v) => evaluar2({ [varName]: v });
-}
-function compilarCampo(expr, varX = "x", varY = "y") {
-  const evaluar2 = compilarExpresion(expr);
-  const nativa = compilarNativo(expr, [varX, varY], ([x, y]) => evaluar2({ [varX]: x, [varY]: y }));
-  if (nativa)
-    return (x, y) => nativa(x, y);
-  return (x, y) => evaluar2({ [varX]: x, [varY]: y });
-}
-function evaluarConstante(expr) {
-  const limpio = expr.trim();
-  if (!limpio)
-    return null;
-  try {
-    const valor = compilarExpresion(insertarProductoImplicito(normalizarEntrada(limpio)))({});
-    return typeof valor === "number" && Number.isFinite(valor) ? valor : null;
-  } catch {
-    return null;
-  }
-}
-
 // src/expr/nodo.ts
 var opNodo = (op, fn, args, implicit) => new OperatorNode(op, fn, args, implicit);
 var constNodo = (value) => new ConstantNode(value);
@@ -48231,6 +47688,549 @@ function despejeTrigCuadratico(D, DVal) {
   return emitir(inner);
 }
 
+// src/compiladorNativo.ts
+var MAX_VARIABLES = 2;
+var FUNCIONES_MATH = {
+  sin: Math.sin,
+  cos: Math.cos,
+  tan: Math.tan,
+  asin: Math.asin,
+  acos: Math.acos,
+  atan: Math.atan,
+  atan2: Math.atan2,
+  sinh: Math.sinh,
+  cosh: Math.cosh,
+  tanh: Math.tanh,
+  asinh: Math.asinh,
+  acosh: Math.acosh,
+  atanh: Math.atanh,
+  exp: Math.exp,
+  abs: Math.abs,
+  sign: Math.sign,
+  sqrt: Math.sqrt,
+  cbrt: Math.cbrt,
+  log10: Math.log10,
+  log2: Math.log2,
+  min: Math.min,
+  max: Math.max
+};
+var CONSTANTES = {
+  pi: Math.PI,
+  e: Math.E,
+  tau: 2 * Math.PI,
+  Infinity: Infinity,
+  NaN: NaN
+};
+var SIGNO_CENTINELA = new Map(CENTINELAS_SIGNO.map(([n, s]) => [n, s]));
+var PUNTOS_SONDA = [
+  0,
+  1,
+  -1,
+  2,
+  -2,
+  0.5,
+  -0.5,
+  1.5,
+  -1.5,
+  2.5,
+  -2.5,
+  3,
+  -3,
+  0.1,
+  -0.1,
+  1e-3,
+  -1e-3,
+  10,
+  -10,
+  100,
+  -100,
+  1e6,
+  -1e6,
+  1e-6,
+  -1e-6,
+  Math.PI,
+  -Math.PI,
+  Math.PI / 2,
+  -Math.PI / 2,
+  Math.E,
+  -Math.E,
+  0.1 * 30,
+  1 / 3,
+  -1 / 3,
+  0.7071067811865476,
+  -1.4142135623730951,
+  7.389056098930649,
+  0.36787944117144233,
+  123.456,
+  -987.654
+];
+function modNativo(a, b) {
+  return a - b * Math.floor(a / b);
+}
+function nthRootNativo(x, n) {
+  if (x < 0)
+    return Math.abs(n % 2) === 1 ? -Math.pow(-x, 1 / n) : NaN;
+  return Math.pow(x, 1 / n);
+}
+var floorRapido = FUNCIONES_ESCALON_RAPIDAS.floor;
+var ceilRapido = FUNCIONES_ESCALON_RAPIDAS.ceil;
+function binario(fn, p, q) {
+  switch (fn) {
+    case "add":
+      return (a, b) => p(a, b) + q(a, b);
+    case "subtract":
+      return (a, b) => p(a, b) - q(a, b);
+    case "multiply":
+      return (a, b) => p(a, b) * q(a, b);
+    case "divide":
+      return (a, b) => p(a, b) / q(a, b);
+    default:
+      return null;
+  }
+}
+function compilarNodo(nodo, variables) {
+  const n = nodo;
+  switch (n.type) {
+    case "ConstantNode": {
+      const v = n.value;
+      if (typeof v !== "number" || !Number.isFinite(v))
+        return null;
+      return () => v;
+    }
+    case "SymbolNode": {
+      const nombre = n.name ?? "";
+      const i2 = variables.indexOf(nombre);
+      if (i2 === 0)
+        return (a) => a;
+      if (i2 === 1)
+        return (_a, b) => b;
+      if (!(nombre in CONSTANTES))
+        return null;
+      const k = CONSTANTES[nombre];
+      return () => k;
+    }
+    case "ParenthesisNode":
+      return compilarNodo(n.content, variables);
+    case "OperatorNode": {
+      const args = compilarArgs(n.args, variables);
+      if (args === null || args.length === 0)
+        return null;
+      const fn = typeof n.fn === "string" ? n.fn : "";
+      const [p, q] = args;
+      if (fn === "unaryMinus")
+        return args.length === 1 ? (a, b) => -p(a, b) : null;
+      if (fn === "unaryPlus")
+        return args.length === 1 ? p : null;
+      if (fn === "pow")
+        return args.length === 2 ? (a, b) => Math.pow(p(a, b), q(a, b)) : null;
+      if (fn === "mod")
+        return args.length === 2 ? (a, b) => modNativo(p(a, b), q(a, b)) : null;
+      if (args.length < 2)
+        return null;
+      let acc = binario(fn, p, q);
+      for (let i2 = 2; i2 < args.length && acc !== null; i2++)
+        acc = binario(fn, acc, args[i2]);
+      return acc;
+    }
+    case "FunctionNode": {
+      const ref = n.fn;
+      const nombre = typeof ref === "string" ? ref : ref?.name ?? "";
+      const args = compilarArgs(n.args, variables);
+      if (args === null)
+        return null;
+      const [p, q] = args;
+      const unaria = args.length === 1;
+      const signo3 = SIGNO_CENTINELA.get(nombre);
+      if (signo3 !== void 0) {
+        if (!unaria)
+          return null;
+        return signo3 > 0 ? p : (a, b) => -p(a, b);
+      }
+      if (nombre === "dom") {
+        return args.length === 2 ? (a, b) => q(a, b) >= 0 ? p(a, b) : NaN : null;
+      }
+      if (nombre === "sec")
+        return unaria ? (a, b) => 1 / Math.cos(p(a, b)) : null;
+      if (nombre === "csc")
+        return unaria ? (a, b) => 1 / Math.sin(p(a, b)) : null;
+      if (nombre === "cot")
+        return unaria ? (a, b) => 1 / Math.tan(p(a, b)) : null;
+      if (nombre === "acot")
+        return unaria ? (a, b) => Math.PI / 2 - Math.atan(p(a, b)) : null;
+      if (nombre === "acsc")
+        return unaria ? (a, b) => Math.asin(1 / p(a, b)) : null;
+      if (nombre === "asec")
+        return unaria ? (a, b) => Math.acos(1 / p(a, b)) : null;
+      if (nombre === "floor")
+        return unaria ? (a, b) => floorRapido(p(a, b)) : null;
+      if (nombre === "ceil")
+        return unaria ? (a, b) => ceilRapido(p(a, b)) : null;
+      if (nombre === "log") {
+        if (unaria)
+          return (a, b) => Math.log(p(a, b));
+        if (args.length === 2)
+          return (a, b) => Math.log(p(a, b)) / Math.log(q(a, b));
+        return null;
+      }
+      if (nombre === "nthRoot") {
+        if (unaria)
+          return (a, b) => Math.cbrt(p(a, b));
+        if (args.length === 2)
+          return (a, b) => nthRootNativo(p(a, b), q(a, b));
+        return null;
+      }
+      const f = FUNCIONES_MATH[nombre];
+      if (!f || args.length === 0)
+        return null;
+      if (unaria)
+        return (a, b) => f(p(a, b));
+      if (args.length === 2)
+        return (a, b) => f(p(a, b), q(a, b));
+      return (a, b) => f(...args.map((g) => g(a, b)));
+    }
+    default:
+      return null;
+  }
+}
+function compilarArgs(args, variables) {
+  const salida = [];
+  for (const arg2 of args ?? []) {
+    const c = compilarNodo(arg2, variables);
+    if (c === null)
+      return null;
+    salida.push(c);
+  }
+  return salida;
+}
+function equivalentes(a, b) {
+  const va = typeof a === "number" ? a : NaN;
+  const naA = Number.isNaN(va), naB = Number.isNaN(b);
+  if (naA || naB)
+    return naA && naB;
+  if (!Number.isFinite(va) || !Number.isFinite(b))
+    return va === b;
+  return Math.abs(va - b) <= 1e-12 * Math.max(1, Math.abs(va), Math.abs(b));
+}
+function compilarNativo(expr, variables, referencia) {
+  if (variables.length > MAX_VARIABLES)
+    return null;
+  let candidata;
+  try {
+    const raiz = compilarNodo(parse2(expr), variables);
+    if (raiz === null)
+      return null;
+    candidata = variables.length === 2 ? (x, y) => raiz(x, y) : (x) => raiz(x, 0);
+  } catch {
+    return null;
+  }
+  const combinaciones = puntosDeSonda(variables.length);
+  for (const punto of combinaciones) {
+    let esperado;
+    try {
+      esperado = referencia(punto);
+    } catch {
+      esperado = NaN;
+    }
+    let obtenido;
+    try {
+      obtenido = candidata(...punto);
+    } catch {
+      return null;
+    }
+    if (!equivalentes(esperado, obtenido))
+      return null;
+  }
+  return candidata;
+}
+function puntosDeSonda(n) {
+  if (n <= 0)
+    return [[]];
+  if (n === 1)
+    return PUNTOS_SONDA.map((v) => [v]);
+  const puntos = [];
+  for (const v of PUNTOS_SONDA)
+    puntos.push(new Array(n).fill(v));
+  for (let d = 1; d < PUNTOS_SONDA.length; d++) {
+    const fila = [];
+    for (let k = 0; k < n; k++)
+      fila.push(PUNTOS_SONDA[d * (k + 1) % PUNTOS_SONDA.length]);
+    puntos.push(fila);
+  }
+  return puntos;
+}
+
+// src/core/parsing/productoImplicito.ts
+var FUNCIONES = /* @__PURE__ */ new Set([
+  "sin",
+  "cos",
+  "tan",
+  "sec",
+  "csc",
+  "cot",
+  "asin",
+  "acos",
+  "atan",
+  "acsc",
+  "asec",
+  "acot",
+  "atan2",
+  "sinh",
+  "cosh",
+  "tanh",
+  "asinh",
+  "acosh",
+  "atanh",
+  "sech",
+  "csch",
+  "coth",
+  // hiperbólicas recíprocas: mathjs las tiene, faltaban como átomo
+  "log",
+  "log10",
+  "log2",
+  "ln",
+  "exp",
+  "expm1",
+  "sqrt",
+  "cbrt",
+  "nthRoot",
+  "pow",
+  "hypot",
+  "abs",
+  "sign",
+  "floor",
+  "ceil",
+  "round",
+  "fix",
+  "gamma",
+  "factorial",
+  "min",
+  "max",
+  "mod",
+  "gcd",
+  "lcm",
+  // Centinelas del DOBLE SIGNO (`y = pm(sqrt(16-x²))` = ±√…), que emiten tanto el despeje
+  // par (despejar.ts) como el `\pm`/`\mp` escrito por el usuario (parser.ts). Son átomos
+  // (si no, se partirían en `p*m`), se evalúan en su rama principal (constantes.ts) y el
+  // motor los expande en las DOS ramas (motor/parsing/dobleSigno.ts). `toTex` los pinta
+  // `\pm` / `\mp` (latex.ts).
+  // `pm2`/`mp2` son el SEGUNDO eje de signo (dos ± independientes → cuatro curvas).
+  "pm",
+  "mp",
+  "pm2",
+  "mp2",
+  // Centinela de FAMILIA PERIÓDICA (`y = atan(g) + fam(k, pi)` = arctan(g)+kπ, k∈ℤ),
+  // que emite el despeje por inversión trig (despejeInverso.ts). Átomo (si no, se
+  // partiría en `f*a*m`); NO se evalúa ni se expande para graficar (el despeje es
+  // presentación: lo graficado es siempre la ecuación original). `toTex` lo pinta
+  // `k\pi`/`2k\pi` y añade la coletilla `, k∈ℤ` (latex.ts). `famN` es su hermano de
+  // dominio NATURAL (k∈ℕ): mismo render `k\pi`, pero la coletilla es `, k∈ℕ` —lo emite
+  // el despeje de `T(u)=0` cuando u>0 obliga a kπ>0 (`sin(1/(x²+y²))=0`, despejar.ts).
+  "fam",
+  "famN",
+  // Centinela de CONDICIÓN DE DOMINIO (`y = dom((x-27)², x-27)` = (x−27)² donde x−27≥0), que
+  // emite el despeje de las inversas de rango restringido (√ par, |·|). Átomo (si no, `d*o*m`);
+  // se evalúa a NaN fuera del dominio (constantes.ts) y `toTex` lo pinta como el cuerpo más la
+  // coletilla `, R≥0` (latex.ts). Lo graficado es siempre la original: el despeje es presentación.
+  "dom"
+]);
+var GRIEGAS = [
+  "alpha",
+  "beta",
+  "gamma",
+  "delta",
+  "epsilon",
+  "varepsilon",
+  "zeta",
+  "eta",
+  "iota",
+  "kappa",
+  "lambda",
+  "mu",
+  "nu",
+  "xi",
+  "omicron",
+  "rho",
+  "varrho",
+  "sigma",
+  "varsigma",
+  "upsilon",
+  "varphi",
+  "vartheta",
+  "chi",
+  "psi",
+  "omega",
+  "Gamma",
+  "Delta",
+  "Theta",
+  "Lambda",
+  "Xi",
+  "Pi",
+  "Sigma",
+  "Upsilon",
+  "Phi",
+  "Psi",
+  "Omega"
+];
+var CONSTANTES2 = /* @__PURE__ */ new Set([
+  "pi",
+  "theta",
+  "tau",
+  "phi",
+  "Infinity",
+  "NaN",
+  ...GRIEGAS
+]);
+var ATOMOS = [...FUNCIONES, ...CONSTANTES2].sort((a, b) => b.length - a.length);
+var esDigito = (c) => c >= "0" && c <= "9";
+var esLetra = (c) => /[a-zA-Z_]/.test(c);
+var esLetraODigito = (c) => /[a-zA-Z0-9_]/.test(c);
+function partirEnAtomos(run) {
+  const piezas = [];
+  let j = 0;
+  while (j < run.length) {
+    let atomo = null;
+    for (const a of ATOMOS) {
+      if (run.startsWith(a, j)) {
+        atomo = a;
+        break;
+      }
+    }
+    if (atomo) {
+      piezas.push(atomo);
+      j += atomo.length;
+    } else {
+      piezas.push(run[j]);
+      j++;
+    }
+  }
+  return piezas;
+}
+function expandir(run) {
+  return partirEnAtomos(run).join("*");
+}
+function sufijoFuncion(run) {
+  for (const f of ATOMOS) {
+    if (FUNCIONES.has(f) && run.endsWith(f))
+      return f;
+  }
+  return "";
+}
+function insertarProductoImplicito(expr) {
+  let out = "";
+  const prev = () => {
+    for (let k = out.length - 1; k >= 0; k--)
+      if (out[k] !== " ")
+        return out[k];
+    return "";
+  };
+  let ultimaFueFuncion = false;
+  let i2 = 0;
+  while (i2 < expr.length) {
+    const c = expr[i2];
+    const trasFuncion = ultimaFueFuncion;
+    ultimaFueFuncion = false;
+    if (c === "e" || c === "E") {
+      const p = prev();
+      const sig = expr[i2 + 1] ?? "";
+      const sig2 = expr[i2 + 2] ?? "";
+      const cientifica = (esDigito(p) || p === ".") && (esDigito(sig) || (sig === "+" || sig === "-") && esDigito(sig2));
+      if (cientifica) {
+        out += c;
+        i2++;
+        continue;
+      }
+    }
+    if (esLetra(c)) {
+      let j = i2;
+      while (j < expr.length && esLetraODigito(expr[j]))
+        j++;
+      const run = expr.slice(i2, j);
+      const p = prev();
+      if (esDigito(p) || p === ")" || p === "." || esLetra(p))
+        out += "*";
+      let k = j;
+      while (k < expr.length && expr[k] === " ")
+        k++;
+      const seguidoParen = expr[k] === "(";
+      if (seguidoParen) {
+        if (FUNCIONES.has(run)) {
+          out += run;
+          ultimaFueFuncion = true;
+        } else {
+          const fs = sufijoFuncion(run);
+          if (fs && /^[a-zA-Z]+$/.test(run.slice(0, run.length - fs.length))) {
+            const pref = run.slice(0, run.length - fs.length);
+            out += (pref ? expandir(pref) + "*" : "") + fs;
+            ultimaFueFuncion = true;
+          } else {
+            out += expandir(run) + "*";
+          }
+        }
+      } else {
+        out += expandir(run);
+      }
+      i2 = j;
+      continue;
+    }
+    if (c === "(") {
+      const p = prev();
+      if (!trasFuncion && (esDigito(p) || p === ")" || p === "."))
+        out += "*";
+      out += c;
+      i2++;
+      continue;
+    }
+    if (c === " ")
+      ultimaFueFuncion = trasFuncion;
+    out += c;
+    i2++;
+  }
+  return out;
+}
+
+// src/evaluador.ts
+function compilarExpresion(expr) {
+  const compilada2 = parse2(expr).compile();
+  return (scope) => {
+    try {
+      return compilada2.evaluate({
+        ...scope,
+        ...FUNCIONES_INVERSAS_EXTRA,
+        ...FUNCIONES_ESCALON_RAPIDAS,
+        ...FUNCIONES_SIGNO,
+        ...FUNCIONES_DOMINIO
+      });
+    } catch {
+      return NaN;
+    }
+  };
+}
+function compilarFuncion(expr, varName) {
+  const evaluar2 = compilarExpresion(expr);
+  const nativa = compilarNativo(expr, [varName], ([v]) => evaluar2({ [varName]: v }));
+  if (nativa)
+    return (v) => nativa(v);
+  return (v) => evaluar2({ [varName]: v });
+}
+function compilarCampo(expr, varX = "x", varY = "y") {
+  const evaluar2 = compilarExpresion(expr);
+  const nativa = compilarNativo(expr, [varX, varY], ([x, y]) => evaluar2({ [varX]: x, [varY]: y }));
+  if (nativa)
+    return (x, y) => nativa(x, y);
+  return (x, y) => evaluar2({ [varX]: x, [varY]: y });
+}
+function evaluarConstante(expr) {
+  const limpio = expr.trim();
+  if (!limpio)
+    return null;
+  try {
+    const valor = compilarExpresion(insertarProductoImplicito(normalizarEntrada(limpio)))({});
+    return typeof valor === "number" && Number.isFinite(valor) ? valor : null;
+  } catch {
+    return null;
+  }
+}
+
 // src/condiciones.ts
 var VAR = "x";
 var EPS2 = 1e-12;
@@ -49287,6 +49287,4145 @@ function separarTupla(s) {
   return x && y ? [x, y] : null;
 }
 
+// src/math/racional.ts
+function mcd4(a, b) {
+  let x = a < 0n ? -a : a;
+  let y = b < 0n ? -b : b;
+  while (y) {
+    const t2 = x % y;
+    x = y;
+    y = t2;
+  }
+  return x;
+}
+function rac(n, d = 1n) {
+  if (d === 0n)
+    throw new Error("racional con denominador cero");
+  let nn = n, dd = d;
+  if (dd < 0n) {
+    nn = -nn;
+    dd = -dd;
+  }
+  const g = mcd4(nn, dd);
+  if (g > 1n) {
+    nn /= g;
+    dd /= g;
+  }
+  return { n: nn, d: dd };
+}
+var CERO = { n: 0n, d: 1n };
+var UNO = { n: 1n, d: 1n };
+var esCero2 = (a) => a.n === 0n;
+var signo = (a) => a.n < 0n ? -1 : a.n > 0n ? 1 : 0;
+var suma = (a, b) => rac(a.n * b.d + b.n * a.d, a.d * b.d);
+var resta = (a, b) => rac(a.n * b.d - b.n * a.d, a.d * b.d);
+var producto = (a, b) => rac(a.n * b.n, a.d * b.d);
+var negado = (a) => ({ n: -a.n, d: a.d });
+function cociente(a, b) {
+  if (esCero2(b))
+    throw new Error("divisi\xF3n racional por cero");
+  return rac(a.n * b.d, a.d * b.n);
+}
+function potencia(a, k) {
+  let r = UNO;
+  for (let i2 = 0; i2 < k; i2++)
+    r = producto(r, a);
+  return r;
+}
+function comparar(a, b) {
+  const izq = a.n * b.d, der = b.n * a.d;
+  return izq < der ? -1 : izq > der ? 1 : 0;
+}
+var absoluto = (a) => a.n < 0n ? negado(a) : a;
+function aNumero(a) {
+  const n = Number(a.n), d = Number(a.d);
+  if (Number.isFinite(n) && Number.isFinite(d))
+    return n / d;
+  const entero2 = a.n / a.d;
+  const resto = a.n % a.d;
+  return Number(entero2) + Number(resto) / Number(a.d);
+}
+function desdeNumero(x) {
+  if (!Number.isFinite(x))
+    throw new Error("racional desde un n\xFAmero no finito");
+  if (Number.isInteger(x))
+    return rac(BigInt(x));
+  let num = x, den = 1n;
+  for (let i2 = 0; i2 < 1100 && !Number.isInteger(num); i2++) {
+    num *= 2;
+    den *= 2n;
+  }
+  return rac(BigInt(num), den);
+}
+function desdeDecimal(texto) {
+  const m = /^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(texto.trim());
+  if (!m || m[2] === "" && (m[3] ?? "") === "")
+    return null;
+  const sig = m[1] === "-" ? -1n : 1n;
+  const enteros = m[2] === "" ? "0" : m[2];
+  const decimales = m[3] ?? "";
+  let n = BigInt(enteros + decimales) * sig;
+  let d = 10n ** BigInt(decimales.length);
+  const exp3 = m[4] ? Number(m[4]) : 0;
+  if (exp3 > 0)
+    n *= 10n ** BigInt(exp3);
+  else if (exp3 < 0)
+    d *= 10n ** BigInt(-exp3);
+  return rac(n, d);
+}
+function aTexto(a) {
+  return a.d === 1n ? String(a.n) : `${a.n}/${a.d}`;
+}
+
+// src/math/polinomio.ts
+var NULO = [];
+function normalizar(p) {
+  let n = p.length;
+  while (n > 0 && esCero2(p[n - 1]))
+    n--;
+  return n === p.length ? p : p.slice(0, n);
+}
+var grado = (p) => normalizar(p).length - 1;
+var esNulo = (p) => normalizar(p).length === 0;
+function sumaPol(a, b) {
+  const out = [];
+  for (let i2 = 0; i2 < Math.max(a.length, b.length); i2++)
+    out.push(suma(a[i2] ?? CERO, b[i2] ?? CERO));
+  return normalizar(out);
+}
+function restaPol(a, b) {
+  const out = [];
+  for (let i2 = 0; i2 < Math.max(a.length, b.length); i2++)
+    out.push(resta(a[i2] ?? CERO, b[i2] ?? CERO));
+  return normalizar(out);
+}
+function productoPol(a, b) {
+  const A = normalizar(a), B = normalizar(b);
+  if (A.length === 0 || B.length === 0)
+    return NULO;
+  const out = new Array(A.length + B.length - 1).fill(CERO);
+  for (let i2 = 0; i2 < A.length; i2++)
+    for (let j = 0; j < B.length; j++)
+      out[i2 + j] = suma(out[i2 + j], producto(A[i2], B[j]));
+  return normalizar(out);
+}
+function derivada(p) {
+  const q = normalizar(p);
+  if (q.length <= 1)
+    return NULO;
+  const out = [];
+  for (let i2 = 1; i2 < q.length; i2++)
+    out.push(producto(q[i2], rac(BigInt(i2))));
+  return normalizar(out);
+}
+function evaluar(p, x) {
+  const q = normalizar(p);
+  let acc = CERO;
+  for (let i2 = q.length - 1; i2 >= 0; i2--)
+    acc = suma(producto(acc, x), q[i2]);
+  return acc;
+}
+function evaluarNum(p, x) {
+  const q = normalizar(p);
+  let acc = 0;
+  for (let i2 = q.length - 1; i2 >= 0; i2--)
+    acc = acc * x + aNumero(q[i2]);
+  return acc;
+}
+function dividir(a, b) {
+  const B = normalizar(b);
+  if (B.length === 0)
+    throw new Error("divisi\xF3n polin\xF3mica por el polinomio nulo");
+  let R = [...normalizar(a)];
+  const gb = B.length - 1;
+  const lb = B[gb];
+  const coc = [];
+  while (R.length - 1 >= gb && R.length > 0) {
+    const gr = R.length - 1;
+    const factor = cociente(R[gr], lb);
+    coc[gr - gb] = factor;
+    for (let i2 = 0; i2 <= gb; i2++)
+      R[gr - gb + i2] = resta(R[gr - gb + i2], producto(factor, B[i2]));
+    R = [...normalizar(R)];
+  }
+  for (let i2 = 0; i2 < coc.length; i2++)
+    coc[i2] = coc[i2] ?? CERO;
+  return { coc: normalizar(coc), resto: normalizar(R) };
+}
+function mcdPol(a, b) {
+  let A = normalizar(a), B = normalizar(b);
+  while (B.length > 0) {
+    const { resto } = dividir(A, B);
+    A = B;
+    B = normalizar(resto);
+  }
+  if (A.length === 0)
+    return NULO;
+  return monico(A);
+}
+function monico(p) {
+  const q = normalizar(p);
+  if (q.length === 0)
+    return NULO;
+  const lc = q[q.length - 1];
+  return q.map((c) => cociente(c, lc));
+}
+function libreDeCuadrados(p) {
+  const q = normalizar(p);
+  if (q.length <= 1)
+    return q;
+  const g = mcdPol(q, derivada(q));
+  if (grado(g) <= 0)
+    return monico(q);
+  return monico(dividir(q, g).coc);
+}
+function sucesionSturm(p) {
+  const p0 = normalizar(p);
+  if (p0.length === 0)
+    return [];
+  const suc = [p0];
+  const p1 = derivada(p0);
+  if (esNulo(p1))
+    return suc;
+  suc.push(p1);
+  for (let k = 0; k < p0.length + 2; k++) {
+    const a = suc[suc.length - 2], b = suc[suc.length - 1];
+    if (grado(b) <= 0)
+      break;
+    const { resto } = dividir(a, b);
+    if (esNulo(resto))
+      break;
+    suc.push(normalizar(resto.map(negado)));
+  }
+  return suc;
+}
+function cambiosDeSigno(suc, x) {
+  let previo = 0, cambios = 0;
+  for (const q of suc) {
+    const s = signo(evaluar(q, x));
+    if (s === 0)
+      continue;
+    if (previo !== 0 && s !== previo)
+      cambios++;
+    previo = s;
+  }
+  return cambios;
+}
+function cotaCauchy(p) {
+  const q = normalizar(p);
+  if (q.length <= 1)
+    return UNO;
+  const lc = q[q.length - 1];
+  let max3 = CERO;
+  for (let i2 = 0; i2 < q.length - 1; i2++) {
+    const c = absoluto(cociente(q[i2], lc));
+    if (comparar(c, max3) > 0)
+      max3 = c;
+  }
+  return suma(UNO, max3);
+}
+var MAX_BISECCIONES = 200;
+function raicesRacionales(p) {
+  const q = normalizar(p);
+  if (q.length < 2)
+    return [];
+  let mcm2 = 1n;
+  for (const c of q)
+    mcm2 = mcm2 * c.d / mcdEnteros(mcm2, c.d);
+  const enteros = q.map((c) => c.n * mcm2 / c.d);
+  const a0 = enteros[0] < 0n ? -enteros[0] : enteros[0];
+  const an = enteros[enteros.length - 1] < 0n ? -enteros[enteros.length - 1] : enteros[enteros.length - 1];
+  if (a0 === 0n) {
+    const sinX = normalizar(q.slice(1));
+    return [CERO, ...raicesRacionales(sinX)];
+  }
+  const TOPE = 100000n;
+  if (a0 > TOPE || an > TOPE)
+    return [];
+  const divisores = (n) => {
+    const out2 = [];
+    for (let d = 1n; d * d <= n; d++) {
+      if (n % d === 0n) {
+        out2.push(d);
+        if (d * d !== n)
+          out2.push(n / d);
+      }
+    }
+    return out2;
+  };
+  const out = [];
+  for (const dp of divisores(a0)) {
+    for (const dq of divisores(an)) {
+      for (const s of [1n, -1n]) {
+        const cand = rac(s * dp, dq);
+        if (esCero2(evaluar(q, cand)) && !out.some((r) => comparar(r, cand) === 0))
+          out.push(cand);
+      }
+    }
+  }
+  return out;
+}
+function mcdEnteros(a, b) {
+  let x = a < 0n ? -a : a, y = b < 0n ? -b : b;
+  while (y) {
+    const t2 = x % y;
+    x = y;
+    y = t2;
+  }
+  return x;
+}
+function raicesReales(p) {
+  const libre = libreDeCuadrados(p);
+  if (grado(libre) < 1)
+    return [];
+  const exactas = raicesRacionales(libre);
+  const suc = sucesionSturm(libre);
+  const cota = cotaCauchy(libre);
+  const total = Math.max(0, cambiosDeSigno(suc, negado(cota)) - cambiosDeSigno(suc, cota));
+  if (total === 0)
+    return [];
+  const aislados = [];
+  const cola = [
+    { a: negado(cota), b: cota, n: total }
+  ];
+  let vueltas = 0;
+  while (cola.length > 0 && vueltas++ < MAX_BISECCIONES * 8) {
+    const it = cola.shift();
+    if (!it)
+      break;
+    if (it.n === 0)
+      continue;
+    if (it.n === 1) {
+      aislados.push({ a: it.a, b: it.b });
+      continue;
+    }
+    const m = cociente(suma(it.a, it.b), rac(2n));
+    const cm = cambiosDeSigno(suc, m);
+    const izq = Math.max(0, cambiosDeSigno(suc, it.a) - cm);
+    const der = Math.max(0, cm - cambiosDeSigno(suc, it.b));
+    if (izq === it.n && der === 0) {
+      cola.push({ a: it.a, b: m, n: izq });
+      continue;
+    }
+    if (der === it.n && izq === 0) {
+      cola.push({ a: m, b: it.b, n: der });
+      continue;
+    }
+    if (izq > 0)
+      cola.push({ a: it.a, b: m, n: izq });
+    if (der > 0)
+      cola.push({ a: m, b: it.b, n: der });
+  }
+  const salida = aislados.map(({ a, b }) => {
+    const exacto2 = exactas.find((e3) => comparar(e3, a) > 0 && comparar(e3, b) <= 0) ?? null;
+    if (exacto2)
+      return { a: exacto2, b: exacto2, valor: aNumero(exacto2), exacto: exacto2 };
+    const r = refinar(libre, a, b);
+    return { a: r.a, b: r.b, valor: r.valor, exacto: null };
+  });
+  salida.sort((u, v) => u.valor - v.valor);
+  return salida;
+}
+function refinar(p, a0, b0) {
+  let a = a0, b = b0;
+  const sa = signo(evaluar(p, a));
+  if (sa === 0)
+    return { valor: aNumero(a), a, b: a };
+  if (signo(evaluar(p, b)) === 0)
+    return { valor: aNumero(b), a: b, b };
+  let signoA = sa;
+  for (let i2 = 0; i2 < MAX_BISECCIONES; i2++) {
+    const m = cociente(suma(a, b), rac(2n));
+    const sm = signo(evaluar(p, m));
+    if (sm === 0)
+      return { valor: aNumero(m), a: m, b: m };
+    if (sm === signoA) {
+      a = m;
+      signoA = sm;
+    } else {
+      b = m;
+    }
+    const na = aNumero(a), nb = aNumero(b);
+    if (na === nb)
+      return { valor: na, a, b };
+  }
+  return { valor: (aNumero(a) + aNumero(b)) / 2, a, b };
+}
+function potenciaPol(p, k) {
+  let r = [UNO];
+  for (let i2 = 0; i2 < k; i2++)
+    r = productoPol(r, p);
+  return r;
+}
+
+// src/math/polinomio2.ts
+var NULO2 = [];
+function normalizar2(p) {
+  let n = p.length;
+  while (n > 0 && esNulo(p[n - 1]))
+    n--;
+  return (n === p.length ? p : p.slice(0, n)).map(normalizar);
+}
+var gradoY = (p) => normalizar2(p).length - 1;
+function gradoX(p) {
+  let g = -1;
+  for (const c of normalizar2(p))
+    g = Math.max(g, grado(c));
+  return g;
+}
+var esNulo2 = (p) => normalizar2(p).length === 0;
+var constante2 = (k) => esCero2(k) ? NULO2 : [[k]];
+var X2 = [[CERO, UNO]];
+var Y2 = [NULO, [UNO]];
+function suma2(a, b) {
+  const out = [];
+  for (let j = 0; j < Math.max(a.length, b.length); j++)
+    out.push(sumaPol(a[j] ?? NULO, b[j] ?? NULO));
+  return normalizar2(out);
+}
+function resta2(a, b) {
+  const out = [];
+  for (let j = 0; j < Math.max(a.length, b.length); j++)
+    out.push(restaPol(a[j] ?? NULO, b[j] ?? NULO));
+  return normalizar2(out);
+}
+function producto2(a, b) {
+  const A = normalizar2(a), B = normalizar2(b);
+  if (A.length === 0 || B.length === 0)
+    return NULO2;
+  const out = new Array(A.length + B.length - 1).fill(NULO);
+  for (let i2 = 0; i2 < A.length; i2++)
+    for (let j = 0; j < B.length; j++)
+      out[i2 + j] = sumaPol(out[i2 + j], productoPol(A[i2], B[j]));
+  return normalizar2(out);
+}
+function negado2(p) {
+  return normalizar2(p.map((c) => c.map(negado)));
+}
+function potencia2(p, k) {
+  let r = constante2(UNO);
+  for (let i2 = 0; i2 < k; i2++)
+    r = producto2(r, p);
+  return r;
+}
+function sustituirY(p, f) {
+  const P4 = normalizar2(p);
+  let acc = NULO;
+  for (let j = P4.length - 1; j >= 0; j--)
+    acc = sumaPol(productoPol(acc, f), P4[j]);
+  return normalizar(acc);
+}
+function sustituirX(p, x) {
+  const P4 = normalizar2(p);
+  const out = [];
+  for (const c of P4) {
+    let acc = CERO;
+    for (let i2 = c.length - 1; i2 >= 0; i2--)
+      acc = suma(producto(acc, x), c[i2]);
+    out.push(acc);
+  }
+  return normalizar(out);
+}
+function evaluarNum2(p, x, y) {
+  const P4 = normalizar2(p);
+  let acc = 0;
+  for (let j = P4.length - 1; j >= 0; j--) {
+    let cx = 0;
+    const c = P4[j];
+    for (let i2 = c.length - 1; i2 >= 0; i2--)
+      cx = cx * x + Number(c[i2].n) / Number(c[i2].d);
+    acc = acc * y + cx;
+  }
+  return acc;
+}
+function resultanteY(p, q) {
+  const A = normalizar2(p), B = normalizar2(q);
+  const m = gradoY(A), n = gradoY(B);
+  if (m < 0 || n < 0)
+    return NULO;
+  if (m === 0)
+    return potenciaPol(A[0], n);
+  if (n === 0)
+    return potenciaPol(B[0], m);
+  const dim = m + n;
+  const M = [];
+  for (let i2 = 0; i2 < n; i2++) {
+    const fila = new Array(dim).fill(NULO);
+    for (let j = 0; j <= m; j++)
+      fila[i2 + j] = A[m - j];
+    M.push(fila);
+  }
+  for (let i2 = 0; i2 < m; i2++) {
+    const fila = new Array(dim).fill(NULO);
+    for (let j = 0; j <= n; j++)
+      fila[i2 + j] = B[n - j];
+    M.push(fila);
+  }
+  return determinanteBareiss(M, dim);
+}
+function determinanteBareiss(M, dim) {
+  let signoDet = 1;
+  let anterior = [UNO];
+  for (let k = 0; k < dim - 1; k++) {
+    if (esNulo(M[k][k])) {
+      let cambio = -1;
+      for (let i2 = k + 1; i2 < dim; i2++)
+        if (!esNulo(M[i2][k])) {
+          cambio = i2;
+          break;
+        }
+      if (cambio === -1)
+        return NULO;
+      const t2 = M[k];
+      M[k] = M[cambio];
+      M[cambio] = t2;
+      signoDet = -signoDet;
+    }
+    for (let i2 = k + 1; i2 < dim; i2++) {
+      for (let j = k + 1; j < dim; j++) {
+        const num = restaPol(productoPol(M[i2][j], M[k][k]), productoPol(M[i2][k], M[k][j]));
+        M[i2][j] = esNulo(anterior) ? num : dividir(num, anterior).coc;
+      }
+      M[i2][k] = NULO;
+    }
+    anterior = M[k][k];
+  }
+  const det2 = M[dim - 1][dim - 1];
+  return signoDet === 1 ? normalizar(det2) : normalizar(det2.map(negado));
+}
+function compartenComponente(p, q) {
+  const A = normalizar2(p), B = normalizar2(q);
+  if (esNulo2(A) || esNulo2(B))
+    return false;
+  if (gradoY(A) === 0 && gradoY(B) === 0) {
+    const { resto } = dividir(A[0], B[0]);
+    return esNulo(resto) || esNulo(dividir(B[0], A[0]).resto);
+  }
+  if (gradoY(A) === 0 || gradoY(B) === 0)
+    return false;
+  return esNulo(resultanteY(A, B));
+}
+
+// src/math/simbolico/constanteExacta.ts
+var GRADO_MAXIMO = 64;
+var ENTERO_MAXIMO = 1n << 256n;
+function raizEnteraK(n, k) {
+  if (n < 0n || k < 1)
+    return null;
+  if (n < 2n)
+    return n;
+  let lo = 1n, hi = 2n;
+  while (hi ** BigInt(k) <= n)
+    hi *= 2n;
+  while (lo < hi) {
+    const medio = (lo + hi + 1n) / 2n;
+    if (medio ** BigInt(k) <= n)
+      lo = medio;
+    else
+      hi = medio - 1n;
+  }
+  return lo ** BigInt(k) === n ? lo : null;
+}
+function raizRacional(v, k) {
+  if (k < 1 || k > GRADO_MAXIMO)
+    return null;
+  const negativo = signo(v) < 0;
+  if (negativo && k % 2 === 0)
+    return null;
+  const n = negativo ? -v.n : v.n;
+  if (n > ENTERO_MAXIMO || v.d > ENTERO_MAXIMO)
+    return null;
+  const rn = raizEnteraK(n, k);
+  const rd = raizEnteraK(v.d, k);
+  if (rn === null || rd === null)
+    return null;
+  return rac(negativo ? -rn : rn, rd);
+}
+function exponenteRacional(n) {
+  return constanteExacta(n);
+}
+function potenciaRacionalExacta(base, e3) {
+  if (e3.d > BigInt(GRADO_MAXIMO))
+    return null;
+  const raiz = e3.d === 1n ? base : raizRacional(base, Number(e3.d));
+  if (raiz === null)
+    return null;
+  const p = e3.n;
+  if (p > BigInt(GRADO_MAXIMO) || p < -BigInt(GRADO_MAXIMO))
+    return null;
+  if (p < 0n && esCero2(raiz))
+    return null;
+  return potencia(raiz, Number(p));
+}
+function constanteExacta(nodo) {
+  switch (nodo.type) {
+    case "ParenthesisNode":
+      return constanteExacta(nodo.content);
+    case "ConstantNode": {
+      const v = nodo.value;
+      if (typeof v !== "number" || !Number.isFinite(v))
+        return null;
+      return desdeDecimal(String(v)) ?? desdeNumero(v);
+    }
+    case "SymbolNode":
+      return null;
+    case "OperatorNode": {
+      if (nodo.op === "-" && nodo.args.length === 1) {
+        const a2 = constanteExacta(nodo.args[0]);
+        return a2 === null ? null : negado(a2);
+      }
+      if (nodo.op === "+" && nodo.args.length === 1)
+        return constanteExacta(nodo.args[0]);
+      if (nodo.args.length !== 2)
+        return null;
+      const a = constanteExacta(nodo.args[0]);
+      if (a === null)
+        return null;
+      if (nodo.op === "^") {
+        const e3 = exponenteRacional(nodo.args[1]);
+        return e3 === null ? null : potenciaRacionalExacta(a, e3);
+      }
+      const b = constanteExacta(nodo.args[1]);
+      if (b === null)
+        return null;
+      switch (nodo.op) {
+        case "+":
+          return suma(a, b);
+        case "-":
+          return resta(a, b);
+        case "*":
+          return producto(a, b);
+        case "/":
+          return esCero2(b) ? null : cociente(a, b);
+        default:
+          return null;
+      }
+    }
+    case "FunctionNode": {
+      const nombre = nodo.fn?.name;
+      const args = nodo.args;
+      if (nombre === "sqrt" && args.length === 1) {
+        const a = constanteExacta(args[0]);
+        return a === null ? null : raizRacional(a, 2);
+      }
+      if (nombre === "cbrt" && args.length === 1) {
+        const a = constanteExacta(args[0]);
+        return a === null ? null : raizRacional(a, 3);
+      }
+      if (nombre === "nthRoot" && args.length === 2) {
+        const a = constanteExacta(args[0]);
+        const k = constanteExacta(args[1]);
+        if (a === null || k === null || k.d !== 1n)
+          return null;
+        return raizRacional(a, Number(k.n));
+      }
+      if (nombre === "abs" && args.length === 1) {
+        const a = constanteExacta(args[0]);
+        return a === null ? null : signo(a) < 0 ? negado(a) : a;
+      }
+      if (nombre === "unaryMinus" && args.length === 1) {
+        const a = constanteExacta(args[0]);
+        return a === null ? null : negado(a);
+      }
+      return null;
+    }
+    default:
+      return null;
+  }
+}
+
+// src/math/extraerNodo.ts
+var entera = (p) => ({ num: p, den: constante2(UNO) });
+var GRADO_MAXIMO2 = 8;
+function desParen3(n) {
+  return n.type === "ParenthesisNode" ? desParen3(n.content) : n;
+}
+function constanteDe(n) {
+  if (n.type !== "ConstantNode")
+    return null;
+  const v = n.value;
+  if (typeof v !== "number" || !Number.isFinite(v))
+    return null;
+  return desdeDecimal(String(v)) ?? desdeNumero(v);
+}
+function exponenteEntero(n) {
+  const e3 = desParen3(n);
+  if (e3.type === "ConstantNode" && Number.isInteger(e3.value))
+    return e3.value;
+  if (e3.type === "OperatorNode" && e3.op === "-" && e3.args.length === 1) {
+    const dentro2 = desParen3(e3.args[0]);
+    if (dentro2.type === "ConstantNode" && Number.isInteger(dentro2.value))
+      return -dentro2.value;
+  }
+  return null;
+}
+function fraccionDe(n) {
+  const nodo = desParen3(n);
+  const comoConstante = () => {
+    const k = constanteExacta(nodo);
+    return k === null ? null : entera(constante2(k));
+  };
+  switch (nodo.type) {
+    case "ConstantNode": {
+      const k = constanteDe(nodo);
+      return k === null ? null : entera(constante2(k));
+    }
+    case "SymbolNode":
+      if (nodo.name === "x")
+        return entera(X2);
+      if (nodo.name === "y")
+        return entera(Y2);
+      return null;
+    case "OperatorNode": {
+      if (nodo.op === "-" && nodo.args.length === 1) {
+        const a2 = fraccionDe(nodo.args[0]);
+        return a2 === null ? null : { num: negado2(a2.num), den: a2.den };
+      }
+      if (nodo.args.length !== 2)
+        return null;
+      const a = fraccionDe(nodo.args[0]);
+      if (a === null)
+        return null;
+      if (nodo.op === "^") {
+        const k = exponenteEntero(nodo.args[1]);
+        if (k === null)
+          return comoConstante();
+        if (k >= 0)
+          return { num: potencia2(a.num, k), den: potencia2(a.den, k) };
+        if (esNulo2(a.num))
+          return null;
+        return { num: potencia2(a.den, -k), den: potencia2(a.num, -k) };
+      }
+      const b = fraccionDe(nodo.args[1]);
+      if (b === null)
+        return null;
+      switch (nodo.op) {
+        case "+":
+          return {
+            num: suma2(producto2(a.num, b.den), producto2(b.num, a.den)),
+            den: producto2(a.den, b.den)
+          };
+        case "-":
+          return {
+            num: resta2(producto2(a.num, b.den), producto2(b.num, a.den)),
+            den: producto2(a.den, b.den)
+          };
+        case "*":
+          return { num: producto2(a.num, b.num), den: producto2(a.den, b.den) };
+        case "/":
+          if (esNulo2(b.num))
+            return null;
+          return { num: producto2(a.num, b.den), den: producto2(a.den, b.num) };
+        default:
+          return null;
+      }
+    }
+    default:
+      return comoConstante();
+  }
+}
+function polinomicaDeFracciones(izquierda, derecha) {
+  const p = resta2(producto2(izquierda.num, derecha.den), producto2(derecha.num, izquierda.den));
+  const denominador = producto2(izquierda.den, derecha.den);
+  if (esNulo2(p))
+    return null;
+  if (Math.max(gradoX(p), gradoY(p)) > GRADO_MAXIMO2)
+    return null;
+  return { p, denominador };
+}
+
+// src/math/extraer.ts
+function ecuacionAPolinomio(ecuacion) {
+  const partes = ecuacion.split("=");
+  if (partes.length > 2)
+    return null;
+  const preparar = (s) => {
+    const limpio = s.trim();
+    if (limpio === "")
+      return null;
+    try {
+      return parse2(insertarProductoImplicito(normalizarEntrada(limpio)));
+    } catch {
+      return null;
+    }
+  };
+  let izquierda;
+  let derecha;
+  if (partes.length === 2) {
+    const a = preparar(partes[0]), b = preparar(partes[1]);
+    if (!a || !b)
+      return null;
+    izquierda = fraccionDe(a);
+    derecha = fraccionDe(b);
+  } else {
+    const a = preparar(partes[0]);
+    if (!a)
+      return null;
+    izquierda = entera(Y2);
+    derecha = fraccionDe(a);
+  }
+  if (!izquierda || !derecha)
+    return null;
+  return polinomicaDeFracciones(izquierda, derecha);
+}
+
+// src/math/dominio.ts
+var RAIZ_PAR = /* @__PURE__ */ new Set(["sqrt"]);
+var LOGARITMO = /* @__PURE__ */ new Set(["log", "log10", "log2", "ln"]);
+var ARCO_ACOTADO = /* @__PURE__ */ new Set(["asin", "acos", "arcsin", "arccos"]);
+var desParen4 = (n) => n.type === "ParenthesisNode" ? desParen4(n.content) : n;
+function variablesLibresDe(exprNorm) {
+  try {
+    const nombres = /* @__PURE__ */ new Set();
+    parse2(exprNorm).filter(
+      (n, camino, padre) => n.type === "SymbolNode" && !(padre !== null && padre.type === "FunctionNode" && camino === "fn")
+    ).forEach((n) => {
+      if (!CONSTANTES3.has(n.name))
+        nombres.add(n.name);
+    });
+    return [...nombres];
+  } catch {
+    return [];
+  }
+}
+function constante(n0) {
+  const n = desParen4(n0);
+  if (n.type === "ConstantNode")
+    return Number(n.value);
+  if (n.type === "OperatorNode" && n.args.length === 1 && n.op === "-") {
+    const v = constante(n.args[0]);
+    return v === null ? null : -v;
+  }
+  if (n.type === "OperatorNode" && n.args.length === 2 && n.op === "/") {
+    const a = constante(n.args[0]), b = constante(n.args[1]);
+    return a === null || b === null || b === 0 ? null : a / b;
+  }
+  return null;
+}
+function exponenteDeRaizPar(e3) {
+  if (!Number.isFinite(e3) || Number.isInteger(e3))
+    return false;
+  for (let q = 2; q <= 64; q += 1) {
+    const p = e3 * q;
+    if (Math.abs(p - Math.round(p)) < 1e-12)
+      return q % 2 === 0;
+  }
+  return false;
+}
+var CACHE = /* @__PURE__ */ new Map();
+var CACHE_MAX = 512;
+function restriccionesDe(exprNorm) {
+  const guardado = CACHE.get(exprNorm);
+  if (guardado !== void 0)
+    return guardado;
+  const calculado = leerRestricciones(exprNorm);
+  if (CACHE.size >= CACHE_MAX)
+    CACHE.clear();
+  CACHE.set(exprNorm, calculado);
+  return calculado;
+}
+function leerRestricciones(exprNorm) {
+  let raiz;
+  try {
+    raiz = parse2(exprNorm);
+  } catch {
+    return null;
+  }
+  const out = [];
+  const anotar = (tipo, n) => {
+    const expr = desParen4(n).toString();
+    if (variablesLibresDe(expr).length === 0)
+      return;
+    if (!out.some((r) => r.tipo === tipo && r.expr === expr))
+      out.push({ tipo, expr });
+  };
+  const visitar = (n0) => {
+    const n = desParen4(n0);
+    if (n.type === "OperatorNode") {
+      if (n.op === "/" && n.args.length === 2)
+        anotar("noCero", n.args[1]);
+      if (n.op === "^" && n.args.length === 2) {
+        const e3 = constante(n.args[1]);
+        if (e3 !== null && e3 < 0)
+          anotar("noCero", n.args[0]);
+        if (e3 !== null && exponenteDeRaizPar(e3))
+          anotar("noNegativo", n.args[0]);
+      }
+    } else if (n.type === "FunctionNode") {
+      const nombre = n.fn?.name ?? "";
+      const arg2 = n.args[0];
+      if (arg2) {
+        if (RAIZ_PAR.has(nombre))
+          anotar("noNegativo", arg2);
+        if (LOGARITMO.has(nombre))
+          anotar("positivo", arg2);
+        if (ARCO_ACOTADO.has(nombre))
+          anotar("acotado", arg2);
+        if (nombre === "nthRoot" && n.args.length === 2) {
+          const k = constante(n.args[1]);
+          if (k !== null && Number.isInteger(k) && k % 2 === 0)
+            anotar("noNegativo", arg2);
+        }
+      }
+    }
+    n.forEach((h) => visitar(h));
+  };
+  try {
+    visitar(raiz);
+  } catch {
+    return null;
+  }
+  return out;
+}
+var COMPILADAS = /* @__PURE__ */ new Map();
+function compilada(expr) {
+  const guardada = COMPILADAS.get(expr);
+  if (guardada !== void 0)
+    return guardada;
+  let f;
+  try {
+    f = compilarExpresion(expr);
+  } catch {
+    f = null;
+  }
+  if (COMPILADAS.size >= CACHE_MAX)
+    COMPILADAS.clear();
+  COMPILADAS.set(expr, f);
+  return f;
+}
+function valorDe(expr, scope) {
+  const f = compilada(expr);
+  if (f === null)
+    return NaN;
+  try {
+    const v = f(scope);
+    return typeof v === "number" ? v : NaN;
+  } catch {
+    return NaN;
+  }
+}
+var EPS3 = 1e-12;
+function violaUna(r, scope) {
+  const v = valorDe(r.expr, scope);
+  if (!Number.isFinite(v))
+    return false;
+  switch (r.tipo) {
+    case "noCero":
+      return Math.abs(v) <= EPS3;
+    case "noNegativo":
+      return v < -EPS3;
+    case "positivo":
+      return v <= EPS3;
+    case "acotado":
+      return Math.abs(v) > 1 + EPS3;
+  }
+}
+var BARRIDO_MIN = -30;
+var BARRIDO_MAX = 30;
+var BARRIDO_PASOS = 3e3;
+var BISECCIONES = 60;
+var MAX_PUNTOS = 12;
+var CONSTANTES3 = /* @__PURE__ */ new Set(["pi", "e", "tau", "phi", "Infinity", "NaN"]);
+function cerosPolinomicos(expr, variable) {
+  const eq = ecuacionAPolinomio(`${expr} = 0`);
+  if (eq === null)
+    return null;
+  let p;
+  if (variable === "y") {
+    p = sustituirX(eq.p, CERO);
+  } else {
+    if (gradoY(eq.p) > 0)
+      return null;
+    p = eq.p[0] ?? [];
+  }
+  if (p.length === 0)
+    return null;
+  return raicesReales(p).map((r) => r.exacto !== null ? Number(r.exacto.n) / Number(r.exacto.d) : r.valor);
+}
+function cerosPorBarrido(expr, variable) {
+  const f = (x) => valorDe(expr, { [variable]: x });
+  const out = [];
+  const paso = (BARRIDO_MAX - BARRIDO_MIN) / BARRIDO_PASOS;
+  let xa = BARRIDO_MIN, va = f(xa);
+  for (let i2 = 1; i2 <= BARRIDO_PASOS && out.length < MAX_PUNTOS; i2++) {
+    const xb = BARRIDO_MIN + i2 * paso, vb = f(xb);
+    if (Number.isFinite(va) && Number.isFinite(vb) && va !== 0 && vb !== 0 && va < 0 !== vb < 0) {
+      let a = xa, b = xb, fa = va;
+      for (let k = 0; k < BISECCIONES; k++) {
+        const m = (a + b) / 2, fm = f(m);
+        if (!Number.isFinite(fm))
+          break;
+        if (fa < 0 === fm < 0) {
+          a = m;
+          fa = fm;
+        } else
+          b = m;
+      }
+      out.push(redondear((a + b) / 2, expr, variable));
+    }
+    if (va === 0)
+      out.push(xa);
+    xa = xb;
+    va = vb;
+  }
+  return out;
+}
+function redondear(x, expr, variable) {
+  for (const cand of [Math.round(x), Math.round(x * 2) / 2, Math.round(x * 4) / 4, Math.round(x * 1e6) / 1e6]) {
+    if (Math.abs(cand - x) < 1e-6 && valorDe(expr, { [variable]: cand }) === 0)
+      return cand;
+  }
+  return x;
+}
+function puntosDeQuiebre(exprNorm, variable) {
+  const rs = restriccionesDe(exprNorm);
+  if (rs === null || rs.length === 0)
+    return [];
+  const out = [];
+  for (const r of rs) {
+    const vars = variablesLibresDe(r.expr);
+    if (vars.length !== 1 || vars[0] !== variable)
+      continue;
+    const objetivos = r.tipo === "acotado" ? [`(${r.expr}) - 1`, `(${r.expr}) + 1`] : [r.expr];
+    for (const obj of objetivos) {
+      const exactos = cerosPolinomicos(obj, variable);
+      for (const v of exactos ?? cerosPorBarrido(obj, variable))
+        if (Number.isFinite(v) && !out.some((w) => Math.abs(w - v) < 1e-9))
+          out.push(v);
+    }
+    if (out.length >= MAX_PUNTOS)
+      break;
+  }
+  return out.slice(0, MAX_PUNTOS);
+}
+var MUESTRA = [-7.3, -2.6, -1.2, -0.7, -0.3, 0.4, 1.1, 2.7, 5.8, 11.4];
+function escenarios(a, b, vars) {
+  const base = (i2) => {
+    const scope = {};
+    vars.forEach((v, k) => {
+      scope[v] = MUESTRA[(i2 + 3 * k) % MUESTRA.length];
+    });
+    return scope;
+  };
+  const out = MUESTRA.map((_, i2) => base(i2));
+  for (const v of vars)
+    for (const q of [...puntosDeQuiebre(a, v), ...puntosDeQuiebre(b, v)])
+      out.push({ ...base(0), [v]: q });
+  return out;
+}
+function mismaFuncion(a, b) {
+  try {
+    const vars = [.../* @__PURE__ */ new Set([...variablesLibresDe(a), ...variablesLibresDe(b)])];
+    const fa = compilada(a), fb = compilada(b);
+    if (fa === null || fb === null)
+      return false;
+    const ra = restriccionesDe(a) ?? [], rb = restriccionesDe(b) ?? [];
+    return escenarios(a, b, vars).every((scope) => {
+      if (ra.some((r) => violaUna(r, scope)) !== rb.some((r) => violaUna(r, scope)))
+        return false;
+      const va = fa(scope), vb = fb(scope);
+      const finA = typeof va === "number" && Number.isFinite(va);
+      const finB = typeof vb === "number" && Number.isFinite(vb);
+      if (!finA || !finB)
+        return finA === finB;
+      return Math.abs(va - vb) <= 1e-8 * (1 + Math.abs(va));
+    });
+  } catch {
+    return false;
+  }
+}
+
+// src/simplificar.ts
+var REGLAS_SIMPLIFY = simplify.rules.concat([
+  // `log(e^u) = u` vale en TODO ℝ (`e^u > 0` siempre). Se cubren las DOS escrituras del
+  // logaritmo natural: la de mathjs (`log` de un argumento) y la que emiten nuestros
+  // módulos con la base explícita (`log(u, e)`), necesaria desde que un `log` sin base
+  // significa base 10 al releerse. La inversa `e^(log u) = u` NO se añade: solo vale para
+  // u > 0 y cambiaría el dominio aparente respecto de la curva dibujada.
+  "log(e^n1) -> n1",
+  "log(e) -> 1",
+  "log(e^n1, e) -> n1",
+  "log(e, e) -> 1",
+  // Identidades trigonométricas que mathjs tampoco trae. Las cinco valen en TODO ℝ, que es
+  // el listón de esta lista: la pitagórica no tiene excepciones, y las tres paridades
+  // conservan el dominio exacto (`tan(-x)` y `-tan(x)` tienen los mismos polos). Se dejan
+  // FUERA las que mueven el dominio o solo valen en un intervalo (`asin(sin x) = x` no es
+  // cierta fuera de [−π/2, π/2]) y las que no simplifican nada (`2 sin x cos x = sin 2x`
+  // es un cambio de forma, no una reducción).
+  "sin(n1)^2 + cos(n1)^2 -> 1",
+  "cos(n1)^2 + sin(n1)^2 -> 1",
+  "sin(-n1) -> -sin(n1)",
+  "cos(-n1) -> cos(n1)",
+  "tan(-n1) -> -tan(n1)",
+  // La raíz par de un cuadrado es el VALOR ABSOLUTO, no la base. `√(u²) = u` es el error de
+  // manual —falso para todo u<0— y por evitarlo el motor no reducía nada: dejaba `√(x²)` tal
+  // cual, que es correcto pero es el radical de un cuadrado sin resolver. `|u|` sí es cierto
+  // en TODO ℝ, y además es la forma canónica real de esa expresión.
+  "sqrt(n1^2) -> abs(n1)",
+  "nthRoot(n1^2, 2) -> abs(n1)",
+  // Y al revés: elevar un módulo al cuadrado lo borra, porque el cuadrado ya es no negativo.
+  // Las dos formas están definidas en todo ℝ y valen lo mismo, así que la igualdad no lleva
+  // condición. Encadenadas, `√(|u|²)` acaba en `|u|`.
+  "abs(n1)^2 -> n1^2",
+  "abs(-n1) -> abs(n1)",
+  "abs(abs(n1)) -> abs(n1)"
+]);
+var OPCIONES_SIMPLIFY = { fractionsLimit: 64 };
+function simplificarExpr(exprNorm) {
+  let base;
+  try {
+    base = parse2(exprNorm);
+  } catch {
+    return null;
+  }
+  const r = rationalizeSeguro(base);
+  if (r)
+    return r;
+  try {
+    return simplify(
+      base,
+      REGLAS_SIMPLIFY,
+      {},
+      OPCIONES_SIMPLIFY
+    );
+  } catch {
+    return base;
+  }
+}
+var formasEquivalentes = mismaFuncion;
+function formatear(n) {
+  return formatearCanonico(sinParentesisRedundantes(
+    resimbolizarConstantes(racionalizarFracciones(combinarYordenar(n)))
+  ));
+}
+var costo = (n) => [profundidadFraccion(n), n.toString().length];
+var menor = (a, b) => a[0] !== b[0] ? a[0] < b[0] : a[1] < b[1];
+function simplificarLado(lado) {
+  const norm3 = insertarProductoImplicito(normalizarEntrada(lado.trim()));
+  const n = simplificarExpr(norm3);
+  if (!n)
+    return norm3;
+  const actual = formatear(n);
+  if (!formasEquivalentes(actual, norm3))
+    return norm3;
+  let curNodo;
+  try {
+    curNodo = parse2(actual);
+  } catch {
+    return actual;
+  }
+  if (profundidadFraccion(curNodo) < 2)
+    return actual;
+  const candidatas = [];
+  try {
+    candidatas.push(formatear(parse2(norm3)));
+  } catch {
+  }
+  try {
+    candidatas.push(formatear(combinarFracciones(n)));
+  } catch {
+  }
+  let mejorStr = actual, mejorCosto = costo(curNodo);
+  for (const s of candidatas) {
+    try {
+      const cost = costo(parse2(s));
+      if (menor(cost, mejorCosto) && formasEquivalentes(s, norm3)) {
+        mejorStr = s;
+        mejorCosto = cost;
+      }
+    } catch {
+    }
+  }
+  return mejorStr;
+}
+function simplificarEcuaciones(ecuaciones) {
+  return ecuaciones.map((entrada) => transformarSinRestriccion(entrada, (ec) => {
+    const comp = componenteParametrica(ec);
+    if (comp)
+      return `${comp.eje}(t) = ${simplificarLado(comp.expr)}`;
+    const partes = ec.split("=");
+    if (partes.length === 2)
+      return `${simplificarLado(partes[0])} = ${simplificarLado(partes[1])}`;
+    return simplificarLado(ec);
+  }));
+}
+
+// src/despeje/aritmetica.ts
+var mcdEnteros2 = (a, b) => b === 0 ? Math.abs(a) : mcdEnteros2(b, Math.abs(a % b));
+function normalizarFraccion(num, den) {
+  if (den === 0)
+    return null;
+  if (den < 0) {
+    num = -num;
+    den = -den;
+  }
+  const g = mcdEnteros2(Math.abs(num), den) || 1;
+  return { num: num / g, den: den / g };
+}
+function fraccionSencilla(v) {
+  for (let den = 2; den <= 64; den++) {
+    const num = v * den;
+    if (Math.abs(num - Math.round(num)) <= 1e-9 * Math.max(1, Math.abs(num)))
+      return normalizarFraccion(Math.round(num), den);
+  }
+  return null;
+}
+
+// src/despeje/estrategias.ts
+var contieneY2 = (n) => contieneVariable(n, "y");
+function factorEsY(n) {
+  if (n.type === "ParenthesisNode")
+    return factorEsY(n.content);
+  if (n.type === "SymbolNode" && n.name === "y")
+    return 1;
+  if (n.type === "OperatorNode" && n.op === "-" && n.args.length === 1) {
+    const s = factorEsY(n.args[0]);
+    return s === null ? null : -s;
+  }
+  return null;
+}
+function linealEnY(t2) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== 1)
+    return null;
+  const s = factorEsY(conYf[0].nodo);
+  if (s === null)
+    return null;
+  return { signo: t2.signo * s, libres: fs.filter((f) => !contieneY2(f.nodo)) };
+}
+function limpiarRHS(rhs) {
+  const n = simplificarExpr(rhs);
+  return n ? formatearCanonico(racionalizarFracciones(n)) : rhs;
+}
+function renderProducto(fs) {
+  const env = (f) => `(${f.nodo.toString()})`;
+  const num = fs.filter((f) => f.exp === 1).map(env);
+  const den = fs.filter((f) => f.exp === -1).map(env);
+  const n = num.length ? num.join("*") : "1";
+  return den.length ? `(${n})/(${den.join("*")})` : n;
+}
+function ladoDerecho(t2, derecha, libres, render = renderTerminos) {
+  const numTs = t2.signo === 1 ? derecha : flip(derecha);
+  const numStr = render(numTs);
+  let rhs = numTs.length > 1 ? `(${numStr})` : numStr;
+  const suben = libres.filter((f) => f.exp === -1).map((f) => `(${f.nodo.toString()})`);
+  const bajan = libres.filter((f) => f.exp === 1).map((f) => `(${f.nodo.toString()})`);
+  if (suben.length)
+    rhs = [rhs, ...suben].join("*");
+  if (bajan.length)
+    rhs = `(${rhs})/(${bajan.join("*")})`;
+  return rhs;
+}
+function desParen5(n) {
+  return n.type === "ParenthesisNode" ? desParen5(n.content) : n;
+}
+function exponenteY(n) {
+  const nodo = desParen5(n);
+  if (nodo.type === "OperatorNode" && nodo.op === "^" && nodo.args.length === 2) {
+    const base = desParen5(nodo.args[0]);
+    const exp3 = desParen5(nodo.args[1]);
+    if (base.type === "SymbolNode" && base.name === "y" && exp3.type === "ConstantNode" && Number.isInteger(exp3.value) && exp3.value >= 2)
+      return exp3.value;
+  }
+  return null;
+}
+function inversoExponenteFraccionarioY(n) {
+  const nodo = desParen5(n);
+  if (nodo.type !== "OperatorNode" || nodo.op !== "^" || nodo.args.length !== 2)
+    return null;
+  const base = desParen5(nodo.args[0]);
+  if (base.type !== "SymbolNode" || base.name !== "y")
+    return null;
+  const exp3 = desParen5(nodo.args[1]);
+  const r = racionalConstante(exp3);
+  if (r !== null) {
+    if (r.den === 1 || r.num <= 0)
+      return null;
+    return r.num === 1 ? `${r.den}` : `${r.den}/${r.num}`;
+  }
+  const v = valorConstanteFactor(exp3);
+  if (v === null || !Number.isFinite(v) || Number.isInteger(v) || v <= 0)
+    return null;
+  const f = fraccionSencilla(v);
+  if (f !== null)
+    return f.num === 1 ? `${f.den}` : `${f.den}/${f.num}`;
+  return `1/${v}`;
+}
+function despejePotencia(t2, derecha) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  const libres = fs.filter((f) => !contieneY2(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== 1)
+    return null;
+  const n = exponenteY(conYf[0].nodo);
+  if (n === null) {
+    const inv2 = inversoExponenteFraccionarioY(conYf[0].nodo);
+    if (inv2 === null)
+      return null;
+    const Rf = ladoDerecho(t2, derecha, libres, renderCanonico);
+    const cuerpo = conDominio(`(${Rf})^(${inv2})`, Rf);
+    return cuerpo === null ? null : { ecuacion: `y = ${cuerpo}`, completo: true };
+  }
+  const rad = ladoDerecho(t2, derecha, libres);
+  if (n % 2 === 1)
+    return { ecuacion: `y = nthRoot(${rad}, ${n})`, completo: true };
+  const raiz = n === 2 ? `sqrt(${rad})` : `nthRoot(${rad}, ${n})`;
+  const doble = ramaDoble(raiz, rad);
+  return doble === null ? null : { ecuacion: `y = ${doble}`, completo: true };
+}
+function raizY(n) {
+  const nodo = desParen5(n);
+  if (nodo.type !== "FunctionNode")
+    return null;
+  const nombre = nodo.fn?.name;
+  const arg0 = nodo.args[0] && desParen5(nodo.args[0]);
+  if (!arg0 || arg0.type !== "SymbolNode" || arg0.name !== "y")
+    return null;
+  if (nombre === "sqrt" && nodo.args.length === 1)
+    return 2;
+  if (nombre === "cbrt" && nodo.args.length === 1)
+    return 3;
+  if (nombre === "nthRoot" && nodo.args.length === 2) {
+    const k = desParen5(nodo.args[1]);
+    if (k.type === "ConstantNode" && Number.isInteger(k.value) && k.value >= 2)
+      return k.value;
+  }
+  return null;
+}
+function conDominio(cuerpo, cond) {
+  let c;
+  try {
+    c = parse2(cond);
+  } catch {
+    return `dom(${cuerpo}, ${cond})`;
+  }
+  if (esNoNegativo(c))
+    return cuerpo;
+  if (esSiempreNegativo(c))
+    return null;
+  return `dom(${cuerpo}, ${sinFactoresConstantes(c).toString()})`;
+}
+function despejeRaiz(t2, derecha) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  const libres = fs.filter((f) => !contieneY2(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== 1)
+    return null;
+  const n = raizY(conYf[0].nodo);
+  if (n === null)
+    return null;
+  const R = ladoDerecho(t2, derecha, libres, renderCanonico);
+  if (n % 2 === 1)
+    return { ecuacion: `y = (${R})^${n}`, completo: true };
+  const cuerpo = conDominio(`(${R})^${n}`, R);
+  return cuerpo === null ? null : { ecuacion: `y = ${cuerpo}`, completo: true };
+}
+function raizDePotenciaY(n0) {
+  const nodo = desParen5(n0);
+  if (nodo.type !== "FunctionNode")
+    return null;
+  const nombre = nodo.fn?.name;
+  let n = null;
+  let rad;
+  if (nombre === "sqrt" && nodo.args.length === 1) {
+    n = 2;
+    rad = nodo.args[0];
+  } else if (nombre === "cbrt" && nodo.args.length === 1) {
+    n = 3;
+    rad = nodo.args[0];
+  } else if (nombre === "nthRoot" && nodo.args.length === 2) {
+    const k = desParen5(nodo.args[1]);
+    if (k.type === "ConstantNode" && Number.isInteger(k.value) && k.value >= 2) {
+      n = k.value;
+      rad = nodo.args[0];
+    }
+  }
+  if (n === null || rad === void 0)
+    return null;
+  const m = exponenteY(rad);
+  return m === null ? null : { n, m };
+}
+function despejeRaizDePotencia(t2, derecha) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  const libres = fs.filter((f) => !contieneY2(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== 1)
+    return null;
+  const info = raizDePotenciaY(conYf[0].nodo);
+  if (info === null)
+    return null;
+  const { n, m } = info;
+  const R = ladoDerecho(t2, derecha, libres);
+  const base = `(${R})^${n}`;
+  const cuerpo = m % 2 === 1 ? `nthRoot(${base}, ${m})` : ramaDoble(m === 2 ? `sqrt(${base})` : `nthRoot(${base}, ${m})`, R);
+  if (cuerpo === null)
+    return null;
+  if (n % 2 === 1)
+    return { ecuacion: `y = ${cuerpo}`, completo: true };
+  const guardado = conDominio(cuerpo, R);
+  return guardado === null ? null : { ecuacion: `y = ${guardado}`, completo: true };
+}
+function exponenteEntero2(n) {
+  const v = valorConstanteFactor(n);
+  return v !== null && Number.isInteger(v) ? v : null;
+}
+function esAbsDeY(n) {
+  const nodo = desParen5(n);
+  if (nodo.type !== "FunctionNode" || nodo.fn?.name !== "abs" || nodo.args.length !== 1)
+    return false;
+  const arg2 = desParen5(nodo.args[0]);
+  return arg2.type === "SymbolNode" && arg2.name === "y";
+}
+function racionalConstante(n) {
+  const nodo = desParen5(n);
+  if (nodo.type === "OperatorNode" && nodo.op === "/" && nodo.args.length === 2) {
+    const a = racionalConstante(nodo.args[0]);
+    const b = racionalConstante(nodo.args[1]);
+    if (a === null || b === null || b.num === 0)
+      return null;
+    return normalizarFraccion(a.num * b.den, a.den * b.num);
+  }
+  if (nodo.type === "OperatorNode" && nodo.op === "-" && nodo.args.length === 1) {
+    const a = racionalConstante(nodo.args[0]);
+    return a === null ? null : { num: -a.num, den: a.den };
+  }
+  const v = valorConstanteFactor(nodo);
+  return v !== null && Number.isInteger(v) ? { num: v, den: 1 } : null;
+}
+function indiceRaiz(n) {
+  const nodo = desParen5(n);
+  if (nodo.type !== "FunctionNode")
+    return null;
+  const nombre = nodo.fn?.name;
+  if (nombre === "sqrt" && nodo.args.length === 1)
+    return { n: 2, rad: nodo.args[0] };
+  if (nombre === "cbrt" && nodo.args.length === 1)
+    return { n: 3, rad: nodo.args[0] };
+  if (nombre === "nthRoot" && nodo.args.length === 2) {
+    const k = exponenteEntero2(nodo.args[1]);
+    if (k !== null && k >= 2)
+      return { n: k, rad: nodo.args[0] };
+  }
+  return null;
+}
+function absYExponente(t2) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  const libres = fs.filter((f) => !contieneY2(f.nodo));
+  if (conYf.length !== 1)
+    return null;
+  let num = conYf[0].exp, den = 1;
+  let nucleo = desParen5(conYf[0].nodo);
+  if (nucleo.type === "OperatorNode" && nucleo.op === "^" && nucleo.args.length === 2) {
+    const k = racionalConstante(nucleo.args[1]);
+    if (k === null || k.num === 0)
+      return null;
+    num *= k.num;
+    den *= k.den;
+    nucleo = desParen5(nucleo.args[0]);
+  } else {
+    const r = indiceRaiz(nucleo);
+    if (r !== null) {
+      den *= r.n;
+      nucleo = desParen5(r.rad);
+    }
+  }
+  if (!esAbsDeY(nucleo))
+    return null;
+  const frac = normalizarFraccion(num, den);
+  return frac === null ? null : { ...frac, libres };
+}
+function limpiarAbsoluto(s) {
+  try {
+    return formatearCanonico(racionalizarFracciones(combinarFracciones(parse2(s))));
+  } catch {
+    return s;
+  }
+}
+function despejeAbsoluto(t2, derecha) {
+  const info = absYExponente(t2);
+  if (!info)
+    return null;
+  const { num, den, libres } = info;
+  const R = ladoDerecho(t2, derecha, libres, renderCanonico);
+  const a = den, b = Math.abs(num), neg = num < 0;
+  const raizDe2 = (r, n) => n === 2 ? `sqrt(${r})` : `nthRoot((${r}), ${n})`;
+  let mag;
+  let esPotencia2 = false;
+  if (b === 1) {
+    if (a === 1)
+      mag = R;
+    else {
+      mag = `(${R})^${a}`;
+      esPotencia2 = true;
+    }
+  } else if (a === 1) {
+    mag = raizDe2(R, b);
+  } else {
+    mag = `nthRoot((${R})^${a}, ${b})`;
+    esPotencia2 = true;
+  }
+  const aby = neg ? `1/(${mag})` : mag;
+  const cuerpo = esPotencia2 ? aby : limpiarAbsoluto(aby);
+  const doble = ramaDoble(cuerpo, R);
+  if (doble === null)
+    return null;
+  const guardado = conDominio(doble, R);
+  return guardado === null ? null : { ecuacion: `y = ${guardado}`, completo: true };
+}
+function despejeTrigInverso(t2, derecha) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  const libres = fs.filter((f) => !contieneY2(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== 1)
+    return null;
+  const tipo = trigDeY(conYf[0].nodo);
+  if (tipo === null)
+    return null;
+  const rhs = inversionTrig(tipo, ladoDerecho(t2, derecha, libres));
+  return rhs === null ? null : { ecuacion: `y = ${rhs}`, completo: true };
+}
+function despejeMultiplicativo(t2, derecha) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  const libres = fs.filter((f) => !contieneY2(f.nodo));
+  if (libres.length === 0 || conYf.length === 0)
+    return null;
+  return `${renderProducto(conYf)} = ${ladoDerecho(t2, derecha, libres)}`;
+}
+function despejeReciproco(t2, derecha, resolver) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  const libres = fs.filter((f) => !contieneY2(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== -1)
+    return null;
+  if (derecha.length === 0)
+    return null;
+  const E = conYf[0].nodo.toString();
+  const numFree = libres.filter((f) => f.exp === 1).map((f) => `(${f.nodo.toString()})`);
+  const denFree = libres.filter((f) => f.exp === -1).map((f) => `(${f.nodo.toString()})`);
+  const arriba = (t2.signo === -1 ? "-" : "") + (numFree.length ? numFree.join("*") : "1");
+  const abajo = [...denFree, `(${renderTerminos(derecha)})`].join("*");
+  const rec = resolver(`${E} = (${arriba})/(${abajo})`);
+  return rec && rec.completo ? rec : null;
+}
+var TRIG_CERO = {
+  sin: { periodo: "pi", base: null },
+  tan: { periodo: "pi", base: null },
+  cos: { periodo: "pi", base: "pi/2" },
+  cot: { periodo: "pi", base: "pi/2" },
+  sec: null,
+  csc: null
+};
+function uSiemprePositivo(uStr) {
+  let f;
+  try {
+    const c = parse2(insertarProductoImplicito(normalizarEntrada(uStr))).compile();
+    f = (s) => c.evaluate(s);
+  } catch {
+    return false;
+  }
+  const malla = [-8, -3.5, -1.5, -0.5, 0.3, 0.9, 2.2, 5.1];
+  let vistos = 0;
+  for (const x of malla)
+    for (const y of malla) {
+      let v;
+      try {
+        v = f({ x, y });
+      } catch {
+        continue;
+      }
+      if (typeof v !== "number" || !Number.isFinite(v))
+        continue;
+      if (v <= 1e-9)
+        return false;
+      vistos++;
+    }
+  return vistos >= 8;
+}
+function despejeTrigCero(t2, derecha, resolver) {
+  const noNulos = derecha.filter((d) => {
+    const n = desParen5(d.nodo);
+    return !(n.type === "ConstantNode" && n.value === 0);
+  });
+  if (noNulos.length !== 0)
+    return null;
+  const nodo = desParen5(t2.nodo);
+  if (nodo.type !== "FunctionNode" || nodo.args?.length !== 1)
+    return null;
+  const info = TRIG_CERO[nodo.fn?.name ?? ""];
+  if (!info)
+    return null;
+  const u = desParen5(nodo.args[0]);
+  if (!contieneY2(u) || u.type === "SymbolNode" && u.name === "y")
+    return null;
+  const uStr = u.toString();
+  const cero = familiaPeriodica(info.periodo, uStr, info.base === null && uSiemprePositivo(uStr));
+  if (cero === null)
+    return null;
+  const rhs = info.base ? `${info.base} + ${cero}` : cero;
+  const rec = resolver(`${uStr} = ${rhs}`);
+  return rec && rec.completo ? rec : null;
+}
+
+// src/despeje/presentacion.ts
+var SENTINELAS_SIGNO = /* @__PURE__ */ new Set(["pm", "mp"]);
+function coefYresto(n) {
+  let coef = 1;
+  const resto = [];
+  for (const f of factores(n)) {
+    if (f.exp !== 1)
+      return null;
+    if (f.nodo.type === "ConstantNode") {
+      const v = Number(f.nodo.value);
+      if (!Number.isInteger(v))
+        return null;
+      coef *= v;
+    } else
+      resto.push(f.nodo.toString());
+  }
+  return { coef, resto: resto.join(" * ") };
+}
+function reducirFraccionEntera(rhs) {
+  let n;
+  try {
+    n = parse2(rhs);
+  } catch {
+    return rhs;
+  }
+  const raiz = desParen5(n);
+  if (raiz.type !== "OperatorNode" || raiz.op !== "/" || raiz.args.length !== 2)
+    return rhs;
+  const den = desParen5(raiz.args[1]);
+  if (den.type !== "ConstantNode")
+    return rhs;
+  const d = Number(den.value);
+  if (!Number.isInteger(d) || d < 2)
+    return rhs;
+  const ts = terminos(desParen5(raiz.args[0]));
+  if (ts.length === 0)
+    return rhs;
+  const partes = [];
+  for (const t2 of ts) {
+    const nodo = desParen5(t2.nodo);
+    const sentinela = nodo.type === "FunctionNode" && nodo.args.length === 1 && nodo.fn?.name !== void 0 && SENTINELAS_SIGNO.has(nodo.fn.name) ? nodo.fn.name : null;
+    const cr = coefYresto(sentinela === null ? nodo : nodo.args[0]);
+    if (cr === null)
+      return rhs;
+    partes.push({ signo: t2.signo, ...cr, envoltura: sentinela });
+  }
+  let g = d;
+  for (const p of partes)
+    g = mcdEnteros2(g, Math.abs(p.coef));
+  if (g < 2)
+    return rhs;
+  let out = "";
+  partes.forEach((p, i2) => {
+    const c = p.coef / g;
+    const nucleo = p.resto === "" ? String(c) : c === 1 ? p.resto : `${c} * ${p.resto}`;
+    const cuerpo = p.envoltura ? `${p.envoltura}(${nucleo})` : nucleo;
+    if (i2 === 0)
+      out = p.signo === 1 ? cuerpo : `-${cuerpo}`;
+    else
+      out += p.signo === 1 ? ` + ${cuerpo}` : ` - ${cuerpo}`;
+  });
+  return d / g === 1 ? out : `(${out}) / (${d / g})`;
+}
+function embellecerConstantes(ec) {
+  try {
+    const partes = ec.split("=");
+    if (partes.length !== 2)
+      return ec;
+    const original = parse2(partes[1]);
+    const rhs = reducirFraccionEntera(resimbolizarConstantes(original).toString());
+    if (rhs === original.toString())
+      return ec;
+    return `${partes[0].trim()} = ${rhs}`;
+  } catch {
+    return ec;
+  }
+}
+
+// src/despeje/verificacion.ts
+function ramaReal(uStr, g, evalD) {
+  let fu;
+  try {
+    const c = parse2(uStr).compile();
+    fu = (x) => c.evaluate({ x });
+  } catch {
+    return false;
+  }
+  const muestras = [-2.3, -1.1, -0.4, -0.15, 0.15, 0.35, 0.7, 1.6, 3.2];
+  let viables = 0;
+  for (const x of muestras) {
+    let u;
+    try {
+      u = fu(x);
+    } catch {
+      continue;
+    }
+    if (typeof u !== "number" || !Number.isFinite(u))
+      continue;
+    const escala2 = 1 + x * x * x * x;
+    if (g % 2 === 0) {
+      if (u < -1e-9)
+        continue;
+      const y = Math.pow(Math.max(u, 0), 1 / g);
+      for (const yy of [y, -y]) {
+        const d = evalD(x, yy);
+        if (!Number.isFinite(d) || Math.abs(d) > 1e-6 * (escala2 + y * y * y * y))
+          return false;
+      }
+    } else {
+      const y = Math.sign(u) * Math.pow(Math.abs(u), 1 / g);
+      const d = evalD(x, y);
+      if (!Number.isFinite(d) || Math.abs(d) > 1e-6 * (escala2 + y * y * y * y))
+        return false;
+    }
+    viables++;
+  }
+  return viables >= 2;
+}
+function solucionValida(rhs, evalD) {
+  let total = 0;
+  for (const rama of expandirDobleSigno(rhs)) {
+    const n = puntosValidos(rama, evalD);
+    if (n === null)
+      return false;
+    total += n;
+  }
+  return total >= 2;
+}
+function evaluadorDe(D) {
+  try {
+    const c = D.compile();
+    return (x, y) => {
+      try {
+        return c.evaluate({ x, y });
+      } catch {
+        return NaN;
+      }
+    };
+  } catch {
+    return null;
+  }
+}
+function puntosValidos(rhs, evalD) {
+  let f;
+  try {
+    f = compilarFuncion(rhs, "x");
+  } catch {
+    return null;
+  }
+  let validos = 0;
+  for (let i2 = 0; i2 <= 120; i2++) {
+    const x = -6 + i2 * 12 / 120;
+    let y;
+    try {
+      y = f(x);
+    } catch {
+      continue;
+    }
+    if (typeof y !== "number" || !Number.isFinite(y))
+      continue;
+    const d = evalD(x, y);
+    if (!Number.isFinite(d) || Math.abs(d) > 1e-6 * (1 + x * x * x * x + y * y * y * y))
+      return null;
+    validos++;
+  }
+  return validos;
+}
+
+// src/despejar.ts
+var contieneX = (n) => contieneVariable(n, "x");
+function simpDesp(s) {
+  try {
+    const n = simplificarExpr(s);
+    return n ? formatearCanonico(racionalizarFracciones(n)) : s;
+  } catch {
+    return s;
+  }
+}
+function simpSiConstante(s) {
+  try {
+    return contieneX(parse2(s)) ? s : simpDesp(s);
+  } catch {
+    return s;
+  }
+}
+var sumarStrings = (a) => a.length ? a.map((s) => `(${s})`).join(" + ") : "0";
+function potenciaYCoef(t2) {
+  const fs = factores(t2.nodo);
+  const conYf = fs.filter((f) => contieneY2(f.nodo));
+  const libres = fs.filter((f) => !contieneY2(f.nodo));
+  if (conYf.length !== 1 || conYf[0].exp !== 1)
+    return null;
+  const yn = desParen5(conYf[0].nodo);
+  let power;
+  if (yn.type === "SymbolNode" && yn.name === "y")
+    power = 1;
+  else {
+    const k = exponenteY(yn);
+    if (k === null)
+      return null;
+    power = k;
+  }
+  const coef = renderProducto(libres);
+  return { power, coef: t2.signo === 1 ? coef : `-(${coef})` };
+}
+function baseYExponente(f) {
+  const nodo = desParen5(f.nodo);
+  if (nodo.type === "OperatorNode" && nodo.op === "^" && nodo.args.length === 2) {
+    const k = exponenteEntero2(nodo.args[1]);
+    if (k !== null)
+      return { base: desParen5(nodo.args[0]), k: k * f.exp };
+  }
+  return { base: nodo, k: f.exp };
+}
+function raizImpar(R, n) {
+  const fuera = [];
+  const dentro2 = [];
+  for (const f of factores(R)) {
+    const { base, k } = baseYExponente(f);
+    const pot = (e3) => e3 === 1 ? `(${base.toString()})` : `(${base.toString()})^(${e3})`;
+    if (k % n === 0)
+      fuera.push(pot(k / n));
+    else {
+      if (contieneY2(base))
+        return null;
+      dentro2.push(pot(k));
+    }
+  }
+  if (dentro2.length === 0)
+    return fuera.length ? fuera.join("*") : "1";
+  const radicando = dentro2.join("*");
+  const raiz = `nthRoot(${radicando}, ${n})`;
+  return fuera.length ? `${fuera.join("*")}*${raiz}` : raiz;
+}
+function reducirRaizImpar(L, R) {
+  const intento = (potencia3, otro) => {
+    const p = desParen5(potencia3);
+    if (!(p.type === "OperatorNode" && p.op === "^" && p.args.length === 2))
+      return null;
+    const n = exponenteEntero2(p.args[1]);
+    if (n === null || n < 3 || n % 2 === 0)
+      return null;
+    const base = desParen5(p.args[0]);
+    if (!contieneY2(base))
+      return null;
+    const raiz = raizImpar(otro, n);
+    if (raiz === null)
+      return null;
+    try {
+      const D = simplify(parse2(`(${base.toString()}) - (${raiz})`));
+      return D && contieneY2(D) ? D : null;
+    } catch {
+      return null;
+    }
+  };
+  return intento(L, R) ?? intento(R, L);
+}
+function reducirRaizImparPorTerminos(D) {
+  const ts = terminos(D);
+  if (ts.length < 2)
+    return null;
+  for (let i2 = 0; i2 < ts.length; i2++) {
+    const p = desParen5(ts[i2].nodo);
+    if (!(p.type === "OperatorNode" && p.op === "^" && p.args.length === 2))
+      continue;
+    const n = exponenteEntero2(p.args[1]);
+    if (n === null || n < 3 || n % 2 === 0)
+      continue;
+    const base = desParen5(p.args[0]);
+    if (!contieneY2(base))
+      continue;
+    if (base.type === "SymbolNode")
+      continue;
+    const resto = ts.filter((_, j) => j !== i2);
+    const otroLado = ts[i2].signo === 1 ? flip(resto) : resto;
+    let R;
+    try {
+      R = parse2(renderTerminos(otroLado));
+    } catch {
+      continue;
+    }
+    const reducido = reducirRaizImpar(p, R);
+    if (reducido)
+      return reducido;
+  }
+  return null;
+}
+function plegarRaicesImpares(n) {
+  try {
+    return n.transform((nn) => {
+      if (nn.type !== "OperatorNode" || nn.op !== "^" || nn.args.length !== 2)
+        return nn;
+      const base = desParen5(nn.args[0]);
+      const k = exponenteEntero2(nn.args[1]);
+      if (k === null || base.type !== "FunctionNode" || base.fn?.name !== "nthRoot")
+        return nn;
+      if (base.args.length !== 2)
+        return nn;
+      const idx = exponenteEntero2(base.args[1]);
+      if (idx === null || idx < 3 || idx % 2 === 0)
+        return nn;
+      return parse2(`nthRoot((${base.args[0].toString()})^(${k}), ${idx})`);
+    });
+  } catch {
+    return n;
+  }
+}
+function despejeCuadratico(D0, DVal = D0) {
+  let D = D0;
+  try {
+    const e3 = simplificarExpr(D0.toString());
+    if (e3)
+      D = e3;
+  } catch {
+  }
+  const ts = terminos(D);
+  const conY = ts.filter((t2) => contieneY2(t2.nodo));
+  const sinY = ts.filter((t2) => !contieneY2(t2.nodo));
+  if (conY.length === 0)
+    return null;
+  const pcs = conY.map(potenciaYCoef);
+  if (pcs.some((p2) => p2 === null))
+    return null;
+  const P4 = pcs;
+  const g = P4.map((p2) => p2.power).reduce(mcdEnteros2);
+  if (g !== 1 && g % 2 !== 0)
+    return null;
+  const degs = P4.map((p2) => p2.power / g);
+  if (degs.some((d) => d > 2))
+    return null;
+  const A = sumarStrings(P4.filter((_, i2) => degs[i2] === 2).map((p2) => p2.coef));
+  const B = sumarStrings(P4.filter((_, i2) => degs[i2] === 1).map((p2) => p2.coef));
+  const C = sumarStrings(sinY.map((t2) => t2.signo === 1 ? t2.nodo.toString() : `-(${t2.nodo.toString()})`));
+  let evalD;
+  try {
+    const c = DVal.compile();
+    evalD = (x, y) => {
+      try {
+        return c.evaluate({ x, y });
+      } catch {
+        return NaN;
+      }
+    };
+  } catch {
+    return null;
+  }
+  if (!degs.includes(2)) {
+    if (!degs.includes(1))
+      return null;
+    const u = simpDesp(`-(${C})/(${B})`);
+    if (!ramaReal(u, g, evalD))
+      return null;
+    const raizDeU = g === 1 ? u : g === 2 ? `sqrt(${u})` : `nthRoot(${u}, ${g})`;
+    const cuerpo = simpSiConstante(raizDeU);
+    return { ecuacion: `y = ${g % 2 === 0 ? `pm(${cuerpo})` : cuerpo}`, completo: true };
+  }
+  if (g === 1) {
+    const b2 = plegarRaicesImpares(parse2(simpDesp(`(${B})^2`))).toString();
+    const m4ac = simpDesp(`-4*(${A})*(${C})`);
+    const disc2 = simpDesp(`(${b2}) + (${m4ac})`);
+    const num = simpDesp(`-(${B})`);
+    const den = simpDesp(`2*(${A})`);
+    const raiz = simpSiConstante(`sqrt(${disc2})`);
+    const yMas = `((${num}) + (${raiz}))/(${den})`;
+    const yMenos = `((${num}) - (${raiz}))/(${den})`;
+    const reales = [yMas, yMenos].filter((u) => ramaReal(u, 1, evalD));
+    if (reales.length === 0)
+      return null;
+    if (reales.length === 1)
+      return { ecuacion: `y = ${simpDesp(reales[0])}`, completo: true };
+    const conPm = (cuerpo, mas) => mas === "0" ? `pm(${cuerpo})` : `${mas} + pm(${cuerpo})`;
+    const unica = den === "1" ? conPm(raiz, num) : `(${conPm(raiz, num)})/(${den})`;
+    const separada = conPm(simpDesp(`(${raiz})/(${den})`), simpDesp(`(${num})/(${den})`));
+    const barata = [unica, separada].map((s) => ({ s, prof: profundidadFraccion(parse2(s)), len: s.length })).sort((a, b) => a.prof !== b.prof ? a.prof - b.prof : a.len - b.len)[0].s;
+    return { ecuacion: `y = ${barata}`, completo: true };
+  }
+  const p = simpDesp(`(${B})/(2*(${A}))`);
+  const disc = simpDesp(`((${B})/(2*(${A})))^2 - (${C})/(${A})`);
+  const uMas = `(-(${p})) + (sqrt(${disc}))`;
+  const uMenos = `(-(${p})) - (sqrt(${disc}))`;
+  const validas = [uMas, uMenos].filter((u) => ramaReal(u, g, evalD));
+  if (validas.length === 0)
+    return null;
+  if (validas.length === 1) {
+    const inner = simpSiConstante(`sqrt(${validas[0]})`);
+    return { ecuacion: `y = pm(${inner})`, completo: true };
+  }
+  const raizDisc = simpSiConstante(`sqrt(${disc})`);
+  return { ecuacion: `y = pm(sqrt(pm(${raizDisc}) + (${simpDesp(`-(${p})`)})))`, completo: true };
+}
+function enY(D, valor) {
+  try {
+    return simpDesp(D.transform(
+      (n) => n.type === "SymbolNode" && n.name === "y" ? parse2(String(valor)) : n
+    ).toString());
+  } catch {
+    return "";
+  }
+}
+var TERNAS_Y = [
+  [-2.5, -0.5, 1.5],
+  [-1.3, 0.7, 2.7],
+  [-3.1, -1.1, 0.9],
+  [-0.6, 1.9, 4.4]
+];
+function esAfinEnY(D) {
+  let f;
+  try {
+    const c = D.compile();
+    f = (x, y) => {
+      try {
+        return c.evaluate({ x, y });
+      } catch {
+        return NaN;
+      }
+    };
+  } catch {
+    return false;
+  }
+  let comprobados = 0;
+  for (const x of [-3.7, -1.3, -0.4, 0.6, 1.9, 4.2]) {
+    for (const terna of TERNAS_Y) {
+      const [a, b, c2] = terna.map((y) => f(x, y));
+      if (![a, b, c2].every((d) => typeof d === "number" && Number.isFinite(d)))
+        continue;
+      const [va, vb, vc] = [a, b, c2];
+      if (Math.abs(vc - vb - (vb - va)) > 1e-7 * (1 + Math.abs(va) + Math.abs(vb) + Math.abs(vc)))
+        return false;
+      comprobados++;
+    }
+  }
+  return comprobados >= 4;
+}
+var PARES_Y = [[0, 1], [3, 4], [-4, -3], [5, 7]];
+function expresionUtil(s) {
+  return s !== "" && !/(?<![a-zA-Z0-9_])(Infinity|NaN)(?![a-zA-Z0-9_])/.test(s);
+}
+function despejeLinealEnY(D) {
+  if (!contieneY2(D) || !esAfinEnY(D))
+    return null;
+  const evalD = evaluadorDe(D);
+  if (evalD === null)
+    return null;
+  for (const [y0, y1] of PARES_Y) {
+    const D0 = enY(D, y0), D1 = enY(D, y1);
+    if (!expresionUtil(D0) || !expresionUtil(D1))
+      continue;
+    const A = simpDesp(`((${D1}) - (${D0}))/(${y1 - y0})`);
+    if (A === "0" || !expresionUtil(A))
+      continue;
+    const B = simpDesp(`(${D0}) - (${y0})*(${A})`);
+    if (!expresionUtil(B))
+      continue;
+    const rhs = limpiarRHS(`(-(${B}))/(${A})`);
+    if (solucionValida(rhs, evalD))
+      return { ecuacion: `y = ${rhs}`, completo: true };
+  }
+  return null;
+}
+var MAX_ELEVACIONES = 3;
+function radicandoDeY(f) {
+  if (f.exp !== 1)
+    return null;
+  const n = desParen5(f.nodo);
+  return n.type === "FunctionNode" && n.fn?.name === "sqrt" && n.args.length === 1 && contieneY2(n) ? n.args[0] : null;
+}
+function partirRadical(t2) {
+  const fs = factores(t2.nodo);
+  const i2 = fs.findIndex((f) => radicandoDeY(f) !== null);
+  const rad = i2 === -1 ? null : radicandoDeY(fs[i2]);
+  const resto = i2 === -1 ? fs : fs.filter((_, j) => j !== i2);
+  const coef = renderProducto(resto);
+  return { coef: t2.signo === 1 ? coef : `-(${coef})`, rad };
+}
+function cuadradoExpandido(ts) {
+  const ps = ts.map(partirRadical);
+  const trozos = [];
+  for (let i2 = 0; i2 < ps.length; i2++) {
+    for (let j = 0; j < ps.length; j++) {
+      const a = ps[i2], b = ps[j];
+      const raices2 = a.rad === null ? b.rad === null ? "1" : `sqrt(${b.rad.toString()})` : b.rad === null ? `sqrt(${a.rad.toString()})` : a.rad.toString() === b.rad.toString() ? `(${a.rad.toString()})` : `sqrt(${a.rad.toString()})*sqrt(${b.rad.toString()})`;
+      trozos.push(`(${a.coef})*(${b.coef})*(${raices2})`);
+    }
+  }
+  return trozos.length ? trozos.join(" + ") : "0";
+}
+function elevarAlCuadrado(D) {
+  const ts = terminos(D);
+  const i2 = ts.findIndex((t2) => partirRadical(t2).rad !== null);
+  if (i2 === -1)
+    return null;
+  const { coef, rad } = partirRadical(ts[i2]);
+  if (rad === null)
+    return null;
+  const resto = ts.filter((_, j) => j !== i2);
+  const valor = `-(${renderTerminos(resto)})/(${coef})`;
+  let out;
+  try {
+    out = simplify(`(${coef})^2*(${rad.toString()}) - (${cuadradoExpandido(resto)})`);
+  } catch {
+    return null;
+  }
+  return { D: out, radical: `sqrt(${rad.toString()})`, valor };
+}
+function guardaEnX(expr, pasos, yFinal) {
+  let s = expr;
+  for (const p of pasos)
+    s = s.split(p.radical).join(`(${p.valor})`);
+  let n;
+  try {
+    n = parse2(s);
+  } catch {
+    return s;
+  }
+  if (contieneY2(n)) {
+    try {
+      n = n.transform((z) => z.type === "SymbolNode" && z.name === "y" ? parse2(`(${yFinal})`) : z);
+    } catch {
+      return s;
+    }
+  }
+  return simpDesp(n.toString());
+}
+function despejeRadicales(D0, DVal) {
+  let D = D0;
+  const pasos = [];
+  for (let i2 = 0; i2 < MAX_ELEVACIONES; i2++) {
+    const paso = elevarAlCuadrado(D);
+    if (paso === null)
+      break;
+    pasos.push({ radical: paso.radical, valor: paso.valor });
+    D = paso.D;
+  }
+  if (pasos.length === 0)
+    return null;
+  if (elevarAlCuadrado(D) !== null)
+    return null;
+  if (!contieneY2(D))
+    return null;
+  const rhsCrudo = rhsCompleto(despejeLinealEnY(D) ?? despejarAnidado(`${D.toString()} = 0`));
+  if (rhsCrudo === null)
+    return null;
+  let rhs = rhsCrudo;
+  const guardas = [];
+  for (let i2 = pasos.length - 1; i2 >= 0; i2--) {
+    const cond = guardaEnX(pasos[i2].valor, pasos.slice(i2 + 1), rhsCrudo);
+    const conG = conDominio(rhs, cond);
+    if (conG === null)
+      return null;
+    if (conG !== rhs)
+      guardas.push(cond);
+    rhs = conG;
+  }
+  if (simplificarCondiciones(guardas)?.tipo === "imposible")
+    return null;
+  const evalD = evaluadorDe(DVal);
+  return evalD !== null && solucionValida(rhs, evalD) ? { ecuacion: `y = ${rhs}`, completo: true } : null;
+}
+function denominadoresConY(D) {
+  const dens = /* @__PURE__ */ new Set();
+  for (const t2 of terminos(D))
+    for (const f of factores(t2.nodo))
+      if (f.exp === -1 && contieneY2(f.nodo))
+        dens.add(f.nodo.toString());
+  return [...dens];
+}
+function despejeSinDenominadores(D) {
+  const dens = denominadoresConY(D);
+  if (dens.length === 0)
+    return null;
+  let limpio;
+  try {
+    const prod2 = dens.map((d) => `(${d})`).join("*");
+    limpio = simplify(`(${D.toString()})*(${prod2})`);
+  } catch {
+    return null;
+  }
+  if (!contieneY2(limpio) || denominadoresConY(limpio).length > 0)
+    return null;
+  const rhs = rhsCompleto(despejarAnidado(`${limpio.toString()} = 0`));
+  if (rhs === null)
+    return null;
+  const evalD = evaluadorDe(D);
+  return evalD !== null && solucionValida(rhs, evalD) ? { ecuacion: `y = ${rhs}`, completo: true } : null;
+}
+var MAX_ANIDAMIENTO = 6;
+var anidamiento = 0;
+function despejarAnidado(ecuacion) {
+  if (anidamiento >= MAX_ANIDAMIENTO)
+    return null;
+  anidamiento++;
+  try {
+    return despejar(ecuacion);
+  } finally {
+    anidamiento--;
+  }
+}
+var INVERSA_INYECTIVA = {
+  exp: (t2) => `log(${t2}, e)`,
+  // e^u = t ⇒ u = ln t
+  log: (t2) => `e^(${t2})`,
+  // ln u = t ⇒ u = e^t (se emite `e^…` → LaTeX `e^{…}`, no `\exp`)
+  log10: (t2) => `10^(${t2})`,
+  // log u = t ⇒ u = 10^t (el `log` del usuario es decimal)
+  log2: (t2) => `2^(${t2})`,
+  // log₂ u = t ⇒ u = 2^t
+  sinh: (t2) => `asinh(${t2})`,
+  // biyección en ℝ
+  tanh: (t2) => `atanh(${t2})`,
+  // atanh NaN fuera de (−1,1) → sin fantasma
+  asinh: (t2) => `sinh(${t2})`,
+  atanh: (t2) => `tanh(${t2})`,
+  cbrt: (t2) => `(${t2})^3`
+  // ∛u = t ⇒ u = t³ (raíz impar, biyección en ℝ)
+};
+var TRIG_PERIODICA = /* @__PURE__ */ new Set(["sin", "cos", "tan", "cot", "sec", "csc"]);
+var objetivoConGuarda = (cuerpo, target) => conDominio(cuerpo, target);
+function aislarInversion(nodo, target, ctx) {
+  const n = desParen5(nodo);
+  const pelado = pelarCapa(n, target, ctx);
+  if (pelado !== null)
+    return pelado;
+  return ctx && ctx.nivel > 0 && contieneY2(n) ? ctx.alTope(n, target) : null;
+}
+function pelarCapa(n, target, ctx) {
+  const dentro2 = ctx && { alTope: ctx.alTope, nivel: ctx.nivel + 1 };
+  const aislar = (hijo, t2) => aislarInversion(hijo, t2, dentro2);
+  if (n.type === "SymbolNode" && n.name === "y")
+    return target;
+  if (n.type === "OperatorNode") {
+    if (n.args.length === 1 && n.op === "-")
+      return aislar(n.args[0], `-(${target})`);
+    if (n.args.length === 2) {
+      const [a, b] = n.args;
+      const enA = contieneY2(a), enB = contieneY2(b);
+      if (enA === enB)
+        return null;
+      const sa = a.toString(), sb = b.toString();
+      switch (n.op) {
+        case "+":
+          return enA ? aislar(a, `(${target}) - (${sb})`) : aislar(b, `(${target}) - (${sa})`);
+        case "-":
+          return enA ? aislar(a, `(${target}) + (${sb})`) : aislar(b, `(${sa}) - (${target})`);
+        case "*":
+          return enA ? aislar(a, `(${target}) / (${sb})`) : aislar(b, `(${target}) / (${sa})`);
+        case "/":
+          return enA ? aislar(a, `(${target}) * (${sb})`) : aislar(b, `(${sa}) / (${target})`);
+        case "^": {
+          if (enA) {
+            const k = exponenteEntero2(b);
+            if (k === null || k < 1)
+              return null;
+            if (k % 2 === 0) {
+              const pm = ramaDoble(k === 2 ? `sqrt(${target})` : `nthRoot(${target}, ${k})`, target);
+              const conG = pm === null ? null : objetivoConGuarda(pm, target);
+              return conG === null ? null : aislar(a, conG);
+            }
+            const raiz = k === 1 ? target : k === 3 ? `cbrt(${target})` : `nthRoot(${target}, ${k})`;
+            return aislar(a, raiz);
+          }
+          const div2 = `log(${target}, ${sa})`;
+          return aislar(b, div2);
+        }
+        default:
+          return null;
+      }
+    }
+    return null;
+  }
+  if (n.type === "FunctionNode") {
+    const fn = n.fn?.name ?? "";
+    if (fn === "log" && n.args.length === 2 && !contieneY2(n.args[1])) {
+      const base = desParen5(n.args[1]).toString();
+      return aislar(n.args[0], `(${base})^(${target})`);
+    }
+    if (n.args.length === 1) {
+      if (INVERSA_INYECTIVA[fn])
+        return aislar(n.args[0], INVERSA_INYECTIVA[fn](target));
+      if (TRIG_PERIODICA.has(fn)) {
+        const inv2 = inversionTrig(fn, target);
+        return inv2 === null ? null : aislar(n.args[0], inv2);
+      }
+      if (fn === "sqrt") {
+        const conG = objetivoConGuarda(`(${target})^2`, target);
+        return conG === null ? null : aislar(n.args[0], conG);
+      }
+      if (fn === "abs") {
+        const pm = ramaDoble(target, target);
+        const conG = pm === null ? null : objetivoConGuarda(pm, target);
+        return conG === null ? null : aislar(n.args[0], conG);
+      }
+      return null;
+    }
+    if (fn === "nthRoot" && n.args.length === 2) {
+      const k = exponenteEntero2(n.args[1]);
+      if (k === null || k < 2)
+        return null;
+      if (k % 2 === 0) {
+        const conG = objetivoConGuarda(`(${target})^${k}`, target);
+        return conG === null ? null : aislar(n.args[0], conG);
+      }
+      return aislar(n.args[0], `(${target})^${k}`);
+    }
+  }
+  return null;
+}
+function rhsCompleto(r) {
+  if (!r || !r.completo)
+    return null;
+  const m = r.ecuacion.match(/^y\s*=\s*([\s\S]+)$/);
+  return m ? m[1] : null;
+}
+function despejePorInversion(L, R) {
+  const enL = contieneY2(L), enR = contieneY2(R);
+  if (enL === enR)
+    return null;
+  const conY = enL ? L : R;
+  const otro = enL ? R : L;
+  const rhs = aislarInversion(conY, `(${otro.toString()})`, {
+    nivel: 0,
+    alTope: (resto, target) => rhsCompleto(despejarAnidado(`${resto.toString()} = ${target}`))
+  });
+  return rhs === null ? null : { ecuacion: `y = ${rhs}`, completo: true };
+}
+function despejar(ecuacion) {
+  if (componenteParametrica(ecuacion))
+    return null;
+  let partes = ecuacion.split("=");
+  const norm3 = (s) => insertarProductoImplicito(normalizarEntrada(s.trim()));
+  if (partes.length === 1 && contieneYLibre(norm3(partes[0])))
+    partes = [partes[0], "0"];
+  if (partes.length !== 2)
+    return null;
+  let D;
+  let L, R;
+  try {
+    L = parse2(norm3(partes[0]));
+    R = parse2(norm3(partes[1]));
+    D = parse2(`(${norm3(partes[0])})-(${norm3(partes[1])})`);
+  } catch {
+    return null;
+  }
+  if (!contieneY2(D))
+    return null;
+  const DVal = D;
+  D = reducirRaizImpar(L, R) ?? reducirRaizImparPorTerminos(D) ?? D;
+  const ts = terminos(D);
+  const conY = ts.filter((t2) => contieneY2(t2.nodo));
+  const sinY = ts.filter((t2) => !contieneY2(t2.nodo));
+  if (conY.length === 0)
+    return null;
+  const derecha = flip(sinY);
+  if (conY.length === 1) {
+    const lin = linealEnY(conY[0]);
+    if (lin) {
+      const numerador = lin.signo === 1 ? derecha : flip(derecha);
+      if (lin.libres.length === 0)
+        return { ecuacion: `y = ${renderCanonico(numerador)}`, completo: true };
+      const rhs = `(${renderCanonico(numerador)}) / (${renderProducto(lin.libres)})`;
+      return { ecuacion: `y = ${limpiarRHS(rhs)}`, completo: true };
+    }
+    const pot = despejePotencia(conY[0], derecha);
+    if (pot)
+      return pot;
+    const raiz = despejeRaiz(conY[0], derecha);
+    if (raiz)
+      return raiz;
+    const raizPot = despejeRaizDePotencia(conY[0], derecha);
+    if (raizPot)
+      return raizPot;
+    const abs3 = despejeAbsoluto(conY[0], derecha);
+    if (abs3)
+      return abs3;
+    const trig = despejeTrigInverso(conY[0], derecha);
+    if (trig)
+      return trig;
+    const trigCero = despejeTrigCero(conY[0], derecha, despejar);
+    if (trigCero)
+      return trigCero;
+    const recip = despejeReciproco(conY[0], derecha, despejar);
+    if (recip)
+      return recip;
+    const mult = despejeMultiplicativo(conY[0], derecha);
+    if (mult) {
+      const limpio = despejar(mult);
+      if (limpio && limpio.completo)
+        return limpio;
+      return { ecuacion: mult, completo: false };
+    }
+  }
+  const sinDen = despejeSinDenominadores(D);
+  if (sinDen)
+    return sinDen;
+  const cuad = despejeCuadratico(D, DVal);
+  if (cuad)
+    return cuad;
+  const linEval = despejeLinealEnY(D);
+  if (linEval)
+    return linEval;
+  const trigCuad = despejeTrigCuadratico(D, DVal);
+  if (trigCuad)
+    return trigCuad;
+  const inv2 = despejePorInversion(L, R);
+  if (inv2)
+    return inv2;
+  const rad = despejeRadicales(D, DVal);
+  if (rad)
+    return rad;
+  return { ecuacion: `${renderTerminos(conY)} = ${renderCanonico(derecha)}`, completo: false };
+}
+function despejarEcuaciones(ecuaciones) {
+  return ecuaciones.map(
+    (entrada) => transformarSinRestriccion(entrada, (ec) => embellecerConstantes(despejar(ec)?.ecuacion ?? ec))
+  );
+}
+function despejeExplicito(ecuacion) {
+  const r = despejar(ecuacion);
+  if (!r || !r.completo)
+    return null;
+  const m = r.ecuacion.match(/^y\s*=\s*([\s\S]+)$/);
+  if (!m)
+    return null;
+  const rhs = m[1];
+  if (/(?<![a-zA-Z0-9_])(pm|mp|fam|famN)\s*\(/.test(rhs))
+    return null;
+  if (/(?<![a-zA-Z0-9_])y(?![a-zA-Z0-9_])/.test(rhs))
+    return null;
+  return rhs;
+}
+
+// src/degeneradas.ts
+function clasificarDegenerada(evaluar2) {
+  let reales = 0, infinitos = 0, complejos = 0;
+  const muestra = (x) => {
+    const v = evaluar2(x);
+    if (typeof v === "number") {
+      if (Number.isFinite(v))
+        reales++;
+      else if (v === Infinity || v === -Infinity)
+        infinitos++;
+    } else if (v && typeof v === "object" && typeof v.im === "number") {
+      complejos++;
+    }
+  };
+  for (let i2 = 0; i2 <= 500; i2++)
+    muestra(-1e3 + 2e3 * i2 / 500);
+  for (let i2 = 0; i2 <= 200; i2++)
+    muestra(-10 + 20 * i2 / 200);
+  if (reales > 0)
+    return null;
+  if (infinitos > 0)
+    return {
+      etiqueta: "Indefinida",
+      detalle: "La expresi\xF3n no est\xE1 definida en \u211D."
+    };
+  if (complejos > 0)
+    return {
+      etiqueta: "No definida en \u211D",
+      detalle: "La expresi\xF3n produce valores complejos y no puede representarse en el plano real."
+    };
+  return {
+    etiqueta: "Indeterminada",
+    detalle: "La expresi\xF3n produce una forma indeterminada."
+  };
+}
+
+// src/derivar.ts
+var VAR2 = "x";
+var RE_OPERADOR_DERIVADA = /^\s*\\frac\s*\{\s*d\s*\}\s*\{\s*d\s*x\s*\}\s*/;
+var RE_LEIBNIZ = /\\frac\s*\{\s*d[^{}]*\}\s*\{\s*d[^{}]*\}/;
+var esFuncionDeX = (f) => !contieneYLibre(insertarProductoImplicito(normalizarEntrada(f)));
+function quitarOperadorDerivada(ec) {
+  const m = RE_OPERADOR_DERIVADA.exec(ec);
+  if (!m)
+    return null;
+  const resto = ec.slice(m[0].length).trim();
+  if (resto === "")
+    return null;
+  const usaLeft = resto.startsWith("\\left(");
+  if (!usaLeft && !resto.startsWith("("))
+    return resto;
+  let profundidad = 0;
+  for (let i2 = 0; i2 < resto.length; i2++) {
+    if (resto.startsWith("\\left(", i2)) {
+      profundidad++;
+      i2 += "\\left(".length - 1;
+      continue;
+    }
+    if (resto.startsWith("\\right)", i2)) {
+      profundidad--;
+      i2 += "\\right)".length - 1;
+    } else if (resto[i2] === "(")
+      profundidad++;
+    else if (resto[i2] === ")")
+      profundidad--;
+    if (profundidad === 0) {
+      if (i2 !== resto.length - 1)
+        return resto;
+      const abre = usaLeft ? "\\left(".length : 1;
+      const cierra = usaLeft ? "\\right)".length : 1;
+      return resto.slice(abre, resto.length - cierra).trim() || null;
+    }
+  }
+  return resto;
+}
+function extraerFuncion(ec) {
+  const interior = quitarOperadorDerivada(ec);
+  if (interior !== null)
+    return esFuncionDeX(interior) ? interior : null;
+  if (RE_LEIBNIZ.test(ec))
+    return null;
+  const partes = ec.split("=");
+  let f = null;
+  if (partes.length === 1)
+    f = partes[0].trim() || null;
+  else if (partes.length === 2) {
+    if (normalizarEntrada(partes[0].trim()) === "y")
+      f = partes[1].trim() || null;
+    else if (normalizarEntrada(partes[1].trim()) === "y")
+      f = partes[0].trim() || null;
+  }
+  return f && esFuncionDeX(f) ? f : null;
+}
+var REGLAS_DERIVADA = ["sqrt(n1)^2 -> n1"].concat(simplify.rules);
+var derivadasEquivalentes = mismaFuncion;
+function factoresProducto(n) {
+  if (n.type === "ParenthesisNode")
+    return factoresProducto(n.content);
+  if (n.type === "OperatorNode" && n.op === "*" && n.args.length === 2)
+    return [...factoresProducto(n.args[0]), ...factoresProducto(n.args[1])];
+  return [n];
+}
+function extraerSigno(n) {
+  if (n.type === "ParenthesisNode")
+    return extraerSigno(n.content);
+  if (n.type === "OperatorNode") {
+    if (n.op === "-" && n.args.length === 1) {
+      const r = extraerSigno(n.args[0]);
+      return { signo: -r.signo, mag: r.mag };
+    }
+    if (n.op === "/" && n.args.length === 2) {
+      const a = extraerSigno(n.args[0]);
+      return { signo: a.signo, mag: opNodo("/", "divide", [a.mag, n.args[1]]) };
+    }
+    if (n.op === "*" && n.args.length === 2) {
+      const a = extraerSigno(n.args[0]), b = extraerSigno(n.args[1]);
+      return { signo: a.signo * b.signo, mag: opNodo("*", "multiply", [a.mag, b.mag]) };
+    }
+  }
+  if (n.type === "ConstantNode" && typeof n.value === "number" && n.value < 0)
+    return { signo: -1, mag: constNodo(-n.value) };
+  return { signo: 1, mag: n };
+}
+function derivadaDistribuida(norm3) {
+  let raiz;
+  try {
+    raiz = parse2(norm3);
+  } catch {
+    return null;
+  }
+  const fs = factoresProducto(raiz);
+  if (fs.length < 2)
+    return null;
+  const partes = [];
+  for (let i2 = 0; i2 < fs.length; i2++) {
+    let di;
+    try {
+      di = derivative(fs[i2], VAR2);
+    } catch {
+      return null;
+    }
+    if (esCeroLiteral(di))
+      continue;
+    let termino = di;
+    for (let j = 0; j < fs.length; j++)
+      if (j !== i2)
+        termino = opNodo("*", "multiply", [termino, fs[j]]);
+    try {
+      termino = combinarFracciones(simplify(termino, REGLAS_DERIVADA));
+    } catch {
+    }
+    for (const t2 of terminos(termino)) {
+      const { signo: signo3, mag } = extraerSigno(t2.nodo);
+      partes.push({ signo: t2.signo * signo3, mag });
+    }
+  }
+  if (partes.length === 0)
+    return parse2("0");
+  const orden = [...partes.filter((p) => p.signo === 1), ...partes.filter((p) => p.signo === -1)];
+  let s = "";
+  orden.forEach((p, i2) => {
+    const cuerpo = p.mag.toString();
+    if (i2 === 0)
+      s = p.signo === 1 ? cuerpo : `-(${cuerpo})`;
+    else
+      s += p.signo === 1 ? ` + ${cuerpo}` : ` - (${cuerpo})`;
+  });
+  try {
+    return parse2(s);
+  } catch {
+    return null;
+  }
+}
+function simplificarDerivada(cruda, norm3) {
+  const ref = cruda.toString();
+  const candidatas = [];
+  try {
+    const conRaices = simplify(cruda, REGLAS_DERIVADA);
+    try {
+      candidatas.push(combinarFracciones(conRaices));
+    } catch {
+    }
+    candidatas.push(conRaices);
+  } catch {
+  }
+  const dist = derivadaDistribuida(norm3);
+  if (dist)
+    candidatas.push(dist);
+  const costo2 = (n) => [profundidadFraccion(n), n.toString().length];
+  const menor2 = (a, b) => a[0] !== b[0] ? a[0] < b[0] : a[1] < b[1];
+  let mejor = cruda, mejorCosto = costo2(cruda);
+  for (const c of candidatas) {
+    try {
+      if (menor2(costo2(c), mejorCosto) && derivadasEquivalentes(c.toString(), ref)) {
+        mejor = c;
+        mejorCosto = costo2(c);
+      }
+    } catch {
+    }
+  }
+  return mejor;
+}
+var FUNCIONES_ESCALON = /* @__PURE__ */ new Set(["floor", "ceil"]);
+var esCeroLiteral = (n) => n.type === "ConstantNode" && n.value === 0;
+function derivarConEscalones(norm3) {
+  const escalones = [];
+  const sustituir = (n) => {
+    const m = n.map(sustituir);
+    if (m.type === "FunctionNode" && m.args?.length === 1 && FUNCIONES_ESCALON.has(m.fn?.name)) {
+      const nombre = `escalonInterno${escalones.length}`;
+      escalones.push({ nombre, original: n, arg: m.args[0] });
+      return simboloNodo(nombre);
+    }
+    return m;
+  };
+  const cuerpo = sustituir(parse2(norm3));
+  if (escalones.length === 0)
+    return derivative(norm3, VAR2);
+  let total = derivative(cuerpo, VAR2);
+  for (const e3 of escalones) {
+    const du = derivative(e3.arg, VAR2);
+    if (du.type === "ConstantNode")
+      continue;
+    const termino = opNodo("*", "multiply", [constNodo(0), du]);
+    total = esCeroLiteral(total) ? termino : opNodo("+", "add", [total, termino]);
+  }
+  const porNombre = new Map(escalones.map((e3) => [e3.nombre, e3.original]));
+  const restaurar = (n) => {
+    const m = n.map(restaurar);
+    return m.type === "SymbolNode" && porNombre.has(m.name) ? porNombre.get(m.name) : m;
+  };
+  return restaurar(total);
+}
+var SIMBOLO_SIGNO = { pm: "signoPmInterno", mp: "signoMpInterno" };
+var CENTINELA_DE_SIMBOLO = new Map(Object.entries(SIMBOLO_SIGNO).map(([fn, s]) => [s, fn]));
+function contarSimbolo(n, nombre) {
+  let total = 0;
+  n.forEach((h) => {
+    total += contarSimbolo(h, nombre);
+  });
+  return total + (n.type === "SymbolNode" && n.name === nombre ? 1 : 0);
+}
+var producto3 = (a, b) => a.type === "ConstantNode" && a.value === 1 ? b : b.type === "ConstantNode" && b.value === 1 ? a : opNodo("*", "multiply", [a, b]);
+function sacarFactorSimbolo(n, nombre) {
+  if (n.type === "SymbolNode" && n.name === nombre)
+    return constNodo(1);
+  if (n.type === "ParenthesisNode")
+    return sacarFactorSimbolo(n.content, nombre);
+  if (n.type === "OperatorNode" && n.op === "-" && n.args.length === 1) {
+    const a = sacarFactorSimbolo(n.args[0], nombre);
+    return a && opNodo("-", "unaryMinus", [a]);
+  }
+  if (n.type === "OperatorNode" && n.args.length === 2) {
+    if (n.op === "*") {
+      const izq = sacarFactorSimbolo(n.args[0], nombre);
+      if (izq)
+        return producto3(izq, n.args[1]);
+      const der = sacarFactorSimbolo(n.args[1], nombre);
+      return der && producto3(n.args[0], der);
+    }
+    if (n.op === "/") {
+      const num = sacarFactorSimbolo(n.args[0], nombre);
+      return num && opNodo("/", "divide", [num, n.args[1]]);
+    }
+  }
+  return null;
+}
+function restaurarSignos(n) {
+  if (n.type === "OperatorNode" && (n.op === "+" || n.op === "-") && n.args.length === 2)
+    return opNodo(n.op, n.fn, [restaurarSignos(n.args[0]), restaurarSignos(n.args[1])]);
+  if (n.type === "ParenthesisNode")
+    return restaurarSignos(n.content);
+  for (const [simbolo, centinela] of CENTINELA_DE_SIMBOLO) {
+    const veces = contarSimbolo(n, simbolo);
+    if (veces === 0)
+      continue;
+    const sin3 = veces === 1 ? sacarFactorSimbolo(n, simbolo) : null;
+    if (!sin3)
+      throw new Error("signo no factorizable");
+    return funcNodo(simboloNodo(centinela), [sin3]);
+  }
+  return n;
+}
+function sustituirSignos(norm3) {
+  const raiz = parse2(norm3);
+  let hay = false;
+  const sustituir = (n) => {
+    const m = n.map(sustituir);
+    const s = m.type === "FunctionNode" && m.args?.length === 1 ? SIMBOLO_SIGNO[m.fn?.name] : void 0;
+    if (!s)
+      return m;
+    hay = true;
+    return opNodo("*", "multiply", [simboloNodo(s), m.args[0]]);
+  };
+  const expr = sustituir(raiz).toString();
+  return { expr, hay };
+}
+function derivarExpr(expr) {
+  let norm3 = insertarProductoImplicito(normalizarEntrada(expr.trim()));
+  if (norm3 === "")
+    return null;
+  try {
+    if (clasificarDegenerada(compilarFuncion(norm3, VAR2)))
+      return null;
+  } catch {
+  }
+  let conSigno2 = false;
+  try {
+    const s = sustituirSignos(norm3);
+    norm3 = s.expr;
+    conSigno2 = s.hay;
+  } catch {
+    return null;
+  }
+  try {
+    if (conSigno2) {
+      return resimbolizarConstantes(
+        racionalizarFracciones(restaurarSignos(simplificarDerivada(derivarConEscalones(norm3), norm3)))
+      ).toString();
+    }
+    return resimbolizarConstantes(
+      racionalizarFracciones(simplificarDerivada(derivarConEscalones(norm3), norm3))
+    ).toString();
+  } catch {
+    return null;
+  }
+}
+function derivarEcuacion(ec) {
+  const f = extraerFuncion(ec);
+  return f ? derivarExpr(f) : null;
+}
+function derivadaOperadorSimplificadoLatex(ecuaciones) {
+  const f = ecuaciones.length ? extraerFuncion(ecuaciones[0]) : null;
+  if (f === null)
+    return null;
+  const simp = simplificarEcuaciones([f])[0];
+  return `\\frac{d}{d${VAR2}}\\left(${exprALatex(simp)}\\right)`;
+}
+function derivadaOperadorLatex(ecuaciones) {
+  const f = ecuaciones.length ? extraerFuncion(ecuaciones[0]) : null;
+  const cuerpo = f ? exprALatex(f) : "\\text{[...]}";
+  return `\\frac{d}{d${VAR2}}\\left(${cuerpo}\\right)`;
+}
+function derivadaLatex(ecuaciones) {
+  const d = ecuaciones.length ? derivarEcuacion(ecuaciones[0]) : null;
+  const cuerpo = d ? exprALatex(d) : "\\text{[...]}";
+  return `f'\\left(${VAR2}\\right) = ${cuerpo}`;
+}
+
+// src/integrar.ts
+var VAR3 = "x";
+var MUESTRAS = [-7.3, -2.6, -1.2, -0.7, -0.3, 0.4, 1.1, 2.7, 5.8, 11.4];
+var REGLAS_TRIG = [
+  { l: "csc(n1)", r: "1/sin(n1)" },
+  { l: "sec(n1)", r: "1/cos(n1)" },
+  { l: "cot(n1)", r: "cos(n1)/sin(n1)" },
+  { l: "tan(n1)", r: "sin(n1)/cos(n1)" },
+  { l: "sin(2*n1)", r: "2*sin(n1)*cos(n1)" },
+  { l: "cos(2*n1)", r: "1-2*sin(n1)^2" },
+  ...simplify.rules
+];
+function dependeDeX(n) {
+  return n.filter((nodo) => nodo.isSymbolNode === true && nodo.name === VAR3).length > 0;
+}
+function valorConstante(n) {
+  try {
+    const v = n.evaluate();
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+function coefLineal(u) {
+  try {
+    const a = valorConstante(simplify(derivative(u, VAR3)));
+    return a !== null && a !== 0 ? a : null;
+  } catch {
+    return null;
+  }
+}
+function factoresProducto2(n) {
+  if (n.type === "ParenthesisNode")
+    return factoresProducto2(n.content);
+  if (n.type === "OperatorNode" && n.op === "*" && n.args.length === 2)
+    return [...factoresProducto2(n.args[0]), ...factoresProducto2(n.args[1])];
+  return [n];
+}
+function integrarPotencia(base, n) {
+  const a = coefLineal(base);
+  if (a === null)
+    return null;
+  const u = base.toString();
+  if (Math.abs(n + 1) < 1e-12)
+    return `log(abs(${u}), e)/(${a})`;
+  const np1 = n + 1;
+  return `((${u})^(${np1}))/(${np1 * a})`;
+}
+function integrarReciproco(q) {
+  if (q.type === "OperatorNode" && q.op === "^" && q.args.length === 2 && !dependeDeX(q.args[1])) {
+    const k = valorConstante(q.args[1]);
+    if (k === null)
+      return null;
+    return integrarPotencia(q.args[0], -k);
+  }
+  const a = coefLineal(q);
+  if (a !== null)
+    return `log(abs(${q.toString()}), e)/(${a})`;
+  return integrarArcotangente(q);
+}
+function integrarArcotangente(q) {
+  let d1;
+  try {
+    d1 = simplify(derivative(q, VAR3));
+  } catch {
+    return null;
+  }
+  const dosK = coefLineal(d1);
+  if (dosK === null)
+    return null;
+  const k = dosK / 2;
+  try {
+    const fd = compilarFuncion(d1.toString(), VAR3);
+    const en0 = fd(0);
+    if (typeof en0 !== "number" || Math.abs(en0) > 1e-9)
+      return null;
+    const m = compilarFuncion(q.toString(), VAR3)(0);
+    if (typeof m !== "number" || !Number.isFinite(m) || k <= 0 || m <= 0)
+      return null;
+    return `atan(x*sqrt((${k})/(${m})))/sqrt((${k})*(${m}))`;
+  } catch {
+    return null;
+  }
+}
+function constanteLegible(c) {
+  for (let den = 1; den <= 24; den++) {
+    const num = Math.round(c * den);
+    if (Math.abs(c * den - num) < 1e-9)
+      return den === 1 ? `${num}` : `(${num})/(${den})`;
+  }
+  return `${c}`;
+}
+function integrarDerivadaLogaritmica(p, q) {
+  let fp, fq;
+  try {
+    fp = compilarFuncion(p.toString(), VAR3);
+    fq = compilarFuncion(q.toString(), VAR3);
+  } catch {
+    return null;
+  }
+  const h = 1e-6;
+  let c = null;
+  let comparables = 0;
+  for (const x of MUESTRAS) {
+    const vp = fp(x), q1 = fq(x + h), q0 = fq(x - h);
+    if (typeof vp !== "number" || !Number.isFinite(vp))
+      continue;
+    if (typeof q1 !== "number" || typeof q0 !== "number" || !Number.isFinite(q1) || !Number.isFinite(q0))
+      continue;
+    const dq = (q1 - q0) / (2 * h);
+    if (Math.abs(dq) < 1e-6)
+      continue;
+    const razon = vp / dq;
+    if (c === null)
+      c = razon;
+    else if (Math.abs(razon - c) > 1e-6 * (1 + Math.abs(c)))
+      return null;
+    comparables++;
+  }
+  if (c === null || comparables < 3)
+    return null;
+  return `(${constanteLegible(c)})*log(abs(${q.toString()}), e)`;
+}
+function integrarExponencial(base, exp3) {
+  const a = coefLineal(exp3);
+  if (a === null)
+    return null;
+  const b = base.toString();
+  return `((${b})^(${exp3.toString()}))/((${a})*log(${b}, e))`;
+}
+function integrarFuncion(nombre, arg2) {
+  const a = coefLineal(arg2);
+  if (a === null)
+    return null;
+  const u = arg2.toString();
+  switch (nombre) {
+    case "sin":
+      return `-cos(${u})/(${a})`;
+    case "cos":
+      return `sin(${u})/(${a})`;
+    case "exp":
+      return `exp(${u})/(${a})`;
+    case "tan":
+      return `-log(abs(cos(${u})), e)/(${a})`;
+    case "cot":
+      return `log(abs(sin(${u})), e)/(${a})`;
+    case "sec":
+      return `log(abs(sec(${u})+tan(${u})), e)/(${a})`;
+    case "csc":
+      return `-log(abs(csc(${u})+cot(${u})), e)/(${a})`;
+    case "sinh":
+      return `cosh(${u})/(${a})`;
+    case "cosh":
+      return `sinh(${u})/(${a})`;
+    case "sqrt":
+      return `(2*(${u})^(3/2))/(3*(${a}))`;
+    default:
+      return null;
+  }
+}
+function integrar(n) {
+  if (n.type === "ParenthesisNode")
+    return integrar(n.content);
+  if (!dependeDeX(n))
+    return `(${n.toString()})*x`;
+  if (n.type === "OperatorNode") {
+    const { op, args } = n;
+    if ((op === "+" || op === "-") && args.length === 2) {
+      const A = integrar(args[0]);
+      const B = integrar(args[1]);
+      return A !== null && B !== null ? `(${A})${op}(${B})` : null;
+    }
+    if (op === "-" && args.length === 1) {
+      const A = integrar(args[0]);
+      return A !== null ? `-(${A})` : null;
+    }
+    if (op === "*") {
+      const factores2 = factoresProducto2(n);
+      const xdep = factores2.filter(dependeDeX);
+      if (xdep.length !== 1)
+        return null;
+      const I = integrar(xdep[0]);
+      if (I === null)
+        return null;
+      const consts = factores2.filter((f) => !dependeDeX(f));
+      if (consts.length === 0)
+        return I;
+      return `(${consts.map((f) => `(${f.toString()})`).join("*")})*(${I})`;
+    }
+    if (op === "/" && args.length === 2) {
+      const [p, q] = args;
+      if (!dependeDeX(q)) {
+        const I = integrar(p);
+        return I !== null ? `(${I})/(${q.toString()})` : null;
+      }
+      if (!dependeDeX(p)) {
+        const I = integrarReciproco(q);
+        return I !== null ? `(${p.toString()})*(${I})` : null;
+      }
+      return integrarDerivadaLogaritmica(p, q);
+    }
+    if (op === "^" && args.length === 2) {
+      const [base, exp3] = args;
+      if (dependeDeX(exp3)) {
+        return dependeDeX(base) ? null : integrarExponencial(base, exp3);
+      }
+      const n25 = valorConstante(exp3);
+      return n25 !== null ? integrarPotencia(base, n25) : null;
+    }
+  }
+  if (n.type === "FunctionNode" && n.args.length === 1)
+    return integrarFuncion(n.fn.name, n.args[0]);
+  if (n.type === "SymbolNode" && n.name === VAR3)
+    return "x^2/2";
+  return null;
+}
+function verificaNumerica(integrando, primitiva) {
+  let f, F;
+  try {
+    f = compilarFuncion(integrando, VAR3);
+    F = compilarFuncion(primitiva, VAR3);
+  } catch {
+    return false;
+  }
+  const h = 1e-6;
+  let comparables = 0;
+  for (const x of MUESTRAS) {
+    const vf = f(x);
+    if (typeof vf !== "number" || !Number.isFinite(vf))
+      continue;
+    const F1 = F(x + h), F0 = F(x - h);
+    if (typeof F1 !== "number" || typeof F0 !== "number" || !Number.isFinite(F1) || !Number.isFinite(F0))
+      continue;
+    const aprox = (F1 - F0) / (2 * h);
+    if (Math.abs(aprox - vf) > 1e-4 * (1 + Math.abs(vf)))
+      return false;
+    comparables++;
+  }
+  return comparables >= 3;
+}
+function integrarExpr(expr) {
+  const norm3 = insertarProductoImplicito(normalizarEntrada(expr.trim()));
+  if (norm3 === "")
+    return null;
+  let raiz;
+  try {
+    raiz = parse2(norm3);
+  } catch {
+    return null;
+  }
+  let cruda = integrar(raiz);
+  if (cruda === null) {
+    try {
+      cruda = integrar(simplify(norm3, REGLAS_TRIG));
+    } catch {
+      return null;
+    }
+  }
+  if (cruda === null)
+    return null;
+  let limpio = cruda;
+  try {
+    limpio = resimbolizarConstantes(racionalizarFracciones(simplify(cruda))).toString();
+  } catch {
+    try {
+      limpio = simplify(cruda).toString();
+    } catch {
+    }
+  }
+  return verificaNumerica(norm3, limpio) ? limpio : null;
+}
+
+// src/integral.ts
+function integrandoEnX(integrando, variable) {
+  if (variable === "x" || !/^[a-zA-Z]$/.test(variable))
+    return integrando;
+  return integrando.replace(new RegExp(`\\b${variable}\\b`, "g"), "x");
+}
+function leerGrupo(s, i2) {
+  while (i2 < s.length && /\s/.test(s[i2]))
+    i2++;
+  if (i2 >= s.length)
+    return null;
+  if (s[i2] === "{") {
+    let prof = 0;
+    for (let j = i2; j < s.length; j++) {
+      if (s[j] === "{")
+        prof++;
+      else if (s[j] === "}" && --prof === 0)
+        return { texto: s.slice(i2 + 1, j), fin: j + 1 };
+    }
+    return null;
+  }
+  if (s[i2] === "\\") {
+    const m = /^\\[a-zA-Z]+/.exec(s.slice(i2));
+    if (m)
+      return { texto: m[0], fin: i2 + m[0].length };
+    return { texto: s.slice(i2, i2 + 2), fin: i2 + 2 };
+  }
+  const num = /^-?\d+(?:\.\d+)?/.exec(s.slice(i2));
+  if (num)
+    return { texto: num[0], fin: i2 + num[0].length };
+  return { texto: s[i2], fin: i2 + 1 };
+}
+function parsearLatex(entrada) {
+  let s = entrada.replace(/\\in(?=\s*[_^])/g, "\\int").replace(/\\displaystyle/g, " ");
+  const idx = s.search(/\\int/);
+  if (idx < 0)
+    return null;
+  let i2 = idx + "\\int".length;
+  const lim = /^\\limits/.exec(s.slice(i2));
+  if (lim)
+    i2 += lim[0].length;
+  let a = null, b = null;
+  for (let k = 0; k < 2; k++) {
+    while (i2 < s.length && /\s/.test(s[i2]))
+      i2++;
+    const marca = s[i2];
+    if (marca !== "_" && marca !== "^")
+      break;
+    const g = leerGrupo(s, i2 + 1);
+    if (!g)
+      return null;
+    if (marca === "_")
+      a = g.texto;
+    else
+      b = g.texto;
+    i2 = g.fin;
+  }
+  if (a === null || b === null)
+    return null;
+  let resto = s.slice(i2).trim();
+  const dif = /(?:\\[,;! ]|\\quad|\\qquad|\s)*(?:\\mathrm\s*\{\s*d\s*\}|\\mathrm\s+d|d)\s*([a-zA-Z])\s*$/.exec(resto);
+  let variable = "x";
+  if (dif) {
+    variable = dif[1];
+    resto = resto.slice(0, dif.index).trim();
+  }
+  if (resto === "")
+    return null;
+  return { integrando: integrandoEnX(resto, variable), integrandoDisplay: resto, a, b, variable };
+}
+function integrandoDeLinea(l) {
+  const partes = l.split("=");
+  if (partes.length === 1)
+    return partes[0].trim() || null;
+  if (partes.length === 2) {
+    const izq = partes[0].trim(), der = partes[1].trim();
+    if (normalizarEntrada(izq) === "y")
+      return der || null;
+    if (normalizarEntrada(der) === "y")
+      return izq || null;
+    if (/^f\s*\(/i.test(izq))
+      return der || null;
+  }
+  return null;
+}
+function parsearLineas(entrada) {
+  const lineas = entrada.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== "");
+  let a = null, b = null;
+  const otras = [];
+  for (const l of lineas) {
+    const ma = /^a\s*=\s*(.+)$/i.exec(l);
+    const mb = /^b\s*=\s*(.+)$/i.exec(l);
+    if (ma)
+      a = ma[1].trim();
+    else if (mb)
+      b = mb[1].trim();
+    else
+      otras.push(l);
+  }
+  if (a === null || b === null || otras.length === 0)
+    return null;
+  const f = integrandoDeLinea(otras[0]);
+  return f ? { integrando: f, integrandoDisplay: f, a, b, variable: "x" } : null;
+}
+function normalizarInvisibles(texto) {
+  return texto.replace(/[\u200B\u200C\u200D\uFEFF]/gu, "").replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, " ");
+}
+function extraerIntegral(source) {
+  const s = normalizarInvisibles(source).trim();
+  if (s === "")
+    return null;
+  const it = /\\in/.test(s) ? parsearLatex(s) : parsearLineas(s);
+  return it && esIntegrandoValido(it.integrando) ? it : null;
+}
+function esIntegrandoValido(integrando) {
+  if (integrando.includes("="))
+    return false;
+  const norm3 = insertarProductoImplicito(normalizarEntrada(integrando));
+  return norm3 !== "" && !contieneYLibre(norm3);
+}
+function evaluarLimite(raw) {
+  const norm3 = insertarProductoImplicito(normalizarEntrada(raw.trim()));
+  if (norm3 === "")
+    return null;
+  try {
+    const v = compilarExpresion(norm3)({});
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+function latexSeguro(expr) {
+  try {
+    return exprALatex(expr) || "\\text{[...]}";
+  } catch {
+    return "\\text{[...]}";
+  }
+}
+function integralOperadorLatex(source) {
+  const it = extraerIntegral(source);
+  if (!it)
+    return `\\int_{\\text{[...]}}^{\\text{[...]}}\\text{[...]}\\,dx`;
+  let integrando = it.integrandoDisplay;
+  try {
+    integrando = simplificarEcuaciones([integrando])[0];
+  } catch {
+  }
+  return `\\int_{${latexSeguro(it.a)}}^{${latexSeguro(it.b)}} ${latexSeguro(integrando)}\\,d${it.variable}`;
+}
+function integralPrimitivaLatex(source) {
+  const it = extraerIntegral(source);
+  if (!it)
+    return null;
+  const primitiva = integrarExpr(it.integrando);
+  if (!primitiva)
+    return null;
+  const enVar = /^[a-zA-Z]$/.test(it.variable) && it.variable !== "x" ? primitiva.replace(/\bx\b/g, it.variable) : primitiva;
+  return `\\left[${latexSeguro(enVar)}\\right]_{${latexSeguro(it.a)}}^{${latexSeguro(it.b)}}`;
+}
+function integralValorLatex(source, cuerpoLatex, conector = "=") {
+  return `${integralOperadorLatex(source)} ${conector} ${cuerpoLatex}`;
+}
+
+// src/math/numerico.ts
+var DOMINIO_X = [-100, 100];
+var MUESTRAS2 = 4e4;
+function formaExplicita(ecuacion) {
+  const partes = ecuacion.split("=");
+  let aislada;
+  let otra;
+  if (partes.length === 1) {
+    aislada = "y";
+    otra = partes[0];
+  } else if (partes.length === 2) {
+    const izq = partes[0].trim(), der = partes[1].trim();
+    if (izq === "y") {
+      aislada = "y";
+      otra = der;
+    } else if (der === "y") {
+      aislada = "y";
+      otra = izq;
+    } else if (izq === "x") {
+      aislada = "x";
+      otra = der;
+    } else if (der === "x") {
+      aislada = "x";
+      otra = izq;
+    } else
+      return null;
+  } else
+    return null;
+  const variableLibre = aislada === "y" ? "x" : "y";
+  try {
+    const f = compilarFuncion(insertarProductoImplicito(normalizarEntrada(otra)), variableLibre);
+    return {
+      aislada,
+      f: (t2) => {
+        const v = f(t2);
+        return typeof v === "number" ? v : NaN;
+      }
+    };
+  } catch {
+    return null;
+  }
+}
+function bisecar(h, a, b) {
+  let lo = a, hi = b;
+  let flo = h(lo);
+  if (!Number.isFinite(flo))
+    return null;
+  for (let i2 = 0; i2 < 80; i2++) {
+    const m2 = (lo + hi) / 2;
+    const fm2 = h(m2);
+    if (!Number.isFinite(fm2))
+      return null;
+    if (fm2 === 0)
+      return m2;
+    if (flo * fm2 < 0) {
+      hi = m2;
+    } else {
+      lo = m2;
+      flo = fm2;
+    }
+    if (hi === lo || hi - lo <= Math.abs(m2) * Number.EPSILON)
+      break;
+  }
+  const m = (lo + hi) / 2;
+  const fm = h(m);
+  if (!Number.isFinite(fm))
+    return null;
+  const escala2 = Math.max(1, Math.abs(h(m + 1e-6)), Math.abs(h(m - 1e-6)));
+  return Math.abs(fm) < 1e-6 * escala2 || Math.abs(fm) < 1e-9 ? m : null;
+}
+function pulir(h, x0) {
+  let x = x0;
+  for (let i2 = 0; i2 < 6; i2++) {
+    const paso = Math.max(1e-10, Math.abs(x) * 1e-10);
+    const d = (h(x + paso) - h(x - paso)) / (2 * paso);
+    if (!Number.isFinite(d) || d === 0)
+      break;
+    const nx = x - h(x) / d;
+    if (!Number.isFinite(nx) || Math.abs(nx - x) > Math.max(1, Math.abs(x)))
+      break;
+    if (nx === x)
+      break;
+    x = nx;
+  }
+  return Math.abs(h(x)) <= Math.abs(h(x0)) ? x : x0;
+}
+function raicesDe(h) {
+  const [t0, t1] = DOMINIO_X;
+  const paso = (t1 - t0) / MUESTRAS2;
+  const crudas = [];
+  let tPrev = t0;
+  let hPrev = h(tPrev);
+  for (let i2 = 1; i2 <= MUESTRAS2; i2++) {
+    const t2 = t0 + i2 * paso;
+    const ht = h(t2);
+    if (Number.isFinite(hPrev) && Number.isFinite(ht)) {
+      if (ht === 0)
+        crudas.push(t2);
+      else if (hPrev * ht < 0) {
+        const r = bisecar(h, tPrev, t2);
+        if (r !== null)
+          crudas.push(r);
+      }
+    }
+    tPrev = t2;
+    hPrev = ht;
+  }
+  const out = [];
+  for (const cruda of crudas) {
+    const t2 = pulir(h, cruda);
+    if (!Number.isFinite(t2))
+      continue;
+    if (out.some((p) => Math.abs(p - t2) <= 10 * paso))
+      continue;
+    out.push(t2);
+  }
+  return out;
+}
+function resolverNumerico(ecuacionA, ecuacionB, opciones = {}) {
+  const a = formaExplicita(ecuacionA);
+  const b = formaExplicita(ecuacionB);
+  if (!a || !b)
+    return { tipo: "noResoluble" };
+  if (!opciones.simetrico && (a.aislada !== "y" || b.aislada !== "y"))
+    return { tipo: "noResoluble" };
+  if (a.aislada === b.aislada) {
+    const h2 = (t2) => a.f(t2) - b.f(t2);
+    const variable = a.aislada === "y" ? "x" : "y";
+    const puntos2 = [];
+    for (const t2 of raicesDe(h2)) {
+      const otro = a.f(t2);
+      if (!Number.isFinite(otro))
+        continue;
+      puntos2.push(a.aislada === "y" ? { x: t2, y: otro } : { x: otro, y: t2 });
+    }
+    puntos2.sort((p, q) => p.x - q.x || p.y - q.y);
+    return { tipo: "puntos", puntos: puntos2, variable };
+  }
+  const explY = a.aislada === "y" ? a : b;
+  const explX = a.aislada === "x" ? a : b;
+  const h = (y) => explY.f(explX.f(y)) - y;
+  const puntos = [];
+  for (const y of raicesDe(h)) {
+    const x = explX.f(y);
+    if (!Number.isFinite(x) || !Number.isFinite(y))
+      continue;
+    puntos.push({ x, y });
+  }
+  puntos.sort((p, q) => p.x - q.x || p.y - q.y);
+  return { tipo: "puntos", puntos, variable: "y" };
+}
+
+// src/math/ramas.ts
+var FAMILIA = /(?<![a-zA-Z0-9_])(fam|famN)\s*\(/;
+var PASADAS_DOM = 8;
+function esDom(n) {
+  return n.type === "FunctionNode" && n.fn?.name === "dom" && n.args.length === 2;
+}
+function separarGuardas(n) {
+  const guardas = [];
+  const limpiar = (m) => {
+    let out = m;
+    for (let i2 = 0; i2 < PASADAS_DOM && out.filter(esDom).length > 0; i2++) {
+      out = out.transform((k) => {
+        if (!esDom(k))
+          return k;
+        guardas.push(k.args[1]);
+        return k.args[0];
+      });
+    }
+    return out;
+  };
+  const limpio = limpiar(n);
+  for (let i2 = 0; i2 < guardas.length; i2++)
+    guardas[i2] = limpiar(guardas[i2]);
+  return { limpio, guardas };
+}
+var constantes = /* @__PURE__ */ new Map();
+function esConstante2(nombre) {
+  let conocida = constantes.get(nombre);
+  if (conocida === void 0) {
+    conocida = evaluarConstante(nombre) !== null;
+    constantes.set(nombre, conocida);
+  }
+  return conocida;
+}
+function soloVariablesYConstantes(n) {
+  const libres = n.filter((m, camino) => m.type === "SymbolNode" && camino !== "fn" && m.name !== "x" && m.name !== "y");
+  return libres.every((m) => esConstante2(m.name));
+}
+function ramaLimpia(ec) {
+  const partes = ec.split("=");
+  if (partes.length > 2)
+    return null;
+  const lados = [];
+  const guardas = /* @__PURE__ */ new Set();
+  for (const parte of partes) {
+    let n;
+    try {
+      n = parse2(parte);
+    } catch {
+      return null;
+    }
+    const { limpio, guardas: gs } = separarGuardas(n);
+    if (!soloVariablesYConstantes(limpio))
+      return null;
+    lados.push(limpio.toString());
+    for (const g of gs) {
+      if (!soloVariablesYConstantes(g))
+        return null;
+      guardas.add(g.toString());
+    }
+  }
+  return { ecuacion: lados.join(" = "), guardas: [...guardas] };
+}
+function transponer(nodo) {
+  return nodo.transform((n) => {
+    if (n.type !== "SymbolNode")
+      return n;
+    if (n.name === "x")
+      return simboloNodo("y");
+    if (n.name === "y")
+      return simboloNodo("x");
+    return n;
+  });
+}
+function sinIncognitaY(ecuacion) {
+  const norm3 = insertarProductoImplicito(normalizarEntrada(ecuacion.trim()));
+  if (norm3 === "" || contieneYLibre(norm3))
+    return null;
+  const partes = norm3.split("=");
+  if (partes.length === 2) {
+    let girada;
+    try {
+      const izq = transponer(parse2(partes[0]));
+      const der = transponer(parse2(partes[1]));
+      girada = `${izq.toString()} = ${der.toString()}`;
+    } catch {
+      return { ecuacion: norm3, completo: true };
+    }
+    const desp = despejar(girada);
+    if (desp && desp.completo) {
+      try {
+        const vuelta = desp.ecuacion.split("=");
+        if (vuelta.length === 2) {
+          const izq = transponer(parse2(vuelta[0]));
+          const der = transponer(parse2(vuelta[1]));
+          return { ecuacion: `${izq.toString()} = ${der.toString()}`, completo: true };
+        }
+      } catch {
+      }
+    }
+  }
+  return { ecuacion: norm3, completo: true };
+}
+function ramasDe(ecuacion) {
+  const desp = despejar(ecuacion) ?? sinIncognitaY(ecuacion);
+  if (!desp || !desp.completo)
+    return null;
+  if (FAMILIA.test(desp.ecuacion))
+    return null;
+  const expandidas = tieneDobleSigno(desp.ecuacion) ? expandirDobleSigno(desp.ecuacion) : [desp.ecuacion];
+  const out = [];
+  for (const e3 of expandidas) {
+    const rama = ramaLimpia(e3);
+    if (!rama)
+      return null;
+    out.push(rama);
+  }
+  return out.length > 0 ? out : null;
+}
+
+// src/math/simbolico/valorExacto.ts
+var RADICANDO_MAXIMO = 1n << 40n;
+function raizEntera(n) {
+  if (n < 0n)
+    return null;
+  if (n < 2n)
+    return n;
+  let x = n, y = (x + 1n) / 2n;
+  while (y < x) {
+    x = y;
+    y = (x + n / x) / 2n;
+  }
+  return x * x === n ? x : null;
+}
+function extraerCuadrado(n) {
+  let dentro2 = n, fuera = 1n;
+  const r = raizEntera(dentro2);
+  if (r !== null)
+    return { fuera: r, dentro: 1n };
+  for (let k = 2n; k * k <= dentro2; k++) {
+    const k2 = k * k;
+    while (dentro2 % k2 === 0n) {
+      dentro2 /= k2;
+      fuera *= k;
+    }
+  }
+  return { fuera, dentro: dentro2 };
+}
+function exacto(r) {
+  return { a: r, b: CERO, d: 1n };
+}
+var CERO_E = exacto(CERO);
+function raizDe(a, b, radicando) {
+  if (signo(radicando) < 0)
+    return null;
+  if (esCero2(radicando) || esCero2(b))
+    return exacto(a);
+  const p = radicando.n * radicando.d;
+  const q = radicando.d;
+  if (p > RADICANDO_MAXIMO)
+    return null;
+  const { fuera, dentro: dentro2 } = extraerCuadrado(p);
+  const coef = producto(b, rac(fuera, q));
+  if (dentro2 === 1n)
+    return exacto(suma(a, coef));
+  if (esCero2(coef))
+    return exacto(a);
+  return { a, b: coef, d: dentro2 };
+}
+var racionalDe2 = (v) => esCero2(v.b) ? v.a : null;
+var aNumeroE = (v) => aNumero(v.a) + (esCero2(v.b) ? 0 : aNumero(v.b) * Math.sqrt(Number(v.d)));
+function radicandoComun(u, v) {
+  if (esCero2(u.b))
+    return v.d;
+  if (esCero2(v.b))
+    return u.d;
+  return u.d === v.d ? u.d : null;
+}
+function sumaE(u, v) {
+  const d = radicandoComun(u, v);
+  if (d === null)
+    return null;
+  const b = suma(u.b, v.b);
+  return esCero2(b) ? exacto(suma(u.a, v.a)) : { a: suma(u.a, v.a), b, d };
+}
+function productoE(u, v) {
+  const d = radicandoComun(u, v);
+  if (d === null)
+    return null;
+  const a = suma(producto(u.a, v.a), producto(producto(u.b, v.b), rac(d)));
+  const b = suma(producto(u.a, v.b), producto(u.b, v.a));
+  return esCero2(b) ? exacto(a) : { a, b, d };
+}
+function radicalATexto(b, d, raiz) {
+  const n = b.n < 0n ? -b.n : b.n;
+  const cuerpo = n === 1n ? `${raiz}${d}` : `${n}${raiz}${d}`;
+  return b.d === 1n ? cuerpo : `${cuerpo}/${b.d}`;
+}
+function aTextoE(v) {
+  return escribir(v, "\u221A", "-");
+}
+function fraccionLatex(n, d) {
+  if (d === 1n)
+    return String(n);
+  return n < 0n ? `-\\frac{${-n}}{${d}}` : `\\frac{${n}}{${d}}`;
+}
+function aLatexE(v) {
+  if (esCero2(v.b))
+    return fraccionLatex(v.a.n, v.a.d);
+  const den = lcm2(v.a.d, v.b.d);
+  const fuera = v.a.n <= 0n && v.b.n < 0n;
+  const s = fuera ? -1n : 1n;
+  const na = s * v.a.n * (den / v.a.d);
+  const nb = s * v.b.n * (den / v.b.d);
+  const abs3 = nb < 0n ? -nb : nb;
+  const radical = abs3 === 1n ? `\\sqrt{${v.d}}` : `${abs3}\\sqrt{${v.d}}`;
+  const cuerpo = na === 0n ? radical : na < 0n ? `${radical} - ${-na}` : `${na} ${nb < 0n ? "-" : "+"} ${radical}`;
+  const nucleo = den === 1n ? cuerpo : `\\frac{${cuerpo}}{${den}}`;
+  return `${fuera ? "-" : ""}${nucleo}`;
+}
+var lcm2 = (a, b) => a / mcd5(a, b) * b;
+function mcd5(a, b) {
+  let x = a < 0n ? -a : a, y = b < 0n ? -b : b;
+  while (y) {
+    const t2 = x % y;
+    x = y;
+    y = t2;
+  }
+  return x;
+}
+function escribir(v, raiz, menos) {
+  if (esCero2(v.b))
+    return aTexto(v.a).replace("-", menos);
+  if (esCero2(v.a)) {
+    const cuerpo2 = radicalATexto(v.b, v.d, raiz);
+    return v.b.n < 0n ? `${menos}${cuerpo2}` : cuerpo2;
+  }
+  const den = lcm2(v.a.d, v.b.d);
+  const na = v.a.n * (den / v.a.d);
+  const nb = v.b.n * (den / v.b.d);
+  const abs3 = nb < 0n ? -nb : nb;
+  const radical = abs3 === 1n ? `${raiz}${v.d}` : `${abs3}${raiz}${v.d}`;
+  const cuerpo = `${na} ${nb < 0n ? menos : "+"} ${radical}`;
+  return den === 1n ? cuerpo : `(${cuerpo})/${den}`;
+}
+
+// src/math/simbolico/raicesSimbolicas.ts
+var DENOMINADOR_MAXIMO = 1000000n;
+var TOL_RECONSTRUCCION = 1e-11;
+function racionalCercano(v, maxDen = DENOMINADOR_MAXIMO) {
+  if (!Number.isFinite(v))
+    return null;
+  const escala2 = Math.max(1, Math.abs(v));
+  let x = v;
+  let a = Math.floor(x);
+  if (!Number.isSafeInteger(a))
+    return null;
+  let pAnt = 1n, qAnt = 0n;
+  let p = BigInt(a), q = 1n;
+  for (let i2 = 0; i2 < 40; i2++) {
+    if (Math.abs(Number(p) / Number(q) - v) <= TOL_RECONSTRUCCION * escala2)
+      return rac(p, q);
+    const frac = x - a;
+    if (Math.abs(frac) < 1e-14)
+      break;
+    x = 1 / frac;
+    a = Math.floor(x);
+    if (!Number.isSafeInteger(a))
+      break;
+    const A = BigInt(a);
+    const p2 = A * p + pAnt, q2 = A * q + qAnt;
+    if (q2 > maxDen || q2 <= 0n)
+      break;
+    pAnt = p;
+    qAnt = q;
+    p = p2;
+    q = q2;
+  }
+  return null;
+}
+function divideExacto(p, q) {
+  if (grado(q) < 1 || grado(p) < grado(q))
+    return false;
+  return esNulo(dividir(p, q).resto);
+}
+function factoresCuadraticos(p, raices2) {
+  const irracionales = raices2.filter((r) => r.exacto === null);
+  const factores2 = [];
+  for (let i2 = 0; i2 < irracionales.length; i2++) {
+    for (let j = i2 + 1; j < irracionales.length; j++) {
+      const S = racionalCercano(irracionales[i2].valor + irracionales[j].valor);
+      const M = racionalCercano(irracionales[i2].valor * irracionales[j].valor);
+      if (S === null || M === null)
+        continue;
+      const q = [M, { n: -S.n, d: S.d }, rac(1n)];
+      if (divideExacto(p, q))
+        factores2.push(q);
+    }
+  }
+  return factores2;
+}
+function raicesDeCuadratica(b, c) {
+  const disc = resta(producto(b, b), producto(rac(4n), c));
+  const mitad = rac(1n, 2n);
+  const centro = producto({ n: -b.n, d: b.d }, mitad);
+  const mas = raizDe(centro, mitad, disc);
+  const menos = raizDe(centro, { n: -1n, d: 2n }, disc);
+  const out = [];
+  if (mas)
+    out.push(mas);
+  if (menos)
+    out.push(menos);
+  return out;
+}
+function raicesConForma(p) {
+  const raices2 = raicesReales(p);
+  if (raices2.length === 0)
+    return [];
+  const candidatas = [];
+  for (const q of factoresCuadraticos(p, raices2))
+    candidatas.push(...raicesDeCuadratica(q[1], q[0]));
+  return raices2.map((raiz) => {
+    if (raiz.exacto !== null)
+      return { raiz, exacto: exacto(raiz.exacto) };
+    const escala2 = Math.max(1, Math.abs(raiz.valor));
+    const forma = candidatas.find((c) => Math.abs(aNumeroE(c) - raiz.valor) <= 1e-9 * escala2);
+    return { raiz, exacto: forma ?? null };
+  });
+}
+
+// src/math/simbolico/polinomioExacto.ts
+function evaluarExacto(p, v) {
+  const P4 = normalizar(p);
+  if (P4.length === 0)
+    return CERO_E;
+  let acumulado = exacto(P4[P4.length - 1]);
+  for (let i2 = P4.length - 2; i2 >= 0; i2--) {
+    if (acumulado === null)
+      return null;
+    const escalado = productoE(acumulado, v);
+    if (escalado === null)
+      return null;
+    acumulado = sumaE(escalado, exacto(P4[i2]));
+  }
+  return acumulado;
+}
+
+// src/math/resolverSistema.ts
+var TOL_REL = 1e-9;
+function dX(p) {
+  return normalizar2(p.map((c) => {
+    const out = [];
+    for (let i2 = 1; i2 < c.length; i2++)
+      out.push({ n: c[i2].n * BigInt(i2), d: c[i2].d });
+    return normalizar(out);
+  }));
+}
+function dY(p) {
+  const P4 = normalizar2(p);
+  const out = [];
+  for (let j = 1; j < P4.length; j++)
+    out.push(normalizar(P4[j].map((c) => ({ n: c.n * BigInt(j), d: c.d }))));
+  return normalizar2(out);
+}
+function pulirNewton(p, q, x0, y0) {
+  const px2 = dX(p), py2 = dY(p), qx = dX(q), qy = dY(q);
+  let x = x0, y = y0;
+  for (let i2 = 0; i2 < 12; i2++) {
+    const fp = evaluarNum2(p, x, y), fq = evaluarNum2(q, x, y);
+    if (!Number.isFinite(fp) || !Number.isFinite(fq))
+      return { x: x0, y: y0 };
+    if (fp === 0 && fq === 0)
+      break;
+    const a = evaluarNum2(px2, x, y), b = evaluarNum2(py2, x, y);
+    const c = evaluarNum2(qx, x, y), d = evaluarNum2(qy, x, y);
+    const det2 = a * d - b * c;
+    if (!Number.isFinite(det2) || det2 === 0)
+      break;
+    const nx = x - (fp * d - fq * b) / det2;
+    const ny = y - (a * fq - c * fp) / det2;
+    if (!Number.isFinite(nx) || !Number.isFinite(ny))
+      break;
+    if (nx === x && ny === y)
+      break;
+    x = nx;
+    y = ny;
+  }
+  const antes = Math.abs(evaluarNum2(p, x0, y0)) + Math.abs(evaluarNum2(q, x0, y0));
+  const ahora = Math.abs(evaluarNum2(p, x, y)) + Math.abs(evaluarNum2(q, x, y));
+  return ahora <= antes ? { x, y } : { x: x0, y: y0 };
+}
+function escala(p, x, y) {
+  let s = 1;
+  for (const c of p)
+    for (const k of c)
+      s = Math.max(s, Math.abs(aNumero(k)));
+  const m = Math.max(1, Math.abs(x), Math.abs(y));
+  return s * m ** Math.max(1, gradoY(p) + 1);
+}
+function verificar(p, q, denP, denQ, x, y) {
+  if (!Number.isFinite(x) || !Number.isFinite(y))
+    return false;
+  const rp = Math.abs(evaluarNum2(p, x, y)), rq = Math.abs(evaluarNum2(q, x, y));
+  if (!(rp <= TOL_REL * escala(p, x, y)) || !(rq <= TOL_REL * escala(q, x, y)))
+    return false;
+  for (const d of [denP, denQ]) {
+    if (esNulo2(d))
+      return false;
+    const v = Math.abs(evaluarNum2(d, x, y));
+    if (v <= 1e-12 * escala(d, x, y))
+      return false;
+  }
+  return true;
+}
+function ordenadasDe(p, q, xRacional, xr, explicita2, xValor) {
+  if (xRacional === null && explicita2 !== null)
+    return [{ y: evaluarNum(explicita2, xValor), exacta: null }];
+  return ordenadasPorEliminacion(p, q, xRacional, xr);
+}
+function ordenadasPorEliminacion(p, q, xRacional, xr) {
+  const py2 = sustituirX(p, xr);
+  const qy = sustituirX(q, xr);
+  if (esNulo(py2) && esNulo(qy))
+    return [];
+  const conForma = (pol) => raicesConForma(pol).map((r) => ({ y: r.raiz.valor, exacta: r.exacto }));
+  if (xRacional !== null) {
+    if (esNulo(py2))
+      return conForma(qy);
+    if (esNulo(qy))
+      return conForma(py2);
+    const g = mcdPol(py2, qy);
+    if (grado(g) < 1)
+      return [];
+    return conForma(g);
+  }
+  const soloValores = (pol) => raicesReales(pol).map((r) => ({ y: r.valor, exacta: null }));
+  if (gradoY(p) === 0)
+    return soloValores(qy);
+  if (gradoY(q) === 0)
+    return soloValores(py2);
+  const rp = raicesReales(py2), rq = raicesReales(qy);
+  const out = [];
+  for (const a of rp) {
+    for (const b of rq) {
+      const tol = 1e-6 * Math.max(1, Math.abs(a.valor));
+      if (Math.abs(a.valor - b.valor) <= tol)
+        out.push({ y: (a.valor + b.valor) / 2, exacta: null });
+    }
+  }
+  return out;
+}
+function ordenadaExacta(explicita2, xExacta, yNumerica) {
+  if (explicita2 === null)
+    return null;
+  if (xExacta === null && grado(explicita2) > 0)
+    return null;
+  const valor = evaluarExacto(explicita2, xExacta ?? exacto(rac(0n)));
+  if (valor === null)
+    return null;
+  const escala2 = Math.max(1, Math.abs(yNumerica));
+  return Math.abs(aNumeroE(valor) - yNumerica) <= 1e-6 * escala2 ? valor : null;
+}
+var riqueza = (s) => (s.exactoX ? 1 : 0) + (s.exactoY ? 1 : 0);
+function ordenarYUnificar(puntos) {
+  const orden = [...puntos].sort((a, b) => a.x - b.x || a.y - b.y);
+  const out = [];
+  for (const s of orden) {
+    const iguales2 = out.findIndex((o) => {
+      const escalaXY = Math.max(1, Math.abs(o.x), Math.abs(o.y));
+      return Math.abs(o.x - s.x) <= 1e-9 * escalaXY && Math.abs(o.y - s.y) <= 1e-9 * escalaXY;
+    });
+    if (iguales2 < 0)
+      out.push(s);
+    else if (riqueza(s) > riqueza(out[iguales2]))
+      out[iguales2] = s;
+  }
+  return out;
+}
+function resolverSistema(ecuacionA, ecuacionB) {
+  const A = ecuacionAPolinomio(ecuacionA);
+  const B = ecuacionAPolinomio(ecuacionB);
+  if (!A || !B)
+    return { tipo: "noResoluble" };
+  const p = A.p, q = B.p;
+  if (compartenComponente(p, q))
+    return { tipo: "solape" };
+  const explicita2 = despejarY(p) ?? despejarY(q);
+  const otra = despejarY(p) !== null ? q : p;
+  const enX = explicita2 !== null ? sustituirY(otra, explicita2) : resultanteY(p, q);
+  if (esNulo(enX))
+    return { tipo: "solape" };
+  const puntos = [];
+  for (const { raiz: r, exacto: xExacta } of raicesConForma(enX)) {
+    const xRacional = xExacta === null ? null : racionalDe2(xExacta);
+    const xr = xRacional ?? r.b;
+    for (const cand of ordenadasDe(p, q, xRacional, xr, explicita2, r.valor)) {
+      const pulido = xRacional !== null && cand.exacta !== null ? { x: r.valor, y: cand.y } : pulirNewton(p, q, r.valor, cand.y);
+      if (!verificar(p, q, A.denominador, B.denominador, pulido.x, pulido.y))
+        continue;
+      puntos.push({
+        x: pulido.x,
+        y: pulido.y,
+        exactoX: xExacta,
+        // Con la abscisa irracional el emparejado numérico no da forma cerrada; la relación
+        // explícita `y = f(x)`, evaluada en el cuerpo de la abscisa, sí.
+        exactoY: cand.exacta ?? ordenadaExacta(explicita2, xExacta, pulido.y)
+      });
+    }
+  }
+  return { tipo: "puntos", puntos: ordenarYUnificar(puntos) };
+}
+var TOL_ORIGINAL = 1e-6;
+var TOL_GUARDA = 1e-9;
+function verificadorDe(ecuacion) {
+  const norm3 = (s) => insertarProductoImplicito(normalizarEntrada(s.trim()));
+  const partes = ecuacion.split("=");
+  if (partes.length > 2)
+    return null;
+  try {
+    const D = partes.length === 2 ? parse2(`(${norm3(partes[0])}) - (${norm3(partes[1])})`) : parse2(`y - (${norm3(partes[0])})`);
+    return evaluadorDe(D);
+  } catch {
+    return null;
+  }
+}
+function satisface(D, s) {
+  const d = D(s.x, s.y);
+  return Number.isFinite(d) && Math.abs(d) <= TOL_ORIGINAL * (1 + s.x * s.x + s.y * s.y);
+}
+function compilarGuardas(guardas) {
+  const out = [];
+  for (const g of new Set(guardas)) {
+    let f;
+    try {
+      f = evaluadorDe(parse2(g));
+    } catch {
+      return null;
+    }
+    if (!f)
+      return null;
+    out.push(f);
+  }
+  return out;
+}
+function dentroDeGuardas(guardas, s) {
+  for (const g of guardas) {
+    const v = g(s.x, s.y);
+    if (!Number.isFinite(v))
+      return false;
+    if (v < -TOL_GUARDA * Math.max(1, Math.abs(s.x), Math.abs(s.y)))
+      return false;
+  }
+  return true;
+}
+function resolverPorRamas(ecuacionA, ecuacionB) {
+  const ramasA = ramasDe(ecuacionA);
+  const ramasB = ramasDe(ecuacionB);
+  if (!ramasA || !ramasB)
+    return null;
+  const verifA = verificadorDe(ecuacionA);
+  const verifB = verificadorDe(ecuacionB);
+  if (!verifA || !verifB)
+    return null;
+  const puntos = [];
+  const exploradas = /* @__PURE__ */ new Set();
+  let algunaResuelta = false;
+  let aproximado = false;
+  let parcial2 = false;
+  for (const ra of ramasA) {
+    for (const rb of ramasB) {
+      const guardas = compilarGuardas([...ra.guardas, ...rb.guardas]);
+      if (guardas === null) {
+        parcial2 = true;
+        continue;
+      }
+      const candidatos = resolverPareja(ra, rb);
+      if (candidatos === "solape")
+        return { tipo: "solape" };
+      if (candidatos === null) {
+        parcial2 = true;
+        continue;
+      }
+      algunaResuelta = true;
+      if (candidatos.aproximado)
+        aproximado = true;
+      if (candidatos.variable)
+        exploradas.add(candidatos.variable);
+      for (const s of candidatos.puntos)
+        if (dentroDeGuardas(guardas, s) && satisface(verifA, s) && satisface(verifB, s))
+          puntos.push(s);
+    }
+  }
+  if (!algunaResuelta)
+    return null;
+  return {
+    tipo: "puntos",
+    puntos: ordenarYUnificar(puntos),
+    aproximado,
+    parcial: parcial2,
+    exploradas: [...exploradas]
+  };
+}
+function resolverPareja(ra, rb) {
+  const exacto2 = resolverSistema(ra.ecuacion, rb.ecuacion);
+  if (exacto2.tipo === "solape")
+    return "solape";
+  if (exacto2.tipo === "puntos")
+    return { puntos: exacto2.puntos, aproximado: false, variable: null };
+  const num = resolverNumerico(ra.ecuacion, rb.ecuacion, { simetrico: true });
+  if (num.tipo === "noResoluble")
+    return null;
+  return {
+    puntos: num.puntos.map((p) => ({ x: p.x, y: p.y, exactoX: null, exactoY: null })),
+    aproximado: true,
+    variable: num.variable
+  };
+}
+function resolverBloque(ecuaciones) {
+  const nada = {
+    tipo: "noResoluble",
+    puntos: [],
+    aproximado: false,
+    parcial: false,
+    exploradas: []
+  };
+  const solape = {
+    tipo: "solape",
+    puntos: [],
+    aproximado: false,
+    parcial: false,
+    exploradas: []
+  };
+  if (ecuaciones.length < 2)
+    return nada;
+  const grupos = ecuaciones.map((ec) => {
+    const { expr, restriccion } = separarRestriccion(ec);
+    let ramas = [expr];
+    try {
+      const norm3 = normalizarEntrada(expr);
+      if (tieneDobleSigno(norm3))
+        ramas = expandirDobleSigno(norm3);
+    } catch {
+    }
+    return { ramas, restriccion };
+  });
+  const parejas = [];
+  for (let i2 = 0; i2 < grupos.length; i2++)
+    for (let j = i2 + 1; j < grupos.length; j++)
+      for (const a of grupos[i2].ramas)
+        for (const b of grupos[j].ramas)
+          parejas.push({ a, b, recortes: [grupos[i2].restriccion, grupos[j].restriccion] });
+  const todos = [];
+  const exploradas = /* @__PURE__ */ new Set();
+  let aproximado = false;
+  let algunaResuelta = false;
+  let parcial2 = false;
+  for (const { a, b, recortes } of parejas) {
+    const admitir = (p) => enDominio(p, recortes);
+    const exacto2 = resolverSistema(a, b);
+    if (exacto2.tipo === "solape")
+      return solape;
+    if (exacto2.tipo === "puntos") {
+      algunaResuelta = true;
+      todos.push(...exacto2.puntos.filter(admitir));
+      continue;
+    }
+    const numerico = resolverNumerico(a, b);
+    if (numerico.tipo === "puntos") {
+      algunaResuelta = true;
+      aproximado = true;
+      exploradas.add(numerico.variable);
+      for (const p of numerico.puntos)
+        if (admitir(p))
+          todos.push({ ...p, exactoX: null, exactoY: null });
+      continue;
+    }
+    const porRamas = resolverPorRamas(a, b);
+    if (porRamas === null) {
+      const tumbado = resolverNumerico(a, b, { simetrico: true });
+      if (tumbado.tipo === "puntos") {
+        algunaResuelta = true;
+        aproximado = true;
+        exploradas.add(tumbado.variable);
+        for (const p of tumbado.puntos)
+          if (admitir(p))
+            todos.push({ ...p, exactoX: null, exactoY: null });
+        continue;
+      }
+      parcial2 = true;
+      continue;
+    }
+    if (porRamas.tipo === "solape")
+      return solape;
+    algunaResuelta = true;
+    if (porRamas.aproximado)
+      aproximado = true;
+    if (porRamas.parcial)
+      parcial2 = true;
+    for (const v of porRamas.exploradas)
+      exploradas.add(v);
+    todos.push(...porRamas.puntos.filter(admitir));
+  }
+  if (!algunaResuelta)
+    return nada;
+  return {
+    tipo: "puntos",
+    puntos: ordenarYUnificar(todos),
+    aproximado,
+    parcial: parcial2,
+    exploradas: [...exploradas]
+  };
+}
+function enDominio(p, recortes) {
+  for (const r of recortes) {
+    if (!r)
+      continue;
+    if (r.variable === "x" && !dentro(r, p.x))
+      return false;
+    if (r.variable === "y" && !dentro(r, p.y))
+      return false;
+  }
+  return true;
+}
+function despejarY(p) {
+  const P4 = normalizar2(p);
+  if (gradoY(P4) !== 1)
+    return null;
+  const coef = P4[1];
+  if (grado(coef) !== 0)
+    return null;
+  const k = coef[0];
+  if (esCero2(k))
+    return null;
+  return normalizar(P4[0].map((c) => ({ n: -c.n * k.d, d: c.d * k.n })).map(
+    (c) => c.d < 0n ? { n: -c.n, d: -c.d } : c
+  )).map((c) => rac(c.n, c.d));
+}
+
+// src/math/notablesImplicita.ts
+var TOL_FY = 1e-9;
+function cuerpoF(ecuacion) {
+  const { expr } = separarRestriccion(ecuacion);
+  const partes = expr.split("=");
+  if (partes.length !== 2)
+    return null;
+  const lado = (s) => insertarProductoImplicito(normalizarEntrada(s.trim()));
+  return `(${lado(partes[0])}) - (${lado(partes[1])})`;
+}
+function parcial(F, variable) {
+  try {
+    return derivative(parse2(F), variable).toString();
+  } catch {
+    return null;
+  }
+}
+function evaluadorXY(expr) {
+  try {
+    const c = parse2(expr).compile();
+    return (x, y) => {
+      const v = c.evaluate({ x, y });
+      return typeof v === "number" ? v : NaN;
+    };
+  } catch {
+    return null;
+  }
+}
+function soloTangenteHorizontal(r, Fy) {
+  if (r.tipo !== "puntos" || Fy === null)
+    return r;
+  const evaluar2 = evaluadorXY(Fy);
+  if (evaluar2 === null)
+    return r;
+  return {
+    ...r,
+    puntos: r.puntos.filter((p) => {
+      const v = evaluar2(p.x, p.y);
+      return Number.isFinite(v) && Math.abs(v) > TOL_FY;
+    })
+  };
+}
+function notablesDeImplicita(ecuacion) {
+  const F = cuerpoF(ecuacion);
+  if (F === null)
+    return null;
+  const raices2 = resolverBloque([ecuacion, "y = 0"]);
+  const interseccionesY = resolverBloque([ecuacion, "x = 0"]);
+  const Fx = parcial(F, "x");
+  const vertices = Fx === null ? null : soloTangenteHorizontal(resolverBloque([ecuacion, `${Fx} = 0`]), parcial(F, "y"));
+  return { raices: raices2, interseccionesY, vertices };
+}
+
 // src/analisis.ts
 var RANGO_X = { min: -10, max: 10, pasos: 1e3 };
 var LIMITE_PUNTOS_NOTABLES = 20;
@@ -49493,42 +53632,6 @@ function construirPuntosNotables(analisis, interseccionY, estadoRaices, estadoVe
       fusionados.push(p);
   }
   return fusionados;
-}
-
-// src/degeneradas.ts
-function clasificarDegenerada(evaluar2) {
-  let reales = 0, infinitos = 0, complejos = 0;
-  const muestra = (x) => {
-    const v = evaluar2(x);
-    if (typeof v === "number") {
-      if (Number.isFinite(v))
-        reales++;
-      else if (v === Infinity || v === -Infinity)
-        infinitos++;
-    } else if (v && typeof v === "object" && typeof v.im === "number") {
-      complejos++;
-    }
-  };
-  for (let i2 = 0; i2 <= 500; i2++)
-    muestra(-1e3 + 2e3 * i2 / 500);
-  for (let i2 = 0; i2 <= 200; i2++)
-    muestra(-10 + 20 * i2 / 200);
-  if (reales > 0)
-    return null;
-  if (infinitos > 0)
-    return {
-      etiqueta: "Indefinida",
-      detalle: "La expresi\xF3n no est\xE1 definida en \u211D."
-    };
-  if (complejos > 0)
-    return {
-      etiqueta: "No definida en \u211D",
-      detalle: "La expresi\xF3n produce valores complejos y no puede representarse en el plano real."
-    };
-  return {
-    etiqueta: "Indeterminada",
-    detalle: "La expresi\xF3n produce una forma indeterminada."
-  };
 }
 
 // src/webgl.ts
@@ -49787,8 +53890,7 @@ var GraphEngine = class {
       const expr = normalizarEntrada(exprRaw);
       let latex = "f(x)=" + expr;
       try {
-        const tex = limpiarTex(parse2(expr).toTex(OPCIONES_TEX));
-        latex = "f(x)=" + (tex === "undefined" ? "\\text{[...]}" : tex);
+        latex = "f(x)=" + exprALatex(exprRaw);
       } catch (e3) {
         console.warn("LMath: no se pudo generar LaTeX para", expr, e3);
       }
@@ -52556,8 +56658,8 @@ var TrazadorParametricoAdaptativo = class {
         const dxs = B.sx - A2.sx, dys = B.sy - A2.sy;
         const cuerda = Math.hypot(dxs, dys);
         if (prof < PROF_MAX3) {
-          const tm2 = (ta + tb) / 2;
-          const M = ev(tm2);
+          const tm = (ta + tb) / 2;
+          const M = ev(tm);
           if (M.util) {
             const dev = cuerda < 1e-9 ? Math.hypot(M.sx - A2.sx, M.sy - A2.sy) : Math.abs(dxs * (A2.sy - M.sy) - (A2.sx - M.sx) * dys) / cuerda;
             let giro = 0;
@@ -52569,13 +56671,13 @@ var TrazadorParametricoAdaptativo = class {
                 giro = Math.abs(Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy));
             }
             if (dev > DESV || cuerda > SALTO_PX || giro * 2 > GIRO_MAX) {
-              tramo(ta, A2, tm2, M, prof + 1);
-              tramo(tm2, M, tb, B, prof + 1);
+              tramo(ta, A2, tm, M, prof + 1);
+              tramo(tm, M, tb, B, prof + 1);
               return;
             }
           } else {
-            tramo(ta, A2, tm2, M, prof + 1);
-            tramo(tm2, M, tb, B, prof + 1);
+            tramo(ta, A2, tm, M, prof + 1);
+            tramo(tm, M, tb, B, prof + 1);
             return;
           }
         }
@@ -52881,13 +56983,13 @@ function crearCampoEscalar(exprDiferencia) {
 }
 
 // src/core/fields/parametrizacionMathjs.ts
-var aNumero = (v) => typeof v === "number" ? v : NaN;
+var aNumero2 = (v) => typeof v === "number" ? v : NaN;
 function crearParametrizacionCartesiana(exprX, exprY, dominio, periodica) {
   try {
     const gx = compilarFuncion(exprX, "t");
     const gy = compilarFuncion(exprY, "t");
     return {
-      eval: (t2) => ({ x: aNumero(gx(t2)), y: aNumero(gy(t2)) }),
+      eval: (t2) => ({ x: aNumero2(gx(t2)), y: aNumero2(gy(t2)) }),
       dominio,
       periodica
     };
@@ -52900,7 +57002,7 @@ function crearParametrizacionPolar(exprR, dominio, periodica) {
     const gr = compilarFuncion(exprR, "theta");
     return {
       eval: (t2) => {
-        const r = aNumero(gr(t2));
+        const r = aNumero2(gr(t2));
         return { x: r * Math.cos(t2), y: r * Math.sin(t2) };
       },
       dominio,
@@ -52916,9 +57018,9 @@ var DOS_PI = 2 * Math.PI;
 var DOMINIO_POLAR_DEFECTO = [0, DOS_PI];
 var TRIG = /* @__PURE__ */ new Set(["sin", "cos", "tan", "cot", "sec", "csc"]);
 var MULT_MAX = 60;
-var aNumero2 = (v) => typeof v === "number" ? v : NaN;
-var mcd4 = (a, b) => b === 0 ? a : mcd4(b, a % b);
-var mcm = (a, b) => a / mcd4(a, b) * b;
+var aNumero3 = (v) => typeof v === "number" ? v : NaN;
+var mcd6 = (a, b) => b === 0 ? a : mcd6(b, a % b);
+var mcm = (a, b) => a / mcd6(a, b) * b;
 function fraccionReducida(x, maxDen = 1e3) {
   if (!Number.isFinite(x) || x <= 0)
     return null;
@@ -52951,7 +57053,7 @@ function pendienteLineal(arg2, variable) {
   } catch {
     return null;
   }
-  const y0 = aNumero2(g(0.3)), y1 = aNumero2(g(1.3)), y2 = aNumero2(g(2.3));
+  const y0 = aNumero3(g(0.3)), y1 = aNumero3(g(1.3)), y2 = aNumero3(g(2.3));
   if (![y0, y1, y2].every(Number.isFinite))
     return null;
   const a1 = y1 - y0, a2 = y2 - y1;
@@ -52968,7 +57070,7 @@ function periodoValido(expr, P4, variable) {
   }
   let ok = 0;
   for (const th of [0.1, 0.9, 1.7, 2.6, 3.9, 5.1]) {
-    const a = aNumero2(g(th)), b = aNumero2(g(th + P4));
+    const a = aNumero3(g(th)), b = aNumero3(g(th + P4));
     if (!Number.isFinite(a) || !Number.isFinite(b))
       continue;
     if (Math.abs(a - b) > 1e-6 * (1 + Math.abs(a)))
@@ -53028,7 +57130,7 @@ function periodoDeExpresion(expr, variable) {
   let p = 1, q = 0;
   for (const f of fracciones) {
     p = mcm(p, f.p);
-    q = q === 0 ? f.q : mcd4(q, f.q);
+    q = q === 0 ? f.q : mcd6(q, f.q);
     if (p >= MULT_MAX)
       return null;
   }
@@ -53041,7 +57143,7 @@ function periodoComun(a, b) {
   if (fa === null || fb === null)
     return null;
   const p = mcm(fa.p, fb.p);
-  const q = mcd4(fa.q, fb.q);
+  const q = mcd6(fa.q, fb.q);
   if (p / q >= MULT_MAX)
     return null;
   return DOS_PI * p / q;
@@ -53428,7 +57530,7 @@ function campoTranspuesto(F) {
 }
 var XS = [0.37, 1.13, -0.91, 2.07, -1.6];
 var YS = [0.41, -0.72, 2.33, 1.05, -0.3];
-var TOL_REL = 1e-6;
+var TOL_REL2 = 1e-6;
 var A_MIN = 1e-9;
 var N_MAX = 6;
 function despejarRamas(F) {
@@ -53450,7 +57552,7 @@ function despejarRamas(F) {
       const a = (fy - f0) / yn;
       if (a0 === null)
         a0 = a;
-      else if (Math.abs(a - a0) > TOL_REL * (1 + Math.abs(a0))) {
+      else if (Math.abs(a - a0) > TOL_REL2 * (1 + Math.abs(a0))) {
         ok = false;
         break;
       }
@@ -53507,7 +57609,7 @@ function separarTrigY(F) {
           break;
         }
         escala2 = Math.max(escala2, 1 + Math.abs(real));
-        if (Math.abs(a * T(y) + c - real) > TOL_REL * escala2) {
+        if (Math.abs(a * T(y) + c - real) > TOL_REL2 * escala2) {
           ok = false;
           break;
         }
@@ -53591,7 +57693,7 @@ function ramasMonomioY(F) {
           break;
         }
         escala2 = Math.max(escala2, 1 + Math.abs(real));
-        if (Math.abs(a * m.M(y) + c - real) > TOL_REL * escala2) {
+        if (Math.abs(a * m.M(y) + c - real) > TOL_REL2 * escala2) {
           ok = false;
           break;
         }
@@ -54692,2414 +58794,6 @@ var ProveedorUnion = class {
   }
 };
 
-// src/math/racional.ts
-function mcd5(a, b) {
-  let x = a < 0n ? -a : a;
-  let y = b < 0n ? -b : b;
-  while (y) {
-    const t2 = x % y;
-    x = y;
-    y = t2;
-  }
-  return x;
-}
-function rac(n, d = 1n) {
-  if (d === 0n)
-    throw new Error("racional con denominador cero");
-  let nn = n, dd = d;
-  if (dd < 0n) {
-    nn = -nn;
-    dd = -dd;
-  }
-  const g = mcd5(nn, dd);
-  if (g > 1n) {
-    nn /= g;
-    dd /= g;
-  }
-  return { n: nn, d: dd };
-}
-var CERO = { n: 0n, d: 1n };
-var UNO = { n: 1n, d: 1n };
-var esCero2 = (a) => a.n === 0n;
-var signo = (a) => a.n < 0n ? -1 : a.n > 0n ? 1 : 0;
-var suma = (a, b) => rac(a.n * b.d + b.n * a.d, a.d * b.d);
-var resta = (a, b) => rac(a.n * b.d - b.n * a.d, a.d * b.d);
-var producto = (a, b) => rac(a.n * b.n, a.d * b.d);
-var negado = (a) => ({ n: -a.n, d: a.d });
-function cociente(a, b) {
-  if (esCero2(b))
-    throw new Error("divisi\xF3n racional por cero");
-  return rac(a.n * b.d, a.d * b.n);
-}
-function potencia(a, k) {
-  let r = UNO;
-  for (let i2 = 0; i2 < k; i2++)
-    r = producto(r, a);
-  return r;
-}
-function comparar(a, b) {
-  const izq = a.n * b.d, der = b.n * a.d;
-  return izq < der ? -1 : izq > der ? 1 : 0;
-}
-var absoluto = (a) => a.n < 0n ? negado(a) : a;
-function aNumero3(a) {
-  const n = Number(a.n), d = Number(a.d);
-  if (Number.isFinite(n) && Number.isFinite(d))
-    return n / d;
-  const entero2 = a.n / a.d;
-  const resto = a.n % a.d;
-  return Number(entero2) + Number(resto) / Number(a.d);
-}
-function desdeNumero(x) {
-  if (!Number.isFinite(x))
-    throw new Error("racional desde un n\xFAmero no finito");
-  if (Number.isInteger(x))
-    return rac(BigInt(x));
-  let num = x, den = 1n;
-  for (let i2 = 0; i2 < 1100 && !Number.isInteger(num); i2++) {
-    num *= 2;
-    den *= 2n;
-  }
-  return rac(BigInt(num), den);
-}
-function desdeDecimal(texto) {
-  const m = /^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(texto.trim());
-  if (!m || m[2] === "" && (m[3] ?? "") === "")
-    return null;
-  const sig = m[1] === "-" ? -1n : 1n;
-  const enteros = m[2] === "" ? "0" : m[2];
-  const decimales = m[3] ?? "";
-  let n = BigInt(enteros + decimales) * sig;
-  let d = 10n ** BigInt(decimales.length);
-  const exp3 = m[4] ? Number(m[4]) : 0;
-  if (exp3 > 0)
-    n *= 10n ** BigInt(exp3);
-  else if (exp3 < 0)
-    d *= 10n ** BigInt(-exp3);
-  return rac(n, d);
-}
-function aTexto(a) {
-  return a.d === 1n ? String(a.n) : `${a.n}/${a.d}`;
-}
-
-// src/math/polinomio.ts
-var NULO = [];
-function normalizar(p) {
-  let n = p.length;
-  while (n > 0 && esCero2(p[n - 1]))
-    n--;
-  return n === p.length ? p : p.slice(0, n);
-}
-var grado = (p) => normalizar(p).length - 1;
-var esNulo = (p) => normalizar(p).length === 0;
-function sumaPol(a, b) {
-  const out = [];
-  for (let i2 = 0; i2 < Math.max(a.length, b.length); i2++)
-    out.push(suma(a[i2] ?? CERO, b[i2] ?? CERO));
-  return normalizar(out);
-}
-function restaPol(a, b) {
-  const out = [];
-  for (let i2 = 0; i2 < Math.max(a.length, b.length); i2++)
-    out.push(resta(a[i2] ?? CERO, b[i2] ?? CERO));
-  return normalizar(out);
-}
-function productoPol(a, b) {
-  const A = normalizar(a), B = normalizar(b);
-  if (A.length === 0 || B.length === 0)
-    return NULO;
-  const out = new Array(A.length + B.length - 1).fill(CERO);
-  for (let i2 = 0; i2 < A.length; i2++)
-    for (let j = 0; j < B.length; j++)
-      out[i2 + j] = suma(out[i2 + j], producto(A[i2], B[j]));
-  return normalizar(out);
-}
-function derivada(p) {
-  const q = normalizar(p);
-  if (q.length <= 1)
-    return NULO;
-  const out = [];
-  for (let i2 = 1; i2 < q.length; i2++)
-    out.push(producto(q[i2], rac(BigInt(i2))));
-  return normalizar(out);
-}
-function evaluar(p, x) {
-  const q = normalizar(p);
-  let acc = CERO;
-  for (let i2 = q.length - 1; i2 >= 0; i2--)
-    acc = suma(producto(acc, x), q[i2]);
-  return acc;
-}
-function evaluarNum(p, x) {
-  const q = normalizar(p);
-  let acc = 0;
-  for (let i2 = q.length - 1; i2 >= 0; i2--)
-    acc = acc * x + aNumero3(q[i2]);
-  return acc;
-}
-function dividir(a, b) {
-  const B = normalizar(b);
-  if (B.length === 0)
-    throw new Error("divisi\xF3n polin\xF3mica por el polinomio nulo");
-  let R = [...normalizar(a)];
-  const gb = B.length - 1;
-  const lb = B[gb];
-  const coc = [];
-  while (R.length - 1 >= gb && R.length > 0) {
-    const gr = R.length - 1;
-    const factor = cociente(R[gr], lb);
-    coc[gr - gb] = factor;
-    for (let i2 = 0; i2 <= gb; i2++)
-      R[gr - gb + i2] = resta(R[gr - gb + i2], producto(factor, B[i2]));
-    R = [...normalizar(R)];
-  }
-  for (let i2 = 0; i2 < coc.length; i2++)
-    coc[i2] = coc[i2] ?? CERO;
-  return { coc: normalizar(coc), resto: normalizar(R) };
-}
-function mcdPol(a, b) {
-  let A = normalizar(a), B = normalizar(b);
-  while (B.length > 0) {
-    const { resto } = dividir(A, B);
-    A = B;
-    B = normalizar(resto);
-  }
-  if (A.length === 0)
-    return NULO;
-  return monico(A);
-}
-function monico(p) {
-  const q = normalizar(p);
-  if (q.length === 0)
-    return NULO;
-  const lc = q[q.length - 1];
-  return q.map((c) => cociente(c, lc));
-}
-function libreDeCuadrados(p) {
-  const q = normalizar(p);
-  if (q.length <= 1)
-    return q;
-  const g = mcdPol(q, derivada(q));
-  if (grado(g) <= 0)
-    return monico(q);
-  return monico(dividir(q, g).coc);
-}
-function sucesionSturm(p) {
-  const p0 = normalizar(p);
-  if (p0.length === 0)
-    return [];
-  const suc = [p0];
-  const p1 = derivada(p0);
-  if (esNulo(p1))
-    return suc;
-  suc.push(p1);
-  for (let k = 0; k < p0.length + 2; k++) {
-    const a = suc[suc.length - 2], b = suc[suc.length - 1];
-    if (grado(b) <= 0)
-      break;
-    const { resto } = dividir(a, b);
-    if (esNulo(resto))
-      break;
-    suc.push(normalizar(resto.map(negado)));
-  }
-  return suc;
-}
-function cambiosDeSigno(suc, x) {
-  let previo = 0, cambios = 0;
-  for (const q of suc) {
-    const s = signo(evaluar(q, x));
-    if (s === 0)
-      continue;
-    if (previo !== 0 && s !== previo)
-      cambios++;
-    previo = s;
-  }
-  return cambios;
-}
-function cotaCauchy(p) {
-  const q = normalizar(p);
-  if (q.length <= 1)
-    return UNO;
-  const lc = q[q.length - 1];
-  let max3 = CERO;
-  for (let i2 = 0; i2 < q.length - 1; i2++) {
-    const c = absoluto(cociente(q[i2], lc));
-    if (comparar(c, max3) > 0)
-      max3 = c;
-  }
-  return suma(UNO, max3);
-}
-var MAX_BISECCIONES = 200;
-function raicesRacionales(p) {
-  const q = normalizar(p);
-  if (q.length < 2)
-    return [];
-  let mcm2 = 1n;
-  for (const c of q)
-    mcm2 = mcm2 * c.d / mcdEnteros(mcm2, c.d);
-  const enteros = q.map((c) => c.n * mcm2 / c.d);
-  const a0 = enteros[0] < 0n ? -enteros[0] : enteros[0];
-  const an = enteros[enteros.length - 1] < 0n ? -enteros[enteros.length - 1] : enteros[enteros.length - 1];
-  if (a0 === 0n) {
-    const sinX = normalizar(q.slice(1));
-    return [CERO, ...raicesRacionales(sinX)];
-  }
-  const TOPE = 100000n;
-  if (a0 > TOPE || an > TOPE)
-    return [];
-  const divisores = (n) => {
-    const out2 = [];
-    for (let d = 1n; d * d <= n; d++) {
-      if (n % d === 0n) {
-        out2.push(d);
-        if (d * d !== n)
-          out2.push(n / d);
-      }
-    }
-    return out2;
-  };
-  const out = [];
-  for (const dp of divisores(a0)) {
-    for (const dq of divisores(an)) {
-      for (const s of [1n, -1n]) {
-        const cand = rac(s * dp, dq);
-        if (esCero2(evaluar(q, cand)) && !out.some((r) => comparar(r, cand) === 0))
-          out.push(cand);
-      }
-    }
-  }
-  return out;
-}
-function mcdEnteros(a, b) {
-  let x = a < 0n ? -a : a, y = b < 0n ? -b : b;
-  while (y) {
-    const t2 = x % y;
-    x = y;
-    y = t2;
-  }
-  return x;
-}
-function raicesReales(p) {
-  const libre = libreDeCuadrados(p);
-  if (grado(libre) < 1)
-    return [];
-  const exactas = raicesRacionales(libre);
-  const suc = sucesionSturm(libre);
-  const cota = cotaCauchy(libre);
-  const total = Math.max(0, cambiosDeSigno(suc, negado(cota)) - cambiosDeSigno(suc, cota));
-  if (total === 0)
-    return [];
-  const aislados = [];
-  const cola = [
-    { a: negado(cota), b: cota, n: total }
-  ];
-  let vueltas = 0;
-  while (cola.length > 0 && vueltas++ < MAX_BISECCIONES * 8) {
-    const it = cola.shift();
-    if (!it)
-      break;
-    if (it.n === 0)
-      continue;
-    if (it.n === 1) {
-      aislados.push({ a: it.a, b: it.b });
-      continue;
-    }
-    const m = cociente(suma(it.a, it.b), rac(2n));
-    const cm = cambiosDeSigno(suc, m);
-    const izq = Math.max(0, cambiosDeSigno(suc, it.a) - cm);
-    const der = Math.max(0, cm - cambiosDeSigno(suc, it.b));
-    if (izq === it.n && der === 0) {
-      cola.push({ a: it.a, b: m, n: izq });
-      continue;
-    }
-    if (der === it.n && izq === 0) {
-      cola.push({ a: m, b: it.b, n: der });
-      continue;
-    }
-    if (izq > 0)
-      cola.push({ a: it.a, b: m, n: izq });
-    if (der > 0)
-      cola.push({ a: m, b: it.b, n: der });
-  }
-  const salida = aislados.map(({ a, b }) => {
-    const exacto2 = exactas.find((e3) => comparar(e3, a) > 0 && comparar(e3, b) <= 0) ?? null;
-    if (exacto2)
-      return { a: exacto2, b: exacto2, valor: aNumero3(exacto2), exacto: exacto2 };
-    const r = refinar(libre, a, b);
-    return { a: r.a, b: r.b, valor: r.valor, exacto: null };
-  });
-  salida.sort((u, v) => u.valor - v.valor);
-  return salida;
-}
-function refinar(p, a0, b0) {
-  let a = a0, b = b0;
-  const sa = signo(evaluar(p, a));
-  if (sa === 0)
-    return { valor: aNumero3(a), a, b: a };
-  if (signo(evaluar(p, b)) === 0)
-    return { valor: aNumero3(b), a: b, b };
-  let signoA = sa;
-  for (let i2 = 0; i2 < MAX_BISECCIONES; i2++) {
-    const m = cociente(suma(a, b), rac(2n));
-    const sm = signo(evaluar(p, m));
-    if (sm === 0)
-      return { valor: aNumero3(m), a: m, b: m };
-    if (sm === signoA) {
-      a = m;
-      signoA = sm;
-    } else {
-      b = m;
-    }
-    const na = aNumero3(a), nb = aNumero3(b);
-    if (na === nb)
-      return { valor: na, a, b };
-  }
-  return { valor: (aNumero3(a) + aNumero3(b)) / 2, a, b };
-}
-function potenciaPol(p, k) {
-  let r = [UNO];
-  for (let i2 = 0; i2 < k; i2++)
-    r = productoPol(r, p);
-  return r;
-}
-
-// src/math/polinomio2.ts
-var NULO2 = [];
-function normalizar2(p) {
-  let n = p.length;
-  while (n > 0 && esNulo(p[n - 1]))
-    n--;
-  return (n === p.length ? p : p.slice(0, n)).map(normalizar);
-}
-var gradoY = (p) => normalizar2(p).length - 1;
-function gradoX(p) {
-  let g = -1;
-  for (const c of normalizar2(p))
-    g = Math.max(g, grado(c));
-  return g;
-}
-var esNulo2 = (p) => normalizar2(p).length === 0;
-var constante2 = (k) => esCero2(k) ? NULO2 : [[k]];
-var X2 = [[CERO, UNO]];
-var Y2 = [NULO, [UNO]];
-function suma2(a, b) {
-  const out = [];
-  for (let j = 0; j < Math.max(a.length, b.length); j++)
-    out.push(sumaPol(a[j] ?? NULO, b[j] ?? NULO));
-  return normalizar2(out);
-}
-function resta2(a, b) {
-  const out = [];
-  for (let j = 0; j < Math.max(a.length, b.length); j++)
-    out.push(restaPol(a[j] ?? NULO, b[j] ?? NULO));
-  return normalizar2(out);
-}
-function producto2(a, b) {
-  const A = normalizar2(a), B = normalizar2(b);
-  if (A.length === 0 || B.length === 0)
-    return NULO2;
-  const out = new Array(A.length + B.length - 1).fill(NULO);
-  for (let i2 = 0; i2 < A.length; i2++)
-    for (let j = 0; j < B.length; j++)
-      out[i2 + j] = sumaPol(out[i2 + j], productoPol(A[i2], B[j]));
-  return normalizar2(out);
-}
-function negado2(p) {
-  return normalizar2(p.map((c) => c.map(negado)));
-}
-function potencia2(p, k) {
-  let r = constante2(UNO);
-  for (let i2 = 0; i2 < k; i2++)
-    r = producto2(r, p);
-  return r;
-}
-function sustituirY(p, f) {
-  const P4 = normalizar2(p);
-  let acc = NULO;
-  for (let j = P4.length - 1; j >= 0; j--)
-    acc = sumaPol(productoPol(acc, f), P4[j]);
-  return normalizar(acc);
-}
-function sustituirX(p, x) {
-  const P4 = normalizar2(p);
-  const out = [];
-  for (const c of P4) {
-    let acc = CERO;
-    for (let i2 = c.length - 1; i2 >= 0; i2--)
-      acc = suma(producto(acc, x), c[i2]);
-    out.push(acc);
-  }
-  return normalizar(out);
-}
-function evaluarNum2(p, x, y) {
-  const P4 = normalizar2(p);
-  let acc = 0;
-  for (let j = P4.length - 1; j >= 0; j--) {
-    let cx = 0;
-    const c = P4[j];
-    for (let i2 = c.length - 1; i2 >= 0; i2--)
-      cx = cx * x + Number(c[i2].n) / Number(c[i2].d);
-    acc = acc * y + cx;
-  }
-  return acc;
-}
-function resultanteY(p, q) {
-  const A = normalizar2(p), B = normalizar2(q);
-  const m = gradoY(A), n = gradoY(B);
-  if (m < 0 || n < 0)
-    return NULO;
-  if (m === 0)
-    return potenciaPol(A[0], n);
-  if (n === 0)
-    return potenciaPol(B[0], m);
-  const dim = m + n;
-  const M = [];
-  for (let i2 = 0; i2 < n; i2++) {
-    const fila = new Array(dim).fill(NULO);
-    for (let j = 0; j <= m; j++)
-      fila[i2 + j] = A[m - j];
-    M.push(fila);
-  }
-  for (let i2 = 0; i2 < m; i2++) {
-    const fila = new Array(dim).fill(NULO);
-    for (let j = 0; j <= n; j++)
-      fila[i2 + j] = B[n - j];
-    M.push(fila);
-  }
-  return determinanteBareiss(M, dim);
-}
-function determinanteBareiss(M, dim) {
-  let signoDet = 1;
-  let anterior = [UNO];
-  for (let k = 0; k < dim - 1; k++) {
-    if (esNulo(M[k][k])) {
-      let cambio = -1;
-      for (let i2 = k + 1; i2 < dim; i2++)
-        if (!esNulo(M[i2][k])) {
-          cambio = i2;
-          break;
-        }
-      if (cambio === -1)
-        return NULO;
-      const t2 = M[k];
-      M[k] = M[cambio];
-      M[cambio] = t2;
-      signoDet = -signoDet;
-    }
-    for (let i2 = k + 1; i2 < dim; i2++) {
-      for (let j = k + 1; j < dim; j++) {
-        const num = restaPol(productoPol(M[i2][j], M[k][k]), productoPol(M[i2][k], M[k][j]));
-        M[i2][j] = esNulo(anterior) ? num : dividir(num, anterior).coc;
-      }
-      M[i2][k] = NULO;
-    }
-    anterior = M[k][k];
-  }
-  const det2 = M[dim - 1][dim - 1];
-  return signoDet === 1 ? normalizar(det2) : normalizar(det2.map(negado));
-}
-function compartenComponente(p, q) {
-  const A = normalizar2(p), B = normalizar2(q);
-  if (esNulo2(A) || esNulo2(B))
-    return false;
-  if (gradoY(A) === 0 && gradoY(B) === 0) {
-    const { resto } = dividir(A[0], B[0]);
-    return esNulo(resto) || esNulo(dividir(B[0], A[0]).resto);
-  }
-  if (gradoY(A) === 0 || gradoY(B) === 0)
-    return false;
-  return esNulo(resultanteY(A, B));
-}
-
-// src/math/simbolico/constanteExacta.ts
-var GRADO_MAXIMO = 64;
-var ENTERO_MAXIMO = 1n << 256n;
-function raizEnteraK(n, k) {
-  if (n < 0n || k < 1)
-    return null;
-  if (n < 2n)
-    return n;
-  let lo = 1n, hi = 2n;
-  while (hi ** BigInt(k) <= n)
-    hi *= 2n;
-  while (lo < hi) {
-    const medio = (lo + hi + 1n) / 2n;
-    if (medio ** BigInt(k) <= n)
-      lo = medio;
-    else
-      hi = medio - 1n;
-  }
-  return lo ** BigInt(k) === n ? lo : null;
-}
-function raizRacional(v, k) {
-  if (k < 1 || k > GRADO_MAXIMO)
-    return null;
-  const negativo = signo(v) < 0;
-  if (negativo && k % 2 === 0)
-    return null;
-  const n = negativo ? -v.n : v.n;
-  if (n > ENTERO_MAXIMO || v.d > ENTERO_MAXIMO)
-    return null;
-  const rn = raizEnteraK(n, k);
-  const rd = raizEnteraK(v.d, k);
-  if (rn === null || rd === null)
-    return null;
-  return rac(negativo ? -rn : rn, rd);
-}
-function exponenteRacional(n) {
-  return constanteExacta(n);
-}
-function potenciaRacionalExacta(base, e3) {
-  if (e3.d > BigInt(GRADO_MAXIMO))
-    return null;
-  const raiz = e3.d === 1n ? base : raizRacional(base, Number(e3.d));
-  if (raiz === null)
-    return null;
-  const p = e3.n;
-  if (p > BigInt(GRADO_MAXIMO) || p < -BigInt(GRADO_MAXIMO))
-    return null;
-  if (p < 0n && esCero2(raiz))
-    return null;
-  return potencia(raiz, Number(p));
-}
-function constanteExacta(nodo) {
-  switch (nodo.type) {
-    case "ParenthesisNode":
-      return constanteExacta(nodo.content);
-    case "ConstantNode": {
-      const v = nodo.value;
-      if (typeof v !== "number" || !Number.isFinite(v))
-        return null;
-      return desdeDecimal(String(v)) ?? desdeNumero(v);
-    }
-    case "SymbolNode":
-      return null;
-    case "OperatorNode": {
-      if (nodo.op === "-" && nodo.args.length === 1) {
-        const a2 = constanteExacta(nodo.args[0]);
-        return a2 === null ? null : negado(a2);
-      }
-      if (nodo.op === "+" && nodo.args.length === 1)
-        return constanteExacta(nodo.args[0]);
-      if (nodo.args.length !== 2)
-        return null;
-      const a = constanteExacta(nodo.args[0]);
-      if (a === null)
-        return null;
-      if (nodo.op === "^") {
-        const e3 = exponenteRacional(nodo.args[1]);
-        return e3 === null ? null : potenciaRacionalExacta(a, e3);
-      }
-      const b = constanteExacta(nodo.args[1]);
-      if (b === null)
-        return null;
-      switch (nodo.op) {
-        case "+":
-          return suma(a, b);
-        case "-":
-          return resta(a, b);
-        case "*":
-          return producto(a, b);
-        case "/":
-          return esCero2(b) ? null : cociente(a, b);
-        default:
-          return null;
-      }
-    }
-    case "FunctionNode": {
-      const nombre = nodo.fn?.name;
-      const args = nodo.args;
-      if (nombre === "sqrt" && args.length === 1) {
-        const a = constanteExacta(args[0]);
-        return a === null ? null : raizRacional(a, 2);
-      }
-      if (nombre === "cbrt" && args.length === 1) {
-        const a = constanteExacta(args[0]);
-        return a === null ? null : raizRacional(a, 3);
-      }
-      if (nombre === "nthRoot" && args.length === 2) {
-        const a = constanteExacta(args[0]);
-        const k = constanteExacta(args[1]);
-        if (a === null || k === null || k.d !== 1n)
-          return null;
-        return raizRacional(a, Number(k.n));
-      }
-      if (nombre === "abs" && args.length === 1) {
-        const a = constanteExacta(args[0]);
-        return a === null ? null : signo(a) < 0 ? negado(a) : a;
-      }
-      if (nombre === "unaryMinus" && args.length === 1) {
-        const a = constanteExacta(args[0]);
-        return a === null ? null : negado(a);
-      }
-      return null;
-    }
-    default:
-      return null;
-  }
-}
-
-// src/math/extraer.ts
-var entera = (p) => ({ num: p, den: constante2(UNO) });
-var GRADO_MAXIMO2 = 8;
-function desParen3(n) {
-  return n.type === "ParenthesisNode" ? desParen3(n.content) : n;
-}
-function constanteDe(n) {
-  if (n.type !== "ConstantNode")
-    return null;
-  const v = n.value;
-  if (typeof v !== "number" || !Number.isFinite(v))
-    return null;
-  return desdeDecimal(String(v)) ?? desdeNumero(v);
-}
-function exponenteEntero(n) {
-  const e3 = desParen3(n);
-  if (e3.type === "ConstantNode" && Number.isInteger(e3.value))
-    return e3.value;
-  if (e3.type === "OperatorNode" && e3.op === "-" && e3.args.length === 1) {
-    const dentro2 = desParen3(e3.args[0]);
-    if (dentro2.type === "ConstantNode" && Number.isInteger(dentro2.value))
-      return -dentro2.value;
-  }
-  return null;
-}
-function fraccionDe(n) {
-  const nodo = desParen3(n);
-  const comoConstante = () => {
-    const k = constanteExacta(nodo);
-    return k === null ? null : entera(constante2(k));
-  };
-  switch (nodo.type) {
-    case "ConstantNode": {
-      const k = constanteDe(nodo);
-      return k === null ? null : entera(constante2(k));
-    }
-    case "SymbolNode":
-      if (nodo.name === "x")
-        return entera(X2);
-      if (nodo.name === "y")
-        return entera(Y2);
-      return null;
-    case "OperatorNode": {
-      if (nodo.op === "-" && nodo.args.length === 1) {
-        const a2 = fraccionDe(nodo.args[0]);
-        return a2 === null ? null : { num: negado2(a2.num), den: a2.den };
-      }
-      if (nodo.args.length !== 2)
-        return null;
-      const a = fraccionDe(nodo.args[0]);
-      if (a === null)
-        return null;
-      if (nodo.op === "^") {
-        const k = exponenteEntero(nodo.args[1]);
-        if (k === null)
-          return comoConstante();
-        if (k >= 0)
-          return { num: potencia2(a.num, k), den: potencia2(a.den, k) };
-        if (esNulo2(a.num))
-          return null;
-        return { num: potencia2(a.den, -k), den: potencia2(a.num, -k) };
-      }
-      const b = fraccionDe(nodo.args[1]);
-      if (b === null)
-        return null;
-      switch (nodo.op) {
-        case "+":
-          return {
-            num: suma2(producto2(a.num, b.den), producto2(b.num, a.den)),
-            den: producto2(a.den, b.den)
-          };
-        case "-":
-          return {
-            num: resta2(producto2(a.num, b.den), producto2(b.num, a.den)),
-            den: producto2(a.den, b.den)
-          };
-        case "*":
-          return { num: producto2(a.num, b.num), den: producto2(a.den, b.den) };
-        case "/":
-          if (esNulo2(b.num))
-            return null;
-          return { num: producto2(a.num, b.den), den: producto2(a.den, b.num) };
-        default:
-          return null;
-      }
-    }
-    default:
-      return comoConstante();
-  }
-}
-function ecuacionAPolinomio(ecuacion) {
-  const partes = ecuacion.split("=");
-  if (partes.length > 2)
-    return null;
-  const preparar = (s) => {
-    const limpio = s.trim();
-    if (limpio === "")
-      return null;
-    try {
-      return parse2(insertarProductoImplicito(normalizarEntrada(limpio)));
-    } catch {
-      return null;
-    }
-  };
-  let izquierda;
-  let derecha;
-  if (partes.length === 2) {
-    const a = preparar(partes[0]), b = preparar(partes[1]);
-    if (!a || !b)
-      return null;
-    izquierda = fraccionDe(a);
-    derecha = fraccionDe(b);
-  } else {
-    const a = preparar(partes[0]);
-    if (!a)
-      return null;
-    izquierda = entera(Y2);
-    derecha = fraccionDe(a);
-  }
-  if (!izquierda || !derecha)
-    return null;
-  const p = resta2(producto2(izquierda.num, derecha.den), producto2(derecha.num, izquierda.den));
-  const denominador = producto2(izquierda.den, derecha.den);
-  if (esNulo2(p)) {
-    return null;
-  }
-  if (Math.max(gradoX(p), gradoY(p)) > GRADO_MAXIMO2)
-    return null;
-  return { p, denominador };
-}
-
-// src/math/dominio.ts
-var RAIZ_PAR = /* @__PURE__ */ new Set(["sqrt"]);
-var LOGARITMO = /* @__PURE__ */ new Set(["log", "log10", "log2", "ln"]);
-var ARCO_ACOTADO = /* @__PURE__ */ new Set(["asin", "acos", "arcsin", "arccos"]);
-var desParen4 = (n) => n.type === "ParenthesisNode" ? desParen4(n.content) : n;
-function variablesLibresDe(exprNorm) {
-  try {
-    const nombres = /* @__PURE__ */ new Set();
-    parse2(exprNorm).filter(
-      (n, camino, padre) => n.type === "SymbolNode" && !(padre !== null && padre.type === "FunctionNode" && camino === "fn")
-    ).forEach((n) => {
-      if (!CONSTANTES3.has(n.name))
-        nombres.add(n.name);
-    });
-    return [...nombres];
-  } catch {
-    return [];
-  }
-}
-function constante(n0) {
-  const n = desParen4(n0);
-  if (n.type === "ConstantNode")
-    return Number(n.value);
-  if (n.type === "OperatorNode" && n.args.length === 1 && n.op === "-") {
-    const v = constante(n.args[0]);
-    return v === null ? null : -v;
-  }
-  if (n.type === "OperatorNode" && n.args.length === 2 && n.op === "/") {
-    const a = constante(n.args[0]), b = constante(n.args[1]);
-    return a === null || b === null || b === 0 ? null : a / b;
-  }
-  return null;
-}
-function exponenteDeRaizPar(e3) {
-  if (!Number.isFinite(e3) || Number.isInteger(e3))
-    return false;
-  for (let q = 2; q <= 64; q += 1) {
-    const p = e3 * q;
-    if (Math.abs(p - Math.round(p)) < 1e-12)
-      return q % 2 === 0;
-  }
-  return false;
-}
-var CACHE = /* @__PURE__ */ new Map();
-var CACHE_MAX = 512;
-function restriccionesDe(exprNorm) {
-  const guardado = CACHE.get(exprNorm);
-  if (guardado !== void 0)
-    return guardado;
-  const calculado = leerRestricciones(exprNorm);
-  if (CACHE.size >= CACHE_MAX)
-    CACHE.clear();
-  CACHE.set(exprNorm, calculado);
-  return calculado;
-}
-function leerRestricciones(exprNorm) {
-  let raiz;
-  try {
-    raiz = parse2(exprNorm);
-  } catch {
-    return null;
-  }
-  const out = [];
-  const anotar = (tipo, n) => {
-    const expr = desParen4(n).toString();
-    if (variablesLibresDe(expr).length === 0)
-      return;
-    if (!out.some((r) => r.tipo === tipo && r.expr === expr))
-      out.push({ tipo, expr });
-  };
-  const visitar = (n0) => {
-    const n = desParen4(n0);
-    if (n.type === "OperatorNode") {
-      if (n.op === "/" && n.args.length === 2)
-        anotar("noCero", n.args[1]);
-      if (n.op === "^" && n.args.length === 2) {
-        const e3 = constante(n.args[1]);
-        if (e3 !== null && e3 < 0)
-          anotar("noCero", n.args[0]);
-        if (e3 !== null && exponenteDeRaizPar(e3))
-          anotar("noNegativo", n.args[0]);
-      }
-    } else if (n.type === "FunctionNode") {
-      const nombre = n.fn?.name ?? "";
-      const arg2 = n.args[0];
-      if (arg2) {
-        if (RAIZ_PAR.has(nombre))
-          anotar("noNegativo", arg2);
-        if (LOGARITMO.has(nombre))
-          anotar("positivo", arg2);
-        if (ARCO_ACOTADO.has(nombre))
-          anotar("acotado", arg2);
-        if (nombre === "nthRoot" && n.args.length === 2) {
-          const k = constante(n.args[1]);
-          if (k !== null && Number.isInteger(k) && k % 2 === 0)
-            anotar("noNegativo", arg2);
-        }
-      }
-    }
-    n.forEach((h) => visitar(h));
-  };
-  try {
-    visitar(raiz);
-  } catch {
-    return null;
-  }
-  return out;
-}
-var COMPILADAS = /* @__PURE__ */ new Map();
-function compilada(expr) {
-  const guardada = COMPILADAS.get(expr);
-  if (guardada !== void 0)
-    return guardada;
-  let f;
-  try {
-    f = compilarExpresion(expr);
-  } catch {
-    f = null;
-  }
-  if (COMPILADAS.size >= CACHE_MAX)
-    COMPILADAS.clear();
-  COMPILADAS.set(expr, f);
-  return f;
-}
-function valorDe(expr, scope) {
-  const f = compilada(expr);
-  if (f === null)
-    return NaN;
-  try {
-    const v = f(scope);
-    return typeof v === "number" ? v : NaN;
-  } catch {
-    return NaN;
-  }
-}
-var EPS3 = 1e-12;
-function violaUna(r, scope) {
-  const v = valorDe(r.expr, scope);
-  if (!Number.isFinite(v))
-    return false;
-  switch (r.tipo) {
-    case "noCero":
-      return Math.abs(v) <= EPS3;
-    case "noNegativo":
-      return v < -EPS3;
-    case "positivo":
-      return v <= EPS3;
-    case "acotado":
-      return Math.abs(v) > 1 + EPS3;
-  }
-}
-var BARRIDO_MIN = -30;
-var BARRIDO_MAX = 30;
-var BARRIDO_PASOS = 3e3;
-var BISECCIONES = 60;
-var MAX_PUNTOS = 12;
-var CONSTANTES3 = /* @__PURE__ */ new Set(["pi", "e", "tau", "phi", "Infinity", "NaN"]);
-function cerosPolinomicos(expr, variable) {
-  const eq = ecuacionAPolinomio(`${expr} = 0`);
-  if (eq === null)
-    return null;
-  let p;
-  if (variable === "y") {
-    p = sustituirX(eq.p, CERO);
-  } else {
-    if (gradoY(eq.p) > 0)
-      return null;
-    p = eq.p[0] ?? [];
-  }
-  if (p.length === 0)
-    return null;
-  return raicesReales(p).map((r) => r.exacto !== null ? Number(r.exacto.n) / Number(r.exacto.d) : r.valor);
-}
-function cerosPorBarrido(expr, variable) {
-  const f = (x) => valorDe(expr, { [variable]: x });
-  const out = [];
-  const paso = (BARRIDO_MAX - BARRIDO_MIN) / BARRIDO_PASOS;
-  let xa = BARRIDO_MIN, va = f(xa);
-  for (let i2 = 1; i2 <= BARRIDO_PASOS && out.length < MAX_PUNTOS; i2++) {
-    const xb = BARRIDO_MIN + i2 * paso, vb = f(xb);
-    if (Number.isFinite(va) && Number.isFinite(vb) && va !== 0 && vb !== 0 && va < 0 !== vb < 0) {
-      let a = xa, b = xb, fa = va;
-      for (let k = 0; k < BISECCIONES; k++) {
-        const m = (a + b) / 2, fm = f(m);
-        if (!Number.isFinite(fm))
-          break;
-        if (fa < 0 === fm < 0) {
-          a = m;
-          fa = fm;
-        } else
-          b = m;
-      }
-      out.push(redondear((a + b) / 2, expr, variable));
-    }
-    if (va === 0)
-      out.push(xa);
-    xa = xb;
-    va = vb;
-  }
-  return out;
-}
-function redondear(x, expr, variable) {
-  for (const cand of [Math.round(x), Math.round(x * 2) / 2, Math.round(x * 4) / 4, Math.round(x * 1e6) / 1e6]) {
-    if (Math.abs(cand - x) < 1e-6 && valorDe(expr, { [variable]: cand }) === 0)
-      return cand;
-  }
-  return x;
-}
-function puntosDeQuiebre(exprNorm, variable) {
-  const rs = restriccionesDe(exprNorm);
-  if (rs === null || rs.length === 0)
-    return [];
-  const out = [];
-  for (const r of rs) {
-    const vars = variablesLibresDe(r.expr);
-    if (vars.length !== 1 || vars[0] !== variable)
-      continue;
-    const objetivos = r.tipo === "acotado" ? [`(${r.expr}) - 1`, `(${r.expr}) + 1`] : [r.expr];
-    for (const obj of objetivos) {
-      const exactos = cerosPolinomicos(obj, variable);
-      for (const v of exactos ?? cerosPorBarrido(obj, variable))
-        if (Number.isFinite(v) && !out.some((w) => Math.abs(w - v) < 1e-9))
-          out.push(v);
-    }
-    if (out.length >= MAX_PUNTOS)
-      break;
-  }
-  return out.slice(0, MAX_PUNTOS);
-}
-var MUESTRA = [-7.3, -2.6, -1.2, -0.7, -0.3, 0.4, 1.1, 2.7, 5.8, 11.4];
-function escenarios(a, b, vars) {
-  const base = (i2) => {
-    const scope = {};
-    vars.forEach((v, k) => {
-      scope[v] = MUESTRA[(i2 + 3 * k) % MUESTRA.length];
-    });
-    return scope;
-  };
-  const out = MUESTRA.map((_, i2) => base(i2));
-  for (const v of vars)
-    for (const q of [...puntosDeQuiebre(a, v), ...puntosDeQuiebre(b, v)])
-      out.push({ ...base(0), [v]: q });
-  return out;
-}
-function mismaFuncion(a, b) {
-  try {
-    const vars = [.../* @__PURE__ */ new Set([...variablesLibresDe(a), ...variablesLibresDe(b)])];
-    const fa = compilada(a), fb = compilada(b);
-    if (fa === null || fb === null)
-      return false;
-    const ra = restriccionesDe(a) ?? [], rb = restriccionesDe(b) ?? [];
-    return escenarios(a, b, vars).every((scope) => {
-      if (ra.some((r) => violaUna(r, scope)) !== rb.some((r) => violaUna(r, scope)))
-        return false;
-      const va = fa(scope), vb = fb(scope);
-      const finA = typeof va === "number" && Number.isFinite(va);
-      const finB = typeof vb === "number" && Number.isFinite(vb);
-      if (!finA || !finB)
-        return finA === finB;
-      return Math.abs(va - vb) <= 1e-8 * (1 + Math.abs(va));
-    });
-  } catch {
-    return false;
-  }
-}
-
-// src/simplificar.ts
-var REGLAS_SIMPLIFY = simplify.rules.concat([
-  // `log(e^u) = u` vale en TODO ℝ (`e^u > 0` siempre). Se cubren las DOS escrituras del
-  // logaritmo natural: la de mathjs (`log` de un argumento) y la que emiten nuestros
-  // módulos con la base explícita (`log(u, e)`), necesaria desde que un `log` sin base
-  // significa base 10 al releerse. La inversa `e^(log u) = u` NO se añade: solo vale para
-  // u > 0 y cambiaría el dominio aparente respecto de la curva dibujada.
-  "log(e^n1) -> n1",
-  "log(e) -> 1",
-  "log(e^n1, e) -> n1",
-  "log(e, e) -> 1",
-  // Identidades trigonométricas que mathjs tampoco trae. Las cinco valen en TODO ℝ, que es
-  // el listón de esta lista: la pitagórica no tiene excepciones, y las tres paridades
-  // conservan el dominio exacto (`tan(-x)` y `-tan(x)` tienen los mismos polos). Se dejan
-  // FUERA las que mueven el dominio o solo valen en un intervalo (`asin(sin x) = x` no es
-  // cierta fuera de [−π/2, π/2]) y las que no simplifican nada (`2 sin x cos x = sin 2x`
-  // es un cambio de forma, no una reducción).
-  "sin(n1)^2 + cos(n1)^2 -> 1",
-  "cos(n1)^2 + sin(n1)^2 -> 1",
-  "sin(-n1) -> -sin(n1)",
-  "cos(-n1) -> cos(n1)",
-  "tan(-n1) -> -tan(n1)",
-  // La raíz par de un cuadrado es el VALOR ABSOLUTO, no la base. `√(u²) = u` es el error de
-  // manual —falso para todo u<0— y por evitarlo el motor no reducía nada: dejaba `√(x²)` tal
-  // cual, que es correcto pero es el radical de un cuadrado sin resolver. `|u|` sí es cierto
-  // en TODO ℝ, y además es la forma canónica real de esa expresión.
-  "sqrt(n1^2) -> abs(n1)",
-  "nthRoot(n1^2, 2) -> abs(n1)",
-  // Y al revés: elevar un módulo al cuadrado lo borra, porque el cuadrado ya es no negativo.
-  // Las dos formas están definidas en todo ℝ y valen lo mismo, así que la igualdad no lleva
-  // condición. Encadenadas, `√(|u|²)` acaba en `|u|`.
-  "abs(n1)^2 -> n1^2",
-  "abs(-n1) -> abs(n1)",
-  "abs(abs(n1)) -> abs(n1)"
-]);
-var OPCIONES_SIMPLIFY = { fractionsLimit: 64 };
-function simplificarExpr(exprNorm) {
-  let base;
-  try {
-    base = parse2(exprNorm);
-  } catch {
-    return null;
-  }
-  const r = rationalizeSeguro(base);
-  if (r)
-    return r;
-  try {
-    return simplify(
-      base,
-      REGLAS_SIMPLIFY,
-      {},
-      OPCIONES_SIMPLIFY
-    );
-  } catch {
-    return base;
-  }
-}
-var formasEquivalentes = mismaFuncion;
-function formatear(n) {
-  return formatearCanonico(sinParentesisRedundantes(
-    resimbolizarConstantes(racionalizarFracciones(combinarYordenar(n)))
-  ));
-}
-var costo = (n) => [profundidadFraccion(n), n.toString().length];
-var menor = (a, b) => a[0] !== b[0] ? a[0] < b[0] : a[1] < b[1];
-function simplificarLado(lado) {
-  const norm3 = insertarProductoImplicito(normalizarEntrada(lado.trim()));
-  const n = simplificarExpr(norm3);
-  if (!n)
-    return norm3;
-  const actual = formatear(n);
-  if (!formasEquivalentes(actual, norm3))
-    return norm3;
-  let curNodo;
-  try {
-    curNodo = parse2(actual);
-  } catch {
-    return actual;
-  }
-  if (profundidadFraccion(curNodo) < 2)
-    return actual;
-  const candidatas = [];
-  try {
-    candidatas.push(formatear(parse2(norm3)));
-  } catch {
-  }
-  try {
-    candidatas.push(formatear(combinarFracciones(n)));
-  } catch {
-  }
-  let mejorStr = actual, mejorCosto = costo(curNodo);
-  for (const s of candidatas) {
-    try {
-      const cost = costo(parse2(s));
-      if (menor(cost, mejorCosto) && formasEquivalentes(s, norm3)) {
-        mejorStr = s;
-        mejorCosto = cost;
-      }
-    } catch {
-    }
-  }
-  return mejorStr;
-}
-function simplificarEcuaciones(ecuaciones) {
-  return ecuaciones.map((entrada) => transformarSinRestriccion(entrada, (ec) => {
-    const comp = componenteParametrica(ec);
-    if (comp)
-      return `${comp.eje}(t) = ${simplificarLado(comp.expr)}`;
-    const partes = ec.split("=");
-    if (partes.length === 2)
-      return `${simplificarLado(partes[0])} = ${simplificarLado(partes[1])}`;
-    return simplificarLado(ec);
-  }));
-}
-
-// src/despeje/aritmetica.ts
-var mcdEnteros2 = (a, b) => b === 0 ? Math.abs(a) : mcdEnteros2(b, Math.abs(a % b));
-function normalizarFraccion(num, den) {
-  if (den === 0)
-    return null;
-  if (den < 0) {
-    num = -num;
-    den = -den;
-  }
-  const g = mcdEnteros2(Math.abs(num), den) || 1;
-  return { num: num / g, den: den / g };
-}
-function fraccionSencilla(v) {
-  for (let den = 2; den <= 64; den++) {
-    const num = v * den;
-    if (Math.abs(num - Math.round(num)) <= 1e-9 * Math.max(1, Math.abs(num)))
-      return normalizarFraccion(Math.round(num), den);
-  }
-  return null;
-}
-
-// src/despeje/estrategias.ts
-var contieneY2 = (n) => contieneVariable(n, "y");
-function factorEsY(n) {
-  if (n.type === "ParenthesisNode")
-    return factorEsY(n.content);
-  if (n.type === "SymbolNode" && n.name === "y")
-    return 1;
-  if (n.type === "OperatorNode" && n.op === "-" && n.args.length === 1) {
-    const s = factorEsY(n.args[0]);
-    return s === null ? null : -s;
-  }
-  return null;
-}
-function linealEnY(t2) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  if (conYf.length !== 1 || conYf[0].exp !== 1)
-    return null;
-  const s = factorEsY(conYf[0].nodo);
-  if (s === null)
-    return null;
-  return { signo: t2.signo * s, libres: fs.filter((f) => !contieneY2(f.nodo)) };
-}
-function limpiarRHS(rhs) {
-  const n = simplificarExpr(rhs);
-  return n ? formatearCanonico(racionalizarFracciones(n)) : rhs;
-}
-function renderProducto(fs) {
-  const env = (f) => `(${f.nodo.toString()})`;
-  const num = fs.filter((f) => f.exp === 1).map(env);
-  const den = fs.filter((f) => f.exp === -1).map(env);
-  const n = num.length ? num.join("*") : "1";
-  return den.length ? `(${n})/(${den.join("*")})` : n;
-}
-function ladoDerecho(t2, derecha, libres, render = renderTerminos) {
-  const numTs = t2.signo === 1 ? derecha : flip(derecha);
-  const numStr = render(numTs);
-  let rhs = numTs.length > 1 ? `(${numStr})` : numStr;
-  const suben = libres.filter((f) => f.exp === -1).map((f) => `(${f.nodo.toString()})`);
-  const bajan = libres.filter((f) => f.exp === 1).map((f) => `(${f.nodo.toString()})`);
-  if (suben.length)
-    rhs = [rhs, ...suben].join("*");
-  if (bajan.length)
-    rhs = `(${rhs})/(${bajan.join("*")})`;
-  return rhs;
-}
-function desParen5(n) {
-  return n.type === "ParenthesisNode" ? desParen5(n.content) : n;
-}
-function exponenteY(n) {
-  const nodo = desParen5(n);
-  if (nodo.type === "OperatorNode" && nodo.op === "^" && nodo.args.length === 2) {
-    const base = desParen5(nodo.args[0]);
-    const exp3 = desParen5(nodo.args[1]);
-    if (base.type === "SymbolNode" && base.name === "y" && exp3.type === "ConstantNode" && Number.isInteger(exp3.value) && exp3.value >= 2)
-      return exp3.value;
-  }
-  return null;
-}
-function inversoExponenteFraccionarioY(n) {
-  const nodo = desParen5(n);
-  if (nodo.type !== "OperatorNode" || nodo.op !== "^" || nodo.args.length !== 2)
-    return null;
-  const base = desParen5(nodo.args[0]);
-  if (base.type !== "SymbolNode" || base.name !== "y")
-    return null;
-  const exp3 = desParen5(nodo.args[1]);
-  const r = racionalConstante(exp3);
-  if (r !== null) {
-    if (r.den === 1 || r.num <= 0)
-      return null;
-    return r.num === 1 ? `${r.den}` : `${r.den}/${r.num}`;
-  }
-  const v = valorConstanteFactor(exp3);
-  if (v === null || !Number.isFinite(v) || Number.isInteger(v) || v <= 0)
-    return null;
-  const f = fraccionSencilla(v);
-  if (f !== null)
-    return f.num === 1 ? `${f.den}` : `${f.den}/${f.num}`;
-  return `1/${v}`;
-}
-function despejePotencia(t2, derecha) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  const libres = fs.filter((f) => !contieneY2(f.nodo));
-  if (conYf.length !== 1 || conYf[0].exp !== 1)
-    return null;
-  const n = exponenteY(conYf[0].nodo);
-  if (n === null) {
-    const inv2 = inversoExponenteFraccionarioY(conYf[0].nodo);
-    if (inv2 === null)
-      return null;
-    const Rf = ladoDerecho(t2, derecha, libres, renderCanonico);
-    const cuerpo = conDominio(`(${Rf})^(${inv2})`, Rf);
-    return cuerpo === null ? null : { ecuacion: `y = ${cuerpo}`, completo: true };
-  }
-  const rad = ladoDerecho(t2, derecha, libres);
-  if (n % 2 === 1)
-    return { ecuacion: `y = nthRoot(${rad}, ${n})`, completo: true };
-  const raiz = n === 2 ? `sqrt(${rad})` : `nthRoot(${rad}, ${n})`;
-  const doble = ramaDoble(raiz, rad);
-  return doble === null ? null : { ecuacion: `y = ${doble}`, completo: true };
-}
-function raizY(n) {
-  const nodo = desParen5(n);
-  if (nodo.type !== "FunctionNode")
-    return null;
-  const nombre = nodo.fn?.name;
-  const arg0 = nodo.args[0] && desParen5(nodo.args[0]);
-  if (!arg0 || arg0.type !== "SymbolNode" || arg0.name !== "y")
-    return null;
-  if (nombre === "sqrt" && nodo.args.length === 1)
-    return 2;
-  if (nombre === "cbrt" && nodo.args.length === 1)
-    return 3;
-  if (nombre === "nthRoot" && nodo.args.length === 2) {
-    const k = desParen5(nodo.args[1]);
-    if (k.type === "ConstantNode" && Number.isInteger(k.value) && k.value >= 2)
-      return k.value;
-  }
-  return null;
-}
-function conDominio(cuerpo, cond) {
-  let c;
-  try {
-    c = parse2(cond);
-  } catch {
-    return `dom(${cuerpo}, ${cond})`;
-  }
-  if (esNoNegativo(c))
-    return cuerpo;
-  if (esSiempreNegativo(c))
-    return null;
-  return `dom(${cuerpo}, ${sinFactoresConstantes(c).toString()})`;
-}
-function despejeRaiz(t2, derecha) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  const libres = fs.filter((f) => !contieneY2(f.nodo));
-  if (conYf.length !== 1 || conYf[0].exp !== 1)
-    return null;
-  const n = raizY(conYf[0].nodo);
-  if (n === null)
-    return null;
-  const R = ladoDerecho(t2, derecha, libres, renderCanonico);
-  if (n % 2 === 1)
-    return { ecuacion: `y = (${R})^${n}`, completo: true };
-  const cuerpo = conDominio(`(${R})^${n}`, R);
-  return cuerpo === null ? null : { ecuacion: `y = ${cuerpo}`, completo: true };
-}
-function raizDePotenciaY(n0) {
-  const nodo = desParen5(n0);
-  if (nodo.type !== "FunctionNode")
-    return null;
-  const nombre = nodo.fn?.name;
-  let n = null;
-  let rad;
-  if (nombre === "sqrt" && nodo.args.length === 1) {
-    n = 2;
-    rad = nodo.args[0];
-  } else if (nombre === "cbrt" && nodo.args.length === 1) {
-    n = 3;
-    rad = nodo.args[0];
-  } else if (nombre === "nthRoot" && nodo.args.length === 2) {
-    const k = desParen5(nodo.args[1]);
-    if (k.type === "ConstantNode" && Number.isInteger(k.value) && k.value >= 2) {
-      n = k.value;
-      rad = nodo.args[0];
-    }
-  }
-  if (n === null || rad === void 0)
-    return null;
-  const m = exponenteY(rad);
-  return m === null ? null : { n, m };
-}
-function despejeRaizDePotencia(t2, derecha) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  const libres = fs.filter((f) => !contieneY2(f.nodo));
-  if (conYf.length !== 1 || conYf[0].exp !== 1)
-    return null;
-  const info = raizDePotenciaY(conYf[0].nodo);
-  if (info === null)
-    return null;
-  const { n, m } = info;
-  const R = ladoDerecho(t2, derecha, libres);
-  const base = `(${R})^${n}`;
-  const cuerpo = m % 2 === 1 ? `nthRoot(${base}, ${m})` : ramaDoble(m === 2 ? `sqrt(${base})` : `nthRoot(${base}, ${m})`, R);
-  if (cuerpo === null)
-    return null;
-  if (n % 2 === 1)
-    return { ecuacion: `y = ${cuerpo}`, completo: true };
-  const guardado = conDominio(cuerpo, R);
-  return guardado === null ? null : { ecuacion: `y = ${guardado}`, completo: true };
-}
-function exponenteEntero2(n) {
-  const v = valorConstanteFactor(n);
-  return v !== null && Number.isInteger(v) ? v : null;
-}
-function esAbsDeY(n) {
-  const nodo = desParen5(n);
-  if (nodo.type !== "FunctionNode" || nodo.fn?.name !== "abs" || nodo.args.length !== 1)
-    return false;
-  const arg2 = desParen5(nodo.args[0]);
-  return arg2.type === "SymbolNode" && arg2.name === "y";
-}
-function racionalConstante(n) {
-  const nodo = desParen5(n);
-  if (nodo.type === "OperatorNode" && nodo.op === "/" && nodo.args.length === 2) {
-    const a = racionalConstante(nodo.args[0]);
-    const b = racionalConstante(nodo.args[1]);
-    if (a === null || b === null || b.num === 0)
-      return null;
-    return normalizarFraccion(a.num * b.den, a.den * b.num);
-  }
-  if (nodo.type === "OperatorNode" && nodo.op === "-" && nodo.args.length === 1) {
-    const a = racionalConstante(nodo.args[0]);
-    return a === null ? null : { num: -a.num, den: a.den };
-  }
-  const v = valorConstanteFactor(nodo);
-  return v !== null && Number.isInteger(v) ? { num: v, den: 1 } : null;
-}
-function indiceRaiz(n) {
-  const nodo = desParen5(n);
-  if (nodo.type !== "FunctionNode")
-    return null;
-  const nombre = nodo.fn?.name;
-  if (nombre === "sqrt" && nodo.args.length === 1)
-    return { n: 2, rad: nodo.args[0] };
-  if (nombre === "cbrt" && nodo.args.length === 1)
-    return { n: 3, rad: nodo.args[0] };
-  if (nombre === "nthRoot" && nodo.args.length === 2) {
-    const k = exponenteEntero2(nodo.args[1]);
-    if (k !== null && k >= 2)
-      return { n: k, rad: nodo.args[0] };
-  }
-  return null;
-}
-function absYExponente(t2) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  const libres = fs.filter((f) => !contieneY2(f.nodo));
-  if (conYf.length !== 1)
-    return null;
-  let num = conYf[0].exp, den = 1;
-  let nucleo = desParen5(conYf[0].nodo);
-  if (nucleo.type === "OperatorNode" && nucleo.op === "^" && nucleo.args.length === 2) {
-    const k = racionalConstante(nucleo.args[1]);
-    if (k === null || k.num === 0)
-      return null;
-    num *= k.num;
-    den *= k.den;
-    nucleo = desParen5(nucleo.args[0]);
-  } else {
-    const r = indiceRaiz(nucleo);
-    if (r !== null) {
-      den *= r.n;
-      nucleo = desParen5(r.rad);
-    }
-  }
-  if (!esAbsDeY(nucleo))
-    return null;
-  const frac = normalizarFraccion(num, den);
-  return frac === null ? null : { ...frac, libres };
-}
-function limpiarAbsoluto(s) {
-  try {
-    return formatearCanonico(racionalizarFracciones(combinarFracciones(parse2(s))));
-  } catch {
-    return s;
-  }
-}
-function despejeAbsoluto(t2, derecha) {
-  const info = absYExponente(t2);
-  if (!info)
-    return null;
-  const { num, den, libres } = info;
-  const R = ladoDerecho(t2, derecha, libres, renderCanonico);
-  const a = den, b = Math.abs(num), neg = num < 0;
-  const raizDe2 = (r, n) => n === 2 ? `sqrt(${r})` : `nthRoot((${r}), ${n})`;
-  let mag;
-  let esPotencia2 = false;
-  if (b === 1) {
-    if (a === 1)
-      mag = R;
-    else {
-      mag = `(${R})^${a}`;
-      esPotencia2 = true;
-    }
-  } else if (a === 1) {
-    mag = raizDe2(R, b);
-  } else {
-    mag = `nthRoot((${R})^${a}, ${b})`;
-    esPotencia2 = true;
-  }
-  const aby = neg ? `1/(${mag})` : mag;
-  const cuerpo = esPotencia2 ? aby : limpiarAbsoluto(aby);
-  const doble = ramaDoble(cuerpo, R);
-  if (doble === null)
-    return null;
-  const guardado = conDominio(doble, R);
-  return guardado === null ? null : { ecuacion: `y = ${guardado}`, completo: true };
-}
-function despejeTrigInverso(t2, derecha) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  const libres = fs.filter((f) => !contieneY2(f.nodo));
-  if (conYf.length !== 1 || conYf[0].exp !== 1)
-    return null;
-  const tipo = trigDeY(conYf[0].nodo);
-  if (tipo === null)
-    return null;
-  const rhs = inversionTrig(tipo, ladoDerecho(t2, derecha, libres));
-  return rhs === null ? null : { ecuacion: `y = ${rhs}`, completo: true };
-}
-function despejeMultiplicativo(t2, derecha) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  const libres = fs.filter((f) => !contieneY2(f.nodo));
-  if (libres.length === 0 || conYf.length === 0)
-    return null;
-  return `${renderProducto(conYf)} = ${ladoDerecho(t2, derecha, libres)}`;
-}
-function despejeReciproco(t2, derecha, resolver) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  const libres = fs.filter((f) => !contieneY2(f.nodo));
-  if (conYf.length !== 1 || conYf[0].exp !== -1)
-    return null;
-  if (derecha.length === 0)
-    return null;
-  const E = conYf[0].nodo.toString();
-  const numFree = libres.filter((f) => f.exp === 1).map((f) => `(${f.nodo.toString()})`);
-  const denFree = libres.filter((f) => f.exp === -1).map((f) => `(${f.nodo.toString()})`);
-  const arriba = (t2.signo === -1 ? "-" : "") + (numFree.length ? numFree.join("*") : "1");
-  const abajo = [...denFree, `(${renderTerminos(derecha)})`].join("*");
-  const rec = resolver(`${E} = (${arriba})/(${abajo})`);
-  return rec && rec.completo ? rec : null;
-}
-var TRIG_CERO = {
-  sin: { periodo: "pi", base: null },
-  tan: { periodo: "pi", base: null },
-  cos: { periodo: "pi", base: "pi/2" },
-  cot: { periodo: "pi", base: "pi/2" },
-  sec: null,
-  csc: null
-};
-function uSiemprePositivo(uStr) {
-  let f;
-  try {
-    const c = parse2(insertarProductoImplicito(normalizarEntrada(uStr))).compile();
-    f = (s) => c.evaluate(s);
-  } catch {
-    return false;
-  }
-  const malla = [-8, -3.5, -1.5, -0.5, 0.3, 0.9, 2.2, 5.1];
-  let vistos = 0;
-  for (const x of malla)
-    for (const y of malla) {
-      let v;
-      try {
-        v = f({ x, y });
-      } catch {
-        continue;
-      }
-      if (typeof v !== "number" || !Number.isFinite(v))
-        continue;
-      if (v <= 1e-9)
-        return false;
-      vistos++;
-    }
-  return vistos >= 8;
-}
-function despejeTrigCero(t2, derecha, resolver) {
-  const noNulos = derecha.filter((d) => {
-    const n = desParen5(d.nodo);
-    return !(n.type === "ConstantNode" && n.value === 0);
-  });
-  if (noNulos.length !== 0)
-    return null;
-  const nodo = desParen5(t2.nodo);
-  if (nodo.type !== "FunctionNode" || nodo.args?.length !== 1)
-    return null;
-  const info = TRIG_CERO[nodo.fn?.name ?? ""];
-  if (!info)
-    return null;
-  const u = desParen5(nodo.args[0]);
-  if (!contieneY2(u) || u.type === "SymbolNode" && u.name === "y")
-    return null;
-  const uStr = u.toString();
-  const cero = familiaPeriodica(info.periodo, uStr, info.base === null && uSiemprePositivo(uStr));
-  if (cero === null)
-    return null;
-  const rhs = info.base ? `${info.base} + ${cero}` : cero;
-  const rec = resolver(`${uStr} = ${rhs}`);
-  return rec && rec.completo ? rec : null;
-}
-
-// src/despeje/presentacion.ts
-var SENTINELAS_SIGNO = /* @__PURE__ */ new Set(["pm", "mp"]);
-function coefYresto(n) {
-  let coef = 1;
-  const resto = [];
-  for (const f of factores(n)) {
-    if (f.exp !== 1)
-      return null;
-    if (f.nodo.type === "ConstantNode") {
-      const v = Number(f.nodo.value);
-      if (!Number.isInteger(v))
-        return null;
-      coef *= v;
-    } else
-      resto.push(f.nodo.toString());
-  }
-  return { coef, resto: resto.join(" * ") };
-}
-function reducirFraccionEntera(rhs) {
-  let n;
-  try {
-    n = parse2(rhs);
-  } catch {
-    return rhs;
-  }
-  const raiz = desParen5(n);
-  if (raiz.type !== "OperatorNode" || raiz.op !== "/" || raiz.args.length !== 2)
-    return rhs;
-  const den = desParen5(raiz.args[1]);
-  if (den.type !== "ConstantNode")
-    return rhs;
-  const d = Number(den.value);
-  if (!Number.isInteger(d) || d < 2)
-    return rhs;
-  const ts = terminos(desParen5(raiz.args[0]));
-  if (ts.length === 0)
-    return rhs;
-  const partes = [];
-  for (const t2 of ts) {
-    const nodo = desParen5(t2.nodo);
-    const sentinela = nodo.type === "FunctionNode" && nodo.args.length === 1 && nodo.fn?.name !== void 0 && SENTINELAS_SIGNO.has(nodo.fn.name) ? nodo.fn.name : null;
-    const cr = coefYresto(sentinela === null ? nodo : nodo.args[0]);
-    if (cr === null)
-      return rhs;
-    partes.push({ signo: t2.signo, ...cr, envoltura: sentinela });
-  }
-  let g = d;
-  for (const p of partes)
-    g = mcdEnteros2(g, Math.abs(p.coef));
-  if (g < 2)
-    return rhs;
-  let out = "";
-  partes.forEach((p, i2) => {
-    const c = p.coef / g;
-    const nucleo = p.resto === "" ? String(c) : c === 1 ? p.resto : `${c} * ${p.resto}`;
-    const cuerpo = p.envoltura ? `${p.envoltura}(${nucleo})` : nucleo;
-    if (i2 === 0)
-      out = p.signo === 1 ? cuerpo : `-${cuerpo}`;
-    else
-      out += p.signo === 1 ? ` + ${cuerpo}` : ` - ${cuerpo}`;
-  });
-  return d / g === 1 ? out : `(${out}) / (${d / g})`;
-}
-function embellecerConstantes(ec) {
-  try {
-    const partes = ec.split("=");
-    if (partes.length !== 2)
-      return ec;
-    const original = parse2(partes[1]);
-    const rhs = reducirFraccionEntera(resimbolizarConstantes(original).toString());
-    if (rhs === original.toString())
-      return ec;
-    return `${partes[0].trim()} = ${rhs}`;
-  } catch {
-    return ec;
-  }
-}
-
-// src/despeje/verificacion.ts
-function ramaReal(uStr, g, evalD) {
-  let fu;
-  try {
-    const c = parse2(uStr).compile();
-    fu = (x) => c.evaluate({ x });
-  } catch {
-    return false;
-  }
-  const muestras = [-2.3, -1.1, -0.4, -0.15, 0.15, 0.35, 0.7, 1.6, 3.2];
-  let viables = 0;
-  for (const x of muestras) {
-    let u;
-    try {
-      u = fu(x);
-    } catch {
-      continue;
-    }
-    if (typeof u !== "number" || !Number.isFinite(u))
-      continue;
-    const escala2 = 1 + x * x * x * x;
-    if (g % 2 === 0) {
-      if (u < -1e-9)
-        continue;
-      const y = Math.pow(Math.max(u, 0), 1 / g);
-      for (const yy of [y, -y]) {
-        const d = evalD(x, yy);
-        if (!Number.isFinite(d) || Math.abs(d) > 1e-6 * (escala2 + y * y * y * y))
-          return false;
-      }
-    } else {
-      const y = Math.sign(u) * Math.pow(Math.abs(u), 1 / g);
-      const d = evalD(x, y);
-      if (!Number.isFinite(d) || Math.abs(d) > 1e-6 * (escala2 + y * y * y * y))
-        return false;
-    }
-    viables++;
-  }
-  return viables >= 2;
-}
-function solucionValida(rhs, evalD) {
-  let total = 0;
-  for (const rama of expandirDobleSigno(rhs)) {
-    const n = puntosValidos(rama, evalD);
-    if (n === null)
-      return false;
-    total += n;
-  }
-  return total >= 2;
-}
-function evaluadorDe(D) {
-  try {
-    const c = D.compile();
-    return (x, y) => {
-      try {
-        return c.evaluate({ x, y });
-      } catch {
-        return NaN;
-      }
-    };
-  } catch {
-    return null;
-  }
-}
-function puntosValidos(rhs, evalD) {
-  let f;
-  try {
-    f = compilarFuncion(rhs, "x");
-  } catch {
-    return null;
-  }
-  let validos = 0;
-  for (let i2 = 0; i2 <= 120; i2++) {
-    const x = -6 + i2 * 12 / 120;
-    let y;
-    try {
-      y = f(x);
-    } catch {
-      continue;
-    }
-    if (typeof y !== "number" || !Number.isFinite(y))
-      continue;
-    const d = evalD(x, y);
-    if (!Number.isFinite(d) || Math.abs(d) > 1e-6 * (1 + x * x * x * x + y * y * y * y))
-      return null;
-    validos++;
-  }
-  return validos;
-}
-
-// src/despejar.ts
-var contieneX = (n) => contieneVariable(n, "x");
-function simpDesp(s) {
-  try {
-    const n = simplificarExpr(s);
-    return n ? formatearCanonico(racionalizarFracciones(n)) : s;
-  } catch {
-    return s;
-  }
-}
-function simpSiConstante(s) {
-  try {
-    return contieneX(parse2(s)) ? s : simpDesp(s);
-  } catch {
-    return s;
-  }
-}
-var sumarStrings = (a) => a.length ? a.map((s) => `(${s})`).join(" + ") : "0";
-function potenciaYCoef(t2) {
-  const fs = factores(t2.nodo);
-  const conYf = fs.filter((f) => contieneY2(f.nodo));
-  const libres = fs.filter((f) => !contieneY2(f.nodo));
-  if (conYf.length !== 1 || conYf[0].exp !== 1)
-    return null;
-  const yn = desParen5(conYf[0].nodo);
-  let power;
-  if (yn.type === "SymbolNode" && yn.name === "y")
-    power = 1;
-  else {
-    const k = exponenteY(yn);
-    if (k === null)
-      return null;
-    power = k;
-  }
-  const coef = renderProducto(libres);
-  return { power, coef: t2.signo === 1 ? coef : `-(${coef})` };
-}
-function baseYExponente(f) {
-  const nodo = desParen5(f.nodo);
-  if (nodo.type === "OperatorNode" && nodo.op === "^" && nodo.args.length === 2) {
-    const k = exponenteEntero2(nodo.args[1]);
-    if (k !== null)
-      return { base: desParen5(nodo.args[0]), k: k * f.exp };
-  }
-  return { base: nodo, k: f.exp };
-}
-function raizImpar(R, n) {
-  const fuera = [];
-  const dentro2 = [];
-  for (const f of factores(R)) {
-    const { base, k } = baseYExponente(f);
-    const pot = (e3) => e3 === 1 ? `(${base.toString()})` : `(${base.toString()})^(${e3})`;
-    if (k % n === 0)
-      fuera.push(pot(k / n));
-    else {
-      if (contieneY2(base))
-        return null;
-      dentro2.push(pot(k));
-    }
-  }
-  if (dentro2.length === 0)
-    return fuera.length ? fuera.join("*") : "1";
-  const radicando = dentro2.join("*");
-  const raiz = `nthRoot(${radicando}, ${n})`;
-  return fuera.length ? `${fuera.join("*")}*${raiz}` : raiz;
-}
-function reducirRaizImpar(L, R) {
-  const intento = (potencia3, otro) => {
-    const p = desParen5(potencia3);
-    if (!(p.type === "OperatorNode" && p.op === "^" && p.args.length === 2))
-      return null;
-    const n = exponenteEntero2(p.args[1]);
-    if (n === null || n < 3 || n % 2 === 0)
-      return null;
-    const base = desParen5(p.args[0]);
-    if (!contieneY2(base))
-      return null;
-    const raiz = raizImpar(otro, n);
-    if (raiz === null)
-      return null;
-    try {
-      const D = simplify(parse2(`(${base.toString()}) - (${raiz})`));
-      return D && contieneY2(D) ? D : null;
-    } catch {
-      return null;
-    }
-  };
-  return intento(L, R) ?? intento(R, L);
-}
-function reducirRaizImparPorTerminos(D) {
-  const ts = terminos(D);
-  if (ts.length < 2)
-    return null;
-  for (let i2 = 0; i2 < ts.length; i2++) {
-    const p = desParen5(ts[i2].nodo);
-    if (!(p.type === "OperatorNode" && p.op === "^" && p.args.length === 2))
-      continue;
-    const n = exponenteEntero2(p.args[1]);
-    if (n === null || n < 3 || n % 2 === 0)
-      continue;
-    const base = desParen5(p.args[0]);
-    if (!contieneY2(base))
-      continue;
-    if (base.type === "SymbolNode")
-      continue;
-    const resto = ts.filter((_, j) => j !== i2);
-    const otroLado = ts[i2].signo === 1 ? flip(resto) : resto;
-    let R;
-    try {
-      R = parse2(renderTerminos(otroLado));
-    } catch {
-      continue;
-    }
-    const reducido = reducirRaizImpar(p, R);
-    if (reducido)
-      return reducido;
-  }
-  return null;
-}
-function plegarRaicesImpares(n) {
-  try {
-    return n.transform((nn) => {
-      if (nn.type !== "OperatorNode" || nn.op !== "^" || nn.args.length !== 2)
-        return nn;
-      const base = desParen5(nn.args[0]);
-      const k = exponenteEntero2(nn.args[1]);
-      if (k === null || base.type !== "FunctionNode" || base.fn?.name !== "nthRoot")
-        return nn;
-      if (base.args.length !== 2)
-        return nn;
-      const idx = exponenteEntero2(base.args[1]);
-      if (idx === null || idx < 3 || idx % 2 === 0)
-        return nn;
-      return parse2(`nthRoot((${base.args[0].toString()})^(${k}), ${idx})`);
-    });
-  } catch {
-    return n;
-  }
-}
-function despejeCuadratico(D0, DVal = D0) {
-  let D = D0;
-  try {
-    const e3 = simplificarExpr(D0.toString());
-    if (e3)
-      D = e3;
-  } catch {
-  }
-  const ts = terminos(D);
-  const conY = ts.filter((t2) => contieneY2(t2.nodo));
-  const sinY = ts.filter((t2) => !contieneY2(t2.nodo));
-  if (conY.length === 0)
-    return null;
-  const pcs = conY.map(potenciaYCoef);
-  if (pcs.some((p2) => p2 === null))
-    return null;
-  const P4 = pcs;
-  const g = P4.map((p2) => p2.power).reduce(mcdEnteros2);
-  if (g !== 1 && g % 2 !== 0)
-    return null;
-  const degs = P4.map((p2) => p2.power / g);
-  if (degs.some((d) => d > 2))
-    return null;
-  const A = sumarStrings(P4.filter((_, i2) => degs[i2] === 2).map((p2) => p2.coef));
-  const B = sumarStrings(P4.filter((_, i2) => degs[i2] === 1).map((p2) => p2.coef));
-  const C = sumarStrings(sinY.map((t2) => t2.signo === 1 ? t2.nodo.toString() : `-(${t2.nodo.toString()})`));
-  let evalD;
-  try {
-    const c = DVal.compile();
-    evalD = (x, y) => {
-      try {
-        return c.evaluate({ x, y });
-      } catch {
-        return NaN;
-      }
-    };
-  } catch {
-    return null;
-  }
-  if (!degs.includes(2)) {
-    if (!degs.includes(1))
-      return null;
-    const u = simpDesp(`-(${C})/(${B})`);
-    if (!ramaReal(u, g, evalD))
-      return null;
-    const raizDeU = g === 1 ? u : g === 2 ? `sqrt(${u})` : `nthRoot(${u}, ${g})`;
-    const cuerpo = simpSiConstante(raizDeU);
-    return { ecuacion: `y = ${g % 2 === 0 ? `pm(${cuerpo})` : cuerpo}`, completo: true };
-  }
-  if (g === 1) {
-    const b2 = plegarRaicesImpares(parse2(simpDesp(`(${B})^2`))).toString();
-    const m4ac = simpDesp(`-4*(${A})*(${C})`);
-    const disc2 = simpDesp(`(${b2}) + (${m4ac})`);
-    const num = simpDesp(`-(${B})`);
-    const den = simpDesp(`2*(${A})`);
-    const raiz = simpSiConstante(`sqrt(${disc2})`);
-    const yMas = `((${num}) + (${raiz}))/(${den})`;
-    const yMenos = `((${num}) - (${raiz}))/(${den})`;
-    const reales = [yMas, yMenos].filter((u) => ramaReal(u, 1, evalD));
-    if (reales.length === 0)
-      return null;
-    if (reales.length === 1)
-      return { ecuacion: `y = ${simpDesp(reales[0])}`, completo: true };
-    const conPm = (cuerpo, mas) => mas === "0" ? `pm(${cuerpo})` : `${mas} + pm(${cuerpo})`;
-    const unica = den === "1" ? conPm(raiz, num) : `(${conPm(raiz, num)})/(${den})`;
-    const separada = conPm(simpDesp(`(${raiz})/(${den})`), simpDesp(`(${num})/(${den})`));
-    const barata = [unica, separada].map((s) => ({ s, prof: profundidadFraccion(parse2(s)), len: s.length })).sort((a, b) => a.prof !== b.prof ? a.prof - b.prof : a.len - b.len)[0].s;
-    return { ecuacion: `y = ${barata}`, completo: true };
-  }
-  const p = simpDesp(`(${B})/(2*(${A}))`);
-  const disc = simpDesp(`((${B})/(2*(${A})))^2 - (${C})/(${A})`);
-  const uMas = `(-(${p})) + (sqrt(${disc}))`;
-  const uMenos = `(-(${p})) - (sqrt(${disc}))`;
-  const validas = [uMas, uMenos].filter((u) => ramaReal(u, g, evalD));
-  if (validas.length === 0)
-    return null;
-  if (validas.length === 1) {
-    const inner = simpSiConstante(`sqrt(${validas[0]})`);
-    return { ecuacion: `y = pm(${inner})`, completo: true };
-  }
-  const raizDisc = simpSiConstante(`sqrt(${disc})`);
-  return { ecuacion: `y = pm(sqrt(pm(${raizDisc}) + (${simpDesp(`-(${p})`)})))`, completo: true };
-}
-function enY(D, valor) {
-  try {
-    return simpDesp(D.transform(
-      (n) => n.type === "SymbolNode" && n.name === "y" ? parse2(String(valor)) : n
-    ).toString());
-  } catch {
-    return "";
-  }
-}
-var TERNAS_Y = [
-  [-2.5, -0.5, 1.5],
-  [-1.3, 0.7, 2.7],
-  [-3.1, -1.1, 0.9],
-  [-0.6, 1.9, 4.4]
-];
-function esAfinEnY(D) {
-  let f;
-  try {
-    const c = D.compile();
-    f = (x, y) => {
-      try {
-        return c.evaluate({ x, y });
-      } catch {
-        return NaN;
-      }
-    };
-  } catch {
-    return false;
-  }
-  let comprobados = 0;
-  for (const x of [-3.7, -1.3, -0.4, 0.6, 1.9, 4.2]) {
-    for (const terna of TERNAS_Y) {
-      const [a, b, c2] = terna.map((y) => f(x, y));
-      if (![a, b, c2].every((d) => typeof d === "number" && Number.isFinite(d)))
-        continue;
-      const [va, vb, vc] = [a, b, c2];
-      if (Math.abs(vc - vb - (vb - va)) > 1e-7 * (1 + Math.abs(va) + Math.abs(vb) + Math.abs(vc)))
-        return false;
-      comprobados++;
-    }
-  }
-  return comprobados >= 4;
-}
-var PARES_Y = [[0, 1], [3, 4], [-4, -3], [5, 7]];
-function expresionUtil(s) {
-  return s !== "" && !/(?<![a-zA-Z0-9_])(Infinity|NaN)(?![a-zA-Z0-9_])/.test(s);
-}
-function despejeLinealEnY(D) {
-  if (!contieneY2(D) || !esAfinEnY(D))
-    return null;
-  const evalD = evaluadorDe(D);
-  if (evalD === null)
-    return null;
-  for (const [y0, y1] of PARES_Y) {
-    const D0 = enY(D, y0), D1 = enY(D, y1);
-    if (!expresionUtil(D0) || !expresionUtil(D1))
-      continue;
-    const A = simpDesp(`((${D1}) - (${D0}))/(${y1 - y0})`);
-    if (A === "0" || !expresionUtil(A))
-      continue;
-    const B = simpDesp(`(${D0}) - (${y0})*(${A})`);
-    if (!expresionUtil(B))
-      continue;
-    const rhs = limpiarRHS(`(-(${B}))/(${A})`);
-    if (solucionValida(rhs, evalD))
-      return { ecuacion: `y = ${rhs}`, completo: true };
-  }
-  return null;
-}
-var MAX_ELEVACIONES = 3;
-function radicandoDeY(f) {
-  if (f.exp !== 1)
-    return null;
-  const n = desParen5(f.nodo);
-  return n.type === "FunctionNode" && n.fn?.name === "sqrt" && n.args.length === 1 && contieneY2(n) ? n.args[0] : null;
-}
-function partirRadical(t2) {
-  const fs = factores(t2.nodo);
-  const i2 = fs.findIndex((f) => radicandoDeY(f) !== null);
-  const rad = i2 === -1 ? null : radicandoDeY(fs[i2]);
-  const resto = i2 === -1 ? fs : fs.filter((_, j) => j !== i2);
-  const coef = renderProducto(resto);
-  return { coef: t2.signo === 1 ? coef : `-(${coef})`, rad };
-}
-function cuadradoExpandido(ts) {
-  const ps = ts.map(partirRadical);
-  const trozos = [];
-  for (let i2 = 0; i2 < ps.length; i2++) {
-    for (let j = 0; j < ps.length; j++) {
-      const a = ps[i2], b = ps[j];
-      const raices2 = a.rad === null ? b.rad === null ? "1" : `sqrt(${b.rad.toString()})` : b.rad === null ? `sqrt(${a.rad.toString()})` : a.rad.toString() === b.rad.toString() ? `(${a.rad.toString()})` : `sqrt(${a.rad.toString()})*sqrt(${b.rad.toString()})`;
-      trozos.push(`(${a.coef})*(${b.coef})*(${raices2})`);
-    }
-  }
-  return trozos.length ? trozos.join(" + ") : "0";
-}
-function elevarAlCuadrado(D) {
-  const ts = terminos(D);
-  const i2 = ts.findIndex((t2) => partirRadical(t2).rad !== null);
-  if (i2 === -1)
-    return null;
-  const { coef, rad } = partirRadical(ts[i2]);
-  if (rad === null)
-    return null;
-  const resto = ts.filter((_, j) => j !== i2);
-  const valor = `-(${renderTerminos(resto)})/(${coef})`;
-  let out;
-  try {
-    out = simplify(`(${coef})^2*(${rad.toString()}) - (${cuadradoExpandido(resto)})`);
-  } catch {
-    return null;
-  }
-  return { D: out, radical: `sqrt(${rad.toString()})`, valor };
-}
-function guardaEnX(expr, pasos, yFinal) {
-  let s = expr;
-  for (const p of pasos)
-    s = s.split(p.radical).join(`(${p.valor})`);
-  let n;
-  try {
-    n = parse2(s);
-  } catch {
-    return s;
-  }
-  if (contieneY2(n)) {
-    try {
-      n = n.transform((z) => z.type === "SymbolNode" && z.name === "y" ? parse2(`(${yFinal})`) : z);
-    } catch {
-      return s;
-    }
-  }
-  return simpDesp(n.toString());
-}
-function despejeRadicales(D0, DVal) {
-  let D = D0;
-  const pasos = [];
-  for (let i2 = 0; i2 < MAX_ELEVACIONES; i2++) {
-    const paso = elevarAlCuadrado(D);
-    if (paso === null)
-      break;
-    pasos.push({ radical: paso.radical, valor: paso.valor });
-    D = paso.D;
-  }
-  if (pasos.length === 0)
-    return null;
-  if (elevarAlCuadrado(D) !== null)
-    return null;
-  if (!contieneY2(D))
-    return null;
-  const rhsCrudo = rhsCompleto(despejeLinealEnY(D) ?? despejarAnidado(`${D.toString()} = 0`));
-  if (rhsCrudo === null)
-    return null;
-  let rhs = rhsCrudo;
-  const guardas = [];
-  for (let i2 = pasos.length - 1; i2 >= 0; i2--) {
-    const cond = guardaEnX(pasos[i2].valor, pasos.slice(i2 + 1), rhsCrudo);
-    const conG = conDominio(rhs, cond);
-    if (conG === null)
-      return null;
-    if (conG !== rhs)
-      guardas.push(cond);
-    rhs = conG;
-  }
-  if (simplificarCondiciones(guardas)?.tipo === "imposible")
-    return null;
-  const evalD = evaluadorDe(DVal);
-  return evalD !== null && solucionValida(rhs, evalD) ? { ecuacion: `y = ${rhs}`, completo: true } : null;
-}
-function denominadoresConY(D) {
-  const dens = /* @__PURE__ */ new Set();
-  for (const t2 of terminos(D))
-    for (const f of factores(t2.nodo))
-      if (f.exp === -1 && contieneY2(f.nodo))
-        dens.add(f.nodo.toString());
-  return [...dens];
-}
-function despejeSinDenominadores(D) {
-  const dens = denominadoresConY(D);
-  if (dens.length === 0)
-    return null;
-  let limpio;
-  try {
-    const prod2 = dens.map((d) => `(${d})`).join("*");
-    limpio = simplify(`(${D.toString()})*(${prod2})`);
-  } catch {
-    return null;
-  }
-  if (!contieneY2(limpio) || denominadoresConY(limpio).length > 0)
-    return null;
-  const rhs = rhsCompleto(despejarAnidado(`${limpio.toString()} = 0`));
-  if (rhs === null)
-    return null;
-  const evalD = evaluadorDe(D);
-  return evalD !== null && solucionValida(rhs, evalD) ? { ecuacion: `y = ${rhs}`, completo: true } : null;
-}
-var MAX_ANIDAMIENTO = 6;
-var anidamiento = 0;
-function despejarAnidado(ecuacion) {
-  if (anidamiento >= MAX_ANIDAMIENTO)
-    return null;
-  anidamiento++;
-  try {
-    return despejar(ecuacion);
-  } finally {
-    anidamiento--;
-  }
-}
-var INVERSA_INYECTIVA = {
-  exp: (t2) => `log(${t2}, e)`,
-  // e^u = t ⇒ u = ln t
-  log: (t2) => `e^(${t2})`,
-  // ln u = t ⇒ u = e^t (se emite `e^…` → LaTeX `e^{…}`, no `\exp`)
-  log10: (t2) => `10^(${t2})`,
-  // log u = t ⇒ u = 10^t (el `log` del usuario es decimal)
-  log2: (t2) => `2^(${t2})`,
-  // log₂ u = t ⇒ u = 2^t
-  sinh: (t2) => `asinh(${t2})`,
-  // biyección en ℝ
-  tanh: (t2) => `atanh(${t2})`,
-  // atanh NaN fuera de (−1,1) → sin fantasma
-  asinh: (t2) => `sinh(${t2})`,
-  atanh: (t2) => `tanh(${t2})`,
-  cbrt: (t2) => `(${t2})^3`
-  // ∛u = t ⇒ u = t³ (raíz impar, biyección en ℝ)
-};
-var TRIG_PERIODICA = /* @__PURE__ */ new Set(["sin", "cos", "tan", "cot", "sec", "csc"]);
-var objetivoConGuarda = (cuerpo, target) => conDominio(cuerpo, target);
-function aislarInversion(nodo, target, ctx) {
-  const n = desParen5(nodo);
-  const pelado = pelarCapa(n, target, ctx);
-  if (pelado !== null)
-    return pelado;
-  return ctx && ctx.nivel > 0 && contieneY2(n) ? ctx.alTope(n, target) : null;
-}
-function pelarCapa(n, target, ctx) {
-  const dentro2 = ctx && { alTope: ctx.alTope, nivel: ctx.nivel + 1 };
-  const aislar = (hijo, t2) => aislarInversion(hijo, t2, dentro2);
-  if (n.type === "SymbolNode" && n.name === "y")
-    return target;
-  if (n.type === "OperatorNode") {
-    if (n.args.length === 1 && n.op === "-")
-      return aislar(n.args[0], `-(${target})`);
-    if (n.args.length === 2) {
-      const [a, b] = n.args;
-      const enA = contieneY2(a), enB = contieneY2(b);
-      if (enA === enB)
-        return null;
-      const sa = a.toString(), sb = b.toString();
-      switch (n.op) {
-        case "+":
-          return enA ? aislar(a, `(${target}) - (${sb})`) : aislar(b, `(${target}) - (${sa})`);
-        case "-":
-          return enA ? aislar(a, `(${target}) + (${sb})`) : aislar(b, `(${sa}) - (${target})`);
-        case "*":
-          return enA ? aislar(a, `(${target}) / (${sb})`) : aislar(b, `(${target}) / (${sa})`);
-        case "/":
-          return enA ? aislar(a, `(${target}) * (${sb})`) : aislar(b, `(${sa}) / (${target})`);
-        case "^": {
-          if (enA) {
-            const k = exponenteEntero2(b);
-            if (k === null || k < 1)
-              return null;
-            if (k % 2 === 0) {
-              const pm = ramaDoble(k === 2 ? `sqrt(${target})` : `nthRoot(${target}, ${k})`, target);
-              const conG = pm === null ? null : objetivoConGuarda(pm, target);
-              return conG === null ? null : aislar(a, conG);
-            }
-            const raiz = k === 1 ? target : k === 3 ? `cbrt(${target})` : `nthRoot(${target}, ${k})`;
-            return aislar(a, raiz);
-          }
-          const div2 = `log(${target}, ${sa})`;
-          return aislar(b, div2);
-        }
-        default:
-          return null;
-      }
-    }
-    return null;
-  }
-  if (n.type === "FunctionNode") {
-    const fn = n.fn?.name ?? "";
-    if (fn === "log" && n.args.length === 2 && !contieneY2(n.args[1])) {
-      const base = desParen5(n.args[1]).toString();
-      return aislar(n.args[0], `(${base})^(${target})`);
-    }
-    if (n.args.length === 1) {
-      if (INVERSA_INYECTIVA[fn])
-        return aislar(n.args[0], INVERSA_INYECTIVA[fn](target));
-      if (TRIG_PERIODICA.has(fn)) {
-        const inv2 = inversionTrig(fn, target);
-        return inv2 === null ? null : aislar(n.args[0], inv2);
-      }
-      if (fn === "sqrt") {
-        const conG = objetivoConGuarda(`(${target})^2`, target);
-        return conG === null ? null : aislar(n.args[0], conG);
-      }
-      if (fn === "abs") {
-        const pm = ramaDoble(target, target);
-        const conG = pm === null ? null : objetivoConGuarda(pm, target);
-        return conG === null ? null : aislar(n.args[0], conG);
-      }
-      return null;
-    }
-    if (fn === "nthRoot" && n.args.length === 2) {
-      const k = exponenteEntero2(n.args[1]);
-      if (k === null || k < 2)
-        return null;
-      if (k % 2 === 0) {
-        const conG = objetivoConGuarda(`(${target})^${k}`, target);
-        return conG === null ? null : aislar(n.args[0], conG);
-      }
-      return aislar(n.args[0], `(${target})^${k}`);
-    }
-  }
-  return null;
-}
-function rhsCompleto(r) {
-  if (!r || !r.completo)
-    return null;
-  const m = r.ecuacion.match(/^y\s*=\s*([\s\S]+)$/);
-  return m ? m[1] : null;
-}
-function despejePorInversion(L, R) {
-  const enL = contieneY2(L), enR = contieneY2(R);
-  if (enL === enR)
-    return null;
-  const conY = enL ? L : R;
-  const otro = enL ? R : L;
-  const rhs = aislarInversion(conY, `(${otro.toString()})`, {
-    nivel: 0,
-    alTope: (resto, target) => rhsCompleto(despejarAnidado(`${resto.toString()} = ${target}`))
-  });
-  return rhs === null ? null : { ecuacion: `y = ${rhs}`, completo: true };
-}
-function despejar(ecuacion) {
-  if (componenteParametrica(ecuacion))
-    return null;
-  let partes = ecuacion.split("=");
-  const norm3 = (s) => insertarProductoImplicito(normalizarEntrada(s.trim()));
-  if (partes.length === 1 && contieneYLibre(norm3(partes[0])))
-    partes = [partes[0], "0"];
-  if (partes.length !== 2)
-    return null;
-  let D;
-  let L, R;
-  try {
-    L = parse2(norm3(partes[0]));
-    R = parse2(norm3(partes[1]));
-    D = parse2(`(${norm3(partes[0])})-(${norm3(partes[1])})`);
-  } catch {
-    return null;
-  }
-  if (!contieneY2(D))
-    return null;
-  const DVal = D;
-  D = reducirRaizImpar(L, R) ?? reducirRaizImparPorTerminos(D) ?? D;
-  const ts = terminos(D);
-  const conY = ts.filter((t2) => contieneY2(t2.nodo));
-  const sinY = ts.filter((t2) => !contieneY2(t2.nodo));
-  if (conY.length === 0)
-    return null;
-  const derecha = flip(sinY);
-  if (conY.length === 1) {
-    const lin = linealEnY(conY[0]);
-    if (lin) {
-      const numerador = lin.signo === 1 ? derecha : flip(derecha);
-      if (lin.libres.length === 0)
-        return { ecuacion: `y = ${renderCanonico(numerador)}`, completo: true };
-      const rhs = `(${renderCanonico(numerador)}) / (${renderProducto(lin.libres)})`;
-      return { ecuacion: `y = ${limpiarRHS(rhs)}`, completo: true };
-    }
-    const pot = despejePotencia(conY[0], derecha);
-    if (pot)
-      return pot;
-    const raiz = despejeRaiz(conY[0], derecha);
-    if (raiz)
-      return raiz;
-    const raizPot = despejeRaizDePotencia(conY[0], derecha);
-    if (raizPot)
-      return raizPot;
-    const abs3 = despejeAbsoluto(conY[0], derecha);
-    if (abs3)
-      return abs3;
-    const trig = despejeTrigInverso(conY[0], derecha);
-    if (trig)
-      return trig;
-    const trigCero = despejeTrigCero(conY[0], derecha, despejar);
-    if (trigCero)
-      return trigCero;
-    const recip = despejeReciproco(conY[0], derecha, despejar);
-    if (recip)
-      return recip;
-    const mult = despejeMultiplicativo(conY[0], derecha);
-    if (mult) {
-      const limpio = despejar(mult);
-      if (limpio && limpio.completo)
-        return limpio;
-      return { ecuacion: mult, completo: false };
-    }
-  }
-  const sinDen = despejeSinDenominadores(D);
-  if (sinDen)
-    return sinDen;
-  const cuad = despejeCuadratico(D, DVal);
-  if (cuad)
-    return cuad;
-  const linEval = despejeLinealEnY(D);
-  if (linEval)
-    return linEval;
-  const trigCuad = despejeTrigCuadratico(D, DVal);
-  if (trigCuad)
-    return trigCuad;
-  const inv2 = despejePorInversion(L, R);
-  if (inv2)
-    return inv2;
-  const rad = despejeRadicales(D, DVal);
-  if (rad)
-    return rad;
-  return { ecuacion: `${renderTerminos(conY)} = ${renderCanonico(derecha)}`, completo: false };
-}
-function despejarEcuaciones(ecuaciones) {
-  return ecuaciones.map(
-    (entrada) => transformarSinRestriccion(entrada, (ec) => embellecerConstantes(despejar(ec)?.ecuacion ?? ec))
-  );
-}
-function despejeExplicito(ecuacion) {
-  const r = despejar(ecuacion);
-  if (!r || !r.completo)
-    return null;
-  const m = r.ecuacion.match(/^y\s*=\s*([\s\S]+)$/);
-  if (!m)
-    return null;
-  const rhs = m[1];
-  if (/(?<![a-zA-Z0-9_])(pm|mp|fam|famN)\s*\(/.test(rhs))
-    return null;
-  if (/(?<![a-zA-Z0-9_])y(?![a-zA-Z0-9_])/.test(rhs))
-    return null;
-  return rhs;
-}
-
 // src/core/analysis/periodicidadCampo.ts
 var PI3 = Math.PI;
 var CANDIDATOS = [1, PI3 / 2, 2, PI3, 4, 2 * PI3, 4 * PI3, 6 * PI3];
@@ -57555,6 +59249,98 @@ var Overlay = class {
   }
 };
 
+// src/core/analysis/formatoNumero.ts
+var CIFRAS = { evaluado: 6, medido: 4 };
+var TOL_SNAP_POR_ORIGEN = { evaluado: 1e-12, medido: 1e-4 };
+var TOL_SNAP = TOL_SNAP_POR_ORIGEN.medido;
+var DEN_MAX_PI = 16;
+var NUM_MAX_PI = 64;
+var DECIMALES = 4;
+var mcd7 = (a, b) => b === 0 ? a : mcd7(b, a % b);
+function cerca(v, objetivo, tol = TOL_SNAP) {
+  return Math.abs(v - objetivo) <= tol * Math.max(1, Math.abs(objetivo));
+}
+function formaDe(v, origen = "medido") {
+  if (!Number.isFinite(v))
+    return { tipo: "decimal", v };
+  const tol = TOL_SNAP_POR_ORIGEN[origen];
+  const n = Math.round(v);
+  if (cerca(v, n, tol))
+    return { tipo: "entero", n: n === 0 ? 0 : n };
+  const ratio = v / Math.PI;
+  for (let q = 1; q <= DEN_MAX_PI; q++) {
+    const p = Math.round(ratio * q);
+    if (p === 0 || Math.abs(p) > NUM_MAX_PI)
+      continue;
+    if (mcd7(Math.abs(p), q) !== 1)
+      continue;
+    if (cerca(v, p * Math.PI / q, tol))
+      return { tipo: "pi", f: { p, q } };
+  }
+  return { tipo: "decimal", v };
+}
+var MINIMO_FIJO = 1e-4;
+var MAXIMO_FIJO = 1e6;
+function formatearLectura(v, origen = "evaluado") {
+  if (!Number.isFinite(v))
+    return v > 0 ? "\u221E" : "-\u221E";
+  if (v === 0)
+    return "0";
+  const cifras = CIFRAS[origen];
+  const abs3 = Math.abs(v);
+  if (abs3 < MINIMO_FIJO || abs3 >= MAXIMO_FIJO)
+    return v.toExponential(cifras - 1);
+  return v.toPrecision(cifras);
+}
+function decimalCompacto(v) {
+  if (!Number.isFinite(v))
+    return v > 0 ? "\u221E" : "-\u221E";
+  const r = parseFloat(v.toFixed(DECIMALES));
+  return Object.is(r, -0) ? "0" : String(r);
+}
+function sinCerosFinales(s) {
+  const [mantisa, exponente] = s.split("e");
+  const limpia = mantisa.includes(".") ? mantisa.replace(/0+$/, "").replace(/\.$/, "") : mantisa;
+  return exponente === void 0 ? limpia : `${limpia}e${exponente}`;
+}
+var decimalDe = (v, origen) => origen === "evaluado" ? sinCerosFinales(formatearLectura(v, "evaluado")) : decimalCompacto(v);
+function numeroATexto(v, origen = "medido") {
+  const f = formaDe(v, origen);
+  if (f.tipo === "entero")
+    return String(f.n);
+  if (f.tipo === "decimal")
+    return decimalDe(f.v, origen);
+  const { p, q } = f.f;
+  const signo3 = p < 0 ? "-" : "";
+  const mag = Math.abs(p);
+  const numerador = mag === 1 ? "\u03C0" : `${mag}\u03C0`;
+  return q === 1 ? `${signo3}${numerador}` : `${signo3}${numerador}/${q}`;
+}
+function numeroALatex(v, origen = "medido") {
+  const f = formaDe(v, origen);
+  if (f.tipo === "entero")
+    return String(f.n);
+  if (f.tipo === "decimal") {
+    if (!Number.isFinite(f.v))
+      return f.v > 0 ? "\\infty" : "-\\infty";
+    return decimalDe(f.v, origen);
+  }
+  const { p, q } = f.f;
+  const signo3 = p < 0 ? "-" : "";
+  const mag = Math.abs(p);
+  const numerador = mag === 1 ? "\\pi" : `${mag}\\pi`;
+  return q === 1 ? `${signo3}${numerador}` : `${signo3}\\frac{${numerador}}{${q}}`;
+}
+function puntoALatex(x, y, origen = "medido") {
+  return `\\left(${numeroALatex(x, origen)},\\ ${numeroALatex(y, origen)}\\right)`;
+}
+function intervaloALatex(a, b, origen = "medido") {
+  return `\\left(${numeroALatex(a, origen)},\\ ${numeroALatex(b, origen)}\\right)`;
+}
+function listaALatex(vs, origen = "medido") {
+  return vs.map((v) => numeroALatex(v, origen)).join(",\\ ");
+}
+
 // src/core/rendering/Crosshair.ts
 var CURSOR_ICONO = "M430.5-430.59q-20.5-20.59-20.5-49.5t20.59-49.41q20.59-20.5 49.5-20.5t49.41 20.59q20.5 20.59 20.5 49.5t-20.59 49.41q-20.59 20.5-49.5 20.5t-49.41-20.59ZM450-640v-200h60v200h-60Zm0 520v-200h60v200h-60Zm190-330v-60h200v60H640Zm-520 0v-60h200v60H120Z";
 var Crosshair = class {
@@ -57590,7 +59376,7 @@ var Crosshair = class {
    * evaluar la función o de interpolar la polilínea— es una decisión matemática, y este módulo
    * es un renderer. La toma `Escena.yEnCurva`, que es el único sitio donde vive.
    */
-  dibujar(vp, cursorPx, item, anclado, y) {
+  dibujar(vp, cursorPx, item, anclado, y, yEvaluada = false) {
     const ctx = this.ctx;
     const W = vp.anchoPx;
     const H = vp.altoPx;
@@ -57641,8 +59427,8 @@ var Crosshair = class {
     ctx.font = "11px monospace";
     const tx = cursorPx + (aLaDerecha ? 5 : -5);
     ctx.fillStyle = paletaPlano().textoCrosshair;
-    ctx.fillText(`x = ${formatearNumero(worldX)}`, tx, 4);
-    ctx.fillText(`y = ${formatearNumero(y)}`, tx, 18);
+    ctx.fillText(`x = ${formatearLectura(worldX)}`, tx, 4);
+    ctx.fillText(`y = ${formatearLectura(y, yEvaluada ? "evaluado" : "medido")}`, tx, 18);
     ctx.restore();
   }
 };
@@ -57871,7 +59657,7 @@ function adaptativo(f, a, b, fa, fb, fm, entero2, tol, prof, presupuesto) {
     return suma3 + (suma3 - entero2) / 15;
   return adaptativo(f, a, m, fa, fm, flm, izq, tol / 2, prof - 1, presupuesto) + adaptativo(f, m, b, fm, fb, frm, der, tol / 2, prof - 1, presupuesto);
 }
-function integrar(f, a, b) {
+function integrar2(f, a, b) {
   const fa = f(a), fb = f(b), fm = f((a + b) / 2);
   if (!Number.isFinite(fa) || !Number.isFinite(fb) || !Number.isFinite(fm))
     return NaN;
@@ -57946,7 +59732,7 @@ function integrarExtremoSingular(f, a, b, loSing, hiSing, orient) {
   let epsR = hiSing ? span * 0.01 : 0;
   let prev = NaN, convergio = false, ultimo = NaN;
   for (let k = 0; k < ITERS_EPS; k++) {
-    const est = integrar(f, a + epsL, b - epsR);
+    const est = integrar2(f, a + epsL, b - epsR);
     if (!Number.isFinite(est) || Math.abs(est) > CAP_DIVERGENCIA)
       return ETIQUETA_DIVERGENTE;
     ultimo = est;
@@ -57981,7 +59767,7 @@ function areaDefinida(f, a, b) {
   const hiSing = !Number.isFinite(g(hi));
   if (loSing || hiSing)
     return integrarExtremoSingular(g, lo, hi, loSing, hiSing, orient);
-  const val = integrar(g, lo, hi);
+  const val = integrar2(g, lo, hi);
   if (!Number.isFinite(val) || Math.abs(val) > CAP_DIVERGENCIA)
     return ETIQUETA_DIVERGENTE;
   return { tipo: "valor", valor: orient * val, impropia: false };
@@ -58264,8 +60050,16 @@ var Escena = class {
       this.renderer.dibujarIntersecciones(this.puntosCruce, viewport);
     }
     if (cursorPx !== null && this.curvaRecorrible()) {
-      const y = yMundo !== void 0 ? yMundo : this.yEnCurva(aMundoX(viewport, cursorPx));
-      this.crosshair.dibujar(viewport, cursorPx, this.items[this.seleccion], anclado, y);
+      const lectura = this.lecturaEnCurva(aMundoX(viewport, cursorPx));
+      const y = yMundo !== void 0 ? yMundo : lectura.y;
+      this.crosshair.dibujar(
+        viewport,
+        cursorPx,
+        this.items[this.seleccion],
+        anclado,
+        y,
+        lectura.evaluada
+      );
     }
     if (ratonPx !== null && ratonPx !== void 0 && ratonPy !== null && ratonPy !== void 0) {
       this.crosshair.dibujarCursorCruz(ratonPx, ratonPy);
@@ -58300,11 +60094,24 @@ var Escena = class {
    * de dónde viene la matemática.
    */
   yEnCurva(worldX) {
+    return this.lecturaEnCurva(worldX).y;
+  }
+  /**
+   * Lo mismo que `yEnCurva`, pero diciendo además **de dónde salió el número**.
+   *
+   * Lo necesita quien vaya a ESCRIBIRLO: una `y` evaluada trae todas sus cifras buenas y se
+   * imprime con precisión de lectura; una interpolada entre dos vértices de la polilínea trae
+   * el error del trazado, y enseñarle seis cifras significativas sería enseñar cuatro cifras de
+   * ruido —además de hacerlas bailar con el zoom, porque la densidad de vértices depende del
+   * encuadre—. La precisión que se puede mostrar no es una decisión del renderer: es una
+   * propiedad de cómo se obtuvo el número, y el único sitio que lo sabe es este.
+   */
+  lecturaEnCurva(worldX) {
     const objeto = this.objetos[this.seleccion];
     if (objeto?.lectorY)
-      return objeto.lectorY(worldX);
+      return { y: objeto.lectorY(worldX), evaluada: true };
     const it = this.items[this.seleccion];
-    return it ? yEnRamas(it.geometria.ramas, worldX) : null;
+    return { y: it ? yEnRamas(it.geometria.ramas, worldX) : null, evaluada: false };
   }
   /** Ramas de la curva seleccionada listas para el carril. Con `recortar` (curvas con asíntota
    *  vertical) se descartan los tramos casi verticales (`recortarRamasPorPendiente`), para que la
@@ -58583,962 +60390,8 @@ function sustituirParametros(expr, parametros, valores) {
   });
 }
 
-// src/derivar.ts
-var VAR2 = "x";
-var RE_OPERADOR_DERIVADA = /^\s*\\frac\s*\{\s*d\s*\}\s*\{\s*d\s*x\s*\}\s*/;
-var RE_LEIBNIZ = /\\frac\s*\{\s*d[^{}]*\}\s*\{\s*d[^{}]*\}/;
-var esFuncionDeX = (f) => !contieneYLibre(insertarProductoImplicito(normalizarEntrada(f)));
-function quitarOperadorDerivada(ec) {
-  const m = RE_OPERADOR_DERIVADA.exec(ec);
-  if (!m)
-    return null;
-  const resto = ec.slice(m[0].length).trim();
-  if (resto === "")
-    return null;
-  const usaLeft = resto.startsWith("\\left(");
-  if (!usaLeft && !resto.startsWith("("))
-    return resto;
-  let profundidad = 0;
-  for (let i2 = 0; i2 < resto.length; i2++) {
-    if (resto.startsWith("\\left(", i2)) {
-      profundidad++;
-      i2 += "\\left(".length - 1;
-      continue;
-    }
-    if (resto.startsWith("\\right)", i2)) {
-      profundidad--;
-      i2 += "\\right)".length - 1;
-    } else if (resto[i2] === "(")
-      profundidad++;
-    else if (resto[i2] === ")")
-      profundidad--;
-    if (profundidad === 0) {
-      if (i2 !== resto.length - 1)
-        return resto;
-      const abre = usaLeft ? "\\left(".length : 1;
-      const cierra = usaLeft ? "\\right)".length : 1;
-      return resto.slice(abre, resto.length - cierra).trim() || null;
-    }
-  }
-  return resto;
-}
-function extraerFuncion(ec) {
-  const interior = quitarOperadorDerivada(ec);
-  if (interior !== null)
-    return esFuncionDeX(interior) ? interior : null;
-  if (RE_LEIBNIZ.test(ec))
-    return null;
-  const partes = ec.split("=");
-  let f = null;
-  if (partes.length === 1)
-    f = partes[0].trim() || null;
-  else if (partes.length === 2) {
-    if (normalizarEntrada(partes[0].trim()) === "y")
-      f = partes[1].trim() || null;
-    else if (normalizarEntrada(partes[1].trim()) === "y")
-      f = partes[0].trim() || null;
-  }
-  return f && esFuncionDeX(f) ? f : null;
-}
-var REGLAS_DERIVADA = ["sqrt(n1)^2 -> n1"].concat(simplify.rules);
-var derivadasEquivalentes = mismaFuncion;
-function factoresProducto(n) {
-  if (n.type === "ParenthesisNode")
-    return factoresProducto(n.content);
-  if (n.type === "OperatorNode" && n.op === "*" && n.args.length === 2)
-    return [...factoresProducto(n.args[0]), ...factoresProducto(n.args[1])];
-  return [n];
-}
-function extraerSigno(n) {
-  if (n.type === "ParenthesisNode")
-    return extraerSigno(n.content);
-  if (n.type === "OperatorNode") {
-    if (n.op === "-" && n.args.length === 1) {
-      const r = extraerSigno(n.args[0]);
-      return { signo: -r.signo, mag: r.mag };
-    }
-    if (n.op === "/" && n.args.length === 2) {
-      const a = extraerSigno(n.args[0]);
-      return { signo: a.signo, mag: opNodo("/", "divide", [a.mag, n.args[1]]) };
-    }
-    if (n.op === "*" && n.args.length === 2) {
-      const a = extraerSigno(n.args[0]), b = extraerSigno(n.args[1]);
-      return { signo: a.signo * b.signo, mag: opNodo("*", "multiply", [a.mag, b.mag]) };
-    }
-  }
-  if (n.type === "ConstantNode" && typeof n.value === "number" && n.value < 0)
-    return { signo: -1, mag: constNodo(-n.value) };
-  return { signo: 1, mag: n };
-}
-function derivadaDistribuida(norm3) {
-  let raiz;
-  try {
-    raiz = parse2(norm3);
-  } catch {
-    return null;
-  }
-  const fs = factoresProducto(raiz);
-  if (fs.length < 2)
-    return null;
-  const partes = [];
-  for (let i2 = 0; i2 < fs.length; i2++) {
-    let di;
-    try {
-      di = derivative(fs[i2], VAR2);
-    } catch {
-      return null;
-    }
-    if (esCeroLiteral(di))
-      continue;
-    let termino = di;
-    for (let j = 0; j < fs.length; j++)
-      if (j !== i2)
-        termino = opNodo("*", "multiply", [termino, fs[j]]);
-    try {
-      termino = combinarFracciones(simplify(termino, REGLAS_DERIVADA));
-    } catch {
-    }
-    for (const t2 of terminos(termino)) {
-      const { signo: signo3, mag } = extraerSigno(t2.nodo);
-      partes.push({ signo: t2.signo * signo3, mag });
-    }
-  }
-  if (partes.length === 0)
-    return parse2("0");
-  const orden = [...partes.filter((p) => p.signo === 1), ...partes.filter((p) => p.signo === -1)];
-  let s = "";
-  orden.forEach((p, i2) => {
-    const cuerpo = p.mag.toString();
-    if (i2 === 0)
-      s = p.signo === 1 ? cuerpo : `-(${cuerpo})`;
-    else
-      s += p.signo === 1 ? ` + ${cuerpo}` : ` - (${cuerpo})`;
-  });
-  try {
-    return parse2(s);
-  } catch {
-    return null;
-  }
-}
-function simplificarDerivada(cruda, norm3) {
-  const ref = cruda.toString();
-  const candidatas = [];
-  try {
-    const conRaices = simplify(cruda, REGLAS_DERIVADA);
-    try {
-      candidatas.push(combinarFracciones(conRaices));
-    } catch {
-    }
-    candidatas.push(conRaices);
-  } catch {
-  }
-  const dist = derivadaDistribuida(norm3);
-  if (dist)
-    candidatas.push(dist);
-  const costo2 = (n) => [profundidadFraccion(n), n.toString().length];
-  const menor2 = (a, b) => a[0] !== b[0] ? a[0] < b[0] : a[1] < b[1];
-  let mejor = cruda, mejorCosto = costo2(cruda);
-  for (const c of candidatas) {
-    try {
-      if (menor2(costo2(c), mejorCosto) && derivadasEquivalentes(c.toString(), ref)) {
-        mejor = c;
-        mejorCosto = costo2(c);
-      }
-    } catch {
-    }
-  }
-  return mejor;
-}
-var FUNCIONES_ESCALON = /* @__PURE__ */ new Set(["floor", "ceil"]);
-var esCeroLiteral = (n) => n.type === "ConstantNode" && n.value === 0;
-function derivarConEscalones(norm3) {
-  const escalones = [];
-  const sustituir = (n) => {
-    const m = n.map(sustituir);
-    if (m.type === "FunctionNode" && m.args?.length === 1 && FUNCIONES_ESCALON.has(m.fn?.name)) {
-      const nombre = `escalonInterno${escalones.length}`;
-      escalones.push({ nombre, original: n, arg: m.args[0] });
-      return simboloNodo(nombre);
-    }
-    return m;
-  };
-  const cuerpo = sustituir(parse2(norm3));
-  if (escalones.length === 0)
-    return derivative(norm3, VAR2);
-  let total = derivative(cuerpo, VAR2);
-  for (const e3 of escalones) {
-    const du = derivative(e3.arg, VAR2);
-    if (du.type === "ConstantNode")
-      continue;
-    const termino = opNodo("*", "multiply", [constNodo(0), du]);
-    total = esCeroLiteral(total) ? termino : opNodo("+", "add", [total, termino]);
-  }
-  const porNombre = new Map(escalones.map((e3) => [e3.nombre, e3.original]));
-  const restaurar = (n) => {
-    const m = n.map(restaurar);
-    return m.type === "SymbolNode" && porNombre.has(m.name) ? porNombre.get(m.name) : m;
-  };
-  return restaurar(total);
-}
-var SIMBOLO_SIGNO = { pm: "signoPmInterno", mp: "signoMpInterno" };
-var CENTINELA_DE_SIMBOLO = new Map(Object.entries(SIMBOLO_SIGNO).map(([fn, s]) => [s, fn]));
-function contarSimbolo(n, nombre) {
-  let total = 0;
-  n.forEach((h) => {
-    total += contarSimbolo(h, nombre);
-  });
-  return total + (n.type === "SymbolNode" && n.name === nombre ? 1 : 0);
-}
-var producto3 = (a, b) => a.type === "ConstantNode" && a.value === 1 ? b : b.type === "ConstantNode" && b.value === 1 ? a : opNodo("*", "multiply", [a, b]);
-function sacarFactorSimbolo(n, nombre) {
-  if (n.type === "SymbolNode" && n.name === nombre)
-    return constNodo(1);
-  if (n.type === "ParenthesisNode")
-    return sacarFactorSimbolo(n.content, nombre);
-  if (n.type === "OperatorNode" && n.op === "-" && n.args.length === 1) {
-    const a = sacarFactorSimbolo(n.args[0], nombre);
-    return a && opNodo("-", "unaryMinus", [a]);
-  }
-  if (n.type === "OperatorNode" && n.args.length === 2) {
-    if (n.op === "*") {
-      const izq = sacarFactorSimbolo(n.args[0], nombre);
-      if (izq)
-        return producto3(izq, n.args[1]);
-      const der = sacarFactorSimbolo(n.args[1], nombre);
-      return der && producto3(n.args[0], der);
-    }
-    if (n.op === "/") {
-      const num = sacarFactorSimbolo(n.args[0], nombre);
-      return num && opNodo("/", "divide", [num, n.args[1]]);
-    }
-  }
-  return null;
-}
-function restaurarSignos(n) {
-  if (n.type === "OperatorNode" && (n.op === "+" || n.op === "-") && n.args.length === 2)
-    return opNodo(n.op, n.fn, [restaurarSignos(n.args[0]), restaurarSignos(n.args[1])]);
-  if (n.type === "ParenthesisNode")
-    return restaurarSignos(n.content);
-  for (const [simbolo, centinela] of CENTINELA_DE_SIMBOLO) {
-    const veces = contarSimbolo(n, simbolo);
-    if (veces === 0)
-      continue;
-    const sin3 = veces === 1 ? sacarFactorSimbolo(n, simbolo) : null;
-    if (!sin3)
-      throw new Error("signo no factorizable");
-    return funcNodo(simboloNodo(centinela), [sin3]);
-  }
-  return n;
-}
-function sustituirSignos(norm3) {
-  const raiz = parse2(norm3);
-  let hay = false;
-  const sustituir = (n) => {
-    const m = n.map(sustituir);
-    const s = m.type === "FunctionNode" && m.args?.length === 1 ? SIMBOLO_SIGNO[m.fn?.name] : void 0;
-    if (!s)
-      return m;
-    hay = true;
-    return opNodo("*", "multiply", [simboloNodo(s), m.args[0]]);
-  };
-  const expr = sustituir(raiz).toString();
-  return { expr, hay };
-}
-function derivarExpr(expr) {
-  let norm3 = insertarProductoImplicito(normalizarEntrada(expr.trim()));
-  if (norm3 === "")
-    return null;
-  try {
-    if (clasificarDegenerada(compilarFuncion(norm3, VAR2)))
-      return null;
-  } catch {
-  }
-  let conSigno2 = false;
-  try {
-    const s = sustituirSignos(norm3);
-    norm3 = s.expr;
-    conSigno2 = s.hay;
-  } catch {
-    return null;
-  }
-  try {
-    if (conSigno2) {
-      return resimbolizarConstantes(
-        racionalizarFracciones(restaurarSignos(simplificarDerivada(derivarConEscalones(norm3), norm3)))
-      ).toString();
-    }
-    return resimbolizarConstantes(
-      racionalizarFracciones(simplificarDerivada(derivarConEscalones(norm3), norm3))
-    ).toString();
-  } catch {
-    return null;
-  }
-}
-function derivarEcuacion(ec) {
-  const f = extraerFuncion(ec);
-  return f ? derivarExpr(f) : null;
-}
-function derivadaOperadorSimplificadoLatex(ecuaciones) {
-  const f = ecuaciones.length ? extraerFuncion(ecuaciones[0]) : null;
-  if (f === null)
-    return null;
-  const simp = simplificarEcuaciones([f])[0];
-  return `\\frac{d}{d${VAR2}}\\left(${exprALatex(simp)}\\right)`;
-}
-function derivadaOperadorLatex(ecuaciones) {
-  const f = ecuaciones.length ? extraerFuncion(ecuaciones[0]) : null;
-  const cuerpo = f ? exprALatex(f) : "\\text{[...]}";
-  return `\\frac{d}{d${VAR2}}\\left(${cuerpo}\\right)`;
-}
-function derivadaLatex(ecuaciones) {
-  const d = ecuaciones.length ? derivarEcuacion(ecuaciones[0]) : null;
-  const cuerpo = d ? exprALatex(d) : "\\text{[...]}";
-  return `f'\\left(${VAR2}\\right) = ${cuerpo}`;
-}
-
-// src/core/analysis/formatoNumero.ts
-var TOL_SNAP = 1e-4;
-var DEN_MAX_PI = 16;
-var NUM_MAX_PI = 64;
-var DECIMALES = 4;
-var mcd6 = (a, b) => b === 0 ? a : mcd6(b, a % b);
-function cerca(v, objetivo) {
-  return Math.abs(v - objetivo) <= TOL_SNAP * Math.max(1, Math.abs(objetivo));
-}
-function formaDe(v) {
-  if (!Number.isFinite(v))
-    return { tipo: "decimal", v };
-  const n = Math.round(v);
-  if (cerca(v, n))
-    return { tipo: "entero", n: n === 0 ? 0 : n };
-  const ratio = v / Math.PI;
-  for (let q = 1; q <= DEN_MAX_PI; q++) {
-    const p = Math.round(ratio * q);
-    if (p === 0 || Math.abs(p) > NUM_MAX_PI)
-      continue;
-    if (mcd6(Math.abs(p), q) !== 1)
-      continue;
-    if (cerca(v, p * Math.PI / q))
-      return { tipo: "pi", f: { p, q } };
-  }
-  return { tipo: "decimal", v };
-}
-function decimalCompacto(v) {
-  if (!Number.isFinite(v))
-    return v > 0 ? "\u221E" : "-\u221E";
-  const r = parseFloat(v.toFixed(DECIMALES));
-  return Object.is(r, -0) ? "0" : String(r);
-}
-function numeroATexto(v) {
-  const f = formaDe(v);
-  if (f.tipo === "entero")
-    return String(f.n);
-  if (f.tipo === "decimal")
-    return decimalCompacto(f.v);
-  const { p, q } = f.f;
-  const signo3 = p < 0 ? "-" : "";
-  const mag = Math.abs(p);
-  const numerador = mag === 1 ? "\u03C0" : `${mag}\u03C0`;
-  return q === 1 ? `${signo3}${numerador}` : `${signo3}${numerador}/${q}`;
-}
-function numeroALatex(v) {
-  const f = formaDe(v);
-  if (f.tipo === "entero")
-    return String(f.n);
-  if (f.tipo === "decimal") {
-    if (!Number.isFinite(f.v))
-      return f.v > 0 ? "\\infty" : "-\\infty";
-    return decimalCompacto(f.v);
-  }
-  const { p, q } = f.f;
-  const signo3 = p < 0 ? "-" : "";
-  const mag = Math.abs(p);
-  const numerador = mag === 1 ? "\\pi" : `${mag}\\pi`;
-  return q === 1 ? `${signo3}${numerador}` : `${signo3}\\frac{${numerador}}{${q}}`;
-}
-function puntoALatex(x, y) {
-  return `\\left(${numeroALatex(x)},\\ ${numeroALatex(y)}\\right)`;
-}
-function intervaloALatex(a, b) {
-  return `\\left(${numeroALatex(a)},\\ ${numeroALatex(b)}\\right)`;
-}
-function listaALatex(vs) {
-  return vs.map(numeroALatex).join(",\\ ");
-}
-
-// src/integrar.ts
-var VAR3 = "x";
-var MUESTRAS = [-7.3, -2.6, -1.2, -0.7, -0.3, 0.4, 1.1, 2.7, 5.8, 11.4];
-var REGLAS_TRIG = [
-  { l: "csc(n1)", r: "1/sin(n1)" },
-  { l: "sec(n1)", r: "1/cos(n1)" },
-  { l: "cot(n1)", r: "cos(n1)/sin(n1)" },
-  { l: "tan(n1)", r: "sin(n1)/cos(n1)" },
-  { l: "sin(2*n1)", r: "2*sin(n1)*cos(n1)" },
-  { l: "cos(2*n1)", r: "1-2*sin(n1)^2" },
-  ...simplify.rules
-];
-function dependeDeX(n) {
-  return n.filter((nodo) => nodo.isSymbolNode === true && nodo.name === VAR3).length > 0;
-}
-function valorConstante(n) {
-  try {
-    const v = n.evaluate();
-    return typeof v === "number" && Number.isFinite(v) ? v : null;
-  } catch {
-    return null;
-  }
-}
-function coefLineal(u) {
-  try {
-    const a = valorConstante(simplify(derivative(u, VAR3)));
-    return a !== null && a !== 0 ? a : null;
-  } catch {
-    return null;
-  }
-}
-function factoresProducto2(n) {
-  if (n.type === "ParenthesisNode")
-    return factoresProducto2(n.content);
-  if (n.type === "OperatorNode" && n.op === "*" && n.args.length === 2)
-    return [...factoresProducto2(n.args[0]), ...factoresProducto2(n.args[1])];
-  return [n];
-}
-function integrarPotencia(base, n) {
-  const a = coefLineal(base);
-  if (a === null)
-    return null;
-  const u = base.toString();
-  if (Math.abs(n + 1) < 1e-12)
-    return `log(abs(${u}), e)/(${a})`;
-  const np1 = n + 1;
-  return `((${u})^(${np1}))/(${np1 * a})`;
-}
-function integrarReciproco(q) {
-  if (q.type === "OperatorNode" && q.op === "^" && q.args.length === 2 && !dependeDeX(q.args[1])) {
-    const k = valorConstante(q.args[1]);
-    if (k === null)
-      return null;
-    return integrarPotencia(q.args[0], -k);
-  }
-  const a = coefLineal(q);
-  if (a !== null)
-    return `log(abs(${q.toString()}), e)/(${a})`;
-  return integrarArcotangente(q);
-}
-function integrarArcotangente(q) {
-  let d1;
-  try {
-    d1 = simplify(derivative(q, VAR3));
-  } catch {
-    return null;
-  }
-  const dosK = coefLineal(d1);
-  if (dosK === null)
-    return null;
-  const k = dosK / 2;
-  try {
-    const fd = compilarFuncion(d1.toString(), VAR3);
-    const en0 = fd(0);
-    if (typeof en0 !== "number" || Math.abs(en0) > 1e-9)
-      return null;
-    const m = compilarFuncion(q.toString(), VAR3)(0);
-    if (typeof m !== "number" || !Number.isFinite(m) || k <= 0 || m <= 0)
-      return null;
-    return `atan(x*sqrt((${k})/(${m})))/sqrt((${k})*(${m}))`;
-  } catch {
-    return null;
-  }
-}
-function constanteLegible(c) {
-  for (let den = 1; den <= 24; den++) {
-    const num = Math.round(c * den);
-    if (Math.abs(c * den - num) < 1e-9)
-      return den === 1 ? `${num}` : `(${num})/(${den})`;
-  }
-  return `${c}`;
-}
-function integrarDerivadaLogaritmica(p, q) {
-  let fp, fq;
-  try {
-    fp = compilarFuncion(p.toString(), VAR3);
-    fq = compilarFuncion(q.toString(), VAR3);
-  } catch {
-    return null;
-  }
-  const h = 1e-6;
-  let c = null;
-  let comparables = 0;
-  for (const x of MUESTRAS) {
-    const vp = fp(x), q1 = fq(x + h), q0 = fq(x - h);
-    if (typeof vp !== "number" || !Number.isFinite(vp))
-      continue;
-    if (typeof q1 !== "number" || typeof q0 !== "number" || !Number.isFinite(q1) || !Number.isFinite(q0))
-      continue;
-    const dq = (q1 - q0) / (2 * h);
-    if (Math.abs(dq) < 1e-6)
-      continue;
-    const razon = vp / dq;
-    if (c === null)
-      c = razon;
-    else if (Math.abs(razon - c) > 1e-6 * (1 + Math.abs(c)))
-      return null;
-    comparables++;
-  }
-  if (c === null || comparables < 3)
-    return null;
-  return `(${constanteLegible(c)})*log(abs(${q.toString()}), e)`;
-}
-function integrarExponencial(base, exp3) {
-  const a = coefLineal(exp3);
-  if (a === null)
-    return null;
-  const b = base.toString();
-  return `((${b})^(${exp3.toString()}))/((${a})*log(${b}, e))`;
-}
-function integrarFuncion(nombre, arg2) {
-  const a = coefLineal(arg2);
-  if (a === null)
-    return null;
-  const u = arg2.toString();
-  switch (nombre) {
-    case "sin":
-      return `-cos(${u})/(${a})`;
-    case "cos":
-      return `sin(${u})/(${a})`;
-    case "exp":
-      return `exp(${u})/(${a})`;
-    case "tan":
-      return `-log(abs(cos(${u})), e)/(${a})`;
-    case "cot":
-      return `log(abs(sin(${u})), e)/(${a})`;
-    case "sec":
-      return `log(abs(sec(${u})+tan(${u})), e)/(${a})`;
-    case "csc":
-      return `-log(abs(csc(${u})+cot(${u})), e)/(${a})`;
-    case "sinh":
-      return `cosh(${u})/(${a})`;
-    case "cosh":
-      return `sinh(${u})/(${a})`;
-    case "sqrt":
-      return `(2*(${u})^(3/2))/(3*(${a}))`;
-    default:
-      return null;
-  }
-}
-function integrar2(n) {
-  if (n.type === "ParenthesisNode")
-    return integrar2(n.content);
-  if (!dependeDeX(n))
-    return `(${n.toString()})*x`;
-  if (n.type === "OperatorNode") {
-    const { op, args } = n;
-    if ((op === "+" || op === "-") && args.length === 2) {
-      const A = integrar2(args[0]);
-      const B = integrar2(args[1]);
-      return A !== null && B !== null ? `(${A})${op}(${B})` : null;
-    }
-    if (op === "-" && args.length === 1) {
-      const A = integrar2(args[0]);
-      return A !== null ? `-(${A})` : null;
-    }
-    if (op === "*") {
-      const factores2 = factoresProducto2(n);
-      const xdep = factores2.filter(dependeDeX);
-      if (xdep.length !== 1)
-        return null;
-      const I = integrar2(xdep[0]);
-      if (I === null)
-        return null;
-      const consts = factores2.filter((f) => !dependeDeX(f));
-      if (consts.length === 0)
-        return I;
-      return `(${consts.map((f) => `(${f.toString()})`).join("*")})*(${I})`;
-    }
-    if (op === "/" && args.length === 2) {
-      const [p, q] = args;
-      if (!dependeDeX(q)) {
-        const I = integrar2(p);
-        return I !== null ? `(${I})/(${q.toString()})` : null;
-      }
-      if (!dependeDeX(p)) {
-        const I = integrarReciproco(q);
-        return I !== null ? `(${p.toString()})*(${I})` : null;
-      }
-      return integrarDerivadaLogaritmica(p, q);
-    }
-    if (op === "^" && args.length === 2) {
-      const [base, exp3] = args;
-      if (dependeDeX(exp3)) {
-        return dependeDeX(base) ? null : integrarExponencial(base, exp3);
-      }
-      const n25 = valorConstante(exp3);
-      return n25 !== null ? integrarPotencia(base, n25) : null;
-    }
-  }
-  if (n.type === "FunctionNode" && n.args.length === 1)
-    return integrarFuncion(n.fn.name, n.args[0]);
-  if (n.type === "SymbolNode" && n.name === VAR3)
-    return "x^2/2";
-  return null;
-}
-function verificaNumerica(integrando, primitiva) {
-  let f, F;
-  try {
-    f = compilarFuncion(integrando, VAR3);
-    F = compilarFuncion(primitiva, VAR3);
-  } catch {
-    return false;
-  }
-  const h = 1e-6;
-  let comparables = 0;
-  for (const x of MUESTRAS) {
-    const vf = f(x);
-    if (typeof vf !== "number" || !Number.isFinite(vf))
-      continue;
-    const F1 = F(x + h), F0 = F(x - h);
-    if (typeof F1 !== "number" || typeof F0 !== "number" || !Number.isFinite(F1) || !Number.isFinite(F0))
-      continue;
-    const aprox = (F1 - F0) / (2 * h);
-    if (Math.abs(aprox - vf) > 1e-4 * (1 + Math.abs(vf)))
-      return false;
-    comparables++;
-  }
-  return comparables >= 3;
-}
-function integrarExpr(expr) {
-  const norm3 = insertarProductoImplicito(normalizarEntrada(expr.trim()));
-  if (norm3 === "")
-    return null;
-  let raiz;
-  try {
-    raiz = parse2(norm3);
-  } catch {
-    return null;
-  }
-  let cruda = integrar2(raiz);
-  if (cruda === null) {
-    try {
-      cruda = integrar2(simplify(norm3, REGLAS_TRIG));
-    } catch {
-      return null;
-    }
-  }
-  if (cruda === null)
-    return null;
-  let limpio = cruda;
-  try {
-    limpio = resimbolizarConstantes(racionalizarFracciones(simplify(cruda))).toString();
-  } catch {
-    try {
-      limpio = simplify(cruda).toString();
-    } catch {
-    }
-  }
-  return verificaNumerica(norm3, limpio) ? limpio : null;
-}
-
-// src/integral.ts
-function integrandoEnX(integrando, variable) {
-  if (variable === "x" || !/^[a-zA-Z]$/.test(variable))
-    return integrando;
-  return integrando.replace(new RegExp(`\\b${variable}\\b`, "g"), "x");
-}
-function leerGrupo(s, i2) {
-  while (i2 < s.length && /\s/.test(s[i2]))
-    i2++;
-  if (i2 >= s.length)
-    return null;
-  if (s[i2] === "{") {
-    let prof = 0;
-    for (let j = i2; j < s.length; j++) {
-      if (s[j] === "{")
-        prof++;
-      else if (s[j] === "}" && --prof === 0)
-        return { texto: s.slice(i2 + 1, j), fin: j + 1 };
-    }
-    return null;
-  }
-  if (s[i2] === "\\") {
-    const m = /^\\[a-zA-Z]+/.exec(s.slice(i2));
-    if (m)
-      return { texto: m[0], fin: i2 + m[0].length };
-    return { texto: s.slice(i2, i2 + 2), fin: i2 + 2 };
-  }
-  const num = /^-?\d+(?:\.\d+)?/.exec(s.slice(i2));
-  if (num)
-    return { texto: num[0], fin: i2 + num[0].length };
-  return { texto: s[i2], fin: i2 + 1 };
-}
-function parsearLatex(entrada) {
-  let s = entrada.replace(/\\in(?=\s*[_^])/g, "\\int").replace(/\\displaystyle/g, " ");
-  const idx = s.search(/\\int/);
-  if (idx < 0)
-    return null;
-  let i2 = idx + "\\int".length;
-  const lim = /^\\limits/.exec(s.slice(i2));
-  if (lim)
-    i2 += lim[0].length;
-  let a = null, b = null;
-  for (let k = 0; k < 2; k++) {
-    while (i2 < s.length && /\s/.test(s[i2]))
-      i2++;
-    const marca = s[i2];
-    if (marca !== "_" && marca !== "^")
-      break;
-    const g = leerGrupo(s, i2 + 1);
-    if (!g)
-      return null;
-    if (marca === "_")
-      a = g.texto;
-    else
-      b = g.texto;
-    i2 = g.fin;
-  }
-  if (a === null || b === null)
-    return null;
-  let resto = s.slice(i2).trim();
-  const dif = /(?:\\[,;! ]|\\quad|\\qquad|\s)*(?:\\mathrm\s*\{\s*d\s*\}|\\mathrm\s+d|d)\s*([a-zA-Z])\s*$/.exec(resto);
-  let variable = "x";
-  if (dif) {
-    variable = dif[1];
-    resto = resto.slice(0, dif.index).trim();
-  }
-  if (resto === "")
-    return null;
-  return { integrando: integrandoEnX(resto, variable), integrandoDisplay: resto, a, b, variable };
-}
-function integrandoDeLinea(l) {
-  const partes = l.split("=");
-  if (partes.length === 1)
-    return partes[0].trim() || null;
-  if (partes.length === 2) {
-    const izq = partes[0].trim(), der = partes[1].trim();
-    if (normalizarEntrada(izq) === "y")
-      return der || null;
-    if (normalizarEntrada(der) === "y")
-      return izq || null;
-    if (/^f\s*\(/i.test(izq))
-      return der || null;
-  }
-  return null;
-}
-function parsearLineas(entrada) {
-  const lineas = entrada.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== "");
-  let a = null, b = null;
-  const otras = [];
-  for (const l of lineas) {
-    const ma = /^a\s*=\s*(.+)$/i.exec(l);
-    const mb = /^b\s*=\s*(.+)$/i.exec(l);
-    if (ma)
-      a = ma[1].trim();
-    else if (mb)
-      b = mb[1].trim();
-    else
-      otras.push(l);
-  }
-  if (a === null || b === null || otras.length === 0)
-    return null;
-  const f = integrandoDeLinea(otras[0]);
-  return f ? { integrando: f, integrandoDisplay: f, a, b, variable: "x" } : null;
-}
-function normalizarInvisibles(texto) {
-  return texto.replace(/[\u200B\u200C\u200D\uFEFF]/gu, "").replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, " ");
-}
-function extraerIntegral(source) {
-  const s = normalizarInvisibles(source).trim();
-  if (s === "")
-    return null;
-  const it = /\\in/.test(s) ? parsearLatex(s) : parsearLineas(s);
-  return it && esIntegrandoValido(it.integrando) ? it : null;
-}
-function esIntegrandoValido(integrando) {
-  if (integrando.includes("="))
-    return false;
-  const norm3 = insertarProductoImplicito(normalizarEntrada(integrando));
-  return norm3 !== "" && !contieneYLibre(norm3);
-}
-function evaluarLimite(raw) {
-  const norm3 = insertarProductoImplicito(normalizarEntrada(raw.trim()));
-  if (norm3 === "")
-    return null;
-  try {
-    const v = compilarExpresion(norm3)({});
-    return typeof v === "number" && Number.isFinite(v) ? v : null;
-  } catch {
-    return null;
-  }
-}
-function latexSeguro(expr) {
-  try {
-    return exprALatex(expr) || "\\text{[...]}";
-  } catch {
-    return "\\text{[...]}";
-  }
-}
-function integralOperadorLatex(source) {
-  const it = extraerIntegral(source);
-  if (!it)
-    return `\\int_{\\text{[...]}}^{\\text{[...]}}\\text{[...]}\\,dx`;
-  let integrando = it.integrandoDisplay;
-  try {
-    integrando = simplificarEcuaciones([integrando])[0];
-  } catch {
-  }
-  return `\\int_{${latexSeguro(it.a)}}^{${latexSeguro(it.b)}} ${latexSeguro(integrando)}\\,d${it.variable}`;
-}
-function integralPrimitivaLatex(source) {
-  const it = extraerIntegral(source);
-  if (!it)
-    return null;
-  const primitiva = integrarExpr(it.integrando);
-  if (!primitiva)
-    return null;
-  const enVar = /^[a-zA-Z]$/.test(it.variable) && it.variable !== "x" ? primitiva.replace(/\bx\b/g, it.variable) : primitiva;
-  return `\\left[${latexSeguro(enVar)}\\right]_{${latexSeguro(it.a)}}^{${latexSeguro(it.b)}}`;
-}
-function integralValorLatex(source, cuerpoLatex, conector = "=") {
-  return `${integralOperadorLatex(source)} ${conector} ${cuerpoLatex}`;
-}
-function evaluarArea(source) {
-  const it = extraerIntegral(source);
-  if (!it)
-    return null;
-  const a = evaluarLimite(it.a), b = evaluarLimite(it.b);
-  const f = crearFuncionReal(insertarProductoImplicito(normalizarEntrada(it.integrando)));
-  return areaDefinida(f, a ?? NaN, b ?? NaN);
-}
-function formatearArea(v) {
-  const r = Math.round(v);
-  if (Math.abs(v - r) < 1e-9)
-    return String(r);
-  return parseFloat(v.toFixed(4)).toString();
-}
-function cuerpoAreaLatex(r) {
-  if (r.tipo === "etiqueta")
-    return { cuerpo: `\\text{${r.etiqueta}}`, conector: "=" };
-  return { cuerpo: formatearArea(r.valor), conector: r.impropia ? "\\approx" : "=" };
-}
-function racionalDe2(v, tol = 1e-9, qmax = 1e3) {
-  if (!Number.isFinite(v))
-    return null;
-  const signo3 = v < 0 ? -1 : 1;
-  let x = Math.abs(v);
-  let hm1 = 1, hm2 = 0, km1 = 0, km2 = 1;
-  for (let i2 = 0; i2 < 40; i2++) {
-    const a = Math.floor(x);
-    const h = a * hm1 + hm2, k = a * km1 + km2;
-    if (k > qmax)
-      break;
-    if (Math.abs(signo3 * h / k - v) <= tol * (1 + Math.abs(v)))
-      return { p: signo3 * h, q: k };
-    hm2 = hm1;
-    hm1 = h;
-    km2 = km1;
-    km1 = k;
-    const frac = x - a;
-    if (frac < 1e-15)
-      break;
-    x = 1 / frac;
-  }
-  return null;
-}
-var racionalStr = (r) => r.q === 1 ? String(r.p) : `${r.p}/${r.q}`;
-function multSimbolo(r, sym) {
-  const signo3 = r.p < 0 ? "-" : "";
-  const ap = Math.abs(r.p);
-  const num = ap === 1 ? sym : `${ap}*${sym}`;
-  return r.q === 1 ? `${signo3}${num}` : `${signo3}(${num})/${r.q}`;
-}
-function valorExactoExpr(v) {
-  if (!Number.isFinite(v))
-    return null;
-  const r = racionalDe2(v);
-  if (r)
-    return racionalStr(r);
-  const consts = [[Math.PI, "pi"], [Math.E, "e"]];
-  for (let k = 2; k <= 50; k++) {
-    const s = Math.sqrt(k);
-    if (!Number.isInteger(s))
-      consts.push([s, `sqrt(${k})`]);
-  }
-  for (let k = 2; k <= 50; k++)
-    consts.push([Math.log(k), `log(${k}, e)`]);
-  for (const [c, sym] of consts) {
-    const rr = racionalDe2(v / c);
-    if (rr)
-      return multSimbolo(rr, sym);
-  }
-  return null;
-}
-function valorExactoLatex(v) {
-  const e3 = valorExactoExpr(v);
-  if (!e3)
-    return null;
-  try {
-    return exprALatex(e3);
-  } catch {
-    return null;
-  }
-}
-var formatearAprox = (v) => parseFloat(v.toFixed(4)).toString();
-function cuerpoAreaLatexExacto(source) {
-  if (etiquetaIntegral(source))
-    return { cuerpo: null, conector: "=" };
-  const r = cuerpoAreaExactoBase(source);
-  const it = extraerIntegral(source);
-  const doble = it && tieneDobleSigno(insertarProductoImplicito(normalizarEntrada(it.integrando)));
-  if (!doble || r.cuerpo.startsWith("\\text{"))
-    return r;
-  return { cuerpo: `\\pm ${r.cuerpo.replace(/^-/, "")}`, conector: r.conector };
-}
-function etiquetaIntegral(source) {
-  const it = extraerIntegral(source);
-  if (!it)
-    return null;
-  const norm3 = insertarProductoImplicito(normalizarEntrada(it.integrando));
-  try {
-    const deg = clasificarDegenerada(compilarFuncion(norm3, "x"));
-    if (deg)
-      return deg;
-  } catch {
-  }
-  const area = evaluarArea(source);
-  return area && area.tipo === "etiqueta" ? { etiqueta: area.etiqueta, detalle: area.detalle } : null;
-}
-function cuerpoAreaExactoBase(source) {
-  const area = evaluarArea(source);
-  if (!area)
-    return { cuerpo: "\\text{[...]}", conector: "=" };
-  if (area.tipo === "etiqueta")
-    return cuerpoAreaLatex(area);
-  const it = extraerIntegral(source);
-  const primitiva = it ? integrarExpr(it.integrando) : null;
-  const a = it ? evaluarLimite(it.a) : null, b = it ? evaluarLimite(it.b) : null;
-  if (primitiva && a !== null && b !== null) {
-    try {
-      const F = crearFuncionReal(primitiva);
-      const v = F.eval(b) - F.eval(a);
-      const tol = area.impropia ? 1e-3 : 1e-5;
-      if (Number.isFinite(v) && Math.abs(v - area.valor) <= tol * (1 + Math.abs(area.valor))) {
-        const exacto2 = valorExactoLatex(v);
-        if (exacto2)
-          return { cuerpo: exacto2, conector: "=" };
-        return { cuerpo: formatearAprox(v), conector: "\\approx" };
-      }
-    } catch {
-    }
-  }
-  const ent = Math.round(area.valor);
-  if (Math.abs(area.valor - ent) < 1e-9)
-    return { cuerpo: String(ent), conector: "=" };
-  if (area.impropia)
-    return { cuerpo: numeroALatex(area.valor), conector: "\\approx" };
-  return { cuerpo: formatearAprox(area.valor), conector: "\\approx" };
-}
-
 // src/host-obsidian/ajustes.ts
-var import_obsidian3 = require("obsidian");
+var import_obsidian2 = require("obsidian");
 
 // src/i18n/en.ts
 var EN = {
@@ -59595,6 +60448,8 @@ var EN = {
     resumenDerivada: "What the derivative says about f",
     original: "Original",
     verFormula: "Show the formula",
+    verPlano: "Show the plane",
+    verCirculo: "Show the circle",
     cerrarFormula: "Hide the formula",
     editarBloque: "Edit the block",
     transformaciones: "Transformations",
@@ -59946,6 +60801,8 @@ var ES = {
     resumenDerivada: "Qu\xE9 dice la derivada de f",
     original: "Original",
     verFormula: "Ver la f\xF3rmula",
+    verPlano: "Ver el plano",
+    verCirculo: "Ver el c\xEDrculo",
     cerrarFormula: "Ocultar la f\xF3rmula",
     editarBloque: "Editar el bloque",
     transformaciones: "Transformaciones",
@@ -60261,6 +61118,8 @@ var PT = {
     resumenDerivada: "O que diz a derivada de f",
     original: "Original",
     verFormula: "Ver a f\xF3rmula",
+    verPlano: "Ver o plano",
+    verCirculo: "Ver o c\xEDrculo",
     cerrarFormula: "Ocultar a f\xF3rmula",
     editarBloque: "Editar o bloco",
     transformaciones: "Transforma\xE7\xF5es",
@@ -60555,9 +61414,6 @@ var idiomaActual = IDIOMA_POR_DEFECTO;
 function fijarIdioma(id) {
   idiomaActual = IDIOMAS.includes(id ?? "") ? id : IDIOMA_POR_DEFECTO;
 }
-function idiomaActivo() {
-  return idiomaActual;
-}
 function t() {
   return RECURSOS[idiomaActual];
 }
@@ -60568,349 +61424,16 @@ function localizarVelo(velo) {
   return mapa[velo.etiqueta] ?? velo;
 }
 
-// migracion/ModalMigracion.ts
-var import_obsidian2 = require("obsidian");
-
-// migracion/nombres.ts
-var RENOMBRES = [
-  { viejo: "obs-graph", nuevo: "_graph", motor: "graph" },
-  { viejo: "obs-system", nuevo: "_system", motor: "system" },
-  { viejo: "obs-derivate", nuevo: "_derivate", motor: "derivate" },
-  { viejo: "obs-integral", nuevo: "_integral", motor: "integral" },
-  { viejo: "obs-trig", nuevo: "_trig", motor: "trig" },
-  { viejo: "obs-vector", nuevo: "_vector", motor: "vector" }
-];
-function nombresDe(viejo) {
-  const fila = RENOMBRES.find((r) => r.viejo === viejo);
-  return fila ? [fila.viejo, fila.nuevo] : [viejo];
-}
-var HACIA_ADELANTE = new Map(RENOMBRES.map((r) => [r.viejo.toLowerCase(), r.nuevo]));
-var HACIA_ATRAS = new Map(RENOMBRES.map((r) => [r.nuevo.toLowerCase(), r.viejo]));
-function traducir(id, direccion = "adelante") {
-  const mapa = direccion === "adelante" ? HACIA_ADELANTE : HACIA_ATRAS;
-  return mapa.get(id.toLowerCase());
-}
-
-// migracion/escaner.ts
-function analizar(texto, direccion = "adelante") {
-  return localizar(texto, direccion).map((r) => r.hallazgo);
-}
-function reescribir(texto, direccion = "adelante") {
-  const reemplazos = localizar(texto, direccion);
-  if (reemplazos.length === 0)
-    return { texto, hallazgos: [] };
-  const trozos = [];
-  let cursor = 0;
-  for (const r of reemplazos) {
-    trozos.push(texto.slice(cursor, r.inicio), r.hallazgo.nuevo);
-    cursor = r.fin;
-  }
-  trozos.push(texto.slice(cursor));
-  return { texto: trozos.join(""), hallazgos: reemplazos.map((r) => r.hallazgo) };
-}
-function localizar(texto, direccion) {
-  const reemplazos = [];
-  let abierto = null;
-  let linea = 1;
-  let inicioLinea = 0;
-  while (inicioLinea <= texto.length) {
-    const salto = texto.indexOf("\n", inicioLinea);
-    const finLinea = salto === -1 ? texto.length : salto;
-    const finContenido = finLinea > inicioLinea && texto[finLinea - 1] === "\r" ? finLinea - 1 : finLinea;
-    const contenido = texto.slice(inicioLinea, finContenido);
-    if (abierto) {
-      if (esCierre(contenido, abierto))
-        abierto = null;
-    } else {
-      const apertura = leerApertura(contenido);
-      if (apertura) {
-        abierto = { caracter: apertura.caracter, longitud: apertura.longitud };
-        const nuevo = apertura.id ? traducir(apertura.id, direccion) : void 0;
-        if (apertura.id && nuevo) {
-          const inicio = inicioLinea + apertura.columnaId;
-          reemplazos.push({
-            inicio,
-            fin: inicio + apertura.id.length,
-            hallazgo: { linea, columna: apertura.columnaId, viejo: apertura.id, nuevo }
-          });
-        }
-      }
-    }
-    if (salto === -1)
-      break;
-    inicioLinea = salto + 1;
-    linea++;
-  }
-  return reemplazos;
-}
-function leerApertura(contenido) {
-  const m = /^[ \t]*(`{3,}|~{3,})/.exec(contenido);
-  if (!m)
-    return null;
-  const valla = m[1];
-  const caracter = valla[0];
-  const resto = contenido.slice(m[0].length);
-  if (caracter === "`" && resto.includes("`"))
-    return null;
-  const espacios = /^[ \t]*/.exec(resto)?.[0].length ?? 0;
-  const id = /^[^ \t]*/.exec(resto.slice(espacios))?.[0] ?? "";
-  return { caracter, longitud: valla.length, id, columnaId: m[0].length + espacios };
-}
-function esCierre(contenido, abierto) {
-  const patron = abierto.caracter === "`" ? /^[ \t]*(`{3,})[ \t]*$/ : /^[ \t]*(~{3,})[ \t]*$/;
-  const m = patron.exec(contenido);
-  return m !== null && m[1].length >= abierto.longitud;
-}
-
-// migracion/vault.ts
-async function escanear(app, direccion = "adelante") {
-  const notas = [];
-  let bloques = 0;
-  for (const archivo of app.vault.getMarkdownFiles()) {
-    let contenido;
-    try {
-      contenido = await app.vault.cachedRead(archivo);
-    } catch {
-      continue;
-    }
-    const hallazgos = analizar(contenido, direccion);
-    if (hallazgos.length > 0) {
-      notas.push({ archivo, hallazgos });
-      bloques += hallazgos.length;
-    }
-  }
-  notas.sort((a, b) => b.hallazgos.length - a.hallazgos.length);
-  return { notas, bloques };
-}
-async function aplicar(app, plan, direccion = "adelante") {
-  let notasCambiadas = 0;
-  let bloquesCambiados = 0;
-  const fallos = [];
-  for (const nota of plan.notas) {
-    try {
-      let cambiadosAqui = 0;
-      await app.vault.process(nota.archivo, (datos) => {
-        const { texto, hallazgos } = reescribir(datos, direccion);
-        cambiadosAqui = hallazgos.length;
-        return texto;
-      });
-      if (cambiadosAqui > 0) {
-        notasCambiadas++;
-        bloquesCambiados += cambiadosAqui;
-      }
-    } catch (e3) {
-      fallos.push({
-        ruta: nota.archivo.path,
-        error: e3 instanceof Error ? e3.message : String(e3)
-      });
-    }
-  }
-  return { notasCambiadas, bloquesCambiados, fallos };
-}
-
-// migracion/textos.ts
-var ES2 = {
-  avisoTitulo: "LMath: la sintaxis de los bloques ha cambiado",
-  avisoCuerpo: "Tus notas siguen funcionando. Abre los ajustes de LMath para actualizarlas al nombre nuevo.",
-  ajustesNombre: "Sintaxis de los bloques",
-  ajustesDescripcion: "Los bloques pasan de `obs-graph` a `_graph`. Los nombres antiguos siguen funcionando durante esta transici\xF3n; esta herramienta reescribe tus notas al nombre nuevo.",
-  ajustesBoton: "Actualizar mis notas",
-  modalTitulo: "Actualizar la sintaxis de los bloques",
-  modalIntro: "Los seis bloques de LMath cambian de nombre:",
-  columnaAntes: "Antes",
-  columnaAhora: "Ahora",
-  compatibilidad: "Los dos nombres funcionan mientras dure la transici\xF3n, as\xED que no hay ninguna prisa: puedes cerrar esto y volver cuando quieras.",
-  escaneando: "Buscando bloques en tus notas\u2026",
-  nadaQueHacer: "No hay ning\xFAn bloque con la sintaxis antigua. No hay nada que actualizar.",
-  advertencia: "Esto reescribe tus notas en el disco. Solo se cambia el nombre del bloque \u2014ni una l\xEDnea m\xE1s\u2014, pero conviene tener una copia del vault antes de seguir.",
-  resumen: (bloques, notas) => `${bloques} ${bloques === 1 ? "bloque" : "bloques"} en ${notas} ${notas === 1 ? "nota" : "notas"}:`,
-  bloquesEnNota: (n) => `${n} ${n === 1 ? "bloque" : "bloques"}`,
-  cancelar: "Cancelar",
-  confirmar: "Reescribir",
-  cerrar: "Cerrar",
-  hecho: (bloques, notas) => `Listo: ${bloques} ${bloques === 1 ? "bloque actualizado" : "bloques actualizados"} en ${notas} ${notas === 1 ? "nota" : "notas"}.`,
-  fallos: (n) => `${n} ${n === 1 ? "nota no se pudo escribir" : "notas no se pudieron escribir"}.`
-};
-var EN2 = {
-  avisoTitulo: "LMath: the block syntax has changed",
-  avisoCuerpo: "Your notes still work. Open the LMath settings to update them to the new name.",
-  ajustesNombre: "Block syntax",
-  ajustesDescripcion: "Blocks are moving from `obs-graph` to `_graph`. The old names keep working throughout this transition; this tool rewrites your notes to the new one.",
-  ajustesBoton: "Update my notes",
-  modalTitulo: "Update the block syntax",
-  modalIntro: "All six LMath blocks are being renamed:",
-  columnaAntes: "Before",
-  columnaAhora: "Now",
-  compatibilidad: "Both names work for as long as the transition lasts, so there is no hurry: you can close this and come back whenever you like.",
-  escaneando: "Looking for blocks in your notes\u2026",
-  nadaQueHacer: "No blocks use the old syntax. There is nothing to update.",
-  advertencia: "This rewrites your notes on disk. Only the block's name changes \u2014 not one line more \u2014 but it is worth having a backup of your vault before you continue.",
-  resumen: (bloques, notas) => `${bloques} ${bloques === 1 ? "block" : "blocks"} in ${notas} ${notas === 1 ? "note" : "notes"}:`,
-  bloquesEnNota: (n) => `${n} ${n === 1 ? "block" : "blocks"}`,
-  cancelar: "Cancel",
-  confirmar: "Rewrite",
-  cerrar: "Close",
-  hecho: (bloques, notas) => `Done: ${bloques} ${bloques === 1 ? "block" : "blocks"} updated in ${notas} ${notas === 1 ? "note" : "notes"}.`,
-  fallos: (n) => `${n} ${n === 1 ? "note could not be written" : "notes could not be written"}.`
-};
-var PT2 = {
-  avisoTitulo: "LMath: a sintaxe dos blocos mudou",
-  avisoCuerpo: "As suas notas continuam a funcionar. Abra as defini\xE7\xF5es do LMath para as atualizar para o nome novo.",
-  ajustesNombre: "Sintaxe dos blocos",
-  ajustesDescripcion: "Os blocos passam de `obs-graph` para `_graph`. Os nomes antigos continuam a funcionar durante esta transi\xE7\xE3o; esta ferramenta reescreve as suas notas para o nome novo.",
-  ajustesBoton: "Atualizar as minhas notas",
-  modalTitulo: "Atualizar a sintaxe dos blocos",
-  modalIntro: "Os seis blocos do LMath mudam de nome:",
-  columnaAntes: "Antes",
-  columnaAhora: "Agora",
-  compatibilidad: "Os dois nomes funcionam enquanto durar a transi\xE7\xE3o, por isso n\xE3o h\xE1 pressa: pode fechar isto e voltar quando quiser.",
-  escaneando: "A procurar blocos nas suas notas\u2026",
-  nadaQueHacer: "Nenhum bloco usa a sintaxe antiga. N\xE3o h\xE1 nada para atualizar.",
-  advertencia: "Isto reescreve as suas notas no disco. S\xF3 muda o nome do bloco \u2014 nem uma linha a mais \u2014, mas conv\xE9m ter uma c\xF3pia do cofre antes de continuar.",
-  resumen: (bloques, notas) => `${bloques} ${bloques === 1 ? "bloco" : "blocos"} em ${notas} ${notas === 1 ? "nota" : "notas"}:`,
-  bloquesEnNota: (n) => `${n} ${n === 1 ? "bloco" : "blocos"}`,
-  cancelar: "Cancelar",
-  confirmar: "Reescrever",
-  cerrar: "Fechar",
-  hecho: (bloques, notas) => `Pronto: ${bloques} ${bloques === 1 ? "bloco atualizado" : "blocos atualizados"} em ${notas} ${notas === 1 ? "nota" : "notas"}.`,
-  fallos: (n) => `${n} ${n === 1 ? "nota n\xE3o p\xF4de ser escrita" : "notas n\xE3o puderam ser escritas"}.`
-};
-function tm() {
-  const id = idiomaActivo();
-  return id === "es" ? ES2 : id === "pt" ? PT2 : EN2;
-}
-
-// migracion/ModalMigracion.ts
-var ModalMigracion = class extends import_obsidian2.Modal {
-  constructor(app, alCerrar) {
-    super(app);
-    this.alCerrar = alCerrar;
-  }
-  onOpen() {
-    const txt = tm();
-    this.titleEl.setText(txt.modalTitulo);
-    this.contentEl.addClass("lmath-mig");
-    this.pintarCabecera();
-    const zona = this.contentEl.createDiv({ cls: "lmath-mig-zona" });
-    zona.createEl("p", { text: txt.escaneando, cls: "lmath-mig-estado" });
-    void escanear(this.app).then(
-      (plan) => {
-        this.pintarResumen(zona, plan);
-      },
-      () => {
-        zona.empty();
-        zona.createEl("p", { text: txt.nadaQueHacer, cls: "lmath-mig-estado" });
-      }
-    );
-  }
-  onClose() {
-    this.contentEl.empty();
-    this.alCerrar?.();
-  }
-  /** La tabla de renombrado y la nota de compatibilidad: lo que no cambia entre estados. */
-  pintarCabecera() {
-    const txt = tm();
-    this.contentEl.createEl("p", { text: txt.modalIntro });
-    const tabla = this.contentEl.createEl("table", { cls: "lmath-mig-tabla" });
-    const cabecera = tabla.createEl("thead").createEl("tr");
-    cabecera.createEl("th", { text: txt.columnaAntes });
-    cabecera.createEl("th", { text: "\u2192", cls: "lmath-mig-flecha" });
-    cabecera.createEl("th", { text: txt.columnaAhora });
-    const cuerpo = tabla.createEl("tbody");
-    for (const r of RENOMBRES) {
-      const fila = cuerpo.createEl("tr");
-      fila.createEl("td").createEl("code", { text: r.viejo });
-      fila.createEl("td", { text: "\u2192", cls: "lmath-mig-flecha" });
-      fila.createEl("td").createEl("code", { text: r.nuevo, cls: "lmath-mig-nuevo" });
-    }
-    this.contentEl.createEl("p", { text: txt.compatibilidad, cls: "lmath-mig-calma" });
-  }
-  /** Estado 2: lo encontrado, y el botón que lo aplica. */
-  pintarResumen(zona, plan) {
-    const txt = tm();
-    zona.empty();
-    if (plan.bloques === 0) {
-      zona.createEl("p", { text: txt.nadaQueHacer, cls: "lmath-mig-estado" });
-      this.pintarBotones(zona, [{ etiqueta: txt.cerrar, principal: true, accion: () => {
-        this.close();
-      } }]);
-      return;
-    }
-    zona.createEl("p", {
-      text: txt.resumen(plan.bloques, plan.notas.length),
-      cls: "lmath-mig-resumen"
-    });
-    const lista = zona.createDiv({ cls: "lmath-mig-lista" });
-    for (const nota of plan.notas) {
-      const fila = lista.createDiv({ cls: "lmath-mig-fila" });
-      fila.createSpan({ text: nota.archivo.path, cls: "lmath-mig-ruta" });
-      fila.createSpan({
-        text: txt.bloquesEnNota(nota.hallazgos.length),
-        cls: "lmath-mig-cuenta"
-      });
-    }
-    zona.createEl("p", { text: txt.advertencia, cls: "lmath-mig-aviso" });
-    this.pintarBotones(zona, [
-      { etiqueta: txt.cancelar, principal: false, accion: () => {
-        this.close();
-      } },
-      {
-        etiqueta: `${txt.confirmar} (${plan.bloques})`,
-        principal: true,
-        accion: () => {
-          void this.ejecutar(zona, plan);
-        }
-      }
-    ]);
-  }
-  /** Estado 3: se aplica y se informa. */
-  async ejecutar(zona, plan) {
-    const txt = tm();
-    zona.empty();
-    zona.createEl("p", { text: txt.escaneando, cls: "lmath-mig-estado" });
-    const resultado = await aplicar(this.app, plan);
-    zona.empty();
-    zona.createEl("p", {
-      text: txt.hecho(resultado.bloquesCambiados, resultado.notasCambiadas),
-      cls: "lmath-mig-resumen"
-    });
-    if (resultado.fallos.length > 0) {
-      zona.createEl("p", { text: txt.fallos(resultado.fallos.length), cls: "lmath-mig-aviso" });
-      const lista = zona.createDiv({ cls: "lmath-mig-lista" });
-      for (const fallo of resultado.fallos) {
-        lista.createDiv({ cls: "lmath-mig-fila" }).createSpan({
-          text: fallo.ruta,
-          cls: "lmath-mig-ruta"
-        });
-      }
-    }
-    this.pintarBotones(zona, [
-      { etiqueta: txt.cerrar, principal: true, accion: () => {
-        this.close();
-      } }
-    ]);
-  }
-  pintarBotones(zona, botones) {
-    const barra = zona.createDiv({ cls: "lmath-mig-botones" });
-    for (const b of botones) {
-      const boton = barra.createEl("button", { text: b.etiqueta });
-      if (b.principal)
-        boton.addClass("mod-cta");
-      boton.addEventListener("click", b.accion);
-    }
-  }
-};
-
 // src/host-obsidian/ajustes.ts
 var AJUSTES_POR_DEFECTO = {
   despejarAuto: false,
   puntosNotables: false,
   encuadreAuto: true,
-  unidadAngulo: "degrees",
+  unidadAngulo: "radians",
   imanTrig: true,
   idioma: IDIOMA_POR_DEFECTO
 };
-var PestanaAjustesLMath = class extends import_obsidian3.PluginSettingTab {
+var PestanaAjustesLMath = class extends import_obsidian2.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -61031,33 +61554,6 @@ var PestanaAjustesLMath = class extends import_obsidian3.PluginSettingTab {
             control: { type: "toggle", key: "imanTrig" }
           }
         ]
-      },
-      // ── Migración de la sintaxis (SECCIÓN TEMPORAL) ────────────────────────────────────
-      // Se retira entera el día que los `obs-*` dejen de aceptarse. Hasta entonces es el único
-      // sitio permanente donde alguien puede enterarse del renombrado y actuar: el aviso del
-      // arranque se enseña UNA vez y se va, esta fila se queda.
-      //
-      // Va con `render` y no con un `control` declarativo porque no persiste ningún ajuste —
-      // dispara una acción—, y los `control` de la API declarativa están hechos para leer y
-      // escribir una clave de `AjustesTransformaciones`.
-      {
-        type: "group",
-        heading: tm().ajustesNombre,
-        items: [
-          {
-            name: tm().modalTitulo,
-            desc: tm().ajustesDescripcion,
-            render: (setting) => {
-              setting.addButton((boton) => {
-                boton.setButtonText(tm().ajustesBoton);
-                boton.setCta();
-                boton.onClick(() => {
-                  new ModalMigracion(this.app).open();
-                });
-              });
-            }
-          }
-        ]
       }
     ];
   }
@@ -61127,6 +61623,144 @@ var PestanaAjustesLMath = class extends import_obsidian3.PluginSettingTab {
     this.plugin.notificarCambioDeAjustes();
   }
 };
+
+// src/host-obsidian/analysis/areaIntegral.ts
+function evaluarArea(source) {
+  const it = extraerIntegral(source);
+  if (!it)
+    return null;
+  const a = evaluarLimite(it.a), b = evaluarLimite(it.b);
+  const f = crearFuncionReal(insertarProductoImplicito(normalizarEntrada(it.integrando)));
+  return areaDefinida(f, a ?? NaN, b ?? NaN);
+}
+function formatearArea(v) {
+  const r = Math.round(v);
+  if (Math.abs(v - r) < 1e-9)
+    return String(r);
+  return parseFloat(v.toFixed(4)).toString();
+}
+function cuerpoAreaLatex(r) {
+  if (r.tipo === "etiqueta")
+    return { cuerpo: `\\text{${r.etiqueta}}`, conector: "=" };
+  return { cuerpo: formatearArea(r.valor), conector: r.impropia ? "\\approx" : "=" };
+}
+function racionalDe3(v, tol = 1e-9, qmax = 1e3) {
+  if (!Number.isFinite(v))
+    return null;
+  const signo3 = v < 0 ? -1 : 1;
+  let x = Math.abs(v);
+  let hm1 = 1, hm2 = 0, km1 = 0, km2 = 1;
+  for (let i2 = 0; i2 < 40; i2++) {
+    const a = Math.floor(x);
+    const h = a * hm1 + hm2, k = a * km1 + km2;
+    if (k > qmax)
+      break;
+    if (Math.abs(signo3 * h / k - v) <= tol * (1 + Math.abs(v)))
+      return { p: signo3 * h, q: k };
+    hm2 = hm1;
+    hm1 = h;
+    km2 = km1;
+    km1 = k;
+    const frac = x - a;
+    if (frac < 1e-15)
+      break;
+    x = 1 / frac;
+  }
+  return null;
+}
+var racionalStr = (r) => r.q === 1 ? String(r.p) : `${r.p}/${r.q}`;
+function multSimbolo(r, sym) {
+  const signo3 = r.p < 0 ? "-" : "";
+  const ap = Math.abs(r.p);
+  const num = ap === 1 ? sym : `${ap}*${sym}`;
+  return r.q === 1 ? `${signo3}${num}` : `${signo3}(${num})/${r.q}`;
+}
+function valorExactoExpr(v) {
+  if (!Number.isFinite(v))
+    return null;
+  const r = racionalDe3(v);
+  if (r)
+    return racionalStr(r);
+  const consts = [[Math.PI, "pi"], [Math.E, "e"]];
+  for (let k = 2; k <= 50; k++) {
+    const s = Math.sqrt(k);
+    if (!Number.isInteger(s))
+      consts.push([s, `sqrt(${k})`]);
+  }
+  for (let k = 2; k <= 50; k++)
+    consts.push([Math.log(k), `log(${k}, e)`]);
+  for (const [c, sym] of consts) {
+    const rr = racionalDe3(v / c);
+    if (rr)
+      return multSimbolo(rr, sym);
+  }
+  return null;
+}
+function valorExactoLatex(v) {
+  const e3 = valorExactoExpr(v);
+  if (!e3)
+    return null;
+  try {
+    return exprALatex(e3);
+  } catch {
+    return null;
+  }
+}
+var formatearAprox = (v) => parseFloat(v.toFixed(4)).toString();
+function cuerpoAreaLatexExacto(source) {
+  if (etiquetaIntegral(source))
+    return { cuerpo: null, conector: "=" };
+  const r = cuerpoAreaExactoBase(source);
+  const it = extraerIntegral(source);
+  const doble = it && tieneDobleSigno(insertarProductoImplicito(normalizarEntrada(it.integrando)));
+  if (!doble || r.cuerpo.startsWith("\\text{"))
+    return r;
+  return { cuerpo: `\\pm ${r.cuerpo.replace(/^-/, "")}`, conector: r.conector };
+}
+function etiquetaIntegral(source) {
+  const it = extraerIntegral(source);
+  if (!it)
+    return null;
+  const norm3 = insertarProductoImplicito(normalizarEntrada(it.integrando));
+  try {
+    const deg = clasificarDegenerada(compilarFuncion(norm3, "x"));
+    if (deg)
+      return deg;
+  } catch {
+  }
+  const area = evaluarArea(source);
+  return area && area.tipo === "etiqueta" ? { etiqueta: area.etiqueta, detalle: area.detalle } : null;
+}
+function cuerpoAreaExactoBase(source) {
+  const area = evaluarArea(source);
+  if (!area)
+    return { cuerpo: "\\text{[...]}", conector: "=" };
+  if (area.tipo === "etiqueta")
+    return cuerpoAreaLatex(area);
+  const it = extraerIntegral(source);
+  const primitiva = it ? integrarExpr(it.integrando) : null;
+  const a = it ? evaluarLimite(it.a) : null, b = it ? evaluarLimite(it.b) : null;
+  if (primitiva && a !== null && b !== null) {
+    try {
+      const F = crearFuncionReal(primitiva);
+      const v = F.eval(b) - F.eval(a);
+      const tol = area.impropia ? 1e-3 : 1e-5;
+      if (Number.isFinite(v) && Math.abs(v - area.valor) <= tol * (1 + Math.abs(area.valor))) {
+        const exacto2 = valorExactoLatex(v);
+        if (exacto2)
+          return { cuerpo: exacto2, conector: "=" };
+        return { cuerpo: formatearAprox(v), conector: "\\approx" };
+      }
+    } catch {
+    }
+  }
+  const ent = Math.round(area.valor);
+  if (Math.abs(area.valor - ent) < 1e-9)
+    return { cuerpo: String(ent), conector: "=" };
+  if (area.impropia)
+    return { cuerpo: numeroALatex(area.valor), conector: "\\approx" };
+  return { cuerpo: formatearAprox(area.valor), conector: "\\approx" };
+}
 
 // src/host-obsidian/analysis/clasificacion.ts
 function clasificarBloque(ecuaciones, rasgos, source = "") {
@@ -61311,19 +61945,240 @@ function ladoIcono(lado) {
 function huecoChips(lado) {
   return MARGEN_FLOTANTE + lado + MARGEN_FLOTANTE;
 }
+function alCambiarReparto(reparto, oyente) {
+  (reparto.oyentes ?? (reparto.oyentes = [])).push(oyente);
+}
+function avisarCambioDeReparto(reparto) {
+  for (const oyente of reparto.oyentes ?? [])
+    oyente();
+}
 function aplicarCajaPanel(reparto) {
   const panel = reparto.panel;
   if (!panel)
     return;
+  if (!reparto.estrecho) {
+    panel.style.cssText = `position:relative; width:50%; height:${reparto.alto ?? ALTO_PANEL}px; padding:0; overflow:hidden;`;
+    return;
+  }
+  const visible = reparto.abierto ? "flex" : "none";
+  if (reparto.panelCompleto) {
+    const suelo2 = reparto.huecoInferior ?? 0;
+    panel.style.cssText = `position:absolute; top:0; left:0; right:0; bottom:${suelo2}px; width:auto; height:auto; z-index:6; box-sizing:border-box; display:${visible}; padding:0; overflow:hidden; background:var(--lmath-panel);`;
+    return;
+  }
   const suelo = huecoChips(reparto.ladoChip) + (reparto.huecoInferior ?? 0);
-  panel.style.cssText = reparto.estrecho ? `position:absolute; z-index:6; box-sizing:border-box; display:${reparto.abierto ? "flex" : "none"}; left:${MARGEN_FLOTANTE}px; right:${MARGEN_FLOTANTE}px; bottom:${suelo}px; width:auto; height:${ALTO_PANEL_FLOTANTE}px; padding:0; overflow:hidden; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:12px; box-shadow:var(--lmath-sombra-flotante);` : `position:relative; width:50%; height:${reparto.alto ?? ALTO_PANEL}px; padding:0; overflow:hidden;`;
+  panel.style.cssText = `position:absolute; z-index:6; box-sizing:border-box; display:${visible}; left:${MARGEN_FLOTANTE}px; right:${MARGEN_FLOTANTE}px; bottom:${suelo}px; width:auto; height:${ALTO_PANEL_FLOTANTE}px; padding:0; overflow:hidden; background:var(--lmath-panel); border:1px solid var(--lmath-borde); border-radius:12px; box-shadow:var(--lmath-sombra-flotante);`;
 }
 function esTemaOscuro(el) {
   return el.doc.body.classList.contains("theme-dark");
 }
 
-// src/host-obsidian/ui/scrollerLatex.ts
+// src/host-obsidian/ui/edicionBloque.ts
 var import_obsidian4 = require("obsidian");
+
+// src/host-obsidian/ui/controles.ts
+var import_obsidian3 = require("obsidian");
+
+// src/host-obsidian/ui/iconos.ts
+var ICONO = {
+  inicio: "M220-180h150v-250h220v250h150v-390L480-765 220-570v390Zm-60 60v-480l320-240 320 240v480H530v-250H430v250H160Zm320-353Z",
+  acercar: "M450-450H200v-60h250v-250h60v250h250v60H510v250h-60v-250Z",
+  alejar: "M200-450v-60h560v60H200Z",
+  carril: "M450-42v-75q-137-14-228-105T117-450H42v-60h75q14-137 105-228t228-105v-75h60v75q137 14 228 105t105 228h75v60h-75q-14 137-105 228T510-117v75h-60Zm244.5-223.5Q784-355 784-480t-89.5-214.5Q605-784 480-784t-214.5 89.5Q176-605 176-480t89.5 214.5Q355-176 480-176t214.5-89.5Zm-321-108Q330-417 330-480t43.5-106.5Q417-630 480-630t106.5 43.5Q630-543 630-480t-43.5 106.5Q543-330 480-330t-106.5-43.5ZM544-416q26-26 26-64t-26-64q-26-26-64-26t-64 26q-26 26-26 64t26 64q26 26 64 26t64-26Zm-64-64Z",
+  info: "M453-280h60v-240h-60v240Zm50.5-323.2q9.5-9.2 9.5-22.8 0-14.45-9.48-24.22-9.48-9.78-23.5-9.78t-23.52 9.78Q447-640.45 447-626q0 13.6 9.48 22.8 9.48 9.2 23.5 9.2t23.52-9.2ZM480.27-80q-82.74 0-155.5-31.5Q252-143 197.5-197.5t-86-127.34Q80-397.68 80-480.5t31.5-155.66Q143-709 197.5-763t127.34-85.5Q397.68-880 480.5-880t155.66 31.5Q709-817 763-763t85.5 127Q880-563 880-480.27q0 82.74-31.5 155.5Q817-252 763-197.68q-54 54.31-127 86Q563-80 480.27-80Zm.23-60Q622-140 721-239.5t99-241Q820-622 721.19-721T480-820q-141 0-240.5 98.81T140-480q0 141 99.5 240.5t241 99.5Zm-.5-340Z",
+  menu: "M120-240v-60h720v60H120Zm0-210v-60h720v60H120Zm0-210v-60h720v60H120Z",
+  reproducir: "M320-200v-560l440 280-440 280Z",
+  pausar: "M520-200v-560h240v560H520Zm-320 0v-560h240v560H200Z",
+  cerrar: "m249-207-42-42 231-231-231-231 42-42 231 231 231-231 42 42-231 231 231 231-42 42-231-231-231 231Z",
+  // Editar el bloque: en móvil no existe el botón `</>` de Obsidian —aparece al pasar el
+  // ratón, y no hay ratón—, así que el bloque se queda sin puerta a su propio código.
+  editar: "M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h405l-60 60H180v600h600v-348l60-60v408q0 24-18 42t-42 18H180Zm300-360ZM360-360v-170l382-382q9-9 20-13t22-4q11 0 22.32 4.5Q817.63-920 827-911l83 84q8.61 8.96 13.3 19.78 4.7 10.83 4.7 22.02 0 11.2-4.5 22.7T910-742L530-360H360Zm508-425-84-84 84 84ZM420-420h85l253-253-43-42-43-42-252 251v86Zm295-295-43-42 43 42 43 42-43-42Z",
+  // Los mandos de los parámetros declarados: una píldora con su manija, que es exactamente lo
+  // que abre el botón.
+  deslizadores: "M201-360q-53 0-86.5-33.5T81-480q0-53 33.5-86.5T201-600h558q53 0 86.5 33.5T879-480q0 53-33.5 86.5T759-360H201Zm365-60h197q26 0 43-17t17-43q0-34-17-47t-43-13H566v120Z",
+  // El PLANO CARTESIANO: los dos ejes cruzados en el origen, con punta de flecha en los
+  // sentidos positivos (derecha y arriba), que es como se dibuja en cualquier pizarra. Dibujado
+  // a mano —Material Symbols no trae este símbolo—, con el grosor de asta del resto del juego
+  // (60 unidades, el mismo de las barras del + y del −) para que no cante al lado de ellos.
+  //
+  // Las flechas no son adorno: sin ellas, dos astas cruzadas a 15px son EL MISMO DIBUJO que el
+  // chip de acercar (+). Son lo único que distingue un icono del otro a tamaño de chip, y por
+  // eso son gruesas (160×100) en vez de la punta fina que pediría el dibujo a tamaño grande.
+  //
+  // Marcas de escala en los ejes se probaron y se descartaron: a 15px una marca de 40 unidades
+  // mide 0,6px y solo ensucia el cruce.
+  //
+  // Las cuatro subtrayectorias giran en el MISMO sentido a propósito. La punta pisa su asta
+  // (para que no quede costura entre las dos), y con `nonzero` dos trozos que se solapan girando
+  // al revés se restan: la muesca saldría justo en la unión.
+  cartesian_plane: "M480-870l80 100h-160l80-100ZM450-790h60v670h-60v-670ZM120-510h670v60H120v-60ZM870-480l-100 80v-160l100 80Z",
+  // Circulo unitario: la otra cara de `obs-trig`, como `cartesian_plane` lo es del resto.
+  //
+  // El ANILLO se dibuja con dos circunferencias de sentidos OPUESTOS: con `nonzero`, la
+  // interior resta y abre el hueco. Los dos ejes van en el mismo sentido que la exterior, asi
+  // que al cruzar ese hueco vuelven a sumar y la cruz se ve DENTRO del circulo — que es
+  // justamente el dibujo, y no un circulo con dos rabos.
+  //
+  // Sin puntas de flecha, y no por descuido: en `cartesian_plane` son lo unico que separa dos
+  // astas cruzadas del chip de acercar (+), pero aqui esa distincion la hace el circulo. A
+  // tamano de chip (15-20px) una punta mas solo ensucia el cruce.
+  //
+  // Los ejes sobresalen 60 unidades del circulo por cada lado: pegados al borde se leerian
+  // como radios en vez de como ejes.
+  unit_circle: "M480-810a330 330 0 1 1 0 660a330 330 0 1 1 0-660ZM480-750a270 270 0 1 0 0 540a270 270 0 1 0 0-540ZM90-510h780v60H90zM450-870h60v780h-60z"
+};
+var THETA = "M151.4 -272.1C198.2 -272.1 233.2 -211.2 229.5 -136.1C225.8 -60.9 184.9 0 138.1 0C91.3 0 56.3 -60.9 60 -136.1C63.7 -211.2 104.6 -272.1 151.4 -272.1ZM150.4 -251.9C123.4 -251.9 98.9 -200 95.8 -136.1C92.6 -72.1 112 -20.2 139.1 -20.2C166.1 -20.2 190.6 -72.1 193.7 -136.1C196.9 -200 177.5 -251.9 150.4 -251.9ZM60.6 -148.5L230.1 -148.5L228.9 -123.6L59.4 -123.6Z";
+var CAJA_UNIDAD = "30 -302 363 378";
+var GLIFO_UNIDAD = {
+  degrees: { caja: CAJA_UNIDAD, d: THETA + "M290.9 -79.5Q306.5 -79.5 319.2 -76.1Q331.9 -72.7 341 -65.4Q350.1 -58.2 355 -47.3Q360 -36.4 360 -21.4Q360 -8.3 355.6 3.8Q351.2 15.8 342.3 25.3Q333.5 34.8 320.2 40.3Q306.8 45.9 289.1 45.9L242.8 45.9L243.2 40Q250 39.6 252.7 36.8Q255.3 34.1 255.9 29.2Q256.4 24.2 256.6 18L260.9 -59.3Q261.2 -62.9 261.5 -66.2Q261.8 -69.5 262.1 -72.2Q258.7 -72 255.5 -71.8Q252.3 -71.6 248.9 -71.4L249.4 -79.3L290.9 -79.5ZM289.9 -72.9Q283.1 -72.9 280.1 -70.7Q277.2 -68.6 276.4 -64.1Q275.5 -59.6 275.2 -52.7L271.1 24.8Q270.9 29.6 270.5 33Q270.2 36.4 269.8 38.7Q273.8 38.9 277 39Q280.2 39.1 283.1 39.1Q286.1 39.1 289 39.1Q305.2 39.1 317.4 30.9Q329.6 22.8 336.4 8.9Q343.3 -4.9 343.3 -22.1Q343.3 -45.1 330.3 -59Q317.2 -72.9 289.9 -72.9Z" },
+  radians: { caja: CAJA_UNIDAD, d: THETA + "M297.2 -79.7Q314.5 -79.5 324.8 -75.2Q335.1 -70.9 339.5 -63.7Q343.9 -56.4 343.3 -46.9Q343 -40.1 340 -33.1Q337.1 -26 329.7 -20.3Q322.4 -14.6 308.6 -11.7Q311.5 -8.5 312.9 -7Q314.4 -5.5 315.2 -4.5Q316.1 -3.5 317.2 -1.7Q318.3 0.1 320.4 3.8L331.5 23Q334.4 27.8 337 31.7Q339.6 35.5 343.2 37.7Q346.9 40 352.4 40L352.1 45.9L330.3 45.9Q326.3 42.5 322.7 37.2Q319 31.9 315.4 26L304.5 6.9Q302.4 3 299.7 -1.9Q297 -6.7 293.4 -10.1Q291.8 -9.9 288.9 -9.9Q285.9 -9.9 283.4 -10Q280.9 -10.1 280.4 -10.1L278.6 24.6Q278.4 29.4 278.1 32.9Q277.7 36.4 277.3 38.7Q279.5 38.5 281.6 38.5Q283.8 38.4 285.9 38.2Q288.1 38 290.2 38L289.9 45.9L250.3 45.9L250.7 40Q257.5 39.6 260.2 36.8Q262.9 34.1 263.4 29.2Q263.9 24.2 264.1 18L268.2 -59.3Q268.4 -62.9 268.8 -66.2Q269.1 -69.5 269.5 -72.2Q266.2 -72 262.9 -71.8Q259.6 -71.6 256.4 -71.4L257 -79.3Q267 -79.5 276.9 -79.7Q286.8 -79.8 297.2 -79.7ZM296.1 -72.9Q289.9 -72.9 287.2 -70.4Q284.5 -67.9 283.8 -63.3Q283.1 -58.7 282.7 -52.3L280.7 -17.1Q283.6 -16.9 286.2 -16.7Q288.8 -16.5 291.8 -16.7Q301.7 -17.1 309.3 -19.9Q317 -22.8 321.6 -29.1Q326.2 -35.3 326.7 -45.5Q327.1 -52.3 325.4 -57.4Q323.7 -62.5 320 -66Q316.3 -69.5 310.3 -71.2Q304.3 -72.9 296.1 -72.9Z" },
+  gradians: { caja: CAJA_UNIDAD, d: THETA + "M297.2 48.7Q279.3 48.7 266.2 41.2Q253 33.7 246.3 19.6Q239.6 5.5 240.7 -14Q241.4 -26.7 245.8 -38.8Q250.2 -50.9 258.2 -60.7Q266.2 -70.5 278.1 -76.4Q290 -82.2 305.6 -82.2Q312 -82.2 318.6 -81Q325.1 -79.8 331.2 -77.7Q337.2 -75.6 342.1 -72.5L341.7 -80.9L351.5 -80.9L349.4 -40L343 -40Q342.8 -51.2 338 -59Q333.1 -66.8 324.9 -70.9Q316.7 -75 306.3 -75Q296.8 -75 288.2 -70.8Q279.7 -66.6 273 -59Q266.4 -51.4 262.3 -41Q258.2 -30.7 257.5 -18.1Q256.6 -1.3 262 11.9Q267.3 25.1 277.8 32.6Q288.2 40.2 302.4 40.2Q307.2 40.2 312.6 39.3Q317.9 38.4 323.3 36.3Q328.7 34.2 333.5 31.2L334.6 10.3Q334.9 5.6 335.1 1.2Q335.3 -3.3 335.5 -7.8Q332.4 -7.6 329.2 -7.4Q326 -7.2 322.9 -7.1L323.3 -14.9L363.2 -14.9L362.8 -9Q357.8 -9 355 -6.4Q352.3 -3.8 351 -0.2Q349.8 3.5 349.4 7Q349 10.5 348.9 12.3L347.4 39.4L343.1 39.4Q340.3 39.4 335.3 40.5Q330.3 41.6 323.7 44.1Q318.1 46.2 310.6 47.5Q303.1 48.7 297.2 48.7Z" }
+};
+var CICLO_UNIDAD = ["degrees", "radians", "gradians"];
+
+// src/host-obsidian/ui/controles.ts
+function ponerTooltip(el, texto) {
+  (0, import_obsidian3.setTooltip)(el, texto, { placement: "top" });
+}
+function ponerEtiquetaAccesible(el, texto) {
+  el.setAttribute("aria-label", texto);
+  el.setAttribute("data-tooltip-position", "top");
+}
+function crearBotonOpciones(barra, titulo) {
+  const b = barra.createDiv();
+  iconoBotonOpciones(b, false, titulo);
+  return b;
+}
+function iconoBotonOpciones(b, abierto, titulo) {
+  const nombre = abierto ? "cerrar" : "menu";
+  if (b.dataset.icono === nombre)
+    return;
+  b.dataset.icono = nombre;
+  b.empty();
+  montarIcono(b, nombre, 18);
+  ponerTooltip(b, abierto ? t().botones.cerrarMenu : titulo);
+}
+function montarIcono(el, nombre, px2) {
+  const svg = el.createSvg("svg", {
+    attr: { viewBox: "0 -960 960 960", width: px2, height: px2, fill: "currentColor" }
+  });
+  svg.createSvg("path", { attr: { d: ICONO[nombre] } });
+}
+function montarGlifoUnidad(el, unidad, px2) {
+  const { caja, d } = GLIFO_UNIDAD[unidad];
+  const [, , ancho, alto] = caja.split(" ").map(Number);
+  const escala2 = px2 / Math.max(ancho, alto);
+  const svg = el.createSvg("svg", {
+    attr: {
+      viewBox: caja,
+      width: Math.round(ancho * escala2),
+      height: Math.round(alto * escala2),
+      fill: "currentColor"
+    }
+  });
+  svg.createSvg("path", { attr: { d } });
+}
+function montarEtiquetaMath(plugin, el, tex, ctx) {
+  const hijo = new import_obsidian3.MarkdownRenderChild(el);
+  ctx.addChild(hijo);
+  pintarMathEnLinea(plugin, el, tex, ctx.sourcePath, hijo);
+}
+function pintarMathEnLinea(plugin, el, tex, sourcePath, componente, respaldo) {
+  pintarLineaPanel(plugin, el, `$${tex}$`, sourcePath, componente, respaldo);
+}
+function pintarLineaPanel(plugin, el, linea, sourcePath, componente, respaldo) {
+  el.empty();
+  if (!linea.includes("$")) {
+    el.setText(linea);
+    return;
+  }
+  void import_obsidian3.MarkdownRenderer.render(plugin.app, linea, el, sourcePath, componente).then(() => {
+    const p = el.querySelector("p");
+    if (p) {
+      while (p.firstChild)
+        el.appendChild(p.firstChild);
+      p.remove();
+    }
+  }).catch(() => {
+    el.setText(respaldo ?? linea);
+  });
+}
+
+// src/host-obsidian/ui/edicionBloque.ts
+function montarChipEditar(plugin, wrap, contenedor, ctx, lado) {
+  const btn = wrap.createDiv({ cls: "lmath-sobre-panel" });
+  ponerTooltip(btn, t().botones.editarBloque);
+  btn.style.cssText = `position:absolute; top:6px; left:${MARGEN_FLOTANTE}px; width:${lado}px; height:${lado}px; display:flex; align-items:center; justify-content:center; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:7; color:var(--lmath-texto-tenue); background:var(--lmath-chip); border:1px solid var(--lmath-borde);`;
+  montarIcono(btn, "editar", ladoIcono(lado));
+  btn.addEventListener("click", (e3) => {
+    e3.stopPropagation();
+    irAlCodigoDelBloque(plugin, contenedor, ctx);
+  });
+  return btn;
+}
+function irAlCodigoDelBloque(plugin, el, ctx) {
+  const seccion = ctx.getSectionInfo(el);
+  if (!seccion)
+    return;
+  const vista = plugin.app.workspace.getActiveViewOfType(import_obsidian4.MarkdownView);
+  if (!vista || vista.file?.path !== ctx.sourcePath)
+    return;
+  const finDelCuerpo = () => {
+    const editor = vista.editor;
+    const esValla = (n) => editor.getLine(n)?.trimStart().startsWith("```") ?? false;
+    const ultima = esValla(seccion.lineEnd) ? seccion.lineEnd - 1 : seccion.lineEnd;
+    if (ultima <= seccion.lineStart)
+      return { line: seccion.lineStart + 1, ch: 0 };
+    return { line: ultima, ch: editor.getLine(ultima).length };
+  };
+  const irAlBloque = () => {
+    const destino = finDelCuerpo();
+    vista.editor.setCursor(destino);
+    vista.editor.scrollIntoView({ from: destino, to: destino }, true);
+    vista.editor.focus();
+  };
+  if (vista.getMode() === "preview") {
+    void vista.setState({ ...vista.getState(), mode: "source" }, { history: false }).then(irAlBloque);
+  } else {
+    irAlBloque();
+  }
+}
+
+// src/host-obsidian/ui/botonFormula.ts
+function montarBotonFormula(plugin, wrap, ctx, reparto, alPulsar) {
+  const lado = reparto.ladoChip;
+  const boton = wrap.createDiv({ cls: "lmath-sobre-panel" });
+  const enModoFormula = () => reparto.estrecho && reparto.abierto && !!reparto.panelCompleto;
+  const estilo = () => {
+    boton.style.cssText = `position:absolute; bottom:${MARGEN_FLOTANTE}px; left:${MARGEN_FLOTANTE}px; height:${lado}px; min-width:${lado}px; padding:0 8px; box-sizing:border-box; display:${reparto.estrecho ? "flex" : "none"}; align-items:center; justify-content:center; font-size:11px; line-height:1; border-radius:8px; cursor:pointer; user-select:none; z-index:7; ` + (reparto.abierto ? "color:var(--lmath-texto); background:var(--lmath-chip-activo); border:1px solid var(--lmath-borde-activo);" : "color:var(--lmath-texto-tenue); background:var(--lmath-chip); border:1px solid var(--lmath-borde);");
+  };
+  const glifo = () => {
+    const nombre = !reparto.abierto ? "formula" : enModoFormula() ? "plano" : "cerrar";
+    if (boton.dataset.glifo === nombre)
+      return;
+    boton.dataset.glifo = nombre;
+    boton.empty();
+    if (nombre === "formula")
+      montarEtiquetaMath(plugin, boton, "f(x)", ctx);
+    else
+      montarIcono(boton, nombre === "plano" ? "cartesian_plane" : "cerrar", ladoIcono(lado));
+    ponerTooltip(boton, nombre === "formula" ? t().botones.verFormula : nombre === "plano" ? t().botones.verPlano : t().botones.cerrarFormula);
+  };
+  boton.addEventListener("click", (e3) => {
+    e3.stopPropagation();
+    alPulsar();
+  });
+  const sincronizar = () => {
+    estilo();
+    glifo();
+    wrap.toggleClass("lmath-modo-formula", enModoFormula());
+  };
+  sincronizar();
+  return sincronizar;
+}
+
+// src/host-obsidian/ui/scrollerLatex.ts
+var import_obsidian5 = require("obsidian");
 function crearScrollerLatex(plugin, contenedor, ctx, limpieza, reparto) {
   const panelLatex = contenedor.createDiv({ cls: "lmath-latex" });
   reparto.panel = panelLatex;
@@ -61424,7 +62279,7 @@ function crearScrollerLatex(plugin, contenedor, ctx, limpieza, reparto) {
       const a = crearArea(zona, "enmarcado", compartirAlto);
       areas.push(a);
       disposers.push(a.soltar);
-      await import_obsidian4.MarkdownRenderer.render(
+      await import_obsidian5.MarkdownRenderer.render(
         plugin.app,
         "$$" + formula + "$$",
         a.area,
@@ -61482,107 +62337,11 @@ function estiloChipInfo(lado) {
   return `position:absolute; bottom:8px; right:8px; width:${lado}px; height:${lado}px; display:flex; align-items:center; justify-content:center; line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; user-select:none; z-index:5;`;
 }
 var CLASE_POPOVER_INFO = "lmath-info-pop";
+var ALTO_MAX_POPOVER = 200;
+var techoPopover = (bajo) => `min(${ALTO_MAX_POPOVER}px, calc(100% - ${bajo + 8}px))`;
 function estiloPopoverInfo(lado) {
   const bajo = 8 + lado + 6;
-  return `position:absolute; bottom:${bajo}px; right:8px; display:none; max-width:min(260px, calc(100% - 16px)); max-height:min(200px, calc(100% - ${bajo + 8}px)); overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:var(--lmath-tarjeta); border:1px solid var(--lmath-borde); border-radius:6px; font-size:11px; line-height:1.5; color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);`;
-}
-
-// src/host-obsidian/ui/controles.ts
-var import_obsidian5 = require("obsidian");
-
-// src/host-obsidian/ui/iconos.ts
-var ICONO = {
-  inicio: "M220-180h150v-250h220v250h150v-390L480-765 220-570v390Zm-60 60v-480l320-240 320 240v480H530v-250H430v250H160Zm320-353Z",
-  acercar: "M450-450H200v-60h250v-250h60v250h250v60H510v250h-60v-250Z",
-  alejar: "M200-450v-60h560v60H200Z",
-  carril: "M450-42v-75q-137-14-228-105T117-450H42v-60h75q14-137 105-228t228-105v-75h60v75q137 14 228 105t105 228h75v60h-75q-14 137-105 228T510-117v75h-60Zm244.5-223.5Q784-355 784-480t-89.5-214.5Q605-784 480-784t-214.5 89.5Q176-605 176-480t89.5 214.5Q355-176 480-176t214.5-89.5Zm-321-108Q330-417 330-480t43.5-106.5Q417-630 480-630t106.5 43.5Q630-543 630-480t-43.5 106.5Q543-330 480-330t-106.5-43.5ZM544-416q26-26 26-64t-26-64q-26-26-64-26t-64 26q-26 26-26 64t26 64q26 26 64 26t64-26Zm-64-64Z",
-  info: "M453-280h60v-240h-60v240Zm50.5-323.2q9.5-9.2 9.5-22.8 0-14.45-9.48-24.22-9.48-9.78-23.5-9.78t-23.52 9.78Q447-640.45 447-626q0 13.6 9.48 22.8 9.48 9.2 23.5 9.2t23.52-9.2ZM480.27-80q-82.74 0-155.5-31.5Q252-143 197.5-197.5t-86-127.34Q80-397.68 80-480.5t31.5-155.66Q143-709 197.5-763t127.34-85.5Q397.68-880 480.5-880t155.66 31.5Q709-817 763-763t85.5 127Q880-563 880-480.27q0 82.74-31.5 155.5Q817-252 763-197.68q-54 54.31-127 86Q563-80 480.27-80Zm.23-60Q622-140 721-239.5t99-241Q820-622 721.19-721T480-820q-141 0-240.5 98.81T140-480q0 141 99.5 240.5t241 99.5Zm-.5-340Z",
-  menu: "M120-240v-60h720v60H120Zm0-210v-60h720v60H120Zm0-210v-60h720v60H120Z",
-  reproducir: "M320-200v-560l440 280-440 280Z",
-  pausar: "M520-200v-560h240v560H520Zm-320 0v-560h240v560H200Z",
-  cerrar: "m249-207-42-42 231-231-231-231 42-42 231 231 231-231 42 42-231 231 231 231-42 42-231-231-231 231Z",
-  // Editar el bloque: en móvil no existe el botón `</>` de Obsidian —aparece al pasar el
-  // ratón, y no hay ratón—, así que el bloque se queda sin puerta a su propio código.
-  editar: "M180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h405l-60 60H180v600h600v-348l60-60v408q0 24-18 42t-42 18H180Zm300-360ZM360-360v-170l382-382q9-9 20-13t22-4q11 0 22.32 4.5Q817.63-920 827-911l83 84q8.61 8.96 13.3 19.78 4.7 10.83 4.7 22.02 0 11.2-4.5 22.7T910-742L530-360H360Zm508-425-84-84 84 84ZM420-420h85l253-253-43-42-43-42-252 251v86Zm295-295-43-42 43 42 43 42-43-42Z",
-  // Los mandos de los parámetros declarados: una píldora con su manija, que es exactamente lo
-  // que abre el botón.
-  deslizadores: "M201-360q-53 0-86.5-33.5T81-480q0-53 33.5-86.5T201-600h558q53 0 86.5 33.5T879-480q0 53-33.5 86.5T759-360H201Zm365-60h197q26 0 43-17t17-43q0-34-17-47t-43-13H566v120Z"
-};
-var THETA = "M151.4 -272.1C198.2 -272.1 233.2 -211.2 229.5 -136.1C225.8 -60.9 184.9 0 138.1 0C91.3 0 56.3 -60.9 60 -136.1C63.7 -211.2 104.6 -272.1 151.4 -272.1ZM150.4 -251.9C123.4 -251.9 98.9 -200 95.8 -136.1C92.6 -72.1 112 -20.2 139.1 -20.2C166.1 -20.2 190.6 -72.1 193.7 -136.1C196.9 -200 177.5 -251.9 150.4 -251.9ZM60.6 -148.5L230.1 -148.5L228.9 -123.6L59.4 -123.6Z";
-var CAJA_UNIDAD = "30 -302 363 378";
-var GLIFO_UNIDAD = {
-  degrees: { caja: CAJA_UNIDAD, d: THETA + "M290.9 -79.5Q306.5 -79.5 319.2 -76.1Q331.9 -72.7 341 -65.4Q350.1 -58.2 355 -47.3Q360 -36.4 360 -21.4Q360 -8.3 355.6 3.8Q351.2 15.8 342.3 25.3Q333.5 34.8 320.2 40.3Q306.8 45.9 289.1 45.9L242.8 45.9L243.2 40Q250 39.6 252.7 36.8Q255.3 34.1 255.9 29.2Q256.4 24.2 256.6 18L260.9 -59.3Q261.2 -62.9 261.5 -66.2Q261.8 -69.5 262.1 -72.2Q258.7 -72 255.5 -71.8Q252.3 -71.6 248.9 -71.4L249.4 -79.3L290.9 -79.5ZM289.9 -72.9Q283.1 -72.9 280.1 -70.7Q277.2 -68.6 276.4 -64.1Q275.5 -59.6 275.2 -52.7L271.1 24.8Q270.9 29.6 270.5 33Q270.2 36.4 269.8 38.7Q273.8 38.9 277 39Q280.2 39.1 283.1 39.1Q286.1 39.1 289 39.1Q305.2 39.1 317.4 30.9Q329.6 22.8 336.4 8.9Q343.3 -4.9 343.3 -22.1Q343.3 -45.1 330.3 -59Q317.2 -72.9 289.9 -72.9Z" },
-  radians: { caja: CAJA_UNIDAD, d: THETA + "M297.2 -79.7Q314.5 -79.5 324.8 -75.2Q335.1 -70.9 339.5 -63.7Q343.9 -56.4 343.3 -46.9Q343 -40.1 340 -33.1Q337.1 -26 329.7 -20.3Q322.4 -14.6 308.6 -11.7Q311.5 -8.5 312.9 -7Q314.4 -5.5 315.2 -4.5Q316.1 -3.5 317.2 -1.7Q318.3 0.1 320.4 3.8L331.5 23Q334.4 27.8 337 31.7Q339.6 35.5 343.2 37.7Q346.9 40 352.4 40L352.1 45.9L330.3 45.9Q326.3 42.5 322.7 37.2Q319 31.9 315.4 26L304.5 6.9Q302.4 3 299.7 -1.9Q297 -6.7 293.4 -10.1Q291.8 -9.9 288.9 -9.9Q285.9 -9.9 283.4 -10Q280.9 -10.1 280.4 -10.1L278.6 24.6Q278.4 29.4 278.1 32.9Q277.7 36.4 277.3 38.7Q279.5 38.5 281.6 38.5Q283.8 38.4 285.9 38.2Q288.1 38 290.2 38L289.9 45.9L250.3 45.9L250.7 40Q257.5 39.6 260.2 36.8Q262.9 34.1 263.4 29.2Q263.9 24.2 264.1 18L268.2 -59.3Q268.4 -62.9 268.8 -66.2Q269.1 -69.5 269.5 -72.2Q266.2 -72 262.9 -71.8Q259.6 -71.6 256.4 -71.4L257 -79.3Q267 -79.5 276.9 -79.7Q286.8 -79.8 297.2 -79.7ZM296.1 -72.9Q289.9 -72.9 287.2 -70.4Q284.5 -67.9 283.8 -63.3Q283.1 -58.7 282.7 -52.3L280.7 -17.1Q283.6 -16.9 286.2 -16.7Q288.8 -16.5 291.8 -16.7Q301.7 -17.1 309.3 -19.9Q317 -22.8 321.6 -29.1Q326.2 -35.3 326.7 -45.5Q327.1 -52.3 325.4 -57.4Q323.7 -62.5 320 -66Q316.3 -69.5 310.3 -71.2Q304.3 -72.9 296.1 -72.9Z" },
-  gradians: { caja: CAJA_UNIDAD, d: THETA + "M297.2 48.7Q279.3 48.7 266.2 41.2Q253 33.7 246.3 19.6Q239.6 5.5 240.7 -14Q241.4 -26.7 245.8 -38.8Q250.2 -50.9 258.2 -60.7Q266.2 -70.5 278.1 -76.4Q290 -82.2 305.6 -82.2Q312 -82.2 318.6 -81Q325.1 -79.8 331.2 -77.7Q337.2 -75.6 342.1 -72.5L341.7 -80.9L351.5 -80.9L349.4 -40L343 -40Q342.8 -51.2 338 -59Q333.1 -66.8 324.9 -70.9Q316.7 -75 306.3 -75Q296.8 -75 288.2 -70.8Q279.7 -66.6 273 -59Q266.4 -51.4 262.3 -41Q258.2 -30.7 257.5 -18.1Q256.6 -1.3 262 11.9Q267.3 25.1 277.8 32.6Q288.2 40.2 302.4 40.2Q307.2 40.2 312.6 39.3Q317.9 38.4 323.3 36.3Q328.7 34.2 333.5 31.2L334.6 10.3Q334.9 5.6 335.1 1.2Q335.3 -3.3 335.5 -7.8Q332.4 -7.6 329.2 -7.4Q326 -7.2 322.9 -7.1L323.3 -14.9L363.2 -14.9L362.8 -9Q357.8 -9 355 -6.4Q352.3 -3.8 351 -0.2Q349.8 3.5 349.4 7Q349 10.5 348.9 12.3L347.4 39.4L343.1 39.4Q340.3 39.4 335.3 40.5Q330.3 41.6 323.7 44.1Q318.1 46.2 310.6 47.5Q303.1 48.7 297.2 48.7Z" }
-};
-var CICLO_UNIDAD = ["degrees", "radians", "gradians"];
-
-// src/host-obsidian/ui/controles.ts
-function ponerTooltip(el, texto) {
-  (0, import_obsidian5.setTooltip)(el, texto, { placement: "top" });
-}
-function ponerEtiquetaAccesible(el, texto) {
-  el.setAttribute("aria-label", texto);
-  el.setAttribute("data-tooltip-position", "top");
-}
-function crearBotonOpciones(barra, titulo) {
-  const b = barra.createDiv();
-  iconoBotonOpciones(b, false, titulo);
-  return b;
-}
-function iconoBotonOpciones(b, abierto, titulo) {
-  const nombre = abierto ? "cerrar" : "menu";
-  if (b.dataset.icono === nombre)
-    return;
-  b.dataset.icono = nombre;
-  b.empty();
-  montarIcono(b, nombre, 18);
-  ponerTooltip(b, abierto ? t().botones.cerrarMenu : titulo);
-}
-function montarIcono(el, nombre, px2) {
-  const svg = el.createSvg("svg", {
-    attr: { viewBox: "0 -960 960 960", width: px2, height: px2, fill: "currentColor" }
-  });
-  svg.createSvg("path", { attr: { d: ICONO[nombre] } });
-}
-function montarGlifoUnidad(el, unidad, px2) {
-  const { caja, d } = GLIFO_UNIDAD[unidad];
-  const [, , ancho, alto] = caja.split(" ").map(Number);
-  const escala2 = px2 / Math.max(ancho, alto);
-  const svg = el.createSvg("svg", {
-    attr: {
-      viewBox: caja,
-      width: Math.round(ancho * escala2),
-      height: Math.round(alto * escala2),
-      fill: "currentColor"
-    }
-  });
-  svg.createSvg("path", { attr: { d } });
-}
-function montarEtiquetaMath(plugin, el, tex, ctx) {
-  const hijo = new import_obsidian5.MarkdownRenderChild(el);
-  ctx.addChild(hijo);
-  pintarMathEnLinea(plugin, el, tex, ctx.sourcePath, hijo);
-}
-function pintarMathEnLinea(plugin, el, tex, sourcePath, componente, respaldo) {
-  pintarLineaPanel(plugin, el, `$${tex}$`, sourcePath, componente, respaldo);
-}
-function pintarLineaPanel(plugin, el, linea, sourcePath, componente, respaldo) {
-  el.empty();
-  if (!linea.includes("$")) {
-    el.setText(linea);
-    return;
-  }
-  void import_obsidian5.MarkdownRenderer.render(plugin.app, linea, el, sourcePath, componente).then(() => {
-    const p = el.querySelector("p");
-    if (p) {
-      while (p.firstChild)
-        el.appendChild(p.firstChild);
-      p.remove();
-    }
-  }).catch(() => {
-    el.setText(respaldo ?? linea);
-  });
+  return `position:absolute; bottom:${bajo}px; right:8px; display:none; max-width:min(260px, calc(100% - 16px)); max-height:${techoPopover(bajo)}; overflow-y:auto; padding:8px 10px; box-sizing:border-box; background:var(--lmath-tarjeta); border:1px solid var(--lmath-borde); border-radius:6px; font-size:11px; line-height:1.5; color:var(--lmath-texto); z-index:5; box-shadow:var(--lmath-sombra-flotante);`;
 }
 
 // src/host-obsidian/ui/deslizador.ts
@@ -61647,6 +62406,22 @@ function montarDeslizador(padre, op) {
   };
   raiz.addEventListener("pointerup", soltar);
   raiz.addEventListener("pointercancel", soltar);
+  const soloMio = (ev) => ev.stopPropagation();
+  for (const tipo of [
+    "pointerdown",
+    "pointermove",
+    "pointerup",
+    "pointercancel",
+    "touchstart",
+    "touchend",
+    "touchcancel"
+  ]) {
+    raiz.addEventListener(tipo, soloMio);
+  }
+  raiz.addEventListener("touchmove", (ev) => {
+    ev.stopPropagation();
+    ev.preventDefault();
+  }, { passive: false });
   raiz.addEventListener("keydown", (ev) => {
     const salto = ev.shiftKey ? op.pasoGrande : op.paso;
     let nuevo = null;
@@ -61729,15 +62504,28 @@ async function montarPanelVistas(motor, contenedor, ctx, limpieza, reparto, conf
   });
   let vista = "operador";
   let abierto = false;
+  const sobra = (v) => reparto.estrecho && v === "ambas";
   const sincronizar = () => {
     estiloBotonPanel(btnOriginal, vista === "operador");
     estiloBotonOpciones(btnOpciones, vista !== "operador" || abierto);
     iconoBotonOpciones(btnOpciones, abierto, config4.tooltipOpciones);
     const actual = firmaDe(vista);
-    items.forEach((el, i2) => itemEstilo(el, firmaDe(config4.opciones[i2].vista) !== actual));
+    items.forEach((el, i2) => {
+      const v = config4.opciones[i2].vista;
+      itemEstilo(el, firmaDe(v) !== actual);
+      el.style.display = sobra(v) ? "none" : "";
+    });
     menu.style.display = abierto ? "flex" : "none";
   };
-  const aplicar2 = async (i2) => {
+  alCambiarReparto(reparto, () => {
+    if (!sobra(vista)) {
+      sincronizar();
+      return;
+    }
+    vista = "operador";
+    void renderLatex(operador).then(sincronizar);
+  });
+  const aplicar = async (i2) => {
     abierto = false;
     const v = config4.opciones[i2].vista;
     if (firmaDe(v) !== firmaDe(vista)) {
@@ -61759,7 +62547,7 @@ async function montarPanelVistas(motor, contenedor, ctx, limpieza, reparto, conf
     abierto = !abierto;
     sincronizar();
   });
-  items.forEach((el, i2) => el.addEventListener("click", () => void aplicar2(i2)));
+  items.forEach((el, i2) => el.addEventListener("click", () => void aplicar(i2)));
   cerrarMenuAlPulsarFuera(barra, caja, limpieza, () => {
     if (!abierto)
       return;
@@ -61825,7 +62613,7 @@ async function montarPanelLatex(motor, contenedor, ecuaciones, ctx, limpieza, re
       items.forEach((el, i2) => itemEstilo(el, bloqueALatex(transformaciones[i2].fn(estado)) !== actual));
       menu.style.display = abierto ? "flex" : "none";
     };
-    const aplicar2 = async (i2) => {
+    const aplicar = async (i2) => {
       abierto = false;
       verMandos(false);
       const nuevo = transformaciones[i2].fn(estado);
@@ -61854,7 +62642,7 @@ async function montarPanelLatex(motor, contenedor, ecuaciones, ctx, limpieza, re
       abierto = !abierto;
       sincronizar();
     });
-    items.forEach((el, i2) => el.addEventListener("click", () => void aplicar2(i2)));
+    items.forEach((el, i2) => el.addEventListener("click", () => void aplicar(i2)));
     cerrarMenuAlPulsarFuera(barra, caja, limpieza, () => {
       if (!abierto)
         return;
@@ -61915,284 +62703,6 @@ async function montarPanelIntegral(motor, contenedor, source, ctx, limpieza, rep
 // src/host-obsidian/info/botones.ts
 var import_obsidian6 = require("obsidian");
 
-// src/math/numerico.ts
-var DOMINIO_X = [-100, 100];
-var MUESTRAS2 = 4e4;
-function formaExplicita(ecuacion) {
-  const partes = ecuacion.split("=");
-  let aislada;
-  let otra;
-  if (partes.length === 1) {
-    aislada = "y";
-    otra = partes[0];
-  } else if (partes.length === 2) {
-    const izq = partes[0].trim(), der = partes[1].trim();
-    if (izq === "y") {
-      aislada = "y";
-      otra = der;
-    } else if (der === "y") {
-      aislada = "y";
-      otra = izq;
-    } else if (izq === "x") {
-      aislada = "x";
-      otra = der;
-    } else if (der === "x") {
-      aislada = "x";
-      otra = izq;
-    } else
-      return null;
-  } else
-    return null;
-  const variableLibre = aislada === "y" ? "x" : "y";
-  try {
-    const f = compilarFuncion(insertarProductoImplicito(normalizarEntrada(otra)), variableLibre);
-    return {
-      aislada,
-      f: (t2) => {
-        const v = f(t2);
-        return typeof v === "number" ? v : NaN;
-      }
-    };
-  } catch {
-    return null;
-  }
-}
-function bisecar(h, a, b) {
-  let lo = a, hi = b;
-  let flo = h(lo);
-  if (!Number.isFinite(flo))
-    return null;
-  for (let i2 = 0; i2 < 80; i2++) {
-    const m2 = (lo + hi) / 2;
-    const fm2 = h(m2);
-    if (!Number.isFinite(fm2))
-      return null;
-    if (fm2 === 0)
-      return m2;
-    if (flo * fm2 < 0) {
-      hi = m2;
-    } else {
-      lo = m2;
-      flo = fm2;
-    }
-    if (hi === lo || hi - lo <= Math.abs(m2) * Number.EPSILON)
-      break;
-  }
-  const m = (lo + hi) / 2;
-  const fm = h(m);
-  if (!Number.isFinite(fm))
-    return null;
-  const escala2 = Math.max(1, Math.abs(h(m + 1e-6)), Math.abs(h(m - 1e-6)));
-  return Math.abs(fm) < 1e-6 * escala2 || Math.abs(fm) < 1e-9 ? m : null;
-}
-function pulir(h, x0) {
-  let x = x0;
-  for (let i2 = 0; i2 < 6; i2++) {
-    const paso = Math.max(1e-10, Math.abs(x) * 1e-10);
-    const d = (h(x + paso) - h(x - paso)) / (2 * paso);
-    if (!Number.isFinite(d) || d === 0)
-      break;
-    const nx = x - h(x) / d;
-    if (!Number.isFinite(nx) || Math.abs(nx - x) > Math.max(1, Math.abs(x)))
-      break;
-    if (nx === x)
-      break;
-    x = nx;
-  }
-  return Math.abs(h(x)) <= Math.abs(h(x0)) ? x : x0;
-}
-function raicesDe(h) {
-  const [t0, t1] = DOMINIO_X;
-  const paso = (t1 - t0) / MUESTRAS2;
-  const crudas = [];
-  let tPrev = t0;
-  let hPrev = h(tPrev);
-  for (let i2 = 1; i2 <= MUESTRAS2; i2++) {
-    const t2 = t0 + i2 * paso;
-    const ht = h(t2);
-    if (Number.isFinite(hPrev) && Number.isFinite(ht)) {
-      if (ht === 0)
-        crudas.push(t2);
-      else if (hPrev * ht < 0) {
-        const r = bisecar(h, tPrev, t2);
-        if (r !== null)
-          crudas.push(r);
-      }
-    }
-    tPrev = t2;
-    hPrev = ht;
-  }
-  const out = [];
-  for (const cruda of crudas) {
-    const t2 = pulir(h, cruda);
-    if (!Number.isFinite(t2))
-      continue;
-    if (out.some((p) => Math.abs(p - t2) <= 10 * paso))
-      continue;
-    out.push(t2);
-  }
-  return out;
-}
-function resolverNumerico(ecuacionA, ecuacionB, opciones = {}) {
-  const a = formaExplicita(ecuacionA);
-  const b = formaExplicita(ecuacionB);
-  if (!a || !b)
-    return { tipo: "noResoluble" };
-  if (!opciones.simetrico && (a.aislada !== "y" || b.aislada !== "y"))
-    return { tipo: "noResoluble" };
-  if (a.aislada === b.aislada) {
-    const h2 = (t2) => a.f(t2) - b.f(t2);
-    const variable = a.aislada === "y" ? "x" : "y";
-    const puntos2 = [];
-    for (const t2 of raicesDe(h2)) {
-      const otro = a.f(t2);
-      if (!Number.isFinite(otro))
-        continue;
-      puntos2.push(a.aislada === "y" ? { x: t2, y: otro } : { x: otro, y: t2 });
-    }
-    puntos2.sort((p, q) => p.x - q.x || p.y - q.y);
-    return { tipo: "puntos", puntos: puntos2, variable };
-  }
-  const explY = a.aislada === "y" ? a : b;
-  const explX = a.aislada === "x" ? a : b;
-  const h = (y) => explY.f(explX.f(y)) - y;
-  const puntos = [];
-  for (const y of raicesDe(h)) {
-    const x = explX.f(y);
-    if (!Number.isFinite(x) || !Number.isFinite(y))
-      continue;
-    puntos.push({ x, y });
-  }
-  puntos.sort((p, q) => p.x - q.x || p.y - q.y);
-  return { tipo: "puntos", puntos, variable: "y" };
-}
-
-// src/math/simbolico/valorExacto.ts
-var RADICANDO_MAXIMO = 1n << 40n;
-function raizEntera(n) {
-  if (n < 0n)
-    return null;
-  if (n < 2n)
-    return n;
-  let x = n, y = (x + 1n) / 2n;
-  while (y < x) {
-    x = y;
-    y = (x + n / x) / 2n;
-  }
-  return x * x === n ? x : null;
-}
-function extraerCuadrado(n) {
-  let dentro2 = n, fuera = 1n;
-  const r = raizEntera(dentro2);
-  if (r !== null)
-    return { fuera: r, dentro: 1n };
-  for (let k = 2n; k * k <= dentro2; k++) {
-    const k2 = k * k;
-    while (dentro2 % k2 === 0n) {
-      dentro2 /= k2;
-      fuera *= k;
-    }
-  }
-  return { fuera, dentro: dentro2 };
-}
-function exacto(r) {
-  return { a: r, b: CERO, d: 1n };
-}
-var CERO_E = exacto(CERO);
-function raizDe(a, b, radicando) {
-  if (signo(radicando) < 0)
-    return null;
-  if (esCero2(radicando) || esCero2(b))
-    return exacto(a);
-  const p = radicando.n * radicando.d;
-  const q = radicando.d;
-  if (p > RADICANDO_MAXIMO)
-    return null;
-  const { fuera, dentro: dentro2 } = extraerCuadrado(p);
-  const coef = producto(b, rac(fuera, q));
-  if (dentro2 === 1n)
-    return exacto(suma(a, coef));
-  if (esCero2(coef))
-    return exacto(a);
-  return { a, b: coef, d: dentro2 };
-}
-var racionalDe3 = (v) => esCero2(v.b) ? v.a : null;
-var aNumeroE = (v) => aNumero3(v.a) + (esCero2(v.b) ? 0 : aNumero3(v.b) * Math.sqrt(Number(v.d)));
-function radicandoComun(u, v) {
-  if (esCero2(u.b))
-    return v.d;
-  if (esCero2(v.b))
-    return u.d;
-  return u.d === v.d ? u.d : null;
-}
-function sumaE(u, v) {
-  const d = radicandoComun(u, v);
-  if (d === null)
-    return null;
-  const b = suma(u.b, v.b);
-  return esCero2(b) ? exacto(suma(u.a, v.a)) : { a: suma(u.a, v.a), b, d };
-}
-function productoE(u, v) {
-  const d = radicandoComun(u, v);
-  if (d === null)
-    return null;
-  const a = suma(producto(u.a, v.a), producto(producto(u.b, v.b), rac(d)));
-  const b = suma(producto(u.a, v.b), producto(u.b, v.a));
-  return esCero2(b) ? exacto(a) : { a, b, d };
-}
-function radicalATexto(b, d, raiz) {
-  const n = b.n < 0n ? -b.n : b.n;
-  const cuerpo = n === 1n ? `${raiz}${d}` : `${n}${raiz}${d}`;
-  return b.d === 1n ? cuerpo : `${cuerpo}/${b.d}`;
-}
-function aTextoE(v) {
-  return escribir(v, "\u221A", "-");
-}
-function fraccionLatex(n, d) {
-  if (d === 1n)
-    return String(n);
-  return n < 0n ? `-\\frac{${-n}}{${d}}` : `\\frac{${n}}{${d}}`;
-}
-function aLatexE(v) {
-  if (esCero2(v.b))
-    return fraccionLatex(v.a.n, v.a.d);
-  const den = lcm2(v.a.d, v.b.d);
-  const fuera = v.a.n <= 0n && v.b.n < 0n;
-  const s = fuera ? -1n : 1n;
-  const na = s * v.a.n * (den / v.a.d);
-  const nb = s * v.b.n * (den / v.b.d);
-  const abs3 = nb < 0n ? -nb : nb;
-  const radical = abs3 === 1n ? `\\sqrt{${v.d}}` : `${abs3}\\sqrt{${v.d}}`;
-  const cuerpo = na === 0n ? radical : na < 0n ? `${radical} - ${-na}` : `${na} ${nb < 0n ? "-" : "+"} ${radical}`;
-  const nucleo = den === 1n ? cuerpo : `\\frac{${cuerpo}}{${den}}`;
-  return `${fuera ? "-" : ""}${nucleo}`;
-}
-var lcm2 = (a, b) => a / mcd7(a, b) * b;
-function mcd7(a, b) {
-  let x = a < 0n ? -a : a, y = b < 0n ? -b : b;
-  while (y) {
-    const t2 = x % y;
-    x = y;
-    y = t2;
-  }
-  return x;
-}
-function escribir(v, raiz, menos) {
-  if (esCero2(v.b))
-    return aTexto(v.a).replace("-", menos);
-  if (esCero2(v.a)) {
-    const cuerpo2 = radicalATexto(v.b, v.d, raiz);
-    return v.b.n < 0n ? `${menos}${cuerpo2}` : cuerpo2;
-  }
-  const den = lcm2(v.a.d, v.b.d);
-  const na = v.a.n * (den / v.a.d);
-  const nb = v.b.n * (den / v.b.d);
-  const abs3 = nb < 0n ? -nb : nb;
-  const radical = abs3 === 1n ? `${raiz}${v.d}` : `${abs3}${raiz}${v.d}`;
-  const cuerpo = `${na} ${nb < 0n ? menos : "+"} ${radical}`;
-  return den === 1n ? cuerpo : `(${cuerpo})/${den}`;
-}
-
 // src/host-obsidian/info/infinitasPeriodicas.ts
 var MIN_PERIODICO = 3;
 var BORDE = 0.9;
@@ -62214,11 +62724,11 @@ function lineasResumen(analisis, interseccionY, esTrig, identicamenteCero) {
   const T = t().resumen;
   const lineas = [];
   if (identicamenteCero) {
-    lineas.push(T.interseccionY(puntoALatex(0, 0)));
+    lineas.push(T.interseccionY(puntoALatex(0, 0, "evaluado")));
     lineas.push(T.identicamenteCero);
     return lineas;
   }
-  lineas.push(Number.isFinite(interseccionY) ? T.interseccionY(puntoALatex(0, interseccionY)) : T.interseccionYNoDefinida);
+  lineas.push(Number.isFinite(interseccionY) ? T.interseccionY(puntoALatex(0, interseccionY, "evaluado")) : T.interseccionYNoDefinida);
   const estR = estadoGrupo(analisis.raices.length + analisis.intervalosRaiz.length, esTrig);
   if (estR === "infinitas")
     lineas.push(T.raicesInfinitas);
@@ -62392,7 +62902,7 @@ function lineasParametricas(a) {
   const lineas = [];
   const familia = a.familia ? nombreFamilia(a.familia) : null;
   lineas.push(familia ? `${T.titulo} \xB7 ${familia}` : T.titulo);
-  const trozos = [T.intervalo(numeroALatex(a.tMin), numeroALatex(a.tMax))];
+  const trozos = [T.intervalo(numeroALatex(a.tMin, "evaluado"), numeroALatex(a.tMax, "evaluado"))];
   if (a.cerrada)
     trozos.push(T.cerrada);
   if (a.periodo !== null) {
@@ -62428,7 +62938,7 @@ function lineasDerivada(A, esTrig) {
   const lineas = [{ texto: T.titulo }];
   const push = (texto, sangrado) => lineas.push({ texto, sangrado });
   if (A.pendienteEn0 !== null)
-    push(T.pendienteEn0(numeroALatex(A.pendienteEn0)));
+    push(T.pendienteEn0(numeroALatex(A.pendienteEn0, "evaluado")));
   const nombreTipo = (tipo) => T.tipo[tipo];
   const estCriticos = estadoGrupo(A.criticos.length, esTrig);
   if (estCriticos === "infinitas")
@@ -62473,7 +62983,7 @@ function lineasDerivada(A, esTrig) {
     }
   }
   if (A.acotadoPorRango)
-    push(T.rangoAnalisis(numeroALatex(A.rango[0]), numeroALatex(A.rango[1])));
+    push(T.rangoAnalisis(numeroALatex(A.rango[0], "evaluado"), numeroALatex(A.rango[1], "evaluado")));
   return lineas;
 }
 function lineasIntegral(A, variable, source) {
@@ -62481,15 +62991,15 @@ function lineasIntegral(A, variable, source) {
   const lineas = [];
   const cabecera = [T.titulo];
   if (A.impropia && A.singularidades.length > 0)
-    cabecera.push(T.impropia(variable, listaALatex(A.singularidades)));
+    cabecera.push(T.impropia(variable, listaALatex(A.singularidades, "evaluado")));
   lineas.push(cabecera.join(" \xB7 "));
   if (A.a === A.b) {
     lineas.push(T.intervaloVacio);
     return lineas;
   }
   lineas.push(T.intervalo(
-    numeroALatex(Math.min(A.a, A.b)),
-    numeroALatex(Math.max(A.a, A.b)),
+    numeroALatex(Math.min(A.a, A.b), "evaluado"),
+    numeroALatex(Math.max(A.a, A.b), "evaluado"),
     variable
   ));
   if (A.invertido)
@@ -62940,28 +63450,33 @@ function montarBotonInfoIntegral(motor, wrap, source, ctx, lado, exclusion) {
   });
   return true;
 }
-function montarBotonInfo(motor, wrap, expr, ctx, lado, exclusion) {
-  let evalX;
-  try {
-    const evalXRaw = compilarFuncion(expr, "x");
-    evalX = (x) => {
-      const v = evalXRaw(x);
-      return typeof v === "number" ? v : NaN;
+function montarBotonInfo(motor, wrap, expresionViva, ctx, lado, exclusion) {
+  const lineasDe = (expr) => {
+    let evalX;
+    try {
+      const evalXRaw = compilarFuncion(expr, "x");
+      evalX = (x) => {
+        const v = evalXRaw(x);
+        return typeof v === "number" ? v : NaN;
+      };
+    } catch {
+      return null;
+    }
+    let id\u00E9nticamenteCero = false;
+    try {
+      id\u00E9nticamenteCero = simplify(expr).toString() === "0";
+    } catch {
+    }
+    return lineasResumen(
+      analizarFuncion(evalX),
+      evalX(0),
+      tieneTrigonometria(expr),
+      id\u00E9nticamenteCero
+    );
+  };
+  if (lineasDe(expresionViva()) === null)
+    return () => {
     };
-  } catch {
-    return;
-  }
-  let id\u00E9nticamenteCero = false;
-  try {
-    id\u00E9nticamenteCero = simplify(expr).toString() === "0";
-  } catch {
-  }
-  const lineas = lineasResumen(
-    analizarFuncion(evalX),
-    evalX(0),
-    tieneTrigonometria(expr),
-    id\u00E9nticamenteCero
-  );
   const btnInfo = wrap.createDiv();
   ponerTooltip(btnInfo, t().botones.resumenNotables);
   btnInfo.style.cssText = estiloChipInfo(lado);
@@ -62969,13 +63484,18 @@ function montarBotonInfo(motor, wrap, expr, ctx, lado, exclusion) {
   const pop = wrap.createDiv({ cls: CLASE_POPOVER_INFO });
   pop.style.cssText = estiloPopoverInfo(lado);
   exclusion.registrar(() => pop.setCssStyles({ display: "none" }));
-  let montado = false;
+  const hijo = new import_obsidian6.MarkdownRenderChild(pop);
+  ctx.addChild(hijo);
+  let exprPintada = null;
   const rellenar = () => {
-    if (montado)
+    const expr = expresionViva();
+    if (expr === exprPintada)
       return;
-    montado = true;
-    const hijo = new import_obsidian6.MarkdownRenderChild(pop);
-    ctx.addChild(hijo);
+    const lineas = lineasDe(expr);
+    if (lineas === null)
+      return;
+    exprPintada = expr;
+    pop.empty();
     for (const l of lineas)
       pintarLineaPanel(motor.plugin, pop.createDiv(), l, ctx.sourcePath, hijo);
   };
@@ -62988,671 +63508,10 @@ function montarBotonInfo(motor, wrap, expr, ctx, lado, exclusion) {
     }
     pop.setCssStyles({ display: abierto ? "none" : "block" });
   });
-}
-
-// src/math/ramas.ts
-var FAMILIA = /(?<![a-zA-Z0-9_])(fam|famN)\s*\(/;
-var PASADAS_DOM = 8;
-function esDom(n) {
-  return n.type === "FunctionNode" && n.fn?.name === "dom" && n.args.length === 2;
-}
-function separarGuardas(n) {
-  const guardas = [];
-  const limpiar = (m) => {
-    let out = m;
-    for (let i2 = 0; i2 < PASADAS_DOM && out.filter(esDom).length > 0; i2++) {
-      out = out.transform((k) => {
-        if (!esDom(k))
-          return k;
-        guardas.push(k.args[1]);
-        return k.args[0];
-      });
-    }
-    return out;
+  return () => {
+    if (pop.style.display !== "none")
+      rellenar();
   };
-  const limpio = limpiar(n);
-  for (let i2 = 0; i2 < guardas.length; i2++)
-    guardas[i2] = limpiar(guardas[i2]);
-  return { limpio, guardas };
-}
-var constantes = /* @__PURE__ */ new Map();
-function esConstante2(nombre) {
-  let conocida = constantes.get(nombre);
-  if (conocida === void 0) {
-    conocida = evaluarConstante(nombre) !== null;
-    constantes.set(nombre, conocida);
-  }
-  return conocida;
-}
-function soloVariablesYConstantes(n) {
-  const libres = n.filter((m, camino) => m.type === "SymbolNode" && camino !== "fn" && m.name !== "x" && m.name !== "y");
-  return libres.every((m) => esConstante2(m.name));
-}
-function ramaLimpia(ec) {
-  const partes = ec.split("=");
-  if (partes.length > 2)
-    return null;
-  const lados = [];
-  const guardas = /* @__PURE__ */ new Set();
-  for (const parte of partes) {
-    let n;
-    try {
-      n = parse2(parte);
-    } catch {
-      return null;
-    }
-    const { limpio, guardas: gs } = separarGuardas(n);
-    if (!soloVariablesYConstantes(limpio))
-      return null;
-    lados.push(limpio.toString());
-    for (const g of gs) {
-      if (!soloVariablesYConstantes(g))
-        return null;
-      guardas.add(g.toString());
-    }
-  }
-  return { ecuacion: lados.join(" = "), guardas: [...guardas] };
-}
-function transponer(nodo) {
-  return nodo.transform((n) => {
-    if (n.type !== "SymbolNode")
-      return n;
-    if (n.name === "x")
-      return simboloNodo("y");
-    if (n.name === "y")
-      return simboloNodo("x");
-    return n;
-  });
-}
-function sinIncognitaY(ecuacion) {
-  const norm3 = insertarProductoImplicito(normalizarEntrada(ecuacion.trim()));
-  if (norm3 === "" || contieneYLibre(norm3))
-    return null;
-  const partes = norm3.split("=");
-  if (partes.length === 2) {
-    let girada;
-    try {
-      const izq = transponer(parse2(partes[0]));
-      const der = transponer(parse2(partes[1]));
-      girada = `${izq.toString()} = ${der.toString()}`;
-    } catch {
-      return { ecuacion: norm3, completo: true };
-    }
-    const desp = despejar(girada);
-    if (desp && desp.completo) {
-      try {
-        const vuelta = desp.ecuacion.split("=");
-        if (vuelta.length === 2) {
-          const izq = transponer(parse2(vuelta[0]));
-          const der = transponer(parse2(vuelta[1]));
-          return { ecuacion: `${izq.toString()} = ${der.toString()}`, completo: true };
-        }
-      } catch {
-      }
-    }
-  }
-  return { ecuacion: norm3, completo: true };
-}
-function ramasDe(ecuacion) {
-  const desp = despejar(ecuacion) ?? sinIncognitaY(ecuacion);
-  if (!desp || !desp.completo)
-    return null;
-  if (FAMILIA.test(desp.ecuacion))
-    return null;
-  const expandidas = tieneDobleSigno(desp.ecuacion) ? expandirDobleSigno(desp.ecuacion) : [desp.ecuacion];
-  const out = [];
-  for (const e3 of expandidas) {
-    const rama = ramaLimpia(e3);
-    if (!rama)
-      return null;
-    out.push(rama);
-  }
-  return out.length > 0 ? out : null;
-}
-
-// src/math/simbolico/raicesSimbolicas.ts
-var DENOMINADOR_MAXIMO = 1000000n;
-var TOL_RECONSTRUCCION = 1e-11;
-function racionalCercano(v, maxDen = DENOMINADOR_MAXIMO) {
-  if (!Number.isFinite(v))
-    return null;
-  const escala2 = Math.max(1, Math.abs(v));
-  let x = v;
-  let a = Math.floor(x);
-  if (!Number.isSafeInteger(a))
-    return null;
-  let pAnt = 1n, qAnt = 0n;
-  let p = BigInt(a), q = 1n;
-  for (let i2 = 0; i2 < 40; i2++) {
-    if (Math.abs(Number(p) / Number(q) - v) <= TOL_RECONSTRUCCION * escala2)
-      return rac(p, q);
-    const frac = x - a;
-    if (Math.abs(frac) < 1e-14)
-      break;
-    x = 1 / frac;
-    a = Math.floor(x);
-    if (!Number.isSafeInteger(a))
-      break;
-    const A = BigInt(a);
-    const p2 = A * p + pAnt, q2 = A * q + qAnt;
-    if (q2 > maxDen || q2 <= 0n)
-      break;
-    pAnt = p;
-    qAnt = q;
-    p = p2;
-    q = q2;
-  }
-  return null;
-}
-function divideExacto(p, q) {
-  if (grado(q) < 1 || grado(p) < grado(q))
-    return false;
-  return esNulo(dividir(p, q).resto);
-}
-function factoresCuadraticos(p, raices2) {
-  const irracionales = raices2.filter((r) => r.exacto === null);
-  const factores2 = [];
-  for (let i2 = 0; i2 < irracionales.length; i2++) {
-    for (let j = i2 + 1; j < irracionales.length; j++) {
-      const S = racionalCercano(irracionales[i2].valor + irracionales[j].valor);
-      const M = racionalCercano(irracionales[i2].valor * irracionales[j].valor);
-      if (S === null || M === null)
-        continue;
-      const q = [M, { n: -S.n, d: S.d }, rac(1n)];
-      if (divideExacto(p, q))
-        factores2.push(q);
-    }
-  }
-  return factores2;
-}
-function raicesDeCuadratica(b, c) {
-  const disc = resta(producto(b, b), producto(rac(4n), c));
-  const mitad = rac(1n, 2n);
-  const centro = producto({ n: -b.n, d: b.d }, mitad);
-  const mas = raizDe(centro, mitad, disc);
-  const menos = raizDe(centro, { n: -1n, d: 2n }, disc);
-  const out = [];
-  if (mas)
-    out.push(mas);
-  if (menos)
-    out.push(menos);
-  return out;
-}
-function raicesConForma(p) {
-  const raices2 = raicesReales(p);
-  if (raices2.length === 0)
-    return [];
-  const candidatas = [];
-  for (const q of factoresCuadraticos(p, raices2))
-    candidatas.push(...raicesDeCuadratica(q[1], q[0]));
-  return raices2.map((raiz) => {
-    if (raiz.exacto !== null)
-      return { raiz, exacto: exacto(raiz.exacto) };
-    const escala2 = Math.max(1, Math.abs(raiz.valor));
-    const forma = candidatas.find((c) => Math.abs(aNumeroE(c) - raiz.valor) <= 1e-9 * escala2);
-    return { raiz, exacto: forma ?? null };
-  });
-}
-
-// src/math/simbolico/polinomioExacto.ts
-function evaluarExacto(p, v) {
-  const P4 = normalizar(p);
-  if (P4.length === 0)
-    return CERO_E;
-  let acumulado = exacto(P4[P4.length - 1]);
-  for (let i2 = P4.length - 2; i2 >= 0; i2--) {
-    if (acumulado === null)
-      return null;
-    const escalado = productoE(acumulado, v);
-    if (escalado === null)
-      return null;
-    acumulado = sumaE(escalado, exacto(P4[i2]));
-  }
-  return acumulado;
-}
-
-// src/math/resolverSistema.ts
-var TOL_REL2 = 1e-9;
-function dX(p) {
-  return normalizar2(p.map((c) => {
-    const out = [];
-    for (let i2 = 1; i2 < c.length; i2++)
-      out.push({ n: c[i2].n * BigInt(i2), d: c[i2].d });
-    return normalizar(out);
-  }));
-}
-function dY(p) {
-  const P4 = normalizar2(p);
-  const out = [];
-  for (let j = 1; j < P4.length; j++)
-    out.push(normalizar(P4[j].map((c) => ({ n: c.n * BigInt(j), d: c.d }))));
-  return normalizar2(out);
-}
-function pulirNewton(p, q, x0, y0) {
-  const px2 = dX(p), py2 = dY(p), qx = dX(q), qy = dY(q);
-  let x = x0, y = y0;
-  for (let i2 = 0; i2 < 12; i2++) {
-    const fp = evaluarNum2(p, x, y), fq = evaluarNum2(q, x, y);
-    if (!Number.isFinite(fp) || !Number.isFinite(fq))
-      return { x: x0, y: y0 };
-    if (fp === 0 && fq === 0)
-      break;
-    const a = evaluarNum2(px2, x, y), b = evaluarNum2(py2, x, y);
-    const c = evaluarNum2(qx, x, y), d = evaluarNum2(qy, x, y);
-    const det2 = a * d - b * c;
-    if (!Number.isFinite(det2) || det2 === 0)
-      break;
-    const nx = x - (fp * d - fq * b) / det2;
-    const ny = y - (a * fq - c * fp) / det2;
-    if (!Number.isFinite(nx) || !Number.isFinite(ny))
-      break;
-    if (nx === x && ny === y)
-      break;
-    x = nx;
-    y = ny;
-  }
-  const antes = Math.abs(evaluarNum2(p, x0, y0)) + Math.abs(evaluarNum2(q, x0, y0));
-  const ahora = Math.abs(evaluarNum2(p, x, y)) + Math.abs(evaluarNum2(q, x, y));
-  return ahora <= antes ? { x, y } : { x: x0, y: y0 };
-}
-function escala(p, x, y) {
-  let s = 1;
-  for (const c of p)
-    for (const k of c)
-      s = Math.max(s, Math.abs(aNumero3(k)));
-  const m = Math.max(1, Math.abs(x), Math.abs(y));
-  return s * m ** Math.max(1, gradoY(p) + 1);
-}
-function verificar(p, q, denP, denQ, x, y) {
-  if (!Number.isFinite(x) || !Number.isFinite(y))
-    return false;
-  const rp = Math.abs(evaluarNum2(p, x, y)), rq = Math.abs(evaluarNum2(q, x, y));
-  if (!(rp <= TOL_REL2 * escala(p, x, y)) || !(rq <= TOL_REL2 * escala(q, x, y)))
-    return false;
-  for (const d of [denP, denQ]) {
-    if (esNulo2(d))
-      return false;
-    const v = Math.abs(evaluarNum2(d, x, y));
-    if (v <= 1e-12 * escala(d, x, y))
-      return false;
-  }
-  return true;
-}
-function ordenadasDe(p, q, xRacional, xr, explicita2, xValor) {
-  if (xRacional === null && explicita2 !== null)
-    return [{ y: evaluarNum(explicita2, xValor), exacta: null }];
-  return ordenadasPorEliminacion(p, q, xRacional, xr);
-}
-function ordenadasPorEliminacion(p, q, xRacional, xr) {
-  const py2 = sustituirX(p, xr);
-  const qy = sustituirX(q, xr);
-  if (esNulo(py2) && esNulo(qy))
-    return [];
-  const conForma = (pol) => raicesConForma(pol).map((r) => ({ y: r.raiz.valor, exacta: r.exacto }));
-  if (xRacional !== null) {
-    if (esNulo(py2))
-      return conForma(qy);
-    if (esNulo(qy))
-      return conForma(py2);
-    const g = mcdPol(py2, qy);
-    if (grado(g) < 1)
-      return [];
-    return conForma(g);
-  }
-  const soloValores = (pol) => raicesReales(pol).map((r) => ({ y: r.valor, exacta: null }));
-  if (gradoY(p) === 0)
-    return soloValores(qy);
-  if (gradoY(q) === 0)
-    return soloValores(py2);
-  const rp = raicesReales(py2), rq = raicesReales(qy);
-  const out = [];
-  for (const a of rp) {
-    for (const b of rq) {
-      const tol = 1e-6 * Math.max(1, Math.abs(a.valor));
-      if (Math.abs(a.valor - b.valor) <= tol)
-        out.push({ y: (a.valor + b.valor) / 2, exacta: null });
-    }
-  }
-  return out;
-}
-function ordenadaExacta(explicita2, xExacta, yNumerica) {
-  if (explicita2 === null)
-    return null;
-  if (xExacta === null && grado(explicita2) > 0)
-    return null;
-  const valor = evaluarExacto(explicita2, xExacta ?? exacto(rac(0n)));
-  if (valor === null)
-    return null;
-  const escala2 = Math.max(1, Math.abs(yNumerica));
-  return Math.abs(aNumeroE(valor) - yNumerica) <= 1e-6 * escala2 ? valor : null;
-}
-var riqueza = (s) => (s.exactoX ? 1 : 0) + (s.exactoY ? 1 : 0);
-function ordenarYUnificar(puntos) {
-  const orden = [...puntos].sort((a, b) => a.x - b.x || a.y - b.y);
-  const out = [];
-  for (const s of orden) {
-    const iguales2 = out.findIndex((o) => {
-      const escalaXY = Math.max(1, Math.abs(o.x), Math.abs(o.y));
-      return Math.abs(o.x - s.x) <= 1e-9 * escalaXY && Math.abs(o.y - s.y) <= 1e-9 * escalaXY;
-    });
-    if (iguales2 < 0)
-      out.push(s);
-    else if (riqueza(s) > riqueza(out[iguales2]))
-      out[iguales2] = s;
-  }
-  return out;
-}
-function resolverSistema(ecuacionA, ecuacionB) {
-  const A = ecuacionAPolinomio(ecuacionA);
-  const B = ecuacionAPolinomio(ecuacionB);
-  if (!A || !B)
-    return { tipo: "noResoluble" };
-  const p = A.p, q = B.p;
-  if (compartenComponente(p, q))
-    return { tipo: "solape" };
-  const explicita2 = despejarY(p) ?? despejarY(q);
-  const otra = despejarY(p) !== null ? q : p;
-  const enX = explicita2 !== null ? sustituirY(otra, explicita2) : resultanteY(p, q);
-  if (esNulo(enX))
-    return { tipo: "solape" };
-  const puntos = [];
-  for (const { raiz: r, exacto: xExacta } of raicesConForma(enX)) {
-    const xRacional = xExacta === null ? null : racionalDe3(xExacta);
-    const xr = xRacional ?? r.b;
-    for (const cand of ordenadasDe(p, q, xRacional, xr, explicita2, r.valor)) {
-      const pulido = xRacional !== null && cand.exacta !== null ? { x: r.valor, y: cand.y } : pulirNewton(p, q, r.valor, cand.y);
-      if (!verificar(p, q, A.denominador, B.denominador, pulido.x, pulido.y))
-        continue;
-      puntos.push({
-        x: pulido.x,
-        y: pulido.y,
-        exactoX: xExacta,
-        // Con la abscisa irracional el emparejado numérico no da forma cerrada; la relación
-        // explícita `y = f(x)`, evaluada en el cuerpo de la abscisa, sí.
-        exactoY: cand.exacta ?? ordenadaExacta(explicita2, xExacta, pulido.y)
-      });
-    }
-  }
-  return { tipo: "puntos", puntos: ordenarYUnificar(puntos) };
-}
-var TOL_ORIGINAL = 1e-6;
-var TOL_GUARDA = 1e-9;
-function verificadorDe(ecuacion) {
-  const norm3 = (s) => insertarProductoImplicito(normalizarEntrada(s.trim()));
-  const partes = ecuacion.split("=");
-  if (partes.length > 2)
-    return null;
-  try {
-    const D = partes.length === 2 ? parse2(`(${norm3(partes[0])}) - (${norm3(partes[1])})`) : parse2(`y - (${norm3(partes[0])})`);
-    return evaluadorDe(D);
-  } catch {
-    return null;
-  }
-}
-function satisface(D, s) {
-  const d = D(s.x, s.y);
-  return Number.isFinite(d) && Math.abs(d) <= TOL_ORIGINAL * (1 + s.x * s.x + s.y * s.y);
-}
-function compilarGuardas(guardas) {
-  const out = [];
-  for (const g of new Set(guardas)) {
-    let f;
-    try {
-      f = evaluadorDe(parse2(g));
-    } catch {
-      return null;
-    }
-    if (!f)
-      return null;
-    out.push(f);
-  }
-  return out;
-}
-function dentroDeGuardas(guardas, s) {
-  for (const g of guardas) {
-    const v = g(s.x, s.y);
-    if (!Number.isFinite(v))
-      return false;
-    if (v < -TOL_GUARDA * Math.max(1, Math.abs(s.x), Math.abs(s.y)))
-      return false;
-  }
-  return true;
-}
-function resolverPorRamas(ecuacionA, ecuacionB) {
-  const ramasA = ramasDe(ecuacionA);
-  const ramasB = ramasDe(ecuacionB);
-  if (!ramasA || !ramasB)
-    return null;
-  const verifA = verificadorDe(ecuacionA);
-  const verifB = verificadorDe(ecuacionB);
-  if (!verifA || !verifB)
-    return null;
-  const puntos = [];
-  const exploradas = /* @__PURE__ */ new Set();
-  let algunaResuelta = false;
-  let aproximado = false;
-  let parcial2 = false;
-  for (const ra of ramasA) {
-    for (const rb of ramasB) {
-      const guardas = compilarGuardas([...ra.guardas, ...rb.guardas]);
-      if (guardas === null) {
-        parcial2 = true;
-        continue;
-      }
-      const candidatos = resolverPareja(ra, rb);
-      if (candidatos === "solape")
-        return { tipo: "solape" };
-      if (candidatos === null) {
-        parcial2 = true;
-        continue;
-      }
-      algunaResuelta = true;
-      if (candidatos.aproximado)
-        aproximado = true;
-      if (candidatos.variable)
-        exploradas.add(candidatos.variable);
-      for (const s of candidatos.puntos)
-        if (dentroDeGuardas(guardas, s) && satisface(verifA, s) && satisface(verifB, s))
-          puntos.push(s);
-    }
-  }
-  if (!algunaResuelta)
-    return null;
-  return {
-    tipo: "puntos",
-    puntos: ordenarYUnificar(puntos),
-    aproximado,
-    parcial: parcial2,
-    exploradas: [...exploradas]
-  };
-}
-function resolverPareja(ra, rb) {
-  const exacto2 = resolverSistema(ra.ecuacion, rb.ecuacion);
-  if (exacto2.tipo === "solape")
-    return "solape";
-  if (exacto2.tipo === "puntos")
-    return { puntos: exacto2.puntos, aproximado: false, variable: null };
-  const num = resolverNumerico(ra.ecuacion, rb.ecuacion, { simetrico: true });
-  if (num.tipo === "noResoluble")
-    return null;
-  return {
-    puntos: num.puntos.map((p) => ({ x: p.x, y: p.y, exactoX: null, exactoY: null })),
-    aproximado: true,
-    variable: num.variable
-  };
-}
-function resolverBloque(ecuaciones) {
-  const nada = {
-    tipo: "noResoluble",
-    puntos: [],
-    aproximado: false,
-    parcial: false,
-    exploradas: []
-  };
-  const solape = {
-    tipo: "solape",
-    puntos: [],
-    aproximado: false,
-    parcial: false,
-    exploradas: []
-  };
-  if (ecuaciones.length < 2)
-    return nada;
-  const grupos = ecuaciones.map((ec) => {
-    const { expr, restriccion } = separarRestriccion(ec);
-    let ramas = [expr];
-    try {
-      const norm3 = normalizarEntrada(expr);
-      if (tieneDobleSigno(norm3))
-        ramas = expandirDobleSigno(norm3);
-    } catch {
-    }
-    return { ramas, restriccion };
-  });
-  const parejas = [];
-  for (let i2 = 0; i2 < grupos.length; i2++)
-    for (let j = i2 + 1; j < grupos.length; j++)
-      for (const a of grupos[i2].ramas)
-        for (const b of grupos[j].ramas)
-          parejas.push({ a, b, recortes: [grupos[i2].restriccion, grupos[j].restriccion] });
-  const todos = [];
-  const exploradas = /* @__PURE__ */ new Set();
-  let aproximado = false;
-  let algunaResuelta = false;
-  let parcial2 = false;
-  for (const { a, b, recortes } of parejas) {
-    const admitir = (p) => enDominio(p, recortes);
-    const exacto2 = resolverSistema(a, b);
-    if (exacto2.tipo === "solape")
-      return solape;
-    if (exacto2.tipo === "puntos") {
-      algunaResuelta = true;
-      todos.push(...exacto2.puntos.filter(admitir));
-      continue;
-    }
-    const numerico = resolverNumerico(a, b);
-    if (numerico.tipo === "puntos") {
-      algunaResuelta = true;
-      aproximado = true;
-      exploradas.add(numerico.variable);
-      for (const p of numerico.puntos)
-        if (admitir(p))
-          todos.push({ ...p, exactoX: null, exactoY: null });
-      continue;
-    }
-    const porRamas = resolverPorRamas(a, b);
-    if (porRamas === null) {
-      const tumbado = resolverNumerico(a, b, { simetrico: true });
-      if (tumbado.tipo === "puntos") {
-        algunaResuelta = true;
-        aproximado = true;
-        exploradas.add(tumbado.variable);
-        for (const p of tumbado.puntos)
-          if (admitir(p))
-            todos.push({ ...p, exactoX: null, exactoY: null });
-        continue;
-      }
-      parcial2 = true;
-      continue;
-    }
-    if (porRamas.tipo === "solape")
-      return solape;
-    algunaResuelta = true;
-    if (porRamas.aproximado)
-      aproximado = true;
-    if (porRamas.parcial)
-      parcial2 = true;
-    for (const v of porRamas.exploradas)
-      exploradas.add(v);
-    todos.push(...porRamas.puntos.filter(admitir));
-  }
-  if (!algunaResuelta)
-    return nada;
-  return {
-    tipo: "puntos",
-    puntos: ordenarYUnificar(todos),
-    aproximado,
-    parcial: parcial2,
-    exploradas: [...exploradas]
-  };
-}
-function enDominio(p, recortes) {
-  for (const r of recortes) {
-    if (!r)
-      continue;
-    if (r.variable === "x" && !dentro(r, p.x))
-      return false;
-    if (r.variable === "y" && !dentro(r, p.y))
-      return false;
-  }
-  return true;
-}
-function despejarY(p) {
-  const P4 = normalizar2(p);
-  if (gradoY(P4) !== 1)
-    return null;
-  const coef = P4[1];
-  if (grado(coef) !== 0)
-    return null;
-  const k = coef[0];
-  if (esCero2(k))
-    return null;
-  return normalizar(P4[0].map((c) => ({ n: -c.n * k.d, d: c.d * k.n })).map(
-    (c) => c.d < 0n ? { n: -c.n, d: -c.d } : c
-  )).map((c) => rac(c.n, c.d));
-}
-
-// src/math/notablesImplicita.ts
-var TOL_FY = 1e-9;
-function cuerpoF(ecuacion) {
-  const { expr } = separarRestriccion(ecuacion);
-  const partes = expr.split("=");
-  if (partes.length !== 2)
-    return null;
-  const lado = (s) => insertarProductoImplicito(normalizarEntrada(s.trim()));
-  return `(${lado(partes[0])}) - (${lado(partes[1])})`;
-}
-function parcial(F, variable) {
-  try {
-    return derivative(parse2(F), variable).toString();
-  } catch {
-    return null;
-  }
-}
-function evaluadorXY(expr) {
-  try {
-    const c = parse2(expr).compile();
-    return (x, y) => {
-      const v = c.evaluate({ x, y });
-      return typeof v === "number" ? v : NaN;
-    };
-  } catch {
-    return null;
-  }
-}
-function soloTangenteHorizontal(r, Fy) {
-  if (r.tipo !== "puntos" || Fy === null)
-    return r;
-  const evaluar2 = evaluadorXY(Fy);
-  if (evaluar2 === null)
-    return r;
-  return {
-    ...r,
-    puntos: r.puntos.filter((p) => {
-      const v = evaluar2(p.x, p.y);
-      return Number.isFinite(v) && Math.abs(v) > TOL_FY;
-    })
-  };
-}
-function notablesDeImplicita(ecuacion) {
-  const F = cuerpoF(ecuacion);
-  if (F === null)
-    return null;
-  const raices2 = resolverBloque([ecuacion, "y = 0"]);
-  const interseccionesY = resolverBloque([ecuacion, "x = 0"]);
-  const Fx = parcial(F, "x");
-  const vertices = Fx === null ? null : soloTangenteHorizontal(resolverBloque([ecuacion, `${Fx} = 0`]), parcial(F, "y"));
-  return { raices: raices2, interseccionesY, vertices };
 }
 
 // src/core/analysis/analisisPolar.ts
@@ -64383,6 +64242,9 @@ var import_obsidian7 = require("obsidian");
 function esTactil() {
   return import_obsidian7.Platform.isMobile;
 }
+function esMovilVertical() {
+  return import_obsidian7.Platform.isMobile && window.matchMedia("(orientation: portrait)").matches;
+}
 
 // src/trig/modeloTrig.ts
 var DOS_PI4 = Math.PI * 2;
@@ -65043,7 +64905,11 @@ async function procesarTrig(motor, source, el, ctx) {
     estrecho: false,
     abierto: false,
     panel: null,
-    ladoChip: ladoChip(tactil)
+    ladoChip: ladoChip(tactil),
+    // DOS CARAS en estrecho: el plano o la formula, nunca una tarjeta posada sobre la otra.
+    // Puede pedirlo porque el panel respeta `huecoInferior`, asi que ocupa el rectangulo del
+    // PLANO y deja al pie la franja de controles, que es mando y no contenido.
+    panelCompleto: true
   };
   const panelTrig = contenedor.createDiv({ cls: "lmath-latex" });
   reparto.panel = panelTrig;
@@ -65122,8 +64988,12 @@ async function procesarTrig(motor, source, el, ctx) {
   lienzoColocado = (estrecho) => {
     canvas.style.height = estrecho ? `calc(100% - ${ALTO_CONTROLES_TRIG}px)` : "100%";
     const extra = estrecho ? ALTO_CONTROLES_TRIG : 0;
-    for (const { el: el2, base } of anclajesAbajo)
-      el2.style.bottom = `${base + extra}px`;
+    for (const { el: el2, base, techo } of anclajesAbajo) {
+      const bajo = base + extra;
+      el2.style.bottom = `${bajo}px`;
+      if (techo)
+        el2.style.maxHeight = techoPopover(bajo);
+    }
   };
   lienzoColocado(reparto.estrecho);
   canvas.tabIndex = 0;
@@ -65158,6 +65028,8 @@ async function procesarTrig(motor, source, el, ctx) {
   let actualizarPanel = () => {
   };
   let refrescarInfo = () => {
+  };
+  let cerrarInfo = () => {
   };
   let animando = false;
   let detenerAnimacion = () => {
@@ -65386,8 +65258,8 @@ async function procesarTrig(motor, source, el, ctx) {
   {
     const altoU = reparto.ladoChip;
     const anchoU = altoU;
-    const btnUnidad = wrap.createDiv();
-    btnUnidad.style.cssText = `position:absolute; top:6px; right:8px; width:${anchoU}px; height:${altoU}px; display:flex; align-items:center; justify-content:center; line-height:1; border-radius:${altoU / 2}px; cursor:pointer; user-select:none; z-index:5; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde);`;
+    const btnUnidad = wrap.createDiv({ cls: "lmath-sobre-panel" });
+    btnUnidad.style.cssText = `position:absolute; top:6px; right:8px; width:${anchoU}px; height:${altoU}px; display:flex; align-items:center; justify-content:center; line-height:1; border-radius:${altoU / 2}px; cursor:pointer; user-select:none; z-index:7; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde);`;
     const sincronizarUnidad = () => {
       btnUnidad.empty();
       montarGlifoUnidad(btnUnidad, unidad, Math.round(altoU * 0.78));
@@ -65407,9 +65279,9 @@ async function procesarTrig(motor, source, el, ctx) {
   {
     const ladoP = reparto.ladoChip;
     const velocidad = aRadianes(60);
-    const btnPlay = wrap.createDiv();
+    const btnPlay = wrap.createDiv({ cls: "lmath-sobre-panel" });
     chipsAbajo.push(btnPlay);
-    btnPlay.style.cssText = `position:absolute; bottom:8px; left:${8 + ladoP + 6}px; width:${ladoP}px; height:${ladoP}px; display:flex; align-items:center; justify-content:center; line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; user-select:none; z-index:5;`;
+    btnPlay.style.cssText = `position:absolute; bottom:8px; left:${8 + ladoP + 6}px; width:${ladoP}px; height:${ladoP}px; display:flex; align-items:center; justify-content:center; line-height:1; color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde); border-radius:50%; cursor:pointer; user-select:none; z-index:7;`;
     const sincronizarPlay = () => {
       btnPlay.empty();
       montarIcono(btnPlay, animando ? "pausar" : "reproducir", ladoIcono(ladoP));
@@ -65470,18 +65342,37 @@ async function procesarTrig(motor, source, el, ctx) {
   }
   {
     const ladoF = reparto.ladoChip;
-    const btnFormula = wrap.createDiv({ text: "f(x)" });
-    ponerTooltip(btnFormula, t().botones.verFormula);
-    const estiloFormula = () => {
-      btnFormula.style.cssText = `position:absolute; bottom:${sueloChips()}px; left:8px; width:${ladoF}px; height:${ladoF}px; display:flex; align-items:center; justify-content:center; font-size:10px; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; font-family:"Lora", var(--font-interface); ` + (reparto.abierto ? "color:var(--lmath-acento-contraste); background:var(--lmath-acento); border:1px solid var(--lmath-acento);" : "color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde);") + (reparto.estrecho ? "" : "display:none;");
+    const btnFormula = wrap.createDiv({ cls: "lmath-sobre-panel" });
+    const enModoFormula = () => reparto.estrecho && reparto.abierto;
+    const glifoFormula = () => {
+      const nombre = enModoFormula() ? "circulo" : "formula";
+      if (btnFormula.dataset.glifo === nombre)
+        return;
+      btnFormula.dataset.glifo = nombre;
+      btnFormula.empty();
+      if (nombre === "formula")
+        btnFormula.setText("f(x)");
+      else
+        montarIcono(btnFormula, "unit_circle", ladoIcono(ladoF));
+      ponerTooltip(btnFormula, nombre === "formula" ? t().botones.verFormula : t().botones.verCirculo);
     };
-    estiloFormula();
-    sincronizarBotonFormula = estiloFormula;
+    const estiloFormula = () => {
+      btnFormula.style.cssText = `position:absolute; bottom:${sueloChips()}px; left:8px; width:${ladoF}px; height:${ladoF}px; display:flex; align-items:center; justify-content:center; font-size:10px; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:7; font-family:"Lora", var(--font-interface); ` + (reparto.abierto ? "color:var(--lmath-acento-contraste); background:var(--lmath-acento); border:1px solid var(--lmath-acento);" : "color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde);") + (reparto.estrecho ? "" : "display:none;");
+    };
+    const sincronizarFormula = () => {
+      estiloFormula();
+      glifoFormula();
+      wrap.toggleClass("lmath-modo-formula", enModoFormula());
+    };
+    sincronizarFormula();
+    sincronizarBotonFormula = sincronizarFormula;
     btnFormula.addEventListener("click", (ev) => {
       ev.stopPropagation();
       reparto.abierto = !reparto.abierto;
+      if (enModoFormula())
+        cerrarInfo();
       aplicarCajaPanel(reparto);
-      estiloFormula();
+      sincronizarFormula();
       pintar();
     });
   }
@@ -65494,7 +65385,7 @@ async function procesarTrig(motor, source, el, ctx) {
     montarIcono(btnInfo, "info", ladoIcono(ladoI));
     const pop = wrap.createDiv();
     pop.style.cssText = estiloPopoverInfo(ladoI);
-    anclajesAbajo.push({ el: pop, base: 8 + ladoI + 6 });
+    anclajesAbajo.push({ el: pop, base: 8 + ladoI + 6, techo: true });
     let visible = false;
     const abiertas = /* @__PURE__ */ new Set([0]);
     const dec = (v, n = 6) => {
@@ -65604,6 +65495,12 @@ async function procesarTrig(motor, source, el, ctx) {
       if (visible)
         construir();
     };
+    cerrarInfo = () => {
+      if (!visible)
+        return;
+      visible = false;
+      pop.setCssStyles({ display: "none" });
+    };
     btnInfo.addEventListener("click", (ev) => {
       ev.stopPropagation();
       visible = !visible;
@@ -65612,6 +65509,8 @@ async function procesarTrig(motor, source, el, ctx) {
       pop.setCssStyles({ display: visible ? "block" : "none" });
     });
   }
+  if (tactil)
+    montarChipEditar(motor.plugin, wrap, contenedor, ctx, reparto.ladoChip);
   lienzoColocado(reparto.estrecho);
   redimensionar();
   pintar();
@@ -65854,10 +65753,45 @@ function geometriaFlecha(vp, f) {
   const [nx, ny] = uy > 0 ? [uy, -ux] : [-uy, ux];
   return { x0, y0, x1, y1, largo, ux, uy, nx, ny };
 }
+var MARGEN_RECORTE_PX = 64;
+function dentroDelLienzo(caja, x, y) {
+  const m = MARGEN_RECORTE_PX;
+  return Number.isFinite(x) && Number.isFinite(y) && x >= -m && x <= caja.anchoPx + m && y >= -m && y <= caja.altoPx + m;
+}
+function recortarSegmento(x0, y0, x1, y1, caja) {
+  if (![x0, y0, x1, y1].every(Number.isFinite))
+    return null;
+  const m = MARGEN_RECORTE_PX;
+  const minX = -m, maxX = caja.anchoPx + m, minY = -m, maxY = caja.altoPx + m;
+  const dx = x1 - x0, dy = y1 - y0;
+  let t0 = 0, t1 = 1;
+  const borde = (p, q) => {
+    if (p === 0)
+      return q >= 0;
+    const r = q / p;
+    if (p < 0) {
+      if (r > t1)
+        return false;
+      if (r > t0)
+        t0 = r;
+    } else {
+      if (r < t0)
+        return false;
+      if (r < t1)
+        t1 = r;
+    }
+    return true;
+  };
+  if (!borde(-dx, x0 - minX) || !borde(dx, maxX - x0) || !borde(-dy, y0 - minY) || !borde(dy, maxY - y0))
+    return null;
+  return [x0 + t0 * dx, y0 + t0 * dy, x0 + t1 * dx, y0 + t1 * dy];
+}
 function dibujarFlecha(ctx, vp, f) {
   const color = css2(colorCurva(f.rol));
   const g = geometriaFlecha(vp, f);
   if (g.largo < 0.5) {
+    if (!dentroDelLienzo(vp, g.x1, g.y1))
+      return;
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(g.x1, g.y1, RADIO_MARCA_PX, 0, 2 * Math.PI);
@@ -65866,13 +65800,18 @@ function dibujarFlecha(ctx, vp, f) {
   }
   const punta = Math.min(PUNTA_PX, g.largo * 0.5);
   const bx = g.x1 - g.ux * punta, by = g.y1 - g.uy * punta;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = GROSOR_PX;
-  ctx.lineCap = "butt";
-  ctx.beginPath();
-  ctx.moveTo(g.x0, g.y0);
-  ctx.lineTo(bx, by);
-  ctx.stroke();
+  const trazo = recortarSegmento(g.x0, g.y0, bx, by, vp);
+  if (trazo) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = GROSOR_PX;
+    ctx.lineCap = "butt";
+    ctx.beginPath();
+    ctx.moveTo(trazo[0], trazo[1]);
+    ctx.lineTo(trazo[2], trazo[3]);
+    ctx.stroke();
+  }
+  if (!dentroDelLienzo(vp, g.x1, g.y1))
+    return;
   const ancho = PUNTA_ANCHO_PX * punta / PUNTA_PX;
   ctx.fillStyle = color;
   ctx.beginPath();
@@ -65884,6 +65823,8 @@ function dibujarFlecha(ctx, vp, f) {
 }
 function dibujarMarca(ctx, vp, m) {
   const [x, y] = aPantalla(vp, m.en);
+  if (!dentroDelLienzo(vp, x, y))
+    return;
   ctx.fillStyle = css2(colorCurva(m.rol));
   ctx.beginPath();
   ctx.arc(x, y, RADIO_MARCA_PX, 0, 2 * Math.PI);
@@ -65912,7 +65853,7 @@ function dibujarVectores(ctx, vp, dibujo) {
     dibujarMarca(ctx, vp, m);
   ctx.restore();
 }
-function encuadreDeDibujo(dibujo, semiYDefecto, aspecto) {
+function encuadreDeDibujo(dibujo, semiYDefecto, aspecto, cromo) {
   let maxX = 0, maxY = 0;
   const mirar = (p) => {
     if (!Number.isFinite(p[0]) || !Number.isFinite(p[1]))
@@ -65929,12 +65870,20 @@ function encuadreDeDibujo(dibujo, semiYDefecto, aspecto) {
   if (maxX === 0 && maxY === 0)
     return null;
   const MARGEN = 1.25;
-  const necesario = Math.max(maxY, maxX / Math.max(aspecto, 1e-6)) * MARGEN;
+  const asp = Math.max(aspecto, 1e-6);
+  const necesario = Math.max(maxY, maxX / asp) * MARGEN;
   if (!Number.isFinite(necesario) || necesario <= 0)
     return null;
-  if (necesario <= semiYDefecto && necesario >= semiYDefecto / 3)
-    return null;
-  return necesario;
+  const elegido = necesario <= semiYDefecto && necesario >= semiYDefecto / 3 ? semiYDefecto : necesario;
+  const seguro = Math.max(elegido, semiYSinCromo(maxX, maxY, asp, cromo) * MARGEN);
+  return seguro === semiYDefecto ? null : seguro;
+}
+function semiYSinCromo(maxX, maxY, asp, cromo) {
+  if (!cromo || cromo.margenPx <= 0 || cromo.altoPx <= 0)
+    return 0;
+  const anchoPx = asp * cromo.altoPx;
+  const util = (px2) => Math.max(0.25, (px2 - 2 * cromo.margenPx) / px2);
+  return Math.max(maxY / util(cromo.altoPx), maxX / (asp * util(anchoPx)));
 }
 
 // src/vector/analisisVector.ts
@@ -66077,7 +66026,9 @@ async function procesarVector(motor, source, el, ctx) {
     abierto: false,
     panel: null,
     ladoChip: ladoChip(tactil),
-    alto
+    alto,
+    // En estrecho el bloque tiene DOS MODOS —el plano o las tarjetas—, igual que obs-graph.
+    panelCompleto: true
   };
   const montarPanel = async () => {
     if (conVistas) {
@@ -66110,7 +66061,7 @@ async function procesarVector(motor, source, el, ctx) {
     const ancho = contenedor.clientWidth;
     if (ancho <= 0)
       return;
-    const estrecho = ancho < ANCHO_MINIMO_COLUMNAS;
+    const estrecho = ancho < ANCHO_MINIMO_COLUMNAS || esMovilVertical();
     if (estrecho === reparto.estrecho && ancho === anchoAplicado)
       return;
     anchoAplicado = ancho;
@@ -66119,6 +66070,7 @@ async function procesarVector(motor, source, el, ctx) {
       reparto.abierto = false;
     contenedor.toggleClass("lmath-estrecho", estrecho);
     aplicarCajaPanel(reparto);
+    avisarCambioDeReparto(reparto);
     sincronizarBotonFormula();
     wrap.style.height = estrecho ? `${Math.round(ancho * PROPORCION_PLANO_FLOTANTE)}px` : `${alto}px`;
   };
@@ -66133,7 +66085,14 @@ async function procesarVector(motor, source, el, ctx) {
     // Mismo trato que el plano de obs-graph: con ratón se oculta el cursor del sistema y el
     // motor pinta el suyo (`Crosshair.dibujarCursorCruz`); con el dedo no hay cursor que
     // sustituir, así que se deja el de siempre. Ver la nota larga en `process`.
-    cursor: tactil ? "default" : "none"
+    cursor: tactil ? "default" : "none",
+    // El dedo mueve el PLANO, en los dos ejes, y dos dedos hacen zoom: el navegador no se queda
+    // ningún gesto que empiece aquí. Faltaba desde la 1.4.0, que es la versión que le dio cámara
+    // a este bloque: sin esto el navegador se quedaba TODOS los toques para desplazar la nota, y
+    // ni el paneo ni el pellizco llegaban nunca a la cámara. Va SOLO en el lienzo, no en el
+    // bloque: los toques que empiezan en los márgenes o sobre el panel de la fórmula siguen
+    // desplazando la nota con normalidad.
+    touchAction: "none"
   });
   const ctx2d = canvas.getContext("2d");
   if (!ctx2d) {
@@ -66216,7 +66175,12 @@ async function procesarVector(motor, source, el, ctx) {
     canvas.height = altoPx * dpr;
     ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (primera) {
-      const semiY = encuadreDeDibujo(dibujo, SEMI_Y_VECTOR, ancho / altoPx) ?? SEMI_Y_VECTOR;
+      const semiY = encuadreDeDibujo(
+        dibujo,
+        SEMI_Y_VECTOR,
+        ancho / altoPx,
+        tactil ? { margenPx: huecoChips(reparto.ladoChip), altoPx } : void 0
+      ) ?? SEMI_Y_VECTOR;
       camara.fijarEncuadreBase(semiY);
     }
     pintar();
@@ -66248,7 +66212,6 @@ async function procesarVector(motor, source, el, ctx) {
   ponerTooltip(btnMenosV, t().botones.alejar);
   btnMenosV.style.cssText = estiloZoomV(6 + 2 * escalonV);
   montarIcono(btnMenosV, "alejar", iconoChipV);
-  const columnaZoomV = [btnInicioV, btnMasV, btnMenosV];
   btnInicioV.addEventListener("click", () => camara.volverAVistaBase());
   const CADENCIA_ZOOM_MS_V = 100;
   const zoomMantenidoV = (btn, acercar) => {
@@ -66275,27 +66238,8 @@ async function procesarVector(motor, source, el, ctx) {
   zoomMantenidoV(btnMenosV, false);
   let cerrarInfo = () => {
   };
-  {
-    const ladoF = reparto.ladoChip;
-    const btnFormula = wrap.createDiv({ text: "f(x)" });
-    ponerTooltip(btnFormula, t().botones.verFormula);
-    const estiloFormula = () => {
-      btnFormula.style.cssText = `position:absolute; bottom:8px; left:8px; width:${ladoF}px; height:${ladoF}px; display:flex; align-items:center; justify-content:center; font-size:10px; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:5; font-family:"Lora", var(--font-interface); ` + (reparto.abierto ? "color:var(--lmath-acento-contraste); background:var(--lmath-acento); border:1px solid var(--lmath-acento);" : "color:var(--lmath-acento-suave); background:var(--lmath-chip); border:1px solid var(--lmath-acento-borde);") + (reparto.estrecho ? "" : "display:none;");
-      for (const b of columnaZoomV)
-        b.setCssStyles({ display: reparto.abierto ? "none" : "flex" });
-    };
-    estiloFormula();
-    sincronizarBotonFormula = estiloFormula;
-    btnFormula.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      reparto.abierto = !reparto.abierto;
-      if (reparto.abierto)
-        cerrarInfo();
-      aplicarCajaPanel(reparto);
-      estiloFormula();
-      pintar();
-    });
-  }
+  let cerrarFormula = () => {
+  };
   if (!conPlano) {
     const etiqueta = bloque.entradas.length === 0 ? t().velo.sinVector : t().velo.nadaQueDibujar;
     const velo = wrap.createDiv({ cls: "lmath-velo-vector" });
@@ -66305,13 +66249,31 @@ async function procesarVector(motor, source, el, ctx) {
     velo.setCssProps({ "--lmath-velo-z": "4" });
   }
   cerrarInfo = montarBotonInfoVector(motor, wrap, dibujo, reparto.ladoChip, () => {
-    if (!reparto.abierto)
-      return;
-    reparto.abierto = false;
-    aplicarCajaPanel(reparto);
-    sincronizarBotonFormula();
-    pintar();
+    cerrarFormula();
   });
+  {
+    const alternarFormula = (abrir) => {
+      if (reparto.abierto === abrir)
+        return;
+      reparto.abierto = abrir;
+      if (abrir)
+        cerrarInfo();
+      aplicarCajaPanel(reparto);
+      sincronizarBotonFormula();
+      pintar();
+    };
+    sincronizarBotonFormula = montarBotonFormula(
+      motor.plugin,
+      wrap,
+      ctx,
+      reparto,
+      () => alternarFormula(!reparto.abierto)
+    );
+    sincronizarBotonFormula();
+    cerrarFormula = () => alternarFormula(false);
+  }
+  if (tactil)
+    montarChipEditar(motor.plugin, wrap, contenedor, ctx, reparto.ladoChip);
   revelar();
 }
 function montarBotonInfoVector(motor, wrap, dibujo, lado, alAbrir) {
@@ -66501,7 +66463,10 @@ var MotorExperimental = class {
       estrecho: false,
       abierto: false,
       panel: null,
-      ladoChip: ladoChip(tactil)
+      ladoChip: ladoChip(tactil),
+      // En estrecho el bloque tiene DOS MODOS —el plano o la fórmula—, y el botón de la esquina
+      // cambia de uno a otro. Ver `Reparto.panelCompleto`.
+      panelCompleto: true
     };
     let aplicarParametro = () => {
     };
@@ -66532,7 +66497,7 @@ var MotorExperimental = class {
       const ancho = contenedor.clientWidth;
       if (ancho <= 0)
         return;
-      const estrecho = ancho < ANCHO_MINIMO_COLUMNAS;
+      const estrecho = ancho < ANCHO_MINIMO_COLUMNAS || esMovilVertical();
       if (estrecho === reparto.estrecho && ancho === anchoAplicado)
         return;
       anchoAplicado = ancho;
@@ -66541,6 +66506,7 @@ var MotorExperimental = class {
         reparto.abierto = false;
       contenedor.toggleClass("lmath-estrecho", estrecho);
       aplicarCajaPanel(reparto);
+      avisarCambioDeReparto(reparto);
       sincronizarBotonFormula();
       wrap.style.height = estrecho ? `${Math.round(ancho * PROPORCION_PLANO_FLOTANTE)}px` : `${H}px`;
     };
@@ -66589,20 +66555,16 @@ var MotorExperimental = class {
       const detalle = msg.createDiv({ text: degenerada.detalle });
       detalle.style.cssText = "font-size:12px; line-height:1.4; max-width:320px; color:var(--lmath-texto-tenue);";
     }
-    const exprGraph = parametros.length > 0 ? null : exprExplicita(graficadas, this.sistema);
-    let hayChipInfo = false;
-    if (exprGraph && !degenerada) {
+    const exprGraph = exprExplicita(graficadas, this.sistema);
+    const exprGraphViva = () => exprExplicita([paraMotor(fuentesGrafico[0] ?? "")], this.sistema) ?? "";
+    const conParametros = parametros.length > 0;
+    const infoAnalitico = exprGraph !== null && !degenerada && !(conParametros && (this.integral || this.derivada));
+    let alRecalcularFinal = null;
+    if (infoAnalitico) {
       if (this.integral)
-        hayChipInfo = montarBotonInfoIntegral(
-          this,
-          wrap,
-          escrito,
-          ctx,
-          reparto.ladoChip,
-          exclusion
-        );
+        montarBotonInfoIntegral(this, wrap, escrito, ctx, reparto.ladoChip, exclusion);
       else if (this.derivada && funcionEscrita)
-        hayChipInfo = montarBotonInfoDerivada(
+        montarBotonInfoDerivada(
           this,
           wrap,
           funcionEscrita,
@@ -66611,10 +66573,15 @@ var MotorExperimental = class {
           reparto.ladoChip,
           exclusion
         );
-      else {
-        montarBotonInfo(this, wrap, exprGraph, ctx, reparto.ladoChip, exclusion);
-        hayChipInfo = true;
-      }
+      else
+        alRecalcularFinal = montarBotonInfo(
+          this,
+          wrap,
+          exprGraphViva,
+          ctx,
+          reparto.ladoChip,
+          exclusion
+        );
     }
     let camara;
     let navegacion = null;
@@ -66650,7 +66617,6 @@ var MotorExperimental = class {
         rafId = window.requestAnimationFrame(ejecutarFrame);
     };
     let timerFinal = null;
-    let alRecalcularFinal = null;
     const programarFinal = () => {
       if (timerFinal !== null)
         window.clearTimeout(timerFinal);
@@ -66769,7 +66735,6 @@ var MotorExperimental = class {
     ponerTooltip(btnMenos, t().botones.alejar);
     btnMenos.style.cssText = estiloZoom(6 + 2 * escalonZoom);
     montarIcono(btnMenos, "alejar", iconoChip);
-    const columnaZoom = [btnInicio, btnMas, btnMenos];
     btnInicio.addEventListener("click", () => camara.volverAVistaBase());
     const CADENCIA_ZOOM_MS = 100;
     const zoomMantenido = (btn, acercar) => {
@@ -66848,7 +66813,6 @@ var MotorExperimental = class {
     };
     sincronizarControles();
     if (this.sistema) {
-      hayChipInfo = true;
       alRecalcularFinal = montarInfoSistema(
         this.plugin,
         wrap,
@@ -66861,8 +66825,7 @@ var MotorExperimental = class {
         limpieza
       );
     }
-    if (!this.sistema && !degenerada && graficadas.length > 0 && !exprGraph) {
-      hayChipInfo = true;
+    if (!this.sistema && !degenerada && graficadas.length > 0 && !infoAnalitico) {
       alRecalcularFinal = montarInfoGeometrico(
         this.plugin,
         wrap,
@@ -66879,35 +66842,6 @@ var MotorExperimental = class {
         limpieza
       );
     }
-    const btnFormula = wrap.createDiv();
-    const derechaFormula = MARGEN_FLOTANTE + (hayChipInfo ? lado + MARGEN_FLOTANTE : 0);
-    const estiloBotonFormula = () => {
-      btnFormula.style.cssText = `position:absolute; bottom:${MARGEN_FLOTANTE}px; right:${derechaFormula}px; height:${lado}px; min-width:${lado}px; padding:0 8px; box-sizing:border-box; display:${reparto.estrecho ? "flex" : "none"}; align-items:center; justify-content:center; font-size:11px; line-height:1; border-radius:8px; cursor:pointer; user-select:none; z-index:7; ` + (reparto.abierto ? "color:var(--lmath-texto); background:var(--lmath-chip-activo); border:1px solid var(--lmath-borde-activo);" : "color:var(--lmath-texto-tenue); background:var(--lmath-chip); border:1px solid var(--lmath-borde);");
-    };
-    const pintarGlifoFormula = () => {
-      const nombre = reparto.abierto ? "cerrar" : "formula";
-      if (btnFormula.dataset.glifo === nombre)
-        return;
-      btnFormula.dataset.glifo = nombre;
-      btnFormula.empty();
-      if (reparto.abierto)
-        montarIcono(btnFormula, "cerrar", iconoChip);
-      else
-        montarEtiquetaMath(this.plugin, btnFormula, "f(x)", ctx);
-      ponerTooltip(
-        btnFormula,
-        reparto.abierto ? t().botones.cerrarFormula : t().botones.verFormula
-      );
-    };
-    let btnEditar = null;
-    sincronizarBotonFormula = () => {
-      estiloBotonFormula();
-      pintarGlifoFormula();
-      btnEditar?.setCssStyles({ display: reparto.abierto ? "none" : "flex" });
-      for (const b of columnaZoom)
-        b.setCssStyles({ display: reparto.abierto ? "none" : "flex" });
-    };
-    sincronizarBotonFormula();
     const alternarFormula = (abrir) => {
       if (reparto.abierto === abrir)
         return;
@@ -66918,81 +66852,18 @@ var MotorExperimental = class {
       aplicarCajaPanel(reparto);
       sincronizarBotonFormula();
     };
+    sincronizarBotonFormula = montarBotonFormula(
+      this.plugin,
+      wrap,
+      ctx,
+      reparto,
+      () => alternarFormula(!reparto.abierto)
+    );
+    sincronizarBotonFormula();
     cerrarFormula = () => alternarFormula(false);
-    btnFormula.addEventListener("click", (e3) => {
-      e3.stopPropagation();
-      alternarFormula(!reparto.abierto);
-    });
-    const TOQUE_QUIETO_PX = 8;
-    const TOQUE_MAX_MS = 500;
-    let toqueX = 0, toqueY = 0, toqueMs = 0;
-    wrap.addEventListener("pointerdown", (e3) => {
-      toqueX = e3.clientX;
-      toqueY = e3.clientY;
-      toqueMs = e3.timeStamp;
-    });
-    wrap.addEventListener("click", (e3) => {
-      if (!reparto.abierto)
-        return;
-      const quieto = Math.hypot(e3.clientX - toqueX, e3.clientY - toqueY) <= TOQUE_QUIETO_PX;
-      if (quieto && e3.timeStamp - toqueMs <= TOQUE_MAX_MS)
-        alternarFormula(false);
-    });
-    if (tactil) {
-      btnEditar = wrap.createDiv();
-      ponerTooltip(btnEditar, t().botones.editarBloque);
-      btnEditar.style.cssText = `position:absolute; top:6px; left:${MARGEN_FLOTANTE}px; width:${lado}px; height:${lado}px; display:flex; align-items:center; justify-content:center; line-height:1; border-radius:50%; cursor:pointer; user-select:none; z-index:7; color:var(--lmath-texto-tenue); background:var(--lmath-chip); border:1px solid var(--lmath-borde);`;
-      montarIcono(btnEditar, "editar", iconoChip);
-      btnEditar.addEventListener("click", (e3) => {
-        e3.stopPropagation();
-        this.editarBloque(contenedor, ctx);
-      });
-    }
+    if (tactil)
+      montarChipEditar(this.plugin, wrap, contenedor, ctx, lado);
     revelar();
-  }
-  /**
-   * Lleva el cursor al CÓDIGO de este bloque, que es lo que hace el `</>` de Obsidian en
-   * escritorio. Tres pasos, y ninguno se puede dar por hecho:
-   *
-   *  1. QUÉ LÍNEAS ocupa el bloque en el fichero: `getSectionInfo`. Devuelve null cuando el
-   *     bloque no vive en un fichero editable (una vista previa, un embebido, un canvas);
-   *     ahí no hay nada que editar y se sale sin hacer ruido.
-   *  2. QUÉ VISTA lo contiene: la activa, comprobando que sea del MISMO fichero. Sin esa
-   *     comprobación, tocar el chip de un bloque embebido movería el cursor de otra nota.
-   *  3. En LECTURA no hay cursor donde ponerlo, así que primero se pasa la vista a edición.
-   *     El salto se hace después, cuando el editor ya existe.
-   *
-   * El cursor cae DENTRO del cuerpo —nunca en las vallas ```—, así que en Live Preview el
-   * bloque se abre mostrando su fuente, que es lo que se venía a hacer. Y cae al FINAL del
-   * contenido, no al principio: se pulsa "editar" para seguir escribiendo, no para insertar
-   * algo por delante de lo que ya hay.
-   */
-  editarBloque(el, ctx) {
-    const seccion = ctx.getSectionInfo(el);
-    if (!seccion)
-      return;
-    const vista = this.plugin.app.workspace.getActiveViewOfType(import_obsidian10.MarkdownView);
-    if (!vista || vista.file?.path !== ctx.sourcePath)
-      return;
-    const finDelCuerpo = () => {
-      const editor = vista.editor;
-      const esValla = (n) => editor.getLine(n)?.trimStart().startsWith("```") ?? false;
-      const ultima = esValla(seccion.lineEnd) ? seccion.lineEnd - 1 : seccion.lineEnd;
-      if (ultima <= seccion.lineStart)
-        return { line: seccion.lineStart + 1, ch: 0 };
-      return { line: ultima, ch: editor.getLine(ultima).length };
-    };
-    const irAlBloque = () => {
-      const destino = finDelCuerpo();
-      vista.editor.setCursor(destino);
-      vista.editor.scrollIntoView({ from: destino, to: destino }, true);
-      vista.editor.focus();
-    };
-    if (vista.getMode() === "preview") {
-      void vista.setState({ ...vista.getState(), mode: "source" }, { history: false }).then(irAlBloque);
-    } else {
-      irAlBloque();
-    }
   }
 };
 
@@ -67026,6 +66897,20 @@ async function registrarFuenteLora(_plugin) {
   }
 }
 
+// src/host-obsidian/nombresBloque.ts
+var RENOMBRES = [
+  { viejo: "obs-graph", nuevo: "_graph", motor: "graph" },
+  { viejo: "obs-system", nuevo: "_system", motor: "system" },
+  { viejo: "obs-derivate", nuevo: "_derivate", motor: "derivate" },
+  { viejo: "obs-integral", nuevo: "_integral", motor: "integral" },
+  { viejo: "obs-trig", nuevo: "_trig", motor: "trig" },
+  { viejo: "obs-vector", nuevo: "_vector", motor: "vector" }
+];
+function nombresDe(viejo) {
+  const fila = RENOMBRES.find((r) => r.viejo === viejo);
+  return fila ? [fila.nuevo] : [viejo];
+}
+
 // main.ts
 var LMathPlugin = class extends import_obsidian11.Plugin {
   constructor() {
@@ -67057,8 +66942,8 @@ var LMathPlugin = class extends import_obsidian11.Plugin {
       oyente();
   }
   /**
-   * Registra UN bloque bajo todos sus nombres (el histórico `obs-*` y el nuevo `_graph`), para
-   * que durante la transición las dos sintaxis rindan exactamente lo mismo.
+   * Registra UN bloque bajo los nombres que `nombresDe` dé por vigentes. Desde la 2.0.0 es uno
+   * solo, el nuevo; en la 1.5.0 eran dos, y el bucle es lo que sobrevive de aquella transición.
    *
    * El try/catch no es decorativo. El identificador de bloque es una clave global compartida por
    * todos los plugins instalados: si otro ya tomó uno de estos nombres, la llamada puede lanzar.
@@ -67078,8 +66963,6 @@ var LMathPlugin = class extends import_obsidian11.Plugin {
   async onload() {
     await this.cargarAjustes();
     new import_obsidian11.Notice(t().aviso.cargado);
-    new import_obsidian11.Notice(`${tm().avisoTitulo}
-${tm().avisoCuerpo}`, 15e3);
     this.addSettingTab(new PestanaAjustesLMath(this.app, this));
     void registrarFuenteLora(this);
     const ajustes = () => this.ajustes;

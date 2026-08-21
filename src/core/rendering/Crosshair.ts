@@ -13,13 +13,14 @@
 // densidad de vértices. Una polilínea es para visualizar; en cuanto la expresión se puede
 // evaluar, deja de ser una fuente de verdad aceptable.
 //
-// La elección —evaluar o interpolar— vive ahora en `Escena.yEnCurva`, que es quien tiene el
-// contexto para tomarla. Aquí solo llega el número.
+// La elección —evaluar o interpolar— vive ahora en `Escena.lecturaEnCurva`, que es quien tiene el
+// contexto para tomarla. Aquí llegan el número y su procedencia, y la procedencia decide cuántas
+// cifras se pueden escribir sin escribir ruido.
 
 import type { Viewport } from "../contracts";
 import type { ItemDibujo } from "./RendererCanvas2D";
 import { aPantallaY, aMundoX } from "../scene/viewport-utils";
-import { formatearNumero } from "./overlay/Overlay";
+import { formatearLectura } from "../analysis/formatoNumero";
 import { paletaPlano, colorCurva } from "./paleta";
 
 // Icono del cursor: Material Symbols "point_scan" (24dp, viewBox 0 -960 960 960). Solo la
@@ -69,7 +70,10 @@ export class Crosshair {
     cursorPx: number,
     item: ItemDibujo | undefined,
     anclado: boolean,
-    y: number | null
+    y: number | null,
+    /** ¿La `y` se EVALUÓ (explícita) o se interpoló de la polilínea? Decide cuántas cifras se
+     *  pueden enseñar sin enseñar ruido. Lo resuelve `Escena.lecturaEnCurva`. */
+    yEvaluada = false
   ): void {
     const ctx = this.ctx;
     const W = vp.anchoPx;
@@ -132,8 +136,16 @@ export class Crosshair {
     ctx.font = "11px monospace";
     const tx = cursorPx + (aLaDerecha ? 5 : -5);
     ctx.fillStyle = paletaPlano().textoCrosshair;
-    ctx.fillText(`x = ${formatearNumero(worldX)}`, tx, 4);
-    ctx.fillText(`y = ${formatearNumero(y)}`, tx, 18);
+    // El readout NO usa el formato de las etiquetas de eje. Una marca de eje es un número
+    // REDONDO que eligió `pasoBonito`, y ahí lo que se quiere es que quepa; esto es un valor
+    // MEDIDO arbitrario, y lo que se quiere es que se pueda leer y comparar. Con el formato de
+    // eje, `1.4905` y `1.4899` se imprimían los dos `1.49`, y por encima de 1000 se caía a
+    // `1.2e+3` —dos cifras significativas para una posición—.
+    //
+    // La `x` es SIEMPRE evaluada: es la coordenada del píxel del cursor pasada por la
+    // transformación del viewport, exacta por construcción. La `y` depende de la curva.
+    ctx.fillText(`x = ${formatearLectura(worldX)}`, tx, 4);
+    ctx.fillText(`y = ${formatearLectura(y, yEvaluada ? "evaluado" : "medido")}`, tx, 18);
 
     ctx.restore();
   }

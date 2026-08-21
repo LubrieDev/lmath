@@ -142,6 +142,38 @@ export function montarDeslizador(
   raiz.addEventListener("pointerup", soltar);
   raiz.addEventListener("pointercancel", soltar);
 
+  // ── Que el arrastre sea SOLO del deslizador ─────────────────────────────────────────
+  // Hay DOS cosas que pueden quedarse con este gesto, y hacen falta dos remedios distintos:
+  //
+  //   • El NAVEGADOR, que lo usaría para desplazar la nota. Eso lo apaga `touch-action:none`
+  //     en la hoja de estilos, y con eso bastaba en el escritorio.
+  //   • OBSIDIAN, que en el móvil tiene gestos propios —deslizar abre la barra lateral—
+  //     escritos en JavaScript. `touch-action` no le dice nada a un `addEventListener`: sus
+  //     escuchas seguían recibiendo el arrastre, así que mover la manija sacaba el menú
+  //     lateral por detrás. Es lo que se ve en la captura del usuario.
+  //
+  // Como esas escuchas están en un ANTECESOR nuestro, la cura es que el evento no suba hasta
+  // ellas: se detiene aquí, en la raíz del propio deslizador. El dedo que empieza sobre la
+  // píldora es del deslizador y de nadie más; el que empieza fuera sigue siendo de Obsidian y
+  // abre su barra lateral como siempre.
+  //
+  // Se paran las DOS familias, táctiles y de puntero, porque no sabemos con cuál está escrito
+  // su gesto —el navegador emite las dos por el mismo dedo— y detener solo una dejaría medio
+  // problema en pie. El `preventDefault` del `touchmove` es el segundo cinturón: un gesto que
+  // mire `defaultPrevented` antes de moverse se abstiene aunque haya visto el evento.
+  //
+  // No se toca el `click` ni los eventos de ratón sintetizados: siguen subiendo, así que tocar
+  // un deslizador continúa cerrando el menú ☰ que hubiera abierto (`cerrarMenuAlPulsarFuera`).
+  const soloMio = (ev: Event) => ev.stopPropagation();
+  for (const tipo of ["pointerdown", "pointermove", "pointerup", "pointercancel",
+    "touchstart", "touchend", "touchcancel"] as const) {
+    raiz.addEventListener(tipo, soloMio);
+  }
+  raiz.addEventListener("touchmove", (ev) => {
+    ev.stopPropagation();
+    ev.preventDefault();
+  }, { passive: false });
+
   raiz.addEventListener("keydown", (ev) => {
     const salto = ev.shiftKey ? op.pasoGrande : op.paso;
     let nuevo: number | null = null;

@@ -53,9 +53,13 @@ export interface Textos {
     /** Chip ⓘ de obs-derivate: su cuadro describe a f, no la curva f′ que se dibuja. */
     resumenDerivada: string;
     original: string;
-    /** Botón flotante del plano que despliega el panel de la fórmula (bloque estrecho). */
+    /** Botón flotante del plano que lleva al panel de la fórmula (bloque estrecho). */
     verFormula: string;
-    /** El mismo botón con el panel ya abierto: lo cierra. */
+    /** El mismo botón desde el MODO fórmula: devuelve al plano (no cierra nada, cambia de cara). */
+    verPlano: string;
+    /** Y en `obs-trig`, cuya otra cara no es un plano sino el círculo unitario. */
+    verCirculo: string;
+    /** El mismo botón cuando el panel es una TARJETA posada sobre el plano: la cierra. */
     cerrarFormula: string;
     /** Chip táctil que lleva al código del bloque (sustituye al `</>` de escritorio). */
     editarBloque: string;

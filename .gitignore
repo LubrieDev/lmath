@@ -156,6 +156,7 @@ tests/.bundle.zoom.cjs
 tests/.bundle.fuzz.cjs
 tests/.bundle.bateria.cjs
 tests/.bundle.mate.cjs
+tests/.bundle.oro.cjs
 
 .dev/
 migracion/.bundle.cjs

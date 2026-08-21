@@ -10,7 +10,7 @@
 import { MarkdownRenderChild, type MarkdownPostProcessorContext } from "obsidian";
 
 import type { Motor } from "../contexto";
-import type { Reparto } from "./reparto";
+import { alCambiarReparto, type Reparto } from "./reparto";
 import { crearScrollerLatex } from "./scrollerLatex";
 import { crearMenuDesplegable, cerrarMenuAlPulsarFuera } from "./menu";
 import { estiloBotonPanel, estiloBotonOpciones } from "./estilos";
@@ -20,12 +20,13 @@ import { montarIcono } from "./controles";
 import { baseAutomatica } from "../analysis/transformaciones";
 import {
   derivadaOperadorLatex, derivadaOperadorSimplificadoLatex, derivadaLatex,
-} from "../../derivar";
+} from "../../CAS/api-legado";
 import {
-  integralOperadorLatex, integralValorLatex, integralPrimitivaLatex, cuerpoAreaLatexExacto,
-} from "../../integral";
-import { despejarEcuaciones } from "../../despejar";
-import { bloqueALatex } from "../../latex";
+  integralOperadorLatex, integralValorLatex, integralPrimitivaLatex,
+} from "../../CAS/api-legado";
+import { cuerpoAreaLatexExacto } from "../analysis/areaIntegral";
+import { despejarEcuaciones } from "../../CAS/api-legado";
+import { bloqueALatex } from "../../CAS/api-legado";
 import { t } from "../../i18n";
 import type { Parametro } from "../../core/parsing/parametros";
 
@@ -102,6 +103,17 @@ export async function montarPanelVistas(
   // "operador" (forma de partida) es la vista por defecto.
   let vista: Vista = "operador";
   let abierto = false;
+  // ── La vista COMBINADA solo existe si hay sitio para las dos fórmulas ────────────────────
+  // En el reparto por columnas el panel mide 261px y las dos tarjetas se reparten ~105 cada
+  // una: se leen. En el FLOTANTE mide 180 y quedarían en ~72, que para una integral con sus
+  // límites y un corchete de Barrow no es una fórmula pequeña sino una fórmula ilegible. Y no
+  // hace falta: las dos vistas sueltas siguen ahí, y alternarlas es un toque.
+  //
+  // Depende del ANCHO y no del dispositivo, como todo lo que es reparto: una tablet en
+  // horizontal tiene el mismo sitio que el escritorio y conserva la vista combinada, mientras
+  // que un panel lateral estrecho en el escritorio sufre el mismo amontonamiento que el
+  // teléfono y también la pierde. Ver la nota larga de `ui/reparto.ts`.
+  const sobra = (v: Vista): boolean => reparto.estrecho && v === "ambas";
   // La opción está HABILITADA si aplicarla cambiaría la fórmula mostrada (su LaTeX difiere
   // del actual): así "Derivada" se apaga estando ya en la derivada evaluada.
   const sincronizar = () => {
@@ -109,9 +121,24 @@ export async function montarPanelVistas(
     estiloBotonOpciones(btnOpciones, vista !== "operador" || abierto);
     iconoBotonOpciones(btnOpciones, abierto, config.tooltipOpciones);
     const actual = firmaDe(vista);
-    items.forEach((el, i) => itemEstilo(el, firmaDe(config.opciones[i].vista) !== actual));
+    items.forEach((el, i) => {
+      const v = config.opciones[i].vista;
+      itemEstilo(el, firmaDe(v) !== actual);
+      // `itemEstilo` reescribe el `cssText` entero, así que el `display` va DESPUÉS o se
+      // perdería en la siguiente sincronización.
+      el.style.display = sobra(v) ? "none" : "";
+    });
     menu.style.display = abierto ? "flex" : "none";
   };
+  // Girar el teléfono a vertical con la vista combinada puesta la deja sin sitio: se vuelve al
+  // operador, que es la forma de partida y la que el bloque enseña al abrirse. Al girar de nuevo
+  // a horizontal la opción reaparece en el menú, pero la vista NO se restaura sola: recuperar
+  // una vista que el usuario ya no está mirando es adivinar, y aquí basta con volver a elegirla.
+  alCambiarReparto(reparto, () => {
+    if (!sobra(vista)) { sincronizar(); return; }
+    vista = "operador";
+    void renderLatex(operador).then(sincronizar);
+  });
   const aplicar = async (i: number) => {
     abierto = false;
     const v = config.opciones[i].vista;

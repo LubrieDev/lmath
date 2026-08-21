@@ -1,10 +1,11 @@
 {
   "id": "lmath",
   "name": "LMath",
-  "version": "1.5.0",
+  "version": "2.0.0",
   "minAppVersion": "1.13.0",
   "description": "Graph functions, systems, derivatives and integrals in interactive blocks, explore the unit circle, and typeset vector notation.",
   "author": "Lenin",
   "authorUrl": "https://github.com/LubrieDev",
+  "repository": "https://github.com/lubridev/LMath",
   "isDesktopOnly": false
 }

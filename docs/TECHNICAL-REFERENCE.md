@@ -1,6 +1,6 @@
 # LMath — Internal Technical Reference
 
-**Technical guide for version 1.5.0.**
+**Technical guide for version 2.0.0.**
 
 This document describes the source tree **as it stands at one version**, and it is expected to
 go out of date: the plugin keeps growing, and a reference that claimed to be permanent would
@@ -15,18 +15,23 @@ stated explicitly. This is a reference manual for the internals, not onboarding 
 how to build, test and contribute, see `CONTRIBUTING.md`.
 
 **Coverage note.** §4.2b (domain restriction), §4.2c (declared parameters) and §18 (the math
-engine) described unpublished code through several drafts; **all three ship in 1.4.0**, together
+engine) described unpublished code through several drafts; **all three shipped in 1.4.0**, together
 with the sections they touch (§4.2, §4.4, §5.1, §5.2, §5.3, §5.6, §9.4, §10.2, §14, §15.1, §16.3).
-There is no longer an "in the tree but not in a release" caveat over any part of this document.
 
-The v1.4.0 pass added §14 for the new `obs-vector` block — including §14.4 for what its ⓘ panel
+There is exactly **one** "in the tree but not in a release" caveat left, and it is large: **§19,
+the symbolic core (`src/CAS/`)**. That code is built, tested and deliberately kept out of the
+production path — it does not appear in `main.js`. Everything else in this document describes code
+that runs when you open a note. §19 says so again in its own heading, so a paragraph read out of
+context cannot mislead.
+
+The v1.4.0 pass added §14 for the new `_vector` block — including §14.4 for what its ⓘ panel
 deduces — and §15.0 for the reorganised host layer, and updated the sections it touches (§1, §2,
 §3, §13.5, §14.3, §15.1, §15.2, §15.3, §16.3), verifying them against the code. Three of those updates are about changes that reach the
-published blocks: the settings that now rebuild a block on the spot (§15.2), the redrawn `obs-trig`
+published blocks: the settings that now rebuild a block on the spot (§15.2), the redrawn `_trig`
 slider (§13.5), and the shared view toggle generalised to lists of formulas (§15.1). The v1.3.2
-pass had done the same for `obs-trig` (§13,
+pass had done the same for `_trig` (§13,
 §15.2, §15.3, §17). The engine-internals sections (§4–§12) were last revised for v1.2.4 and
-have not been re-audited since; they describe machinery neither `obs-trig` nor `obs-vector`
+have not been re-audited since; they describe machinery neither `_trig` nor `_vector`
 uses — **except** where §18 corrects them: the numbers the panel shows for a system's solutions,
 and the `f(x)` of the crosshair on an explicit curve, no longer come from the traced geometry.
 
@@ -45,16 +50,16 @@ code can be cross-referenced directly.
 
 ## 1. System overview
 
-The plugin registers six Markdown code-block languages in Obsidian — `obs-graph`,
-`obs-system`, `obs-derivate`, `obs-integral`, `obs-trig`, `obs-vector` — and renders each
+The plugin registers six Markdown code-block languages in Obsidian — `_graph`,
+`_system`, `_derivate`, `_integral`, `_trig`, `_vector` — and renders each
 block as a two-pane widget: a panel on the left and a Canvas-2D plane on the right.
 
 The first four are **graphing** blocks: a KaTeX formula panel and a plot with camera, zoom,
-pan and crosshair. `obs-trig` (added in 1.3.2, §13) and `obs-vector` (added in 1.4.0, §14)
+pan and crosshair. `_trig` (added in 1.3.2, §13) and `_vector` (added in 1.4.0, §14)
 share the frame — container, panel box, column/floating split, palette, lifecycle — and
 **nothing else**: neither has a `Camara`, an `Escena`, a `ProveedorGeometria` or a tracer,
-because neither has a curve to sample. `obs-trig`'s left pane is a control surface rather than
-a formula showcase; `obs-vector`'s is a *list* of cards, one per line, and its plane is always
+because neither has a curve to sample. `_trig`'s left pane is a control surface rather than
+a formula showcase; `_vector`'s is a *list* of cards, one per line, and its plane is always
 present — dimmed with a reason when no line has numbers to draw (§14.5). When reading §4–§12,
 assume neither is involved.
 
@@ -80,14 +85,14 @@ Two hard quarantines follow from this:
   testable in Node (`tests/motor.test.ts`, `tests/zoom.test.ts` run with esbuild + node,
   no DOM).
 
-There are **two rendering engines** for `obs-graph`:
+There are **two rendering engines** for `_graph`:
 
 - The **new engine** (`src/core/` + host adapter `src/host-obsidian/MotorExperimental.ts`),
-  active for the four graphing blocks. `obs-trig` and `obs-vector` use the same host adapter
+  active for the four graphing blocks. `_trig` and `_vector` use the same host adapter
   but not the engine.
 - The **legacy `GraphEngine`** (`src/engines/obs-graph/GraphEngine.ts`, WebGL-based), kept
   intact as a fallback behind the compile-time flag `MOTOR_EXPERIMENTAL = true` in
-  `main.ts`. Only `obs-graph` can fall back; the comment in `main.ts` records that the
+  `main.ts`. Only `_graph` can fall back; the comment in `main.ts` records that the
   old `SystemEngine` (marching-squares) was removed with no way back.
 
 ---
@@ -111,12 +116,12 @@ There are **two rendering engines** for `obs-graph`:
 
    | Block | Construction | Meaning |
    |---|---|---|
-   | `obs-graph` | `new MotorExperimental(this, "graph", ajustes)` | one curve |
-   | `obs-system` | `new MotorExperimental(this, "system", ajustes)` | N equations, N colors |
-   | `obs-derivate` | `new MotorExperimental(this, "derivate", ajustes)` | plot f′(x) |
-   | `obs-integral` | `new MotorExperimental(this, "integral", ajustes)` | plot integrand + shade ∫ₐᵇ |
-   | `obs-trig` | `new MotorExperimental(this, "trig", ajustes)` | unit circle, own renderer (§13) |
-   | `obs-vector` | `new MotorExperimental(this, "vector", ajustes)` | vector notation, one card per line, own renderer (§14) |
+   | `_graph` | `new MotorExperimental(this, "graph", ajustes)` | one curve |
+   | `_system` | `new MotorExperimental(this, "system", ajustes)` | N equations, N colors |
+   | `_derivate` | `new MotorExperimental(this, "derivate", ajustes)` | plot f′(x) |
+   | `_integral` | `new MotorExperimental(this, "integral", ajustes)` | plot integrand + shade ∫ₐᵇ |
+   | `_trig` | `new MotorExperimental(this, "trig", ajustes)` | unit circle, own renderer (§13) |
+   | `_vector` | `new MotorExperimental(this, "vector", ajustes)` | vector notation, one card per line, own renderer (§14) |
 
    `ajustes` is a **live getter** (`() => this.ajustes`), not a snapshot, so a settings change
    reaches every block without reloading the plugin. Since 1.4.0 it does not even wait for a
@@ -132,7 +137,7 @@ There is no step 5: the dev-console global that used to be installed here was re
 (`src/host-obsidian/MotorExperimental.ts`) is the orchestration point. The complete flow
 for a block render:
 
-`obs-trig` and `obs-vector` leave this flow **before it starts**: `process` dispatches to
+`_trig` and `_vector` leave this flow **before it starts**: `process` dispatches to
 `procesarTrig` (§13) / `procesarVector` (§14) as its first act, so none of the stages below run
 for them — no equation split, no `ObjetoMatematico`, no composition root, no camera.
 
@@ -148,8 +153,8 @@ source (raw block text)
   │         by construirObjeto and by the panel, each for its own use — §4.2b)
   │
   ├─ mode-specific extraction
-  │     obs-derivate : extraerFuncion → clasificarDegenerada → derivarEcuacion (§11)
-  │     obs-integral : extraerIntegral → integrand/limits (§12)
+  │     _derivate : extraerFuncion → clasificarDegenerada → derivarEcuacion (§11)
+  │     _integral : extraerIntegral → integrand/limits (§12)
   │     otherwise    : graficadas = visibles
   │
   ├─ LEFT PANEL  montarPanelLatex / montarPanelDerivada / montarPanelIntegral (§15.1)
@@ -276,7 +281,7 @@ already write. The group is looked for at the end only, walking back by depth �
 {0 ≤ x ≤ 1}` has three groups and only the last is a restriction.
 
 That reasoning held for the expression but not for the **block**: this section used to claim the
-rule could not collide with existing notation, and a real block falsified it. An `obs-system`
+rule could not collide with existing notation, and a real block falsified it. An `_system`
 written as `\begin{cases}y = x {0 ≤ x ≤ 2}\\y = x^2\end{cases}` veiled itself, because the veto
 was fed a source split by newlines and a `cases` has none — the restriction survived the strip and
 its `\leq` tripped the command check. Fixed with `lineasDeEcuacion`, which splits on newlines
@@ -290,7 +295,7 @@ everywhere else — `y \le x` is a **region**, and this plugin does not draw reg
 comparator is accepted **inside the braces and nowhere else**, which keeps both statements true
 at once. The veto covers `\le`/`\geq` (absent from `COMANDOS_SOPORTADOS`) *and* the bare
 comparators `≤ ≥ ≠ < >` (`COMPARADOR_SUELTO`), so the same sentence behaves the same however it
-is typed; before that, `y \le x` was veiled and `y ≤ x` came out blank. The `->` of `obs-vector`
+is typed; before that, `y \le x` was veiled and `y ≤ x` came out blank. The `->` of `_vector`
 is neutralised first: there the `>` is an arrowhead, not a comparison.
 
 Accepted: `a ≤ v ≤ b`, `a ≥ v ≥ b`, and the one-sided forms with the variable on either side.
@@ -349,7 +354,7 @@ Two consequences elsewhere, both about not lying:
   curve that now begins and ends. The *geometric* ⓘ is unaffected — it reads the traced geometry,
   which is already clipped.
 
-`obs-graph` and `obs-system` take restrictions; **`obs-derivate` and `obs-integral` do not**, and
+`_graph` and `_system` take restrictions; **`_derivate` and `_integral` do not**, and
 there the veto still veils the block (`admiteRestriccion` in `clasificarBloque`). The panel writes
 the interval as a tail, `,\quad 0 \le x \le 2\pi`, composed from the **pieces as written** (§5.6).
 
@@ -360,7 +365,7 @@ what is drawn; `sustituirParametros(expr, params, valores)` puts the current val
 
 **Separated before equations are split**, for the same structural reason as §4.2b: a line `A = 1`
 is neither a curve nor garbage, and the line splitter only knows those two. Left in, it is
-classified as the implicit `A − 1 = 0` and — outside `obs-system`, where only the first equation
+classified as the implicit `A − 1 = 0` and — outside `_system`, where only the first equation
 is drawn — *becomes* the block's curve.
 
 A declaration is `name = constant`: the right-hand side must evaluate against an **empty scope**
@@ -407,13 +412,13 @@ a transformation is a statement about the formula, so it is where you must be to
 
 Building the view once and hiding it, rather than rebuilding it per switch, is deliberate: the
 sliders carry state (where each handle sits) and rebuilding would reset it on every round trip.
-`montarDeslizador` gained an optional `alto` (18 here against the 22 of `obs-trig`'s angle) from
+`montarDeslizador` gained an optional `alto` (18 here against the 22 of `_trig`'s angle) from
 which the handle diameter and its margin are derived, and an optional `decimales` — which also
 fixed an `aria-valuenow` that rounded to integers.
 
-Scope: `obs-graph` and `obs-system` only (`admiteParametros`). In `obs-derivate` the written
+Scope: `_graph` and `_system` only (`admiteParametros`). In `_derivate` the written
 function is classified *before* being derived, so a free `A` would veil the block first; in
-`obs-integral` the value of the integral would come out of an expression still holding the name.
+`_integral` the value of the integral would come out of an expression still holding the name.
 And a parameterised block shows the **geometric** ⓘ rather than the analytic one (§4.4): the
 analytic summary is built once, so it would describe the previous curve, while the geometric one
 reads the cached geometry and is recomputed on every final pass.
@@ -454,7 +459,7 @@ less useful message:
    classifier raised).
 3. **Unsupported LaTeX commands and bare comparators** (§5.1 — `comandosNoSoportados`, checked
    against the raw source **minus its domain restrictions**, and against the raw source itself in
-   `obs-derivate`/`obs-integral`, which do not take them: §4.2b).
+   `_derivate`/`_integral`, which do not take them: §4.2b).
 4. Per-mode labels ("No integral", "Invalid integrand", "No system", "Incomplete system", "No
    function"), then the per-equation degeneracy test.
 
@@ -531,14 +536,14 @@ Everything the residual sweep would silently destroy is guarded by
 `comandosNoSoportados(raw)` (`parser.ts`): a **whitelist** (`COMANDOS_SOPORTADOS`) of
 commands the pipeline actually resolves. Any other `\cmd` in the raw source makes the host
 show the "Unsupported symbol" veil instead of a silently empty plot (and, in
-`obs-derivate`, instead of a *false* derivative of letter soup). `\\` is neutralized first
+`_derivate`, instead of a *false* derivative of letter soup). `\\` is neutralized first
 (it is a line separator, not the command `\y`).
 
 The same function also reports **bare comparators** (`COMPARADOR_SUELTO`: `≤ ≥ ≠ < >`), which no
 whitelist of `\commands` can catch. They are veiled for the same reason `\le` is — a loose
 comparison is a region, and regions are not drawn — and adding them removed a split behaviour
 where `y \le x` was veiled and `y ≤ x` came out blank. Two exemptions: `->` and `<-` are
-neutralized first (in `obs-vector` the `>` is an arrowhead, §14.1), and a **valid domain
+neutralized first (in `_vector` the `>` is an arrowhead, §14.1), and a **valid domain
 restriction never reaches here**, because the host strips it before asking (§4.2b).
 
 ### 5.2 Implicit multiplication: `src/core/parsing/productoImplicito.ts`
@@ -569,7 +574,7 @@ Any evaluation error returns NaN. This evaluator is shared by both engines and e
 symbolic module, so all of them recognize exactly the same function set.
 
 `evaluarConstante(expr)` is the shortcut for the places where an expression is not a curve but a
-**value**: the endpoint of an interval (§4.2b), the angle of an `obs-trig`, the component of a
+**value**: the endpoint of an interval (§4.2b), the angle of an `_trig`, the component of a
 vector. It runs the full input pipeline and evaluates against an **empty scope** — the definition
 of "constant" that does not fall short, since anything depending on a variable comes out NaN — and
 returns `null` rather than NaN, because the caller has to *decide* what absence means.
@@ -712,7 +717,7 @@ legacy engine: a fixed-range scan (x ∈ [−10, 10], 1000 steps) producing:
 
 Note the parallel system: the *new* engine computes notable points **from geometry**
 (§8.5), not from this module; `analisis.ts` remains the analytic path for explicit
-`obs-graph` summaries (`montarBotonInfo`) and the legacy engine.
+`_graph` summaries (`montarBotonInfo`) and the legacy engine.
 
 ### 5.6 LaTeX presentation: `src/latex.ts`
 
@@ -802,9 +807,9 @@ For very dense implicit fields, the final fallback is now a viewport-aware raste
 when the curve is too oscillatory for continuation, produces `Rama`s from pixel-level
 marching squares in `src/core/tracing/raster/marchingSquares.ts`.
 `ProveedorConCache( ProveedorSinPuntosEje?( ProveedorUnion?( base ) ) )` — the axis-point
-filter only in `obs-system`, the union only for double-sign families.
+filter only in `_system`, the union only for double-sign families.
 
-`crearMotor` (obs-graph: first equation only) and `crearMotorSistema` (all equations,
+`crearMotor` (_graph: first equation only) and `crearMotorSistema` (all equations,
 palette of 6 recycled colors) assemble the `Escena` with the three drawing layers
 (`Overlay`, `RendererCanvas2D`, `Crosshair`). `construirObjetosEscena` is exported pure
 (no Canvas) for tests.
@@ -839,7 +844,7 @@ pixel constants (`SALTO_PX_MAX = 8`, `PASO_PX_FINAL = 2.5`, …).
 
 ### 8.2 Tracers: `src/core/tracing/`
 
-**`TrazadorExplicitoAdaptativo`** (`explicit/`) — the obs-graph sampler *extracted* behind
+**`TrazadorExplicitoAdaptativo`** (`explicit/`) — the _graph sampler *extracted* behind
 the contract, behaviorally identical to the shared legacy sampler (§15.5; the test suite
 enforces parity). Uniform coarse sampling (1000–2000 samples interactive, 2000–8000 final,
 density tied to pixels: `⌊width·20⌋` and `⌊width·50⌋` clamped to those ranges) + recursive
@@ -955,7 +960,7 @@ A single un-cut branch whose endpoints coincide on screen is marked `cerrada`. E
   crosshair and rail never touch these inputs, so they never invalidate. The file states
   the honest scope: same-view repaints hit; every frame of a continuous gesture misses by
   design (scale-band caching is documented as future work, not implemented).
-- **`ProveedorSinPuntosEje`** — presentation decorator for `obs-system`: strips roots and
+- **`ProveedorSinPuntosEje`** — presentation decorator for `_system`: strips roots and
   y-intercepts (system plots keep only vertices and inter-curve crossings).
 - **`ProveedorUnion`** — compositor for the ± family (§4.3): concatenates geometries under
   one `objetoId`.
@@ -1175,7 +1180,7 @@ slope-clipped geometry, never on function type):
 
 ---
 
-## 11. The derivative subsystem (`obs-derivate`)
+## 11. The derivative subsystem (`_derivate`)
 
 `src/derivar.ts`, orchestrated from `MotorExperimental.process` (lines 85–117) and
 `montarPanelDerivada`.
@@ -1217,7 +1222,7 @@ only.
 
 ---
 
-## 12. The definite-integral subsystem (`obs-integral`)
+## 12. The definite-integral subsystem (`_integral`)
 
 ### 12.1 Notation parser and facade: `src/integral.ts`
 
@@ -1300,7 +1305,7 @@ panel falls back to the numeric value. No `+C` (irrelevant under Barrow subtract
 
 ---
 
-## 13. The trigonometric-circle subsystem (`obs-trig`, `src/trig/`)
+## 13. The trigonometric-circle subsystem (`_trig`, `src/trig/`)
 
 Added in 1.3.2. The only block that does not use the geometry engine: a unit circle is an
 `arc()`, and forcing it through `ProveedorGeometria` → tracer → `Rama[]` would draw it *worse*
@@ -1480,11 +1485,11 @@ gone.
 
 ---
 
-## 14. The vector-notation subsystem (`obs-vector`, `src/vector/`)
+## 14. The vector-notation subsystem (`_vector`, `src/vector/`)
 
-Added in 1.4.0. Like `obs-trig` (§13) it bypasses the geometry engine — a vector is a segment
+Added in 1.4.0. Like `_trig` (§13) it bypasses the geometry engine — a vector is a segment
 with a known start and end, not a curve to sample — but it departs from the other five blocks in
-a second, more visible way: **the block is a list, not an expression.** In `obs-graph` the whole
+a second, more visible way: **the block is a list, not an expression.** In `_graph` the whole
 block is one formula (`f(x)=…`); here each line declares a different thing, and stacking them
 into a single card would turn them into a system of equations, which is a different claim. So
 the panel shows **one card per line**. The plane is always present; when no line has numbers to
@@ -1548,7 +1553,7 @@ write, and that confusion is one the block should help undo.
 ### 14.2 LaTeX: `latexVector.ts`
 
 Every expression goes through `exprALatex` (§5.6), so a component is typeset exactly as it would
-be inside an `obs-graph` in the same note. The one deviation is the escape hatch in
+be inside an `_graph` in the same note. The one deviation is the escape hatch in
 `trozoALatex`: if `comandosNoSoportados` (§5.1) reports anything, the text is passed to KaTeX
 **verbatim**. The normalizer's wildcard sweep would degrade `\nabla` to `n·a·b·l·a` in italics;
 KaTeX renders it perfectly. The translator is what cannot read it, not the renderer — so the
@@ -1582,7 +1587,7 @@ applies.
 
 `dibujarVectores` draws `Overlay` (§9.3, the same grid and axes as every other block) and then
 the arrows and the dots — dots last, so an arrow landing on a point does not cover it. The
-arrowhead is a filled triangle built with the same recipe as `obs-trig`'s axis tips, and the
+arrowhead is a filled triangle built with the same recipe as `_trig`'s axis tips, and the
 stroke is **shortened by the head length** so the triangle's apex sits exactly on the vector's
 endpoint. A zero-length vector has no direction to orient: it is drawn as a dot and labelled,
 which is the honest answer — the null vector exists and looks like that.
@@ -1610,7 +1615,7 @@ border may continue past it. It returns `null` when the default view already fit
 without wasting it, so two ordinary vectors do not leave the block at a different zoom from the
 note next to it.
 
-In the host (`blocks/vector.ts`) the plane carries **the same camera as `obs-graph`**: `Camara` for
+In the host (`blocks/vector.ts`) the plane carries **the same camera as `_graph`**: `Camara` for
 the viewport, `Navegacion` for wheel zoom and drag, `Crosshair` for the aiming cursor, and the
 🏠︎/+/− chips. An earlier revision had none of that — the framing was recomputed on resize and
 nothing else — which made the only interactive-looking plane in the plugin the one you could not
@@ -1637,7 +1642,7 @@ when empty (§14.5), which is what the graphing blocks have always done.
 **Two views.** When the block both declares something and asks for a result — at least one
 `declaracion` and at least one `diferencia` — the panel is built with `montarPanelVistas` (§15.1)
 instead of a plain scroller: the main button holds the block's canonical line (`\vec{v}=(x, y)`,
-what `f(x)` is to `obs-graph`) and shows every declared line, one card each; the options menu holds
+what `f(x)` is to `_graph`) and shows every declared line, one card each; the options menu holds
 `\overrightarrow{AB}` and switches to the differences alone. Besides separating two different kinds
 of statement, it buys room: stacked, N cards split the column equally (`flex: 1 1 0`) and
 `\overrightarrow{AB}` — taller than a bare name — was the only one to overflow; alone in its view a
@@ -1670,7 +1675,7 @@ Three decisions are worth keeping:
 - **The exactness rule.** A value is given in closed form (`√13`, `2√3`, `3/2`) only when the
   components it comes from are **integers** — the one provenance this block can check. `raizTexto`
   pulls the largest square out of the radicand, which is not cosmetic: `2√3` says at a glance that
-  the number is a little over 3. It is the discipline of `obs-trig`, applied here.
+  the number is a little over 3. It is the discipline of `_trig`, applied here.
 - **Angles leave in raw radians**, deliberately. The host writes them with `textoAngulo`, the same
   function that labels the circle, so they follow `unidadAngulo` and already know when an angle has
   an exact form. A notable-angle table of its own here would give two truths for one number — the
@@ -1739,7 +1744,7 @@ were free functions with a `this.` in front.
 | `ui/reparto.ts` | Layout constants and the column/floating split. |
 | `info/contratos.ts` | `ExclusionPopover` and `FilaInfo`. |
 | `info/latexSolucion.ts` | A solution of the system as LaTeX (`\left(\frac{7-\sqrt{13}}{2},\ …\right)`), plus the plain-text form kept as the fallback if typesetting never completes. Pure. |
-| `info/botones.ts` | The ⓘ of `obs-graph` (explicit), `obs-derivate` and `obs-integral`: written once from a formula. |
+| `info/botones.ts` | The ⓘ of `_graph` (explicit), `_derivate` and `_integral`: written once from a formula. |
 | `info/plano.ts` | The two ⓘ that are **refreshed** — the system's solutions and the summary of a non-explicit curve. They return a refresher that `process()` calls on every final pass, and the equations enter as **accessors**, not values, so that moving a slider changes what they say. Neither receives the camera any more: as of this version an implicit curve's notable points come from solving three systems (`math/notablesImplicita`) rather than from the traced polyline inside the current viewport, which is why the box no longer ends in "In the current view". `Escena.resumenNotables` went with it. |
 | `analysis/` | The pure half: `clasificacion`, `lineasAnalisis`, `transformaciones`. No DOM. |
 
@@ -1752,13 +1757,13 @@ only the sentence knows how far the mathematics extends: in "Roots: …" it is t
 (`lineasResumen`, `lineasPolar`, `lineasParametricas`, `lineasDerivada`, `lineasIntegral`) live in
 `analysis/lineasAnalisis` and are pure, so the contract is checked in
 `tests/modules/paneles-info.test.ts` without mounting a block. Two panels stay in plain text on
-purpose: `obs-trig`'s refreshes on every frame of the drag, and typesetting six formulas per frame
-is not sustainable; `obs-vector`'s values come from producers that only emit plain text.
+purpose: `_trig`'s refreshes on every frame of the drag, and typesetting six formulas per frame
+is not sustainable; `_vector`'s values come from producers that only emit plain text.
 
-**How an ⓘ panel is dismissed.** By its own chip, and by nothing else. The `obs-trig` and
-`obs-vector` panels used to register a `mousedown` listener on `document`, copied from
+**How an ⓘ panel is dismissed.** By its own chip, and by nothing else. The `_trig` and
+`_vector` panels used to register a `mousedown` listener on `document`, copied from
 `ui/menu.ts`; because the listener was on the document and not on the block, a click anywhere —
-including the plane itself, and including another block's ⓘ — closed it. In `obs-trig` that meant
+including the plane itself, and including another block's ⓘ — closed it. In `_trig` that meant
 dragging the angle closed the panel showing the values the drag was changing. The listeners are
 gone as of 1.4.0. The single remaining way a panel closes without its chip is `ExclusionPopover`:
 on a narrow block the floating formula and the ⓘ cover the same plane, so opening one closes the
@@ -1777,10 +1782,10 @@ KaTeX font load. Formulas render through Obsidian's `MarkdownRenderer.render` wi
 
 The layout constants (`PAD_SUP_PANEL`, `PAD_LADO_PANEL`, `HUECO_TARJETAS`, `ALTO_TARJETA`,
 `ALTO_TARJETA_MAX`) sit at module scope rather than inside `crearScrollerLatex` because since
-1.4.0 there is a second interested party: `altoPanelPorTarjetas`, which is how `obs-vector`
+1.4.0 there is a second interested party: `altoPanelPorTarjetas`, which is how `_vector`
 (§14) asks for a panel tall enough for its N cards. Copying the numbers there would give two
 truths for one measurement. The size of the panel box itself is written in a single place,
-`aplicarCajaPanel`, from the `Reparto` record — including `alto`, the one field only `obs-vector`
+`aplicarCajaPanel`, from the `Reparto` record — including `alto`, the one field only `_vector`
 sets.
 
 Panel variants share the same toggle chrome (math-glyph buttons rendered by KaTeX
@@ -1799,10 +1804,80 @@ change the displayed LaTeX"):
 The last three run through one implementation, `montarPanelVistas` (`ui/paneles.ts`), which
 since 1.4.0 takes a
 **list** of formulas per view (`string | readonly string[]`, normalised on entry) instead of a
-single one. `obs-vector` needs one card per declared line; the operator blocks pass a list of one
+single one. `_vector` needs one card per declared line; the operator blocks pass a list of one
 and behave exactly as before. A view's identity is its `latexDe(v).join(" ")` signature — arrays
 do not compare by identity, and the signature is what decides whether an option would change
 anything and therefore whether it is enabled.
+
+### 15.1b The narrow block has two faces (`ui/botonFormula.ts`, `aplicarCajaPanel`)
+
+In the column layout the formula is always on screen and there is nothing to open. Below
+`ANCHO_MINIMO_COLUMNAS` the block **is** the plane, and the formula needs a door: the `f(x)` button
+in the bottom-left corner.
+
+There were two shapes for what happens next, and 2.0.0 kept only one.
+
+* **Floating card** (up to 1.5.0): a 180-px card posed over a plane that stays visible around it.
+  Still the fallback for any block that does not ask for the other one.
+* **Two faces** (`Reparto.panelCompleto`): the panel *is* the block's other side. No margin, no
+  border, no shadow — the frame you see around it is the block's own. The plane is not covered, it
+  is **not being shown**.
+
+`panelCompleto` is a mode and not a setting: the block fixes it when it is built and it never
+changes. All six blocks ask for it.
+
+**Where the panel stops.** `aplicarCajaPanel` lays it out as `top/left/right: 0` and
+`bottom: huecoInferior`, which is `0` everywhere except `_trig` (§13): there the plane cedes a strip
+at its foot to the ratio boxes, the θ reading and the slider, and **those are the block's controls,
+not its content**. They stay visible in both faces, so the panel occupies the rectangle of the
+*plane* rather than of the block. Putting a full-height panel over the slider would have hidden the
+one control that matters most on the device where dragging on a 300-px circle is imprecise.
+
+Two traps worth naming, both of which drew blood:
+
+* Every branch of `aplicarCajaPanel` must declare **its own width and height** even when it seems
+  not to need them. The panel carries `.lmath-latex`, which the stylesheet gives `width: 50%`, and
+  an inline style only overrides what it *writes*. A full-bleed panel without `width:auto` comes
+  out absolute, full-height and half-wide.
+* The panel sits at `z-index: 6`. Anything meant to survive the swap has to be **above** it: the
+  chips that do carry `z-index: 7`, and marking one visible without raising it just hides it behind
+  the formula.
+
+**What survives the swap** is a stylesheet rule, not a list of elements to hide by hand:
+
+```css
+.lmath-grafica.lmath-modo-formula > *                          { visibility: hidden; }
+.lmath-grafica.lmath-modo-formula > .lmath-sobre-panel         { visibility: visible; }
+.lmath-grafica.lmath-modo-formula > .lmath-trig-controles-pie  { visibility: visible; }
+```
+
+So a chip added tomorrow is born hidden in formula mode instead of appearing over the formula, and
+surviving is an explicit decision at its `createDiv`. `_trig`'s controls strip gets a rule of its
+own rather than the class, because it is not *over* the panel — it is below it, in the strip the
+panel leaves free.
+
+**The glyph names the destination, not the state.** `f(x)` when it will open the formula; the other
+face's icon when it will go back — `cartesian_plane` for the plane blocks, `unit_circle` for
+`_trig`; and `cerrar` (✕) only in the floating-card shape, where something really is posed on top of
+something else. A ✕ on a two-face block would claim there is something to dismiss, and there is not.
+The glyph is only repainted when it **changes** (`dataset.glifo`), because `f(x)` goes through
+`MarkdownRenderer` and this runs on every layout sync.
+
+**The other survivor: the ✎ chip** (`ui/edicionBloque.ts`, top-left corner). Mounted **only on
+touch**, because Obsidian's own `</>` needs a hover a phone does not have, and our canvases keep the
+touches that start on them (`touch-action: none`, which is what lets a finger move the plane or the
+angle) — so without it a block rendered on a phone can be read but not corrected. It carries
+`lmath-sobre-panel` for a reason worth stating: in formula mode there is no plane, but there is
+still a written block, and correcting what is written is exactly what one may want to do while
+looking at it. `irAlCodigoDelBloque` handles the three things that cannot be assumed — which lines
+the block occupies (`getSectionInfo`, null in a preview or a canvas), which view holds it (the
+active one, *checked to be the same file*, or a chip in an embedded block would move another note's
+cursor), and reading mode having no cursor to place until the view is switched.
+
+This chip is why the module exists as a module. It was a private method of `MotorExperimental`, so
+`_trig` (1.3.2) and `_vector` (1.4.0) were both born without it despite sharing the same plane and
+the same problem. Extracted, each inherited it with **one line**; all six blocks mount it as of
+2.0.0.
 
 ### 15.2 Settings: `src/host-obsidian/ajustes.ts`
 
@@ -1811,8 +1886,8 @@ imanTrig, idioma}` with defaults `{false, false, true, "degrees", true, "en"}`. 
 to `plugin.ajustes` and persists via the `PluginConAjustes` contract (decoupled from the
 concrete plugin class). Consumption points: `despejarAuto` in `baseAutomatica`;
 `puntosNotables` read **live on every repaint** (`escena.mostrarNotables`); `encuadreAuto`
-once at block mount; `unidadAngulo` and `imanTrig` once at `obs-trig` mount (§13.5), and
-`unidadAngulo` again at `obs-vector`'s ⓘ (§14.4, no chip there); `idioma` re-fixes the i18n
+once at block mount; `unidadAngulo` and `imanTrig` once at `_trig` mount (§13.5), and
+`unidadAngulo` again at `_vector`'s ⓘ (§14.4, no chip there); `idioma` re-fixes the i18n
 pointer and re-renders the tab immediately.
 
 **Since 1.4.0 a change applies immediately to the blocks on screen.** `PluginConAjustes` gained
@@ -1822,7 +1897,7 @@ notifier, and every mount point (`process`, `procesarTrig`, `procesarVector`) su
 every registered teardown — resize observers, document listeners, workspace refs; without it each
 settings change would leak another set), `el.empty()`, and mount again. One path for every setting
 instead of a live route per setting — at the price of resetting zoom, pan and the angle of an
-`obs-trig`, which the tab states in its own text.
+`_trig`, which the tab states in its own text.
 
 The two trig settings are **presentation and gesture only** — neither changes how a block is
 *read*. `unidadAngulo` can be overridden per block, live, by the θᴅ/θʀ/θɢ chip, which
@@ -1857,7 +1932,7 @@ English; the compiler could not warn, because `"en"` is a valid `Idioma`. It now
 between those two kept the previous description. That row is now mounted through the imperative
 `render` hook, holding its `Setting` handle and rewriting name and description on the spot.
 
-`obs-trig` follows the same split: its parser emits structured warnings (`AvisoTrig`,
+`_trig` follows the same split: its parser emits structured warnings (`AvisoTrig`,
 §13.1) with no text at all, and the host phrases them with `t().trig.anguloNoValido(...)`.
 The `trig` table also holds the component names, the four ⓘ section titles and the eight
 `PosicionAngular` labels, which is why the model may return `"ejeY-"` and never a sentence.
@@ -1939,6 +2014,60 @@ zero the box measures the same in both states. The left formula panel has had th
 lines moved to LaTeX, and were left without it. The unwrap is still needed — this equalises the
 **height**, that puts the line in the box's flow as text rather than as a block.
 
+### 15.4c Number provenance: `src/core/analysis/formatoNumero.ts`
+
+Three different jobs print numbers, and until 2.0.0 all three used the formatter written for one
+of them. The fix is not a digit count: **a number carries where it came from**, because "how many
+of these figures mean anything" is not a property of the format — it is a property of how the
+number was obtained, and the only place that knows is whoever computed it.
+
+```ts
+export type Origen = "evaluado" | "medido";
+const CIFRAS          = { evaluado: 6,     medido: 4    };
+const TOL_SNAP_POR_ORIGEN = { evaluado: 1e-12, medido: 1e-4 };
+```
+
+Note that the provenance governs **two** things, not one. The significant figures, and the
+tolerance of the closed-form recogniser — a value that came out of a bisection may legitimately be
+snapped to `3` from 1e-4 away, because below that scale the estimator cannot tell them apart; a
+value that was *evaluated* may not, or the panel would announce a `3` that is not one.
+
+**The three surfaces:**
+
+| Surface | Function | Format |
+|---|---|---|
+| Crosshair readout | `formatearLectura` | 6 significant figures, **padding zeros kept**, no exponent between 1e-4 and 1e6 |
+| ⓘ panels | `numeroALatex` / `numeroATexto` / `puntoALatex` / `intervaloALatex` / `listaALatex` | closed form when there is one (integer, rational multiple of π), otherwise the decimal for its provenance, **padding zeros trimmed** |
+| Axis tick marks | `formatearNumero` (`rendering/overlay/Overlay.ts`) | **untouched.** 4 significant figures, exponent past a thousand. Its job is legibility |
+
+The padding split is deliberate and both halves have a reason. In the readout the number **changes
+as the cursor moves**: a fixed width keeps `1.49050` and `1.48990` apart and stops the decimal
+count from jumping between adjacent pixels. In a panel the number is static and competes with
+nothing, so the zeros only got in the way — a slope of 0.05 read `0.0500000`. Trimming costs no
+significant figure, which is the condition that makes it safe: `1.4905` and `1.4899` still read
+apart. The single trim point is `decimalDe`, so the readout cannot pick it up by accident.
+
+**Who supplies the provenance.** The default is `"medido"` everywhere, so adding the parameter
+moved nothing until each caller was examined. Two suppliers:
+
+* `Escena.lecturaEnCurva(worldX)` returns `{ y, evaluada }` instead of just `y`. It is `true` when
+  the scene has a `lectorExacto` (§18.5) — a single explicit `y = f(x)` — and `false` when the
+  height was interpolated from the traced polyline, which is also **why that reading still moves
+  with the zoom**: the polyline's density depends on the framing. `yEnCurva` delegates to it, so
+  its six existing callers did not change.
+* The panel line builders, one call site at a time. The full classification, with the reason for
+  each number, is in the header of `host-obsidian/analysis/lineasAnalisis.ts` and is the thing to
+  read before adding a number to a panel.
+
+Six of the ~38 panel numbers are evaluated: `f(0)`; the slope at the origin (computed on the
+**symbolic** derivative, already compiled); the limits of an integral and the singularities of an
+improper one (both are what the user typed, run through `evaluarLimite`); the parameter interval;
+and the analysis window. The other thirty-two stay measured — roots by bisection, vertices and
+critical points by parabolic fit, areas by quadrature, periods by harmonic fit — and that is the
+half worth stating, because showing six figures of a bisection would be showing four figures of
+noise. The two policies sit side by side in the same box, and `tests/modules/paneles-info.test.ts`
+pins that they do.
+
 ### 15.5 Legacy engine: `src/engines/obs-graph/GraphEngine.ts` (+ `src/render/muestreoExplicito.ts`, `src/webgl.ts`)
 
 The original single-function engine, still compiled and reachable via the flag in
@@ -1954,60 +2083,51 @@ contract, and `tests/motor.test.ts` asserts parity between the two (allowed to d
 in the finite-value clipping correction). `webgl.ts` and `render/muestreoExplicito.ts`
 have no other consumers.
 
-### 15.6 The block rename and its migration tool (`migracion/`) — **temporary: ships in 1.5.0, removed in 2.0.0**
+### 15.6 The block rename, and where its tool went
 
-Since 1.5.0 every block answers to **two** identifiers: the one published up to 1.4.0
-(`obs-graph`, `obs-system`, `obs-derivate`, `obs-integral`, `obs-trig`, `obs-vector`) and a new one
-that swaps the `obs-` prefix for an underscore (`_graph`, `_system`, …). `main.ts`'s
-`registrarBloque` walks `nombresDe(viejo)` and registers each handler under both, **old name
-first**: if the new identifier turned out to be one Obsidian rejects and its registration threw,
-the old one is already in and existing notes keep rendering. The whole call sits in a `try/catch`
-for a reason that is not defensive habit — a block identifier is a **global key shared by every
-installed plugin**, so a collision would otherwise abort `onload()` and take down the entire
-plugin, `obs-*` blocks included.
+Up to 1.4.0 the six blocks were `obs-graph`, `obs-system`, `obs-derivate`, `obs-integral`,
+`obs-trig` and `obs-vector`. 1.5.0 renamed them to `_graph`, `_system`, `_derivate`, `_integral`,
+`_trig` and `_vector`, registering **both** spellings so nothing broke while people converted, and
+shipped a tool that rewrote a whole vault. **2.0.0 registers only the new names** and **the tool is
+gone from the published tree.**
 
-**Why an underscore.** `graph` bare is among the easiest names for another plugin to have taken,
-and whoever loses that draw stops rendering with no warning. The first attempt at a prefix was
-`graph*`, and it did not work: Obsidian does not preserve the asterisk from a fence's info string,
-so the registered key never matched what was written in the note. `\graph` and `.graph` fail the
-same way. The underscore is a word character, survives the round trip, and still marks the block
-as ours at a glance.
+What remains is `src/host-obsidian/nombresBloque.ts`: the six identifiers and `nombresDe`, which
+`main.ts` walks in `registrarBloque`. It still returns a *list* although there is one name in it —
+so admitting a second spelling again is one function and nothing else — and the call still sits in a
+`try/catch`, which is not defensive habit: a block identifier is a **global key shared by every
+installed plugin**, so a collision would otherwise abort `onload()` and take down the whole plugin
+over one name.
 
-**The tool.** `migracion/` holds the rename table (`nombres.ts` — the single source of truth; every
-other piece reads from it and nothing else), a pure scanner (`escaner.ts`, no Obsidian and no
-disk), the vault walk (`migracion.ts`, `cachedRead` to read and `vault.process` to write
-atomically), a three-state modal (scanning → summary → result) and its strings in es/en/pt.
-`tests` are `npm run test:migracion` (19, chained into `test:todo`). Its CSS cannot live in
-`migracion/` — Obsidian only loads the root `styles.css` — so it sits there in a section marked
-TEMPORAL. The folder is at the repo root and not in `.dev/` because `.dev/` is gitignored and this
-is code that ships.
+**Why the tool was removed, which was not tidiness.** Its vault walk called
+`app.vault.getMarkdownFiles()`, and Obsidian's automated review flags that as **Vault Enumeration**
+— *"gives the plugin access to every file path in the vault"*. It was the only place in LMath that
+enumerated anything: the plugin reads the note it is rendering and nothing else, and walking the
+vault existed solely to convert notes.
 
-**The settings row is temporary and dated.** The *Update notes* button in the settings tab, the
-startup notice about the syntax change, and everything under `migracion/` exist only to carry people
-across the rename. They ship in **1.5.0 and are removed in 2.0.0** —
-together with the acceptance of the `obs-*` names, the TEMPORAL block in `styles.css`, the
-`test:migracion` script and this section. Nothing else in the product depends on any of it.
+Turning it off was not enough, and the reason is worth keeping. A constant `MIGRACION_A_LA_VISTA =
+false` removed the startup notice and the settings row, but `ajustes.ts` still imported the modal at
+top level, so the vault walk stayed in `main.js`. **Obsidian's check is static**: it sees the call,
+not whether anything can reach it. Only cutting the import edge silenced it — verified by symbol,
+`getMarkdownFiles`, `getFiles`, `getAllLoadedFiles` and `vault.adapter` all appear **0 times** in
+the bundle.
 
-Note the consequence, because it is a real one and it is deliberate: 1.5.0 is the **only** release
-that can convert a vault automatically. Someone updating straight from 1.4.0 to 2.0.0 lands on a
-plugin that neither renders their `obs-*` blocks nor offers the button that would fix them, and
-their only route is editing every fence by hand. Keeping the button alive in 2.0.0 — it can still
-rewrite fences the plugin no longer renders — would cover that jump at no cost; it was decided
-against, and the release notes say so where a user will read it rather than here.
+**Where it is.** `.dev/migracion/`, which is gitignored, with a `LEEME.md` explaining the above, and
+its 19 tests still passing (run by hand; a `package.json` script pointing into `.dev/` would fail on
+a fresh clone). It was moved rather than deleted because 1.5.0 was the **only** release that could
+convert a vault automatically: anyone jumping from 1.4.0 straight to 2.0.0 has no automatic route,
+and if that route is ever needed again the scanner and rewriter are there, tested, instead of in a
+git history. Bringing them back means restoring the import — and the review warning with it.
 
-Two decisions not to undo without thinking:
+**Why the underscore**, since the choice outlived the tool. `graph` bare is among the easiest names
+for another plugin to have taken, and whoever loses that draw stops rendering with no warning. The
+first attempt at a prefix was `graph*`, and it did not work: Obsidian does not preserve the asterisk
+from a fence's info string, so the registered key never matched what was written in the note.
+`\graph` and `.graph` fail the same way. The underscore is a word character, survives the round
+trip, and still marks the block as ours at a glance.
 
-* **Both names work at once, and that ordering is the point.** If the old identifier stopped
-  rendering in the same release that introduces the new one, people's notes would break *before*
-  they could press the button that fixes them. The button only makes sense on a plugin that
-  already accepts both syntaxes.
-* **The startup notice fires on every load**, not once per install. It was once-per-install until
-  the failure showed up in a real account: start-up is exactly the moment when three notices are
-  stacked, so the only one there was got spent without anyone reading it and never came back.
-  While the migration is still pending, repeating it is what makes people eventually notice; the
-  permanent row in settings is still there for whoever dismisses it anyway.
-
-If it is ever promoted instead of deleted, the mapping is in `migracion/nombres.ts`.
+**The consequence, deliberate and real:** a vault still written `obs-*` has no in-app way out. Those
+blocks render as the plain code blocks they are until the fences are renamed by hand. The release
+notes say so where a user will read it, rather than only here.
 
 ---
 
@@ -2089,8 +2209,8 @@ a new block belongs to). Two suites:
   for unsupported LaTeX, what reaches the plane, what `analizarDibujo` deduces from it (§14.4:
   exact magnitudes, the null vector's absent direction, the exact 0 and π/2 of the `atan2`
   angle, and the "exactly two" of the pair sections), the name each entry is labelled with on
-  the plane, and the framing. **532 assertions at 1.4.0, 75 of them for `obs-trig` and 46 for
-  `obs-vector`.** After 1.4.0, and not yet released, it also pulls in
+  the plane, and the framing. **532 assertions at 1.4.0, 75 of them for `_trig` and 46 for
+  `_vector`.** After 1.4.0, and not yet released, it also pulls in
   `tests/modules/restriccion.test.ts`
   (§4.2b): the six spellings of the comparator, the LaTeX groups that must **not** read as
   intervals (`\sqrt{x}`, `x^{2}`, and `\left(` — which begins exactly like `\le`), the safe
@@ -2106,6 +2226,17 @@ a new block belongs to). Two suites:
   `A·x` and must be substituted; `tan`, `alpha` and `Pi` are atoms and must not), the slider's
   range, and that Greek names survive the implicit product and are typeset as letters.
   **585 assertions with both in.**
+
+  **At 2.0.0 the suite is 974**, and the growth is mostly a different kind of test. Six modules
+  joined it: `oro.test.ts` and `frontera.test.ts` (the golden files, the semantic oracle's
+  self-diagnosis and the import rule — §19.5), `nucleo.test.ts`, `normal.test.ts`,
+  `algebraico.test.ts` and `lector.test.ts` (the symbolic core and its reader — §19). Those six
+  test code that **does not ship**; the boundary tests are the ones that keep it that way.
+
+  On the shipping side, `crosshair.test.ts` and `paneles-info.test.ts` grew by 24 cases covering
+  number provenance (§15.4c): the values that used to collapse to the same reading, the large and
+  small ones, `f(0)`, an integral's limits, the padding split between readout and panel, and — the
+  assertions that matter most — that roots and vertices did **not** move.
 - `tests/zoom.test.ts` (`npm run test:zoom`, ~80 s): the anti-regression sweep for "the
   curve disappears / flickers when zooming out" — each bounded curve traced across ~150
   viewports × 2 canvas sizes × 2 passes, asserting **traced world length** (branch count
@@ -2175,7 +2306,7 @@ cited):
    `clasificarBloque`, `interseccionesSaturadas`).
 10. **Ring discipline** — contracts import nothing; Ring 1 never imports mathjs or
    Obsidian; mathjs enters only through `fields/` + Ring 2; Obsidian only through Ring 3.
-11. **Diagnostics have one home** — for `obs-integral`, all verdict labels render on the
+11. **Diagnostics have one home** — for `_integral`, all verdict labels render on the
     plot; the formula panel shows formulas only (`cuerpoAreaLatexExacto`,
     `etiquetaIntegral`, `clasificarBloque`).
 12. **Exactness comes from provenance, never from proximity** — a closed form is shown only
@@ -2202,7 +2333,7 @@ cited):
 
 ### 18.1 Why it exists — a design decision that was wrong
 
-Until this version, the solutions listed by the ⓘ panel of `obs-system` were computed by
+Until this version, the solutions listed by the ⓘ panel of `_system` were computed by
 `core/analysis/interseccionesRamas.ts`: the crossings of the **already-traced polylines**, with
 the segments clipped to the visible region before being intersected. That module's own header
 declares the trade — *precision = that of the tracing, subpixel on screen, not Newton's 1e-9* —
@@ -2371,3 +2502,205 @@ that ever stops being true.
 
 **What no suite covers:** the panel and the popover are DOM. What is tested is the engine and its
 contract.
+
+---
+
+## 19. The symbolic core — `src/CAS/` — **built, tested, and NOT in the production path**
+
+Read the heading twice. Everything below describes code that exists in the repository, passes its
+tests and **does not run when you open a note**. It is verified by symbol: `tokenizar`,
+`ErrorDeLectura`, `FUNCION_POR_COMANDO` and `TRIG_DIRECTAS` do not appear in `main.js`. The block
+you render still goes through `src/parser.ts`, mathjs and the modules of §5.
+
+It is documented here for two reasons. The migration is staged and each stage has to leave a
+repository someone else can pick up; and the boundary tests that keep this code separate from the
+running engine **do** ship, so a contributor who trips one needs to know what it is guarding.
+
+### 19.1 Why there was a second engine to begin with
+
+The diagnosis that motivated the rewrite was measured, not felt. At the time it was taken: of 145
+TypeScript files under `src/`, **27 imported mathjs**, there were **62** calls to `parse(` and
+roughly **90** `.toString()` on expression trees. mathjs and its satellites were **1 279 KB of a
+2 615 KB bundle — 49 %**.
+
+Those numbers have not improved, and saying otherwise would be the easy lie: today `src/` holds 166
+files, 29 of them import mathjs, and `main.js` is 2.73 MB. **Nothing has been removed yet** — the
+new core was added *beside* the old one, which is what a staged migration looks like from the
+inside. The figure that measures actual progress is the transitive closure of `api-legado.ts`
+(§19.3b), and the bundle only moves at E8.
+
+Underneath that, the project held **two** computer-algebra systems that barely spoke:
+
+* **CAS A** — the everyday path: strings as the currency between stages, mathjs trees in the
+  middle, and *sampling* as the final arbiter of whether a rewrite was legitimate.
+* **CAS B** — the exact path: `Racional` over `bigint`, `Polinomio` over ℚ[x] with Sturm sequences,
+  `Polinomio2` over ℚ[x,y] with resultants, `ValorExacto` in ℚ(√d). Correct, closed, and reached by
+  a **one-way** bridge — A could call B, B could not answer in A's terms.
+
+The consequences were structural rather than a list of bugs. Canonical form was decided **while
+printing** (`renderCanonico` in `formatoExpr.ts` sorts and serialises in the same function), so
+changing typography was changing algebra. A transformation that needed a condition to be valid
+recorded it as a **sentinel** — a node shaped like a function call (`pm`, `mp`, `pm2`, `dom`,
+`fam`) whose meaning was not a function, understood by seven separate modules. And an exact result
+that crossed back into A came out as a decimal.
+
+### 19.2 The seven invariants
+
+These are what the core **promises**, not a description of what it currently contains, and they are
+what to quote when someone — including whoever wrote it — wants to take a shortcut here. This
+section is their published form; there is no other document to go and find.
+
+1. **Exactness by default; approximation is an explicit act.** A number is exact unless the user
+   wrote a decimal. Precision is lost in exactly **one named place** (`aproximar`), never as a side
+   effect.
+2. **`null` is an answer.** When the engine does not know, it says so, rather than returning an
+   approximation dressed as a result.
+3. **Expressions travel between stages, not strings.** A `string` is user input or printer output.
+   Never in between.
+4. **Canonical form is structural.** Equality is decided by comparing structures, not by printing
+   them. The algebraic order and the presentation order are two different orders in two different
+   places.
+5. **No rule without its condition.** `√u·√v → √(uv)` carries `u ≥ 0 ∧ v ≥ 0`. Domain conditions
+   and branches are **model data** (`Condicionado`, `Rama`), not functions recognised by name.
+6. **A general abstraction before a special case.**
+7. **The hash filters; the structure decides.** A collision must never be able to make the engine
+   claim two different expressions are the same.
+
+### 19.3 The layout
+
+| Path | What it is |
+|---|---|
+| `nucleo/expresion.ts` | The AST: a closed, immutable discriminated union — `Literal`, `Simbolo`, `Constante`, `Potencia`, `Producto`, `Suma`, `Aplicacion`, `Rama`, `Condicionado`, `Familia` — each node carrying its hash. There is **no** subtraction, division, unary minus or parenthesis node: `a−b` is a sum with a −1 factor and `a/b` a product by a −1 power, which is what makes associativity and commutativity free in the canonical form. `Suma` and `Producto` are n-ary. |
+| `nucleo/numero.ts` | The numeric tower: `racional` (over `bigint`) or `flotante`. `desdeTexto` reads digits exactly; `desdeCalculo` always yields a float. **Provenance is the caller's declaration**, not a guess — the same principle the panels now use for their own numbers (§15.4c). `aproximar` is the single exactness frontier. |
+| `nucleo/orden.ts` | A total order: class rank first, then per-class comparison. It deliberately does **not** use the hash as a tiebreak, so the order cannot change when the hash function does. |
+| `nucleo/igualdad.ts` | Structural equality; the hash is only a fast reject. |
+| `registro/ficha.ts`, `registro/catalogo.ts` | One function, one record: arity, evaluation, natural domain, sign, parity, and typed empty slots for derivative, antiderivative, inverse and exact values. **42 entries.** The catalogue is the single source of which names are functions — there is no parallel list to maintain, which is what makes `xy` a product and `sin x` not. |
+| `normal/canonica.ts` | The canonical form, computed structurally. It flattens and orders, folds numbers exactly, drops neutral elements and gathers like terms — and does **nothing** whose validity depends on a condition. The traps it dodges by hand are documented in its header (`0·u → 0` is false when the rest is undefined; `u^a·u^b → u^(a+b)` changes the domain more widely than the textbook case suggests). |
+| `dominio/definicion.ts` | `siempreDefinida`: the guard the rules above consult. |
+| `numeros/algebraico.ts`, `numeros/forma.ts` | General algebraic numbers and the road back to a writable closed form. This is what makes `x³ = 2` answer `∛2` instead of `1.2599210498948732`. |
+| `resolver/exactas.ts` | Exact roots, pure over `Expresion`. |
+| `algebra/polinomica.ts` | `Expresion` → `Polinomio2`, reusing the existing traversal rather than duplicating it. |
+| `io/leer/` | The reader — see §19.4. |
+| `puente/mathjs.ts` | The mathjs boundary, and the **only** place the compatibility sentinels are named. |
+| `puente/lectura.ts` | The transitional text → `Expresion` boundary. Used **only by tests** today. |
+| `api.ts` / `api-legado.ts` | Two doors, on purpose. |
+
+### 19.3b The two façades, and why `api-legado.ts` matters
+
+From outside `src/CAS/` you import **`src/CAS/api`** (the new core) or **`src/CAS/api-legado`**
+(the historic engine), and nothing else. Inside, freedom.
+
+Two doors rather than one because **`api-legado.ts` can only shrink**. Each stage that moves a
+capability into the core takes a line off it, and when it is empty the transition is over. If it
+ever grows, something is being built in the wrong place. Its transitive closure is the migration's
+own progress bar: **24 files** today.
+
+`tests/modules/frontera.test.ts` watches **both** directions — that nobody outside reaches into
+`CAS/`'s internals, and that the consuming layers ask for the CAS through the façade instead of
+through its guts. The second half was added in E3.5 and caught two leaks the same day.
+
+### 19.4 The reader (`io/leer/`)
+
+Three files, and the split is the point: **`lexico.ts`** breaks text into named pieces and decides
+nothing (it emits letters one at a time — that `sin` is a function is the analyser's judgement,
+made against the catalogue, because a tokenizer that knew the catalogue would not be a tokenizer);
+**`notacion.ts`** is tables only; **`latex.ts`** is a precedence-climbing recursive-descent analyser
+that produces an `Expresion` **directly**.
+
+It replaces:
+
+```
+text → 49 regexes → mathjs string → parse → mathjs tree → deMathjs → Expresion
+```
+
+with `text → Expresion`. Its transitive closure outside `src/CAS/` is **three** files — `racional`,
+`polinomio`, `polinomio2` — and **`parser.ts` is not among them**, which was the architectural
+point of the stage.
+
+**It reproduces the current conventions rather than improving them**, because the goal was to read
+*the same*, not to read *better*. Two that surprise people and are nonetheless the measured
+behaviour of the shipping engine:
+
+* `\sin 2x` is `sin(2x)`, but `\sin x^2` is `(sin x)^2`.
+* **A bare numeric argument to one of the six direct trigonometric functions is in DEGREES**:
+  `sin(45)` is the sine of 45°. Not the inverses, not the hyperbolics, and not if the argument
+  contains a symbol or a constant. This mirrors `normalizarTrigonometria` in `src/parser.ts`.
+
+Degrees written as `°`, `\degree` or `\deg` are a **postfix operator** at product precedence, so
+`x^2°` is `(x²)·π/180` and not `x^(2·π/180)` — again, matching what the text rewrite does today.
+
+The tokenizer keeps the **position** of every token. Nothing consumes it yet; it exists because an
+error message with a column (`expected an expression at column 7`) is a capability the current
+engine cannot offer — mathjs reports over the rewritten string, which is not what the user typed —
+and it will not need rebuilding to have it.
+
+**Verification.** The reader is compared against the historic one over the 249-case corpus and a
+78-entry hand-written bench, requiring both to produce the same expression after normalisation.
+**One divergence remains, and it is declared** in `DIVERGENCIAS_CONOCIDAS` in
+`tests/modules/lector.test.ts`, whose assertion demands the set of divergences be *exactly* that:
+a new one fails the suite, and so does one that disappears without being removed from the list.
+
+The divergence is `x^(2/3)`. The historic reader only reads `x^{m/n}` as a real root when the
+exponent is in **braces**, because its rewrite is done over text and requires `^{`. So today
+`x^{2/3}` draws the full cusp, `x^(2/3)` only its right half, and `x^\frac{2}{3}` is `x²/3` — the
+same expression written three ways, three curves. The new reader reads all three as the root. That
+is a product decision, not a patch, and it is what stands between this reader and production.
+
+### 19.5 The test infrastructure this brought
+
+It is a different kind of testing from the rest of the suite and worth knowing about.
+
+* **A shared corpus** (`tests/oro/corpus.ts`): 100 equations across six difficulty levels (20 + 19 + 18 + 16 + 13 + 14), plus 49
+  standalone expressions. `tests/bateria-cas.ts` reads it too, so the battery and the golden files
+  cannot drift apart.
+* **Golden dumps** (`tests/oro/dorados/`), regenerated deliberately with `npm run oro`. Their
+  precondition is that the engine is deterministic, which was established by regenerating three
+  times and comparing bytes.
+* **A three-valued semantic oracle** (`tests/oro/oraculo.ts`): `igual | distinta | indecidible`.
+  Splitting "different" from "could not decide" is the whole point — `mismaFuncion` conflates them.
+  It tries identity, canonical form, exact rational identity in ℚ(x,y), domain, sampling and
+  branches, in that order.
+* **A change classifier** (`tests/oro/clasificar.ts`): `cosmético | matemático | alcance |
+  exactitud | indecidible`. `exactitud` is a **declared heuristic** (it looks for long decimals),
+  and it is declared because no oracle that compares *functions* can tell `∛2` from
+  `1.2599210498948732` — they are the same function to any sampler. Writing the limitation into the
+  tool was preferable to pretending it was not there.
+* **Boundary tests** (`tests/modules/frontera.test.ts`): the import rule of §19.3b, enforced rather
+  than trusted.
+
+### 19.6 Stages: what is done and what is not
+
+| Stage | What it is | State |
+|---|---|---|
+| **E0** | Façade, shared corpus, golden dump, semantic oracle, classifier, boundary tests | done |
+| **E1** | `Expresion` with hashes, numeric tower, total order, two-way mathjs bridge | done |
+| **E2** | Structural canonical form | done — see the note below |
+| **E3** | General algebraic numbers; `x³ = 2` gives `∛2` | done |
+| **E3.5** | Boundary hygiene (six agreed tasks) | done |
+| **E4** | The reader | built and verified; **not in production** |
+| **E5–E8** | Simplifier with conditions, unified solver, calculus, own printer, retiring mathjs | **not started** |
+
+**Why E2 is not in the production path, measured rather than assumed.** Replacing
+`formatearCanonico` with the new normaliser over the whole corpus gives **0 mathematical changes
+and 91 cosmetic ones** — and all 91 are *worse to read*: `x²−1` would become `−1 + x²`, and `x/x`
+would become `x·x⁻¹`. The reason is that `formatearCanonico` does not only canonicalise, it
+**presents**. The algebraic order serves the algebra; the presentation order serves the reader, and
+it belongs with the printer, which is E7. The normaliser *is* in use where it belongs already: as
+the semantic oracle's decision procedure.
+
+**The order of the remaining stages changed** after the boundary review: the reader moved ahead of
+the simplifier. The reason was measured — 39 imports from the CAS to the parser, with 27 calls to
+`normalizarEntrada` spread across its stages — and it is that while the bus between stages is text,
+any new stage is born with the boundaries the reader is about to change.
+
+### 19.7 Consented debt
+
+Written down because a debt that is not written becomes architecture by forgetting.
+
+* **mathjs is still underneath** simplify, solve, differentiate and integrate. The core treats it
+  as an implementation detail and reaches it **only** through `CAS/puente/mathjs.ts`.
+* **The sentinels `pm` / `mp` / `pm2` / `dom` still exist** as a compatibility format towards
+  `core/`, which is what understands them today. They are confined to that one bridge file; the
+  core does not name them anywhere.
+* **The LaTeX printer is still mathjs's**, with post-processing. Replacing it is E7, and it is
+  scheduled late on purpose: the panel's LaTeX is finished goods and a misplaced comma shows.
