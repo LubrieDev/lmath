@@ -11,14 +11,15 @@
 // esas— se traducen en la frontera del host con `localizarVelo`, un mapa es→en de las
 // etiquetas del velo. Por eso el idioma por defecto es inglés pero el núcleo no cambia.
 
-export type Idioma = "en" | "es" | "pt";
+export type Idioma = "en" | "es" | "pt" | "de";
 
-export const IDIOMAS: readonly Idioma[] = ["en", "es", "pt"];
+export const IDIOMAS: readonly Idioma[] = ["en", "es", "pt", "de"];
 export const IDIOMA_POR_DEFECTO: Idioma = "en";
 
 import { EN, VELO_NUCLEO_EN } from "./en";
 import { ES } from "./es";
 import { PT, VELO_NUCLEO_PT } from "./pt";
+import { DE, VELO_NUCLEO_DE } from "./de";
 import type { EtiquetaVelo, Textos } from "./textos";
 
 // El contrato se reexporta desde aquí: `import { t, type Textos } from "../i18n"` sigue
@@ -26,7 +27,7 @@ import type { EtiquetaVelo, Textos } from "./textos";
 // las tablas viven en un archivo por idioma.
 export type { EtiquetaVelo, Textos } from "./textos";
 
-const RECURSOS: Record<Idioma, Textos> = { en: EN, es: ES, pt: PT };
+const RECURSOS: Record<Idioma, Textos> = { en: EN, es: ES, pt: PT, de: DE };
 
 let idiomaActual: Idioma = IDIOMA_POR_DEFECTO;
 
@@ -54,6 +55,10 @@ export function t(): Textos {
  */
 export function localizarVelo(velo: EtiquetaVelo): EtiquetaVelo {
   if (idiomaActual === "es") return velo;
-  const mapa = idiomaActual === "pt" ? VELO_NUCLEO_PT : VELO_NUCLEO_EN;
+  const mapa = idiomaActual === "pt"
+    ? VELO_NUCLEO_PT
+    : idiomaActual === "de"
+      ? VELO_NUCLEO_DE
+      : VELO_NUCLEO_EN;
   return mapa[velo.etiqueta] ?? velo;
 }

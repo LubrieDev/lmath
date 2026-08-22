@@ -60431,7 +60431,8 @@ var EN = {
       desc: "Language of the plugin interface (labels, buttons and messages). Every setting on this tab applies immediately: blocks already on screen rebuild themselves, which returns their zoom and their view to the starting point.",
       opcionEn: "English",
       opcionEs: "Espa\xF1ol",
-      opcionPt: "Portugu\xEAs"
+      opcionPt: "Portugu\xEAs",
+      opcionDe: "Deutsch"
     }
   },
   canvasNoDisponible: "Error: Canvas 2D not available",
@@ -60439,7 +60440,7 @@ var EN = {
     vistaInicial: "Initial view (undo zoom and pan)",
     acercar: "Zoom in (+)",
     alejar: "Zoom out (\u2212)",
-    carril: "Rail: follow the curve with A/D, zoom with W/S (Shift = precision)",
+    carril: "Curve trace: follow the curve with A/D, zoom with W/S (Shift = precision)",
     seleccionarEcuacion: (n) => `Select equation ${n}`,
     solucionesSistema: "System solutions",
     resumenNotables: "Notable points summary",
@@ -60480,10 +60481,10 @@ var EN = {
     sinSolucionParcial: "No solutions were found, but some pair of curves could not be solved: not being listed does not mean they do not exist."
   },
   resumen: {
-    interseccionesYInfinitas: "Y-axis intercepts: infinitely many",
-    interseccionesYDemasiadas: "Y-axis intercepts: too many to show",
-    interseccionY: (punto) => `Y-intercept: $${punto}$`,
-    noCortaY: "Does not cross the Y axis",
+    interseccionesYInfinitas: "y-axis intercepts: infinitely many",
+    interseccionesYDemasiadas: "y-axis intercepts: too many to show",
+    interseccionY: (punto) => `y-intercept: $${punto}$`,
+    noCortaY: "Does not intersect the y-axis",
     raicesInfinitas: "Roots: infinitely many",
     raicesDemasiadas: "Roots: too many to show",
     raicesPrefijo: "Roots: ",
@@ -60538,7 +60539,7 @@ var EN = {
     simetriaEjeX: "about the x axis",
     simetriaEjeY: "about the y axis",
     autointersecciones: (n) => `Self-intersections: ${n}`,
-    sinAutointersecciones: "Does not cross itself",
+    sinAutointersecciones: "Has no self-intersections",
     longitud: (l) => `Length: $${l}$`,
     areaAlgebraica: (a) => `Algebraic area: $${a}$`,
     familia: {
@@ -60687,7 +60688,7 @@ var EN = {
     },
     info: {
       chip: "Angle details",
-      seccionRazones: "The six ratios",
+      seccionRazones: "The six trigonometric ratios",
       seccionMedida: "Angle measure",
       seccionPosicion: "Position on the circle",
       seccionRelacionados: "Related angles",
@@ -60706,7 +60707,7 @@ var EN = {
       },
       referencia: "Reference angle",
       vueltas: "Complete turns",
-      coterminal: "Principal coterminal",
+      coterminal: "Principal coterminal angle",
       arco: "Arc length",
       sector: "Sector area",
       complementario: "Complementary",
@@ -60784,7 +60785,8 @@ var ES = {
       desc: "Idioma de la interfaz del plugin (etiquetas, botones y mensajes). Todos los ajustes de esta pesta\xF1a se aplican al momento: los bloques que est\xE9n a la vista se rehacen, y eso devuelve su zoom y su vista al punto de partida.",
       opcionEn: "English",
       opcionEs: "Espa\xF1ol",
-      opcionPt: "Portugu\xEAs"
+      opcionPt: "Portugu\xEAs",
+      opcionDe: "Deutsch"
     }
   },
   canvasNoDisponible: "Error: Canvas 2D no disponible",
@@ -60792,7 +60794,7 @@ var ES = {
     vistaInicial: "Vista inicial (deshace zoom y desplazamiento)",
     acercar: "Acercar (zoom +)",
     alejar: "Alejar (zoom \u2212)",
-    carril: "Carril: recorrer la curva con A/D, zoom con W/S (Shift = precisi\xF3n)",
+    carril: "Seguimiento de curva: recorrer la curva con A/D, zoom con W/S (Shift = precisi\xF3n)",
     seleccionarEcuacion: (n) => `Seleccionar ecuaci\xF3n ${n}`,
     solucionesSistema: "Soluciones del sistema",
     resumenNotables: "Resumen de puntos notables",
@@ -60833,10 +60835,10 @@ var ES = {
     sinSolucionParcial: "No se han encontrado soluciones, pero alguna pareja de curvas no se ha podido resolver: que no se listen no significa que no existan."
   },
   resumen: {
-    interseccionesYInfinitas: "Intersecciones con el eje Y: infinitas",
-    interseccionesYDemasiadas: "Intersecciones con el eje Y: demasiadas para mostrar",
-    interseccionY: (punto) => `Intersecci\xF3n Y: $${punto}$`,
-    noCortaY: "No corta el eje Y",
+    interseccionesYInfinitas: "Intersecciones con el eje y: infinitas",
+    interseccionesYDemasiadas: "Intersecciones con el eje y: demasiadas para mostrar",
+    interseccionY: (punto) => `Intersecci\xF3n con el eje y: $${punto}$`,
+    noCortaY: "No corta el eje y",
     raicesInfinitas: "Ra\xEDces: infinitas",
     raicesDemasiadas: "Ra\xEDces: demasiadas para mostrar",
     raicesPrefijo: "Ra\xEDces: ",
@@ -60846,7 +60848,7 @@ var ES = {
     noVertices: "No hay v\xE9rtices",
     vertice: (punto) => `V\xE9rtice: $${punto}$`,
     identicamenteCero: "Todos los valores de x son ra\xEDces (funci\xF3n id\xE9nticamente cero).",
-    interseccionYNoDefinida: "Intersecci\xF3n Y: no definida (discontinuidad en $x = 0$)",
+    interseccionYNoDefinida: "Intersecci\xF3n con el eje y: no definida (discontinuidad en $x = 0$)",
     verticeMin: (punto) => `V\xE9rtice m\xEDnimo: $${punto}$`,
     verticeMax: (punto) => `V\xE9rtice m\xE1ximo: $${punto}$`,
     sinDeterminar: "Hay puntos notables que el motor no ha podido determinar."
@@ -60891,7 +60893,7 @@ var ES = {
     simetriaEjeX: "respecto al eje x",
     simetriaEjeY: "respecto al eje y",
     autointersecciones: (n) => `Autointersecciones: ${n}`,
-    sinAutointersecciones: "No se corta a s\xED misma",
+    sinAutointersecciones: "No presenta autointersecciones",
     longitud: (l) => `Longitud: $${l}$`,
     areaAlgebraica: (a) => `\xC1rea algebraica: $${a}$`,
     familia: {
@@ -60927,7 +60929,7 @@ var ES = {
       maximo: "m\xE1ximo local",
       minimo: "m\xEDnimo local",
       estacionario: "punto estacionario",
-      esquina: "esquina",
+      esquina: "punto angular",
       cuspide: "c\xFAspide",
       tangenteVertical: "tangente vertical"
     },
@@ -61030,7 +61032,7 @@ var ES = {
     },
     info: {
       chip: "Detalles del \xE1ngulo",
-      seccionRazones: "Las seis razones",
+      seccionRazones: "Las seis razones trigonom\xE9tricas",
       seccionMedida: "Medida del \xE1ngulo",
       seccionPosicion: "Posici\xF3n en la circunferencia",
       seccionRelacionados: "\xC1ngulos relacionados",
@@ -61049,7 +61051,7 @@ var ES = {
       },
       referencia: "\xC1ngulo de referencia",
       vueltas: "Vueltas completas",
-      coterminal: "Coterminal principal",
+      coterminal: "\xC1ngulo coterminal principal",
       arco: "Longitud de arco",
       sector: "\xC1rea del sector",
       complementario: "Complementario",
@@ -61101,7 +61103,8 @@ var PT = {
       desc: "Idioma da interface do plugin (r\xF3tulos, bot\xF5es e mensagens). Todas as defini\xE7\xF5es deste separador aplicam-se de imediato: os blocos \xE0 vista s\xE3o refeitos, e isso devolve o zoom e a vista ao ponto de partida.",
       opcionEn: "English",
       opcionEs: "Espa\xF1ol",
-      opcionPt: "Portugu\xEAs"
+      opcionPt: "Portugu\xEAs",
+      opcionDe: "Deutsch"
     }
   },
   canvasNoDisponible: "Erro: Canvas 2D n\xE3o dispon\xEDvel",
@@ -61109,12 +61112,12 @@ var PT = {
     vistaInicial: "Vista inicial (desfaz zoom e deslocamento)",
     acercar: "Aproximar (zoom +)",
     alejar: "Afastar (zoom \u2212)",
-    carril: "Carril: percorrer a curva com A/D, zoom com W/S (Shift = precis\xE3o)",
+    carril: "Seguimento da curva: percorre a curva com A/D, zoom com W/S (Shift = precis\xE3o)",
     seleccionarEcuacion: (n) => `Selecionar equa\xE7\xE3o ${n}`,
     solucionesSistema: "Solu\xE7\xF5es do sistema",
     resumenNotables: "Resumo dos pontos not\xE1veis",
     parametros: "Cursores de par\xE2metros",
-    resumenIntegral: "Sobre este integral",
+    resumenIntegral: "Sobre esta integral",
     resumenDerivada: "O que diz a derivada de f",
     original: "Original",
     verFormula: "Ver a f\xF3rmula",
@@ -61150,10 +61153,10 @@ var PT = {
     sinSolucionParcial: "N\xE3o se encontraram solu\xE7\xF5es, mas algum par de curvas n\xE3o p\xF4de ser resolvido: n\xE3o estarem listadas n\xE3o significa que n\xE3o existam."
   },
   resumen: {
-    interseccionesYInfinitas: "Interse\xE7\xF5es com o eixo Y: infinitas",
-    interseccionesYDemasiadas: "Interse\xE7\xF5es com o eixo Y: demasiadas para mostrar",
-    interseccionY: (punto) => `Interse\xE7\xE3o Y: $${punto}$`,
-    noCortaY: "N\xE3o interseta o eixo Y",
+    interseccionesYInfinitas: "Interse\xE7\xF5es com o eixo y: infinitas",
+    interseccionesYDemasiadas: "Interse\xE7\xF5es com o eixo y: demasiadas para mostrar",
+    interseccionY: (punto) => `Interse\xE7\xE3o com o eixo y: $${punto}$`,
+    noCortaY: "N\xE3o interseta o eixo y",
     raicesInfinitas: "Ra\xEDzes: infinitas",
     raicesDemasiadas: "Ra\xEDzes: demasiadas para mostrar",
     raicesPrefijo: "Ra\xEDzes: ",
@@ -61208,7 +61211,7 @@ var PT = {
     simetriaEjeX: "em rela\xE7\xE3o ao eixo x",
     simetriaEjeY: "em rela\xE7\xE3o ao eixo y",
     autointersecciones: (n) => `Autointerse\xE7\xF5es: ${n}`,
-    sinAutointersecciones: "N\xE3o se interseta a si mesma",
+    sinAutointersecciones: "N\xE3o apresenta autointerse\xE7\xF5es",
     longitud: (l) => `Comprimento: $${l}$`,
     areaAlgebraica: (a) => `\xC1rea alg\xE9brica: $${a}$`,
     familia: {
@@ -61218,10 +61221,10 @@ var PT = {
     }
   },
   integral: {
-    titulo: "Integral definido",
-    impropia: (variable, x) => `impr\xF3prio em $${variable} = ${x}$, converge`,
+    titulo: "Integral definida",
+    impropia: (variable, x) => `impr\xF3pria em $${variable} = ${x}$, converge`,
     intervalo: (a, b, variable) => `$${a} \\le ${variable} \\le ${b}$`,
-    intervaloVacio: "Intervalo vazio: o integral \xE9 0 por defini\xE7\xE3o",
+    intervaloVacio: "Intervalo vazio: a integral \xE9 0 por defini\xE7\xE3o",
     limitesInvertidos: "Os limites est\xE3o escritos ao contr\xE1rio: o valor muda de sinal",
     valorPrefijo: "Valor: ",
     valorEsArea: "a \xE1rea sob a curva",
@@ -61244,7 +61247,7 @@ var PT = {
       maximo: "m\xE1ximo local",
       minimo: "m\xEDnimo local",
       estacionario: "ponto estacion\xE1rio",
-      esquina: "bico",
+      esquina: "ponto angular",
       cuspide: "c\xFAspide",
       tangenteVertical: "tangente vertical"
     },
@@ -61286,7 +61289,7 @@ var PT = {
     },
     sinIntegral: {
       etiqueta: "Sem integral",
-      detalle: "Escreve um integral definido em LaTeX, p. ex. \\int_{a}^{b} f(x)\\,dx."
+      detalle: "Escreve uma integral definida em LaTeX, p. ex. \\int_{a}^{b} f(x)\\,dx."
     },
     sinSistema: {
       etiqueta: "Sem sistema",
@@ -61347,7 +61350,7 @@ var PT = {
     },
     info: {
       chip: "Detalhes do \xE2ngulo",
-      seccionRazones: "As seis raz\xF5es",
+      seccionRazones: "As seis raz\xF5es trigonom\xE9tricas",
       seccionMedida: "Medida do \xE2ngulo",
       seccionPosicion: "Posi\xE7\xE3o na circunfer\xEAncia",
       seccionRelacionados: "\xC2ngulos relacionados",
@@ -61366,7 +61369,7 @@ var PT = {
       },
       referencia: "\xC2ngulo de refer\xEAncia",
       vueltas: "Voltas completas",
-      coterminal: "Coterminal principal",
+      coterminal: "\xC2ngulo coterminal principal",
       arco: "Comprimento de arco",
       sector: "\xC1rea do setor",
       complementario: "Complementar",
@@ -61394,7 +61397,7 @@ var VELO_NUCLEO_PT = {
   },
   "Integral divergente": {
     etiqueta: "Integral divergente",
-    detalle: "O integral n\xE3o converge: a fun\xE7\xE3o n\xE3o \xE9 limitada no intervalo."
+    detalle: "A integral n\xE3o converge: a fun\xE7\xE3o n\xE3o \xE9 limitada no intervalo."
   },
   "Fuera de dominio": {
     etiqueta: "Fora do dom\xEDnio",
@@ -61406,10 +61409,348 @@ var VELO_NUCLEO_PT = {
   }
 };
 
+// src/i18n/de.ts
+var DE = {
+  aviso: { cargado: "LMath wurde erfolgreich geladen!" },
+  ajustes: {
+    transformaciones: "Umformungen",
+    despejarAuto: {
+      etiqueta: "Automatisch nach y aufl\xF6sen",
+      detalle: "Beim Rendern einer Gleichung wird das nach y aufgel\xF6ste Ergebnis (y = f(x)) direkt angezeigt, ohne \xABAufl\xF6sen\xBB zu dr\xFCcken. Die Schaltfl\xE4che \xABAufl\xF6sen\xBB wird im Panel ausgeblendet."
+    },
+    plano: "Ebene",
+    puntosNotables: {
+      etiqueta: "Besondere Punkte anzeigen",
+      detalle: "Zeigt auf der Ebene Markierungen f\xFCr Nullstellen, Scheitelpunkte, y-Achsenabschnitte und die L\xF6sungen (Schnittpunkte) von Gleichungssystemen. Wenn diese Option deaktiviert ist, bleibt die Ebene \xFCbersichtlich: Die \u24D8-Zusammenfassung f\xFChrt sie weiterhin auf; Fadenkreuz und Kurvenmodus \xE4ndern sich nicht."
+    },
+    encuadreAuto: {
+      etiqueta: "Automatischer Bildausschnitt",
+      detalle: "Vergr\xF6\xDFert die Anfangsansicht, wenn die Kurve beschr\xE4nkt ist und viel leere Ebene l\xE4sst (Herz, Lemniskate, Astroide \u2026). Sie vergr\xF6\xDFert nur, nie verkleinert sie: Erreicht die Kurve den Rand, bleibt die \xFCbliche Ansicht erhalten. Die Ansicht bleibt auf den Ursprung zentriert und wird mit der Wiederherstellen-Taste zur\xFCckgesetzt."
+    },
+    trig: {
+      seccion: "Trigonometrischer Kreis",
+      unidad: {
+        etiqueta: "Winkeleinheit",
+        detalle: "Einheit, mit der Winkel in obs-trig-Bl\xF6cken beschriftet werden (Markierungen, Anzeige und Panel) sowie im \u24D8-Panel von obs-vector, das kein eigenes Symbol besitzt. Sie betrifft nur die Darstellung: Ein nackter Wert wird immer als Bogenma\xDF gelesen und \xB0 bleibt ausdr\xFCcklich, daher \xE4ndert ein Wechsel nie die Bedeutung eines bereits geschriebenen Ausdrucks."
+      },
+      opcionGrados: "Grad",
+      opcionRadianes: "Bogenma\xDF",
+      opcionGradianes: "Gon",
+      iman: {
+        etiqueta: "An markanten Winkeln einrasten",
+        detalle: "Beim Ziehen des Punkts auf dem Kreis rastet er an markanten Winkeln (Vielfachen von 15\xB0) ein. Halte Alt gedr\xFCckt, um frei zu ziehen, ohne die Option auszuschalten."
+      }
+    },
+    idioma: {
+      seccion: "Sprache",
+      nombre: "Sprache",
+      desc: "Sprache der Plugin-Oberfl\xE4che (Beschriftungen, Schaltfl\xE4chen und Meldungen). Alle Einstellungen auf dieser Seite werden sofort angewendet: Bereits sichtbare Bl\xF6cke werden neu aufgebaut; dadurch kehren Zoom und Ansicht zum Ausgangspunkt zur\xFCck.",
+      opcionEn: "English",
+      opcionEs: "Espa\xF1ol",
+      opcionPt: "Portugu\xEAs",
+      opcionDe: "Deutsch"
+    }
+  },
+  canvasNoDisponible: "Fehler: Canvas 2D ist nicht verf\xFCgbar",
+  botones: {
+    vistaInicial: "Anfangsansicht (Zoom und Verschiebung zur\xFCcksetzen)",
+    acercar: "Vergr\xF6\xDFern (+)",
+    alejar: "Verkleinern (\u2212)",
+    carril: "Kurvenverfolgung: Mit A/D der Kurve folgen, mit W/S zoomen (Umschalt = pr\xE4zise)",
+    seleccionarEcuacion: (n) => `Gleichung ${n} ausw\xE4hlen`,
+    solucionesSistema: "L\xF6sungen des Gleichungssystems",
+    resumenNotables: "Zusammenfassung besonderer Punkte",
+    parametros: "Parameterschieberegler",
+    resumenIntegral: "\xDCber dieses Integral",
+    resumenDerivada: "Was die Ableitung \xFCber f aussagt",
+    original: "Original",
+    verFormula: "Formel anzeigen",
+    verPlano: "Ebene anzeigen",
+    verCirculo: "Kreis anzeigen",
+    cerrarFormula: "Formel ausblenden",
+    editarBloque: "Block bearbeiten",
+    transformaciones: "Umformungen",
+    cerrarMenu: "Men\xFC schlie\xDFen",
+    reproducir: "Abspielen (den Kreis durchlaufen)",
+    pausar: "Pausieren",
+    despejarY: "Nach y aufl\xF6sen",
+    operador: "Operator",
+    derivadaEvaluada: "Ausgewertete Ableitung",
+    derivada: "Ableitung",
+    operadorYDerivada: "Operator und Ableitung",
+    primitivaEvaluada: "Ausgewertete Stammfunktion",
+    primitiva: "Stammfunktion",
+    operadorYPrimitiva: "Operator und Stammfunktion"
+  },
+  solucion: {
+    sinSistema: "Es gibt kein Gleichungssystem. Schreibe mindestens zwei Gleichungen (eine pro Zeile).",
+    sistemaIncompleto: "Unvollst\xE4ndiges Gleichungssystem: Mindestens eine Gleichung fehlt. Ein System braucht mindestens zwei Gleichungen und zwei Unbekannte.",
+    infinitasCoinciden: "Unendlich viele L\xF6sungen: Die Kurven fallen auf einem Abschnitt zusammen (sie sind gleich).",
+    infinitasPeriodico: "Unendlich viele L\xF6sungen: Das System ist periodisch (die L\xF6sungen wiederholen sich endlos).",
+    sinSolucion: "Die Kurven schneiden sich nicht.",
+    unaSolucion: "L\xF6sung:",
+    nSoluciones: (n) => `L\xF6sungen (${n}):`,
+    yMas: (n) => `\u2026 und ${n} weitere`,
+    enIntervalo: (min3, max3, variable) => `Gesucht in ${min3} \u2264 ${variable} \u2264 ${max3}.`,
+    noResoluble: "Dieses System kann nicht exakt gel\xF6st werden; es werden keine L\xF6sungen aufgef\xFChrt.",
+    parcial: "Ein Kurvenpaar konnte nicht gel\xF6st werden: Es kann weitere L\xF6sungen geben.",
+    sinSolucionParcial: "Es wurden keine L\xF6sungen gefunden, aber ein Kurvenpaar konnte nicht gel\xF6st werden: Nicht aufgef\xFChrt bedeutet nicht, dass keine existieren."
+  },
+  resumen: {
+    interseccionesYInfinitas: "Schnittpunkte mit der y-Achse: unendlich viele",
+    interseccionesYDemasiadas: "Schnittpunkte mit der y-Achse: zu viele zum Anzeigen",
+    interseccionY: (punto) => `y-Achsenabschnitt: $${punto}$`,
+    noCortaY: "Schneidet die y-Achse nicht",
+    raicesInfinitas: "Nullstellen: unendlich viele",
+    raicesDemasiadas: "Nullstellen: zu viele zum Anzeigen",
+    raicesPrefijo: "Nullstellen: ",
+    noRaices: "Keine reellen Nullstellen",
+    verticesInfinitos: "Scheitelpunkte: unendlich viele",
+    verticesDemasiados: "Scheitelpunkte: zu viele zum Anzeigen",
+    noVertices: "Keine Scheitelpunkte",
+    vertice: (punto) => `Scheitelpunkt: $${punto}$`,
+    identicamenteCero: "Jeder Wert von x ist eine Nullstelle (identisch verschwindende Funktion).",
+    interseccionYNoDefinida: "y-Achsenabschnitt: nicht definiert (Unstetigkeit bei $x = 0$)",
+    verticeMin: (punto) => `Minimaler Scheitelpunkt: $${punto}$`,
+    verticeMax: (punto) => `Maximaler Scheitelpunkt: $${punto}$`,
+    sinDeterminar: "Einige besondere Punkte konnten nicht bestimmt werden."
+  },
+  polar: {
+    titulo: "Polarkurve",
+    periodo: (p) => `Wiederholt sich alle $${p}$`,
+    ordenRotacional: (n) => `${n}-fache Drehsymmetrie`,
+    simetriasPrefijo: "Symmetrie: ",
+    simetriaPolo: "bez\xFCglich des Pols",
+    simetriaEjePolar: "bez\xFCglich der Polarachse",
+    simetriaVertical: "bez\xFCglich $\\theta = \\frac{\\pi}{2}$",
+    rangoRadial: (min3, max3) => `Radius: $${min3} \\le r \\le ${max3}$`,
+    radioConstante: (r) => `Konstanter Radius $r = ${r}$`,
+    cambiaSigno: "r wechselt das Vorzeichen: Die Kurve wechselt auf die gegen\xFCberliegende Seite des Pols",
+    extremosEn: (thetaMax, thetaMin) => `Maximum bei $\\theta = ${thetaMax}$, Minimum bei $\\theta = ${thetaMin}$`,
+    masMultiplos: (texto, periodo) => `${texto} $\\left(+\\,k\\cdot ${periodo}\\right)$`,
+    pasaPorPolo: (angulos) => `Geht durch den Pol bei $\\theta = ${angulos}$`,
+    noPasaPorPolo: "Geht nicht durch den Pol",
+    poloDemasiados: "Geht oft durch den Pol",
+    areaBarrida: (area, intervalo) => `\xDCberstrichene Fl\xE4che auf $${intervalo}$: $${area}$`,
+    patron: {
+      circunferenciaCentrada: "Kreis mit Mittelpunkt im Pol",
+      circunferenciaPorPolo: "Kreis durch den Pol",
+      rosa: (petalos) => `Rose mit ${petalos} Bl\xE4ttern`,
+      cardioide: "Kardioide",
+      limaconLazo: "Lima\xE7on mit innerer Schleife",
+      limaconHoyuelo: "eingedellte Lima\xE7on",
+      limaconConvexo: "konvexe Lima\xE7on"
+    }
+  },
+  parametrica: {
+    titulo: "Parametrische Kurve",
+    intervalo: (a, b) => `$${a} \\le t \\le ${b}$`,
+    cerrada: "geschlossen",
+    periodo: (p) => `Periode $${p}$`,
+    periodoExcede: (p) => `Periode $${p}$: Nur ein Teil der Kurve wird gezeichnet`,
+    caja: (xMin, xMax, yMin, yMax) => `$${xMin} \\le x \\le ${xMax}$,  $${yMin} \\le y \\le ${yMax}$`,
+    pasaPorOrigen: "Geht durch den Ursprung",
+    simetriasPrefijo: "Symmetrie: ",
+    simetriaOrigen: "bez\xFCglich des Ursprungs",
+    simetriaEjeX: "bez\xFCglich der x-Achse",
+    simetriaEjeY: "bez\xFCglich der y-Achse",
+    autointersecciones: (n) => `Selbstschnittpunkte: ${n}`,
+    sinAutointersecciones: "Hat keine Selbstschnitte",
+    longitud: (l) => `L\xE4nge: $${l}$`,
+    areaAlgebraica: (a) => `Algebraische Fl\xE4che: $${a}$`,
+    familia: {
+      lissajous: (a, b, desfase) => `Lissajous ${a}:${b}, Phase $${desfase}$`,
+      elipse: "Ellipse",
+      circunferencia: "Kreis"
+    }
+  },
+  integral: {
+    titulo: "Bestimmtes Integral",
+    impropia: (variable, x) => `uneigentlich bei $${variable} = ${x}$, konvergiert`,
+    intervalo: (a, b, variable) => `$${a} \\le ${variable} \\le ${b}$`,
+    intervaloVacio: "Leeres Intervall: Das Integral ist definitionsgem\xE4\xDF 0",
+    limitesInvertidos: "Die Grenzen sind in umgekehrter Reihenfolge geschrieben: Der Wert wechselt das Vorzeichen",
+    valorPrefijo: "Wert: ",
+    valorEsArea: "die Fl\xE4che unter der Kurve",
+    valorBajoEje: "die Kurve liegt unter der Achse, daher ist der Wert negativ",
+    valorFirmado: "vorzeichenbehaftete Fl\xE4che: Die Teile unter der Achse werden abgezogen",
+    integrandoNulo: "Der Integrand ist im ganzen Intervall null",
+    cruces: (variable, lista) => `Schneidet die Achse bei $${variable} = ${lista}$`,
+    crucesMuchos: "Schneidet die Achse oft",
+    areaPositiva: (area) => `Positive Fl\xE4che: $${area}$`,
+    areaNegativa: (area) => `Negative Fl\xE4che: $${area}$`,
+    promedio: (v) => `Mittelwert: $${v}$`
+  },
+  derivada: {
+    titulo: "Ableitung",
+    pendienteEn0: (m) => `Steigung bei $x = 0$: $${m}$`,
+    criticoUno: (item) => `Kritischer Punkt: ${item}`,
+    criticosPrefijo: "Kritische Punkte:",
+    criticoItem: (x, tipo) => `$x = ${x}$ (${tipo})`,
+    tipo: {
+      maximo: "lokales Maximum",
+      minimo: "lokales Minimum",
+      estacionario: "station\xE4rer Punkt",
+      esquina: "Knickpunkt",
+      cuspide: "Spitze",
+      tangenteVertical: "vertikale Tangente"
+    },
+    criticosInfinitos: "Unendlich viele kritische Punkte (periodisch)",
+    criticosDemasiados: "Zu viele kritische Punkte zum Auff\xFChren",
+    creciente: (intervalo) => `Wachsend auf $${intervalo}$`,
+    decreciente: (intervalo) => `Fallend auf $${intervalo}$`,
+    inflexionUna: (x) => `Wendepunkt: $x = ${x}$`,
+    inflexionesPrefijo: "Wendepunkte:",
+    inflexionesInfinitas: "Unendlich viele Wendepunkte (periodisch)",
+    inflexionesDemasiadas: "Zu viele Wendepunkte zum Auff\xFChren",
+    noDerivableUno: (x) => `Nicht differenzierbar bei $x = ${x}$`,
+    noDerivablesPrefijo: "Nicht differenzierbar bei:",
+    punto: (x) => `$x = ${x}$`,
+    rangoAnalisis: (a, b) => `Analysiert auf $${a} \\le x \\le ${b}$`
+  },
+  parametros: { mando: (nombre) => `Wert von ${nombre}` },
+  velo: {
+    simboloNoSoportado: "Nicht unterst\xFCtztes Symbol",
+    simbolosNoSoportados: "Nicht unterst\xFCtzte Symbole",
+    simboloDetalle: (lista) => `Die Engine erkennt ${lista} nicht. Schreibe den Ausdruck ohne dieses Symbol neu (oder verwende das \xC4quivalent: \\cdot, \\times, \\div, \\pm, \\sqrt, \\frac\u2026).`,
+    restriccionAjena: (escrita, propia) => ({
+      etiqueta: "Einschr\xE4nkung einer anderen Variablen",
+      detalle: `Die Definitionsbereichseinschr\xE4nkung begrenzt ${escrita}, aber dieser Block wird in ${propia} gezeichnet. Schreibe das Intervall in ${propia}, sonst bleibt nichts zum Zeichnen.`
+    }),
+    restriccionIlegible: (texto) => ({
+      etiqueta: "Unlesbare Definitionsbereichseinschr\xE4nkung",
+      detalle: `${texto} ist kein Intervall, das dieser Block lesen kann. Schreibe es als {a \u2264 x \u2264 b}, {x \u2265 a} oder {x \u2264 b}, mit Zahlen oder benannten Konstanten (\\pi, e, \\infty) an den Grenzen.`
+    }),
+    restriccionVacia: (variable, min3, max3) => ({
+      etiqueta: "Leeres Intervall",
+      detalle: `Die Einschr\xE4nkung fordert gleichzeitig ${variable} \u2265 ${min3} und ${variable} \u2264 ${max3}; daher erf\xFCllt kein Punkt sie. Vertausche die Grenzen, falls du die andere Reihenfolge meintest.`
+    }),
+    integrandoNoValido: {
+      etiqueta: "Ung\xFCltiger Integrand",
+      detalle: "Der Integrand muss eine Funktion von x sein. Eine Gleichung (implizite Kurve mit `=` oder `y`) wird nicht integriert: Zeichne sie in einem obs-graph-Block."
+    },
+    sinIntegral: {
+      etiqueta: "Kein Integral",
+      detalle: "Schreibe ein bestimmtes Integral in LaTeX, z. B. \\int_{a}^{b} f(x)\\,dx."
+    },
+    sinSistema: {
+      etiqueta: "Kein Gleichungssystem",
+      detalle: "Schreibe ein Gleichungssystem, eine Gleichung pro Zeile (mindestens zwei)."
+    },
+    sistemaIncompleto: {
+      etiqueta: "Unvollst\xE4ndiges Gleichungssystem",
+      detalle: "Mindestens eine Gleichung fehlt: Ein System braucht mindestens zwei Gleichungen und zwei Unbekannte."
+    },
+    sinFuncion: {
+      etiqueta: "Keine Funktion",
+      detalle: "Schreibe einen mathematischen Ausdruck zum Zeichnen."
+    },
+    sinVector: {
+      etiqueta: "Kein Vektor",
+      detalle: "Schreibe einen Vektor pro Zeile, zum Beispiel v = (3, 2)."
+    },
+    nadaQueDibujar: {
+      etiqueta: "Nichts zu zeichnen",
+      detalle: "Das Geschriebene wird oben gesetzt. Zum Zeichnen eines Pfeils braucht ein Vektor numerische Komponenten, etwa v = (3, 2)."
+    }
+  },
+  vector: {
+    vistas: {
+      escrito: "Was der Block deklariert",
+      entrePuntos: "Vektor zwischen den Punkten",
+      opciones: "Vektor zwischen den Punkten"
+    },
+    info: {
+      chip: "Vektordetails",
+      entre: (a, b) => `Zwischen ${a} und ${b}`,
+      modulo: "Betrag",
+      direccion: "Richtung",
+      posicion: "Lage",
+      unitario: "Einheitsvektor",
+      escalar: "Skalarprodukt",
+      angulo: "Winkel",
+      determinante: "Determinante",
+      areaParalelogramo: "Parallelogrammfl\xE4che",
+      areaTriangulo: "Dreiecksfl\xE4che",
+      perpendiculares: "Senkrecht",
+      paralelos: "Parallel",
+      distancia: "Abstand",
+      puntoMedio: "Mittelpunkt"
+    }
+  },
+  trig: {
+    anguloNoValido: (expr) => `Kein g\xFCltiger Winkel: \u201E${expr}\u201C`,
+    componentes: {
+      chip: "Komponenten",
+      seno: "sin (y)",
+      coseno: "cos (x)",
+      tangente: "tan"
+    },
+    info: {
+      chip: "Winkeldetails",
+      seccionRazones: "Die sechs trigonometrischen Verh\xE4ltnisse",
+      seccionMedida: "Winkelma\xDF",
+      seccionPosicion: "Position auf dem Kreis",
+      seccionRelacionados: "Verwandte Winkel",
+      grados: "Grad",
+      radianes: "Bogenma\xDF",
+      ladoTerminal: "Endseite",
+      posicion: {
+        I: "I. Quadrant",
+        II: "II. Quadrant",
+        III: "III. Quadrant",
+        IV: "IV. Quadrant",
+        "ejeX+": "Positive x-Achse",
+        "ejeX-": "Negative x-Achse",
+        "ejeY+": "Positive y-Achse",
+        "ejeY-": "Negative y-Achse"
+      },
+      referencia: "Referenzwinkel",
+      vueltas: "Volle Umdrehungen",
+      coterminal: "Hauptwinkel",
+      arco: "Bogenl\xE4nge",
+      sector: "Sektorfl\xE4che",
+      complementario: "Komplement\xE4rwinkel",
+      suplementario: "Supplementwinkel",
+      opuesto: "Gegenwinkel",
+      antipoda: "Antipodenwinkel",
+      pitagorica: "sin\xB2\u03B8 + cos\xB2\u03B8",
+      pitagoricaNota: "numerisch gepr\xFCft",
+      noDefinida: "nicht definiert"
+    }
+  }
+};
+var VELO_NUCLEO_DE = {
+  Indefinida: {
+    etiqueta: "Nicht definiert",
+    detalle: "Der Ausdruck ist \xFCber \u211D nicht definiert."
+  },
+  "No definida en \u211D": {
+    etiqueta: "\xDCber \u211D nicht definiert",
+    detalle: "Der Ausdruck erzeugt komplexe Werte und kann nicht auf der reellen Ebene dargestellt werden."
+  },
+  Indeterminada: {
+    etiqueta: "Unbestimmt",
+    detalle: "Der Ausdruck erzeugt eine unbestimmte Form."
+  },
+  "Integral divergente": {
+    etiqueta: "Divergentes Integral",
+    detalle: "Das Integral konvergiert nicht: Die Funktion ist auf dem Intervall unbeschr\xE4nkt."
+  },
+  "Fuera de dominio": {
+    etiqueta: "Au\xDFerhalb des Definitionsbereichs",
+    detalle: "Das Integrationsintervall liegt au\xDFerhalb des reellen Definitionsbereichs der Funktion."
+  },
+  "L\xEDmites no num\xE9ricos": {
+    etiqueta: "Nichtnumerische Grenzen",
+    detalle: "Die Integrationsgrenzen ergeben keine reelle Zahl."
+  }
+};
+
 // src/i18n/index.ts
-var IDIOMAS = ["en", "es", "pt"];
+var IDIOMAS = ["en", "es", "pt", "de"];
 var IDIOMA_POR_DEFECTO = "en";
-var RECURSOS = { en: EN, es: ES, pt: PT };
+var RECURSOS = { en: EN, es: ES, pt: PT, de: DE };
 var idiomaActual = IDIOMA_POR_DEFECTO;
 function fijarIdioma(id) {
   idiomaActual = IDIOMAS.includes(id ?? "") ? id : IDIOMA_POR_DEFECTO;
@@ -61420,7 +61761,7 @@ function t() {
 function localizarVelo(velo) {
   if (idiomaActual === "es")
     return velo;
-  const mapa = idiomaActual === "pt" ? VELO_NUCLEO_PT : VELO_NUCLEO_EN;
+  const mapa = idiomaActual === "pt" ? VELO_NUCLEO_PT : idiomaActual === "de" ? VELO_NUCLEO_DE : VELO_NUCLEO_EN;
   return mapa[velo.etiqueta] ?? velo;
 }
 
@@ -61490,6 +61831,7 @@ var PestanaAjustesLMath = class extends import_obsidian2.PluginSettingTab {
                 dd.addOption("en", T.ajustes.idioma.opcionEn);
                 dd.addOption("es", T.ajustes.idioma.opcionEs);
                 dd.addOption("pt", T.ajustes.idioma.opcionPt);
+                dd.addOption("de", T.ajustes.idioma.opcionDe);
                 dd.setValue(this.plugin.ajustes.idioma);
                 dd.onChange((v) => {
                   void this.setControlValue("idioma", v);

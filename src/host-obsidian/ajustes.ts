@@ -148,6 +148,7 @@ export class PestanaAjustesLMath extends PluginSettingTab {
                 dd.addOption("en", T.ajustes.idioma.opcionEn);
                 dd.addOption("es", T.ajustes.idioma.opcionEs);
                 dd.addOption("pt", T.ajustes.idioma.opcionPt);
+                dd.addOption("de", T.ajustes.idioma.opcionDe);
                 dd.setValue(this.plugin.ajustes.idioma);
                 dd.onChange((v) => { void this.setControlValue("idioma", v); });
               });

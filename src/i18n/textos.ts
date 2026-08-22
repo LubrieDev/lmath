@@ -36,6 +36,7 @@ export interface Textos {
       opcionEn: string;
       opcionEs: string;
       opcionPt: string;
+      opcionDe: string;
     };
   };
   canvasNoDisponible: string;

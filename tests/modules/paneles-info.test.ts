@@ -29,7 +29,7 @@ import { analizarPolar } from "../../src/core/analysis/analisisPolar";
 import { analizarParametrico } from "../../src/core/analysis/analisisParametrico";
 import { crearFuncionReal } from "../../src/core/fields/funcionRealMathjs";
 
-const IDIOMAS: Idioma[] = ["es", "en", "pt"];
+const IDIOMAS: Idioma[] = ["es", "en", "pt", "de"];
 
 /** Los trozos de una línea que van dentro de `$…$` (los índices impares al partir por `$`). */
 function trozosMate(linea: string): string[] {
@@ -129,12 +129,12 @@ describe("paneles ⓘ · las cinco redacciones escriben la matemática donde toc
   fijarIdioma("es");
 
   test("EL CASO del pantallazo: la intersección Y de arccot es un par compuesto", () => {
-    // `arccot x` corta el eje Y en (0, π/2). Se leía «Intersección Y: (0, π/2)», donde esa
+    // `arccot x` corta el eje y en (0, π/2). Se lee «Intersección con el eje y: (0, π/2)», donde esa
     // barra puede ser una división o un separador; ahora es una fracción de verdad.
     const lineas = lineasResumen(
       { raices: [], vertices: [], intervalosRaiz: [] },
       Math.PI / 2, false, false);
-    igual(lineas[0], "Intersección Y: $\\left(0,\\ \\frac{\\pi}{2}\\right)$");
+    igual(lineas[0], "Intersección con el eje y: $\\left(0,\\ \\frac{\\pi}{2}\\right)$");
     igual(lineas[1], "No hay raíces reales");
     igual(lineas[2], "No hay vértices");
   });
@@ -143,13 +143,13 @@ describe("paneles ⓘ · las cinco redacciones escriben la matemática donde toc
     const lineas = lineasResumen(
       { raices: [-1, 1], vertices: [{ x: 0, y: -1, tipo: "min" }], intervalosRaiz: [] },
       -1, false, false);
-    igual(lineas[0], "Intersección Y: $\\left(0,\\ -1\\right)$");
+    igual(lineas[0], "Intersección con el eje y: $\\left(0,\\ -1\\right)$");
     igual(lineas[1], "Raíces: $-1,\\ 1$");
     igual(lineas[2], "Vértice mínimo: $\\left(0,\\ -1\\right)$");
     // Sin f(0) (discontinuidad en 0) NO se compone ningún número: la línea lo dice con
     // palabras, y lo que nunca puede aparecer es el NaN del que salió.
     const rota = lineasResumen({ raices: [], vertices: [], intervalosRaiz: [] }, NaN, false, false);
-    igual(rota[0], "Intersección Y: no definida (discontinuidad en $x = 0$)");
+    igual(rota[0], "Intersección con el eje y: no definida (discontinuidad en $x = 0$)");
     for (const l of rota) assert(!l.includes("NaN"), `un NaN llegó al cuadro: «${l}»`);
   });
 
@@ -218,8 +218,8 @@ describe("paneles ⓘ · una implícita se resume desde su ECUACIÓN, no desde e
 
   test("una circunferencia: cortes con los dos ejes y sus dos vértices, EXACTOS", () => {
     const l = cuadro("x^2 + y^2 = 25");
-    igual(l[0], "Intersección Y: $\\left(0,\\ -5\\right)$");
-    igual(l[1], "Intersección Y: $\\left(0,\\ 5\\right)$");
+    igual(l[0], "Intersección con el eje y: $\\left(0,\\ -5\\right)$");
+    igual(l[1], "Intersección con el eje y: $\\left(0,\\ 5\\right)$");
     igual(l[2], "Raíces: $-5,\\ 5$");
     // Los vértices de una circunferencia son su punto más alto y el más bajo, que aquí
     // coinciden con los cortes del eje Y. Salen de ∂F/∂x = 2x = 0, no de mirar el dibujo.
@@ -230,8 +230,8 @@ describe("paneles ⓘ · una implícita se resume desde su ECUACIÓN, no desde e
 
   test("una elipse, con los semiejes en su sitio", () => {
     const l = cuadro("x^2/9 + y^2/4 = 1");
-    igual(l[0], "Intersección Y: $\\left(0,\\ -2\\right)$");
-    igual(l[1], "Intersección Y: $\\left(0,\\ 2\\right)$");
+    igual(l[0], "Intersección con el eje y: $\\left(0,\\ -2\\right)$");
+    igual(l[1], "Intersección con el eje y: $\\left(0,\\ 2\\right)$");
     igual(l[2], "Raíces: $-3,\\ 3$");
   });
 
@@ -239,7 +239,7 @@ describe("paneles ⓘ · una implícita se resume desde su ECUACIÓN, no desde e
     // `xy = 1` no toca ninguno de los dos ejes y no tiene tangente horizontal en ningún punto.
     // Las tres negaciones son verdad y están respaldadas por el motor, no por la ventana.
     const l = cuadro("x*y = 1");
-    igual(l[0], "No corta el eje Y");
+    igual(l[0], "No corta el eje y");
     igual(l[1], "No hay raíces reales");
     igual(l[2], "No hay vértices");
     igual(l.length, 3);
@@ -249,7 +249,7 @@ describe("paneles ⓘ · una implícita se resume desde su ECUACIÓN, no desde e
     // Con el resumen viejo, una circunferencia centrada en (5,5) y una vista alrededor del
     // origen no tenía ni cortes ni vértices «en la vista actual». La curva sí los tiene.
     const l = cuadro("(x - 5)^2 + (y - 5)^2 = 1");
-    igual(l[0], "No corta el eje Y");
+    igual(l[0], "No corta el eje y");
     igual(l[1], "No hay raíces reales");
     igual(l[2], "Vértice: $\\left(5,\\ 4\\right)$");
     igual(l[3], "Vértice: $\\left(5,\\ 6\\right)$");
@@ -357,27 +357,27 @@ describe("paneles ⓘ · la precisión depende de la PROCEDENCIA del número", (
   });
 
   test("EL CASO: f(0)=2.99888… se escribe entero, no redondeado a 2.9989", () => {
-    igual(resumenCon(2.99888123)[0], "Intersección Y: $\\left(0,\\ 2.99888\\right)$");
+    igual(resumenCon(2.99888123)[0], "Intersección con el eje y: $\\left(0,\\ 2.99888\\right)$");
   });
 
   test("un f(0) que NO es 3 ya no se anuncia como 3", () => {
     // Con la tolerancia de un estimado (1e-4) este valor saltaba a "3": a un número calculado
     // eso le cambia la tercera cifra decimal y afirma una exactitud que no tiene.
-    igual(resumenCon(2.9999412)[0], "Intersección Y: $\\left(0,\\ 2.99994\\right)$");
+    igual(resumenCon(2.9999412)[0], "Intersección con el eje y: $\\left(0,\\ 2.99994\\right)$");
   });
 
   test("pero un f(0) que SÍ es entero sigue saliendo entero", () => {
     // La procedencia cambia la TOLERANCIA, no la política de reconocer formas cerradas: un 3
     // exacto sigue escribiéndose "3" y no "3.00000".
-    igual(resumenCon(3)[0], "Intersección Y: $\\left(0,\\ 3\\right)$");
-    igual(resumenCon(-1)[0], "Intersección Y: $\\left(0,\\ -1\\right)$");
+    igual(resumenCon(3)[0], "Intersección con el eje y: $\\left(0,\\ 3\\right)$");
+    igual(resumenCon(-1)[0], "Intersección con el eje y: $\\left(0,\\ -1\\right)$");
   });
 
   test("y un f(0) que SÍ es π/2 sigue saliendo π/2", () => {
     // `arccot x` corta en π/2 de verdad: el doble que sale de evaluarlo ES π/2 hasta el último
     // bit, así que entra de sobra en la tolerancia estrecha. Lo que ya no entra es un 1.5708
     // escrito a mano, que está a 2.7e-8 y no es el mismo número.
-    igual(resumenCon(Math.PI / 2)[0], "Intersección Y: $\\left(0,\\ \\frac{\\pi}{2}\\right)$");
+    igual(resumenCon(Math.PI / 2)[0], "Intersección con el eje y: $\\left(0,\\ \\frac{\\pi}{2}\\right)$");
     // Sale `1.5708` y no `1.57080`: el panel recorta los ceros de relleno (los conserva el
     // readout del crosshair, que es donde sirven). No se pierde ninguna cifra —la sexta ERA el
     // cero— y lo que importa se mantiene: es un decimal, no π/2.
