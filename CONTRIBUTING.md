@@ -70,7 +70,7 @@ install and nothing to configure.
 
 | Command | What it covers | Cost |
 |---|---|---|
-| `npm run test` | Engine and symbolic units: sampling, continuation, caching, geometry reading, notable points, solve/simplify/derive/integrate, condition systems. Also the `obs-trig` module (angle parsing, the exact-value table, drag and slider arithmetic) and the `obs-vector` module (pair splitting, the genus rule, what reaches the plane, the name each entry is labelled with, and what the ⓘ panel deduces from the drawing) and the domain restriction (`{0 ≤ x ≤ 2π}`: what is and is not an interval, and the clipping seen from the oracle) and the declared parameters (`A = 1`: what is and is not a declaration, the substitution that must not bite its neighbours, and the slider's range) and the **math engine** (`src/math/`: exact rationals, real roots by Sturm, elimination, and which curves get an exact crosshair reading) | seconds — **run on every change** |
+| `npm run test` | Engine and symbolic units: sampling, continuation, caching, geometry reading, notable points, solve/simplify/derive/integrate, condition systems. Also the `_trig` module (angle parsing, the exact-value table, drag and slider arithmetic) and the `_vector` module (pair splitting, the genus rule, what reaches the plane, the name each entry is labelled with, and what the ⓘ panel deduces from the drawing) and the domain restriction (`{0 ≤ x ≤ 2π}`: what is and is not an interval, and the clipping seen from the oracle) and the declared parameters (`A = 1`: what is and is not a declaration, the substitution that must not bite its neighbours, and the slider's range) and the **math engine** (`src/math/`: exact rationals, real roots by Sturm, elimination, and which curves get an exact crosshair reading) | seconds — **run on every change** |
 | `npm run test:zoom` | Zoom-out sweep: each bounded curve traced across ~150 viewports, asserting traced world length | ~1 min |
 | `npm run test:todo` | The two above, chained | |
 | `npm run fuzz` | Differential fuzzer for **solver soundness**: generated equations per strategy family; every result marked complete must satisfy its original equation numerically | minutes |
@@ -132,7 +132,7 @@ you get everything. Run it with plain `node`, **not** `npm run trazar --` — on
 cmd.exe corrupts `^` and parentheses in the argument.
 
 It reuses the same functions as the panel and the engine, so what it prints is what the plugin
-would do. It does not know about `obs-trig` or `obs-vector`, which have no transform pipeline to
+would do. It does not know about `_trig` or `_vector`, which have no transform pipeline to
 trace: for an angle, for a vector component and for the endpoint of a domain restriction, the whole
 story is `evaluarConstante` — compile the expression and evaluate it against an empty scope
 (`evaluarAngulo` and `evaluarComponente` are aliases of it, named for their call site). The one
@@ -146,8 +146,8 @@ bound means "do not bound this side").
 
 Open an issue with:
 
-1. **The block, verbatim** — the language (`obs-graph`, `obs-system`, `obs-derivate`,
-   `obs-integral`, `obs-trig`, `obs-vector`) and its exact contents. Most bugs live in the input.
+1. **The block, verbatim** — the language (`_graph`, `_system`, `_derivate`,
+   `_integral`, `_trig`, `_vector`) and its exact contents. Most bugs live in the input.
 2. **What you expected and what you got.** A screenshot helps for anything visual.
 3. **Versions** — plugin, Obsidian, and OS.
 
@@ -186,7 +186,7 @@ belongs somewhere else.
 way until you choose something, so `ui/menu.ts` dismisses it on any click elsewhere. The ⓘ panels
 are the opposite: they are readings you consult *while* working with the plane, and they close only
 by their own chip. Do not copy the listener from one to the other — that was done twice, and the
-result was that dragging the angle in `obs-trig` closed the panel showing the values the drag was
+result was that dragging the angle in `_trig` closed the panel showing the values the drag was
 changing. Any listener on `document` is shared by every block in the note; if you add one, be sure
 that is what you mean.
 
