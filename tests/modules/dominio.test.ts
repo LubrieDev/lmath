@@ -172,3 +172,44 @@ describe("dominio · lo que el simplificador hace y deja de hacer", () => {
     igual(simp("sqrt(x)*sqrt(x - 1)"), "sqrt(x) * sqrt(x - 1)", "juntarlas ampliaría el dominio");
   });
 });
+
+describe("dominio · BUG-001: exponentes calculados y el exponente cero", () => {
+  // La sustitución de parámetros (v1.4.0) escribe cada valor entre paréntesis: `Ax^{A-1}`
+  // con `A = 0` llega como `x^{(0) - 1}`. Ese `-` binario de constantes no se plegaba y la
+  // condición de las potencias negativas no se emitía —el agujero del origen desaparecía—.
+  // Y el exponente CERO no decía nada: `u^0` exige u ≠ 0 porque en u=0 es 0^0.
+
+  test("la aritmética constante del exponente se pliega, venga como venga", () => {
+    igual(conds("x^(0 - 1)"), "noCero:x", "menos binario de constantes:");
+    igual(conds("x^((0)-1)"), "noCero:x", "la forma que escribe la sustitución de sliders:");
+    igual(conds("x^(2*3)"), "", "entero positivo no condiciona:");
+    igual(conds("x^(1+1/2)"), "noNegativo:x", "una suma que da raíz par también se ve:");
+    igual(conds("x^(1/0)"), "", "división por cero: no se pliega, no se afirma");
+    igual(conds("x^(pi - pi)"), "", "un símbolo no es plegable:");
+  });
+
+  test("`x^0` exige base ≠ 0: en la base cero está la forma indeterminada 0^0", () => {
+    igual(conds("x^0"), "noCero:x");
+    igual(conds("(x - 2)^0"), "noCero:x - 2");
+    igual(conds("2^0"), "", "una base sin variables no condiciona nada");
+    igual(fueraDeDominio("x^0", { x: 0 }), true);
+    igual(fueraDeDominio("x^0", { x: 5 }), false);
+    igual(puntosDeQuiebre("x^0", "x").join(","), "0", "y el quiebre está justo en el origen");
+  });
+
+  test("el guardián rechaza rellenar el agujero del origen", () => {
+    assert(!mismaFuncion("1", "x^0"), "x^0 no está definida en 0 y 1 sí");
+    assert(!mismaFuncion("2", "(x + 4)^0"), "también aquí");
+    // Las dos formas sustituidas de la reproducción del issue:
+    assert(!mismaFuncion("0", "(0)*x^((0)-1)"), "caso 1: 0·x^{-1}");
+    assert(!mismaFuncion("0", "(0)*x^((0))"), "caso 2: 0·x^0");
+    // Lo que sí vale sigue valiendo:
+    assert(mismaFuncion("x^(-1)", "x^((0)-1)"), "las dos exigen x ≠ 0: sí son la misma");
+  });
+
+  test("Simplificar ya no fabrica la recta y=0 sobre formas indefinidas", () => {
+    igual(simp("0*x^(-1)"), "0*x^(-1)", "exponente directo:");
+    igual(simp("(0)*x^((0)-1)"), "(0)*x^((0)-1)", "exponente que llegó de un slider:");
+    igual(simp("0*x^0"), "0*x^0", "y el caso 0^0:");
+  });
+});

@@ -252,8 +252,13 @@ export function potenciaN(a: Numero, k: bigint): Numero | null {
     }
     return numAlgebraico(acc);
   }
-  if (a.clase !== "racional") return numFlotante(Math.pow(a.valor, Number(k)));
+  if (a.clase !== "racional") {
+    // Y el 0^0 flotante tampoco se pliega: misma indeterminada, aunque la base esté contaminada.
+    if (k === 0n && a.valor === 0) return null;
+    return numFlotante(Math.pow(a.valor, Number(k)));
+  }
   if (esCero(a.valor) && k < 0n) return null;                 // 1/0 no es un número
+  if (esCero(a.valor) && k === 0n) return null;               // 0^0: forma indeterminada (BUG-001)
   const n = Number(k);
   if (!Number.isSafeInteger(n) || Math.abs(n) > 4096) return null;  // no explotar la memoria
   // `potencia` de `math/racional.ts` está documentada para exponentes NO NEGATIVOS, y con uno

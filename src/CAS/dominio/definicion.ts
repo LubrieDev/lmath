@@ -10,6 +10,7 @@
 //     0 · u  →  0        falso si u no está definida: `0·(1/x)` no vale 0 en x=0
 //     u − u  →  0        falso por lo mismo: `1/x − 1/x` no vale 0 en x=0
 //     u/u    →  1        falso en los ceros de u
+//     u^0    →  1        falso en u = 0: ahí es la forma indeterminada 0^0 (BUG-001)
 //
 // El motor actual convive con esto comprobando a posteriori, con una muestra numérica, si la
 // transformación conservó la función (`mismaFuncion`). Funciona, y es un remiendo: la muestra no
@@ -49,12 +50,14 @@ export function siempreDefinida(e: Expresion): boolean {
       return e.factores.every(siempreDefinida);
 
     case "potencia": {
-      // Solo el exponente ENTERO NO NEGATIVO es una operación total. Uno negativo es una
+      // Solo el exponente ENTERO POSITIVO es una operación total. El CERO no lo es: `u^0` en
+      // u = 0 es la forma indeterminada 0^0, y afirmar que siempre existe sería exactamente el
+      // BUG-001 (`A·x^{A}` con A=0 no vale 0 en el origen). Uno negativo es una
       // división (polo en los ceros de la base) y uno fraccionario es una raíz (índice par:
       // negativo fuera). Un exponente que no sea un literal no se sabe qué es.
       if (e.exponente.clase !== "literal") return false;
       const k = enteroDe(e.exponente.numero);
-      return k !== null && k >= 0n && siempreDefinida(e.base);
+      return k !== null && k > 0n && siempreDefinida(e.base);
     }
 
     case "aplicacion": {

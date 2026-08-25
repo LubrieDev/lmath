@@ -1,7 +1,7 @@
 # LMath — Architecture Overview
 
-**Technical guide for version 2.0.0.** This map describes one version and is meant to be
-edited along with the code; treat anything it says as true *of 2.0.0* and check it against the
+**Technical guide for version 2.0.2.** This map describes one version and is meant to be
+edited along with the code; treat anything it says as true *of 2.0.2* and check it against the
 paths it names. Companion to the
 [Technical Reference](https://github.com/LubrieDev/lmath/blob/main/docs/TECHNICAL-REFERENCE.md),
 which has the detail.
@@ -211,7 +211,9 @@ against the *note* — surface = `--background-primary`, panel = that lifted tow
 ⓘ popover = that sunk toward black — and never against `--background-secondary`, whose relation to
 the primary flips from theme to theme. The card is measured against the note rather than against
 the panel on purpose: chained, raising one would raise the other and the layers would never
-separate.
+separate. The LaTeX scrollbar has had a token of its own since 2.0.2 — `--lmath-scrollbar`, one
+value per theme, carrying the whole `scrollbar-color` — so darkening it does not darken the five
+other things `--lmath-borde` paints.
 
 > **Why the host is split this way.** Not to make files shorter. `MotorExperimental` was a class
 > with three fields and forty methods, and the methods did not touch the fields — so they were
@@ -230,11 +232,20 @@ separate.
   formula laxer than the curve.
 - **Non-finite means no curve.** Every oracle coerces to NaN; every geometric stage reads that
   as a hole. It is also how a written domain restriction is enforced — clipping needed no new
-  machinery, only a function that stops answering outside its interval.
+  machinery, only a function that stops answering outside its interval. *Widened in 2.0.2:* the
+  evaluator no longer smuggles fake finites past this rule — `0^0` is NaN, and the six direct
+  trigonometric functions answer Infinity at their exact poles instead of residues like
+  `tan(π/2) = 1.63e16` — so a value that does not exist can no longer dress up as a number and
+  get drawn.
 - **The strategy is invisible.** Nothing above a provider knows which algorithm drew a branch.
 - **Determinism over timeouts.** Budgets are counts, never wall-clock, so caches and tests stay
   stable.
-- **Fail visibly, fail flat.** A labelled veil instead of a wrong or partial answer.
+- **Fail visibly, fail flat.** A labelled veil instead of a wrong or partial answer. *Widened in
+  2.0.2 (BUG-001):* the veil also covers a **slider value** that turns the formula undefined or
+  indeterminate — `Ax^{A-1}` with `A=0`, `tan(A)` with `A=90` — and it is recomputed on every
+  drag, because whether the expression exists is a question about the values it has *now*. A
+  constant with an invisible hole is an answer the expression does not give; the pole of `1/x`
+  still draws, because there the curve is real.
 - **Exactness comes from provenance, not proximity.** A closed form is shown only when the
   text asked for one; a decimal stays a decimal however close it passes to π/6. *Widened in
   2.0.0:* provenance now also decides **how many figures may be shown** and **how far a value may

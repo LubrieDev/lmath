@@ -45558,6 +45558,23 @@ var FUNCIONES_SIGNO = Object.fromEntries(CENTINELAS_SIGNO.map(([nombre, signo3])
 var FUNCIONES_DOMINIO = {
   dom: (cuerpo, cond) => cond >= 0 ? cuerpo : NaN
 };
+var CERCA_POLO = 1e-12;
+var enPoloMedioPi = (u) => {
+  const k = (u - Math.PI / 2) / Math.PI;
+  return Math.abs(k - Math.round(k)) < CERCA_POLO;
+};
+var enPoloPi = (u) => {
+  const k = u / Math.PI;
+  return Math.abs(k - Math.round(k)) < CERCA_POLO;
+};
+var FUNCIONES_TRIG_GUARDADAS = {
+  tan: (u) => enPoloMedioPi(u) ? Infinity : enPoloPi(u) ? 0 : Math.tan(u),
+  sec: (u) => enPoloMedioPi(u) ? Infinity : 1 / Math.cos(u),
+  cot: (u) => enPoloPi(u) ? Infinity : 1 / Math.tan(u),
+  csc: (u) => enPoloPi(u) ? Infinity : 1 / Math.sin(u),
+  sin: (u) => enPoloPi(u) ? 0 : Math.sin(u),
+  cos: (u) => enPoloMedioPi(u) ? 0 : Math.cos(u)
+};
 var enteroCercano = (x) => {
   const r = Math.round(x);
   return Math.abs(x - r) <= 1e-12 * Math.max(1, Math.abs(x)) ? r : null;
@@ -47767,6 +47784,11 @@ var PUNTOS_SONDA = [
 function modNativo(a, b) {
   return a - b * Math.floor(a / b);
 }
+function potenciaReal(base, exponente) {
+  if (base === 0 && exponente === 0)
+    return NaN;
+  return Math.pow(base, exponente);
+}
 function nthRootNativo(x, n) {
   if (x < 0)
     return Math.abs(n % 2) === 1 ? -Math.pow(-x, 1 / n) : NaN;
@@ -47822,7 +47844,7 @@ function compilarNodo(nodo, variables) {
       if (fn === "unaryPlus")
         return args.length === 1 ? p : null;
       if (fn === "pow")
-        return args.length === 2 ? (a, b) => Math.pow(p(a, b), q(a, b)) : null;
+        return args.length === 2 ? (a, b) => potenciaReal(p(a, b), q(a, b)) : null;
       if (fn === "mod")
         return args.length === 2 ? (a, b) => modNativo(p(a, b), q(a, b)) : null;
       if (args.length < 2)
@@ -47849,6 +47871,9 @@ function compilarNodo(nodo, variables) {
       if (nombre === "dom") {
         return args.length === 2 ? (a, b) => q(a, b) >= 0 ? p(a, b) : NaN : null;
       }
+      const guardada = FUNCIONES_TRIG_GUARDADAS[nombre];
+      if (guardada && unaria)
+        return (a, b) => guardada(p(a, b));
       if (nombre === "sec")
         return unaria ? (a, b) => 1 / Math.cos(p(a, b)) : null;
       if (nombre === "csc")
@@ -48189,12 +48214,33 @@ function insertarProductoImplicito(expr) {
 }
 
 // src/evaluador.ts
+var NOMBRE_POTENCIA = "powg";
+var SUFIJO_TRIG = "G";
+var ES_TRIG_GUARDADA = (nombre) => Object.prototype.hasOwnProperty.call(FUNCIONES_TRIG_GUARDADAS, nombre);
+function reescribirNodos(nodo) {
+  return nodo.transform((n) => {
+    if (n instanceof OperatorNode && n.op === "^" && n.args.length === 2) {
+      return new FunctionNode(NOMBRE_POTENCIA, n.args);
+    }
+    if (n instanceof FunctionNode && n.args.length === 1) {
+      const nombre = n.fn?.name ?? "";
+      if (ES_TRIG_GUARDADA(nombre))
+        return new FunctionNode(nombre + SUFIJO_TRIG, n.args);
+    }
+    return n;
+  });
+}
+var FUNCIONES_TRIG_REESCRITAS = Object.fromEntries(
+  Object.entries(FUNCIONES_TRIG_GUARDADAS).map(([nombre, fn]) => [nombre + SUFIJO_TRIG, fn])
+);
 function compilarExpresion(expr) {
-  const compilada2 = parse2(expr).compile();
+  const compilada2 = reescribirNodos(parse2(expr)).compile();
   return (scope) => {
     try {
       return compilada2.evaluate({
         ...scope,
+        [NOMBRE_POTENCIA]: potenciaReal,
+        ...FUNCIONES_TRIG_REESCRITAS,
         ...FUNCIONES_INVERSAS_EXTRA,
         ...FUNCIONES_ESCALON_RAPIDAS,
         ...FUNCIONES_SIGNO,
@@ -50096,9 +50142,27 @@ function constante(n0) {
     const v = constante(n.args[0]);
     return v === null ? null : -v;
   }
-  if (n.type === "OperatorNode" && n.args.length === 2 && n.op === "/") {
+  if (n.type === "OperatorNode" && n.args.length === 2) {
+    const op = n.op;
+    if (op !== "+" && op !== "-" && op !== "*" && op !== "/" && op !== "^")
+      return null;
     const a = constante(n.args[0]), b = constante(n.args[1]);
-    return a === null || b === null || b === 0 ? null : a / b;
+    if (a === null || b === null)
+      return null;
+    switch (op) {
+      case "+":
+        return a + b;
+      case "-":
+        return a - b;
+      case "*":
+        return a * b;
+      case "/":
+        return b === 0 ? null : a / b;
+      default: {
+        const p = a ** b;
+        return Number.isFinite(p) ? p : null;
+      }
+    }
   }
   return null;
 }
@@ -50132,22 +50196,24 @@ function leerRestricciones(exprNorm) {
     return null;
   }
   const out = [];
-  const anotar = (tipo, n) => {
+  const anotar = (tipo, n, forma) => {
     const expr = desParen4(n).toString();
     if (variablesLibresDe(expr).length === 0)
       return;
     if (!out.some((r) => r.tipo === tipo && r.expr === expr))
-      out.push({ tipo, expr });
+      out.push({ tipo, expr, forma });
   };
   const visitar = (n0) => {
     const n = desParen4(n0);
     if (n.type === "OperatorNode") {
       if (n.op === "/" && n.args.length === 2)
-        anotar("noCero", n.args[1]);
+        anotar("noCero", n.args[1], "division");
       if (n.op === "^" && n.args.length === 2) {
         const e3 = constante(n.args[1]);
         if (e3 !== null && e3 < 0)
-          anotar("noCero", n.args[0]);
+          anotar("noCero", n.args[0], "potenciaNegativa");
+        if (e3 !== null && e3 === 0)
+          anotar("noCero", n.args[0], "potenciaCero");
         if (e3 !== null && exponenteDeRaizPar(e3))
           anotar("noNegativo", n.args[0]);
       }
@@ -50219,6 +50285,15 @@ function violaUna(r, scope) {
     case "acotado":
       return Math.abs(v) > 1 + EPS3;
   }
+}
+function fueraDeDominio(exprNorm, scope) {
+  return condicionesVioladas(exprNorm, scope).length > 0;
+}
+function condicionesVioladas(exprNorm, scope) {
+  const rs = restriccionesDe(exprNorm);
+  if (rs === null)
+    return [];
+  return rs.filter((r) => violaUna(r, scope));
 }
 var BARRIDO_MIN = -30;
 var BARRIDO_MAX = 30;
@@ -51733,6 +51808,56 @@ function clasificarDegenerada(evaluar2) {
     etiqueta: "Indeterminada",
     detalle: "La expresi\xF3n produce una forma indeterminada."
   };
+}
+var UMBRAL_POLO = 1e8;
+var SONDEOS = [1e-3, 1e-6, 1e-9];
+var EPS_CONSTANTE = 1e-9;
+function degeneradaPorSingularidad(exprNorm, evaluar2) {
+  const condiciones = restriccionesDe(exprNorm);
+  if (!condiciones || condiciones.length === 0)
+    return null;
+  const rotos = puntosDeQuiebre(exprNorm, "x").filter(
+    (q) => fueraDeDominio(exprNorm, { x: q })
+  );
+  if (rotos.length === 0)
+    return null;
+  const esPolo = (q) => SONDEOS.some(
+    (d) => [q + d, q - d].some((p) => {
+      const v = evaluar2(p);
+      return typeof v === "number" && (!Number.isFinite(v) || Math.abs(v) > UMBRAL_POLO);
+    })
+  );
+  if (rotos.some(esPolo))
+    return null;
+  let valor = null;
+  const constante3 = () => {
+    const chequear = (x) => {
+      const v = evaluar2(x);
+      if (typeof v !== "number" || !Number.isFinite(v))
+        return true;
+      if (valor === null) {
+        valor = v;
+        return true;
+      }
+      return Math.abs(v - valor) <= EPS_CONSTANTE * (1 + Math.abs(valor));
+    };
+    for (let i2 = 0; i2 <= 500; i2++)
+      if (!chequear(-1e3 + 2e3 * i2 / 500))
+        return false;
+    for (let i2 = 0; i2 <= 200; i2++)
+      if (!chequear(-10 + 20 * i2 / 200))
+        return false;
+    return valor !== null;
+  };
+  if (!constante3())
+    return null;
+  const formas = new Set(
+    rotos.flatMap(
+      (q) => condicionesVioladas(exprNorm, { x: q }).flatMap((r) => r.forma ? [r.forma] : [])
+    )
+  );
+  const indeterminada = formas.size > 0 && [...formas].every((f) => f === "potenciaCero");
+  return indeterminada ? { etiqueta: "Indeterminada", detalle: "La expresi\xF3n produce una forma indeterminada." } : { etiqueta: "Indefinida", detalle: "La expresi\xF3n no est\xE1 definida en \u211D." };
 }
 
 // src/derivar.ts
@@ -58667,7 +58792,7 @@ function contornosMarchingSquares(F, vp, objetoId, cellPx, maxNodos) {
 
 // src/core/providers/ProveedorImplicitoRasterizado.ts
 var UMBRAL_CRUCES = 24;
-var SONDEOS = 14;
+var SONDEOS2 = 14;
 var MUESTRAS_SONDEO = 220;
 var CELDA_PX_INTERACTIVA = 3;
 var CELDA_PX_FINAL = 1;
@@ -58712,11 +58837,11 @@ var ProveedorImplicitoRasterizado = class {
       }
       return cruces;
     };
-    for (let s = 1; s < SONDEOS; s++) {
-      const fx = x0 + s / SONDEOS * (x1 - x0);
+    for (let s = 1; s < SONDEOS2; s++) {
+      const fx = x0 + s / SONDEOS2 * (x1 - x0);
       if (cuenta(fx, y0, y1, "col") > UMBRAL_CRUCES)
         return true;
-      const fy = y0 + s / SONDEOS * (y1 - y0);
+      const fy = y0 + s / SONDEOS2 * (y1 - y0);
       if (cuenta(fy, x0, x1, "fila") > UMBRAL_CRUCES)
         return true;
     }
@@ -62157,7 +62282,8 @@ function degeneradaDeEcuacion(ec) {
   if (comp) {
     const enX = renombrarParametroAX(insertarProductoImplicito(normalizarEntrada(comp.expr.trim())));
     try {
-      return clasificarDegenerada(compilarFuncion(enX, "x"));
+      const evalX = compilarFuncion(enX, "x");
+      return clasificarDegenerada(evalX) ?? degeneradaPorSingularidad(enX, evalX);
     } catch {
       return null;
     }
@@ -62182,7 +62308,7 @@ function degeneradaDeEcuacion(ec) {
     if (contieneYLibre(norm3))
       return null;
     const evalX = compilarFuncion(norm3, "x");
-    return clasificarDegenerada(evalX);
+    return clasificarDegenerada(evalX) ?? degeneradaPorSingularidad(norm3, evalX);
   } catch {
     return null;
   }
@@ -62554,7 +62680,7 @@ function crearScrollerLatex(plugin, contenedor, ctx, limpieza, reparto) {
     marco.style.cssText = "position:relative; overflow:hidden; min-height:0; " + flexMarco + (enmarcado ? " border:1px solid var(--lmath-borde); border-radius:12px; background:var(--lmath-tarjeta);" : "");
     const area = marco.createDiv({ cls: "lmath-latex" });
     area.style.cssText = `width:100%; height:100%; box-sizing:border-box; padding:${enmarcado ? "8px 24px" : "24px"}; display:flex; align-items:safe center; justify-content:safe center; overflow-x:hidden; overflow-y:hidden;`;
-    area.setCssStyles({ scrollbarWidth: "thin", scrollbarColor: "var(--lmath-borde) transparent" });
+    area.setCssStyles({ scrollbarWidth: "thin", scrollbarColor: "var(--lmath-scrollbar)" });
     const fadeOverlay = marco.createDiv();
     fadeOverlay.style.cssText = "position:absolute; inset:0; pointer-events:none; overflow:hidden; " + (enmarcado ? "border-radius:12px;" : "");
     const fadeColor = "var(--lmath-tarjeta)";
@@ -66875,27 +67001,34 @@ var MotorExperimental = class {
       revelar();
       return;
     }
-    let escena = this.sistema ? crearMotorSistema(ctx2d, paraMotor(escrito)) : crearMotor(ctx2d, fuenteGrafico);
-    if (this.integral && integralDatos) {
-      const a = evaluarLimite(integralDatos.a), b = evaluarLimite(integralDatos.b);
-      if (a !== null && b !== null)
-        escena.fijarIntegral(a, b);
-    }
-    const degeneradaCruda = degeneradaOrigen ?? clasificarBloque(
-      graficadas,
-      { sistema: this.sistema, derivada: this.derivada, integral: this.integral },
-      paraMotor(escrito)
-    );
-    const degenerada = degeneradaCruda ? localizarVelo(degeneradaCruda) : null;
-    if (degenerada) {
+    const rasgos = { sistema: this.sistema, derivada: this.derivada, integral: this.integral };
+    const clasificaAhora = () => degeneradaOrigen ?? clasificarBloque(fuentesGrafico.map(paraMotor), rasgos, paraMotor(escrito));
+    let capasVelo = null;
+    const ponerVelo = (d) => {
+      if (capasVelo) {
+        capasVelo.forEach((n) => n.remove());
+        capasVelo = null;
+      }
+      if (!d)
+        return;
       const velo = wrap.createDiv();
       velo.style.cssText = "position:absolute; inset:0; background:var(--lmath-velo); pointer-events:none;";
       const msg = wrap.createDiv();
       msg.style.cssText = "position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:8px; padding:24px; box-sizing:border-box; pointer-events:none;";
-      const titulo = msg.createDiv({ text: degenerada.etiqueta });
+      const titulo = msg.createDiv({ text: d.etiqueta });
       titulo.setCssStyles({ fontSize: "20px", fontWeight: "600", color: "var(--lmath-texto)" });
-      const detalle = msg.createDiv({ text: degenerada.detalle });
+      const detalle = msg.createDiv({ text: d.detalle });
       detalle.style.cssText = "font-size:12px; line-height:1.4; max-width:320px; color:var(--lmath-texto-tenue);";
+      capasVelo = [velo, msg];
+    };
+    const cruda = clasificaAhora();
+    const degenerada = cruda ? localizarVelo(cruda) : null;
+    ponerVelo(degenerada);
+    let escena = this.sistema ? crearMotorSistema(ctx2d, degenerada ? "" : paraMotor(escrito)) : crearMotor(ctx2d, degenerada ? "" : fuenteGrafico);
+    if (this.integral && integralDatos) {
+      const a = evaluarLimite(integralDatos.a), b = evaluarLimite(integralDatos.b);
+      if (a !== null && b !== null)
+        escena.fijarIntegral(a, b);
     }
     const exprGraph = exprExplicita(graficadas, this.sistema);
     const exprGraphViva = () => exprExplicita([paraMotor(fuentesGrafico[0] ?? "")], this.sistema) ?? "";
@@ -67048,7 +67181,10 @@ var MotorExperimental = class {
     }
     aplicarParametro = (nombre, v) => {
       valores.set(nombre, v);
-      escena = this.sistema ? crearMotorSistema(ctx2d, paraMotor(escrito)) : crearMotor(ctx2d, paraMotor(fuenteEscrita));
+      const cruda2 = clasificaAhora();
+      const velada = cruda2 ? localizarVelo(cruda2) : null;
+      ponerVelo(velada);
+      escena = this.sistema ? crearMotorSistema(ctx2d, velada ? "" : paraMotor(escrito)) : crearMotor(ctx2d, velada ? "" : paraMotor(fuenteEscrita));
       programarRedibujo();
       programarFinal();
     };

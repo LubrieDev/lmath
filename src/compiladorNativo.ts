@@ -1,7 +1,7 @@
 import { parse } from "mathjs";
 
 import { CENTINELAS_SIGNO } from "./core/parsing/dobleSigno";
-import { FUNCIONES_ESCALON_RAPIDAS } from "./constantes";
+import { FUNCIONES_ESCALON_RAPIDAS, FUNCIONES_TRIG_GUARDADAS } from "./constantes";
 
 // ─────────────────────────────────────────────
 // Compilador NATIVO de expresiones (acelerador del evaluador)
@@ -114,6 +114,19 @@ function modNativo(a: number, b: number): number {
   return a - b * Math.floor(a / b);
 }
 
+/**
+ * La potencia del motor: `Math.pow` salvo en (0, 0), que es la forma INDETERMINADA 0^0 y
+ * devuelve NaN. Es la convención del issue BUG-001 —`A x^{A}` con `A = 0` no vale 0 en
+ * x=0—, y vive AQUÍ porque las DOS rutas de evaluación tienen que contestar lo mismo: el
+ * validador diferencial compara esta función contra mathjs punto a punto, así que el camino
+ * de mathjs recibe la misma semántica por `powg` (ver evaluador.ts). Fuera de ese punto,
+ * `Math.pow` exacta: los Complex de mathjs ya coaccionan a NaN igual que los NaN nativos.
+ */
+export function potenciaReal(base: number, exponente: number): number {
+  if (base === 0 && exponente === 0) return NaN;
+  return Math.pow(base, exponente);
+}
+
 /** Raíz n-ésima real: negativa admitida solo con índice impar (como mathjs). */
 function nthRootNativo(x: number, n: number): number {
   if (x < 0) return Math.abs(n % 2) === 1 ? -Math.pow(-x, 1 / n) : NaN;
@@ -177,9 +190,10 @@ function compilarNodo(nodo: unknown, variables: readonly string[]): Compilada | 
 
       if (fn === "unaryMinus") return args.length === 1 ? (a, b) => -p(a, b) : null;
       if (fn === "unaryPlus") return args.length === 1 ? p : null;
-      // `^` de mathjs = Math.pow: base negativa con exponente no entero da Complex
-      // (→NaN al coaccionar) igual que Math.pow da NaN. Verificado en x^(1/3), x^0.5.
-      if (fn === "pow") return args.length === 2 ? (a, b) => Math.pow(p(a, b), q(a, b)) : null;
+      // `^` del motor = potenciaReal: Math.pow salvo 0^0 → NaN (indeterminada, BUG-001).
+      // Base negativa con exponente no entero da Complex en mathjs (→NaN al coaccionar)
+      // igual que Math.pow da NaN. Verificado en x^(1/3), x^0.5.
+      if (fn === "pow") return args.length === 2 ? (a, b) => potenciaReal(p(a, b), q(a, b)) : null;
       // mathjs: el resto toma el signo del DIVISOR (−4 mod 3 = 2). El `%` de JS toma el
       // del dividendo (−1), así que NO se puede traducir literalmente.
       if (fn === "mod") return args.length === 2 ? (a, b) => modNativo(p(a, b), q(a, b)) : null;
@@ -212,6 +226,12 @@ function compilarNodo(nodo: unknown, variables: readonly string[]): Compilada | 
       if (nombre === "dom") {
         return args.length === 2 ? (a, b) => (q(a, b) >= 0 ? p(a, b) : NaN) : null;
       }
+      // Trigonométricas GUARDADAS (tan/sec/csc/cot/sin/cos): polos honestos (±Infinity en
+      // el polo, ceros exactos en el cero). Mismo contrato que la ruta mathjs, que evalúa
+      // las versiones reescritas `*G` (ver evaluador.ts): la validación diferencial exige
+      // que las dos rutas coincidan punto a punto.
+      const guardada = FUNCIONES_TRIG_GUARDADAS[nombre];
+      if (guardada && unaria) return (a, b) => guardada(p(a, b));
       // Recíprocas: mathjs las trae nativas y son exactamente estas (sec(0)=1,
       // csc(0)=Infinity, cot(0)=Infinity — verificado).
       if (nombre === "sec") return unaria ? (a, b) => 1 / Math.cos(p(a, b)) : null;

@@ -336,25 +336,7 @@ export class MotorExperimental implements Motor {
       return;
     }
 
-    // Composición del motor (composition root) + cámara (interacción). obs-graph
-    // grafica UNA función; obs-system grafica el SISTEMA (varias ecuaciones/colores).
-    // `let` y no `const` porque un parámetro que se mueve **reemplaza la escena entera**: la
-    // geometría depende de la función, así que cambiar un valor invalida hasta la última caché.
-    // Lo que NO se reemplaza es la cámara, y ese es justo el punto: reconstruir el bloque (lo que
-    // hace un cambio de ajustes) devolvería la vista al inicio en cada tirón del mando, que es
-    // exactamente cuando uno quiere que la vista se quede quieta.
-    let escena = this.sistema
-      ? crearMotorSistema(ctx2d, paraMotor(escrito))
-      : crearMotor(ctx2d, fuenteGrafico);
-
-    // obs-integral: si los límites evalúan a número, marca la escena para SOMBREAR ∫ₐᵇ
-    // (el recorte del integrando lo hace la escena en `actualizar`). Con límites simbólicos/∞
-    // no hay franja concreta → no se sombrea (el panel muestra la etiqueta "Límites no numéricos").
-    if (this.integral && integralDatos) {
-      const a = evaluarLimite(integralDatos.a), b = evaluarLimite(integralDatos.b);
-      if (a !== null && b !== null) escena.fijarIntegral(a, b);
-    }
-
+    // ── El velo, decidido ANTES de la escena y reevaluado en cada mando ─────────────────
     // Bloque vacío o función degenerada (0/0, log base 1, √−1…): el plano queda
     // interactivo (zoom/pan) pero oscurecido, con la etiqueta formal flotando
     // delante (mismas capas pointer-events:none que el GraphEngine original).
@@ -365,13 +347,20 @@ export class MotorExperimental implements Motor {
     // por el que mira el source sin sus restricciones: `\alpha` no está en la lista blanca —y con
     // razón, porque sin declarar no vale nada—, pero declarada es un número. Sustituida no queda
     // ningún comando que vetar, y el bloque del issue #1 deja de velarse.
-    const degeneradaCruda = degeneradaOrigen
-      ?? clasificarBloque(
-        graficadas,
-        { sistema: this.sistema, derivada: this.derivada, integral: this.integral },
-        paraMotor(escrito));
-    const degenerada = degeneradaCruda ? localizarVelo(degeneradaCruda) : null;
-    if (degenerada) {
+    //
+    // Desde el BUG-001 la clasificación es VIVA: un deslizador puede meter la fórmula en una
+    // forma rota (`Ax^{A-1}` con A=0) o sacarla de ella, y el velo que se monta una vez al
+    // abrir el bloque se quedaría diciendo lo de antes —o callando lo que ahora hay que
+    // decir—. `ponerVelo` lo quita y lo pone; `clasificaAhora` es la misma pregunta de
+    // siempre, hecha con los valores del momento.
+    const rasgos = { sistema: this.sistema, derivada: this.derivada, integral: this.integral };
+    const clasificaAhora = (): ReturnType<typeof clasificarBloque> =>
+      degeneradaOrigen ?? clasificarBloque(fuentesGrafico.map(paraMotor), rasgos, paraMotor(escrito));
+
+    let capasVelo: HTMLElement[] | null = null;
+    const ponerVelo = (d: ReturnType<typeof localizarVelo> | null) => {
+      if (capasVelo) { capasVelo.forEach((n) => n.remove()); capasVelo = null; }
+      if (!d) return;
       const velo = wrap.createDiv();
       velo.style.cssText =
         "position:absolute; inset:0; background:var(--lmath-velo); " +
@@ -381,12 +370,39 @@ export class MotorExperimental implements Motor {
         "position:absolute; inset:0; display:flex; flex-direction:column; " +
         "align-items:center; justify-content:center; text-align:center; " +
         "gap:8px; padding:24px; box-sizing:border-box; pointer-events:none;";
-      const titulo = msg.createDiv({ text: degenerada.etiqueta });
+      const titulo = msg.createDiv({ text: d.etiqueta });
       titulo.setCssStyles({ fontSize: "20px", fontWeight: "600", color: "var(--lmath-texto)" });
-      const detalle = msg.createDiv({ text: degenerada.detalle });
+      const detalle = msg.createDiv({ text: d.detalle });
       detalle.style.cssText =
         "font-size:12px; line-height:1.4; max-width:320px; " +
         "color:var(--lmath-texto-tenue);";
+      capasVelo = [velo, msg];
+    };
+
+    const cruda = clasificaAhora();
+    const degenerada = cruda ? localizarVelo(cruda) : null;
+    ponerVelo(degenerada);
+
+    // Composición del motor (composition root) + cámara (interacción). obs-graph
+    // grafica UNA función; obs-system grafica el SISTEMA (varias ecuaciones/colores).
+    // `let` y no `const` porque un parámetro que se mueve **reemplaza la escena entera**: la
+    // geometría depende de la función, así que cambiar un valor invalida hasta la última caché.
+    // Lo que NO se reemplaza es la cámara, y ese es justo el punto: reconstruir el bloque (lo que
+    // hace un cambio de ajustes) devolvería la vista al inicio en cada tirón del mando, que es
+    // exactamente cuando uno quiere que la vista se quede quieta.
+    // Bajo el velo la escena queda VACÍA: una función velada no dibuja —y una velada por el
+    // BUG-001 menos que ninguna, porque debajo habría justo la recta mentirosa que el velo
+    // viene a desmentir—.
+    let escena = this.sistema
+      ? crearMotorSistema(ctx2d, degenerada ? "" : paraMotor(escrito))
+      : crearMotor(ctx2d, degenerada ? "" : fuenteGrafico);
+
+    // obs-integral: si los límites evalúan a número, marca la escena para SOMBREAR ∫ₐᵇ
+    // (el recorte del integrando lo hace la escena en `actualizar`). Con límites simbólicos/∞
+    // no hay franja concreta → no se sombrea (el panel muestra la etiqueta "Límites no numéricos").
+    if (this.integral && integralDatos) {
+      const a = evaluarLimite(integralDatos.a), b = evaluarLimite(integralDatos.b);
+      if (a !== null && b !== null) escena.fijarIntegral(a, b);
     }
 
     // Botón ⓘ de obs-graph: resumen de puntos notables de la función (intersección
@@ -622,13 +638,20 @@ export class MotorExperimental implements Motor {
     // —que es justo lo que un deslizador sirve para enseñar—.
     aplicarParametro = (nombre, v) => {
       valores.set(nombre, v);
+      // La clasificación va con el valor NUEVO: un deslizador puede meter la fórmula en una
+      // forma rota (BUG-001) o sacarla, y el velo sigue la verdad en cada tirón. Con velo la
+      // escena se reconstruye VACÍA —por la misma razón que al montar—; sin él, con la
+      // fórmula sustituida de siempre.
+      const cruda = clasificaAhora();
+      const velada = cruda ? localizarVelo(cruda) : null;
+      ponerVelo(velada);
       // Se REEMPLAZA la escena y el ciclo de siempre hace el resto: la pasada interactiva sale
       // por rAF mientras el dedo se mueve y la final entra 150 ms después de soltar. Es el
       // mismo contrato de dos pasadas que ya gobierna el pan y el zoom, así que no hace falta
       // inventar aquí ninguna degradación de calidad: la que hay ya está medida.
       escena = this.sistema
-        ? crearMotorSistema(ctx2d, paraMotor(escrito))
-        : crearMotor(ctx2d, paraMotor(fuenteEscrita));
+        ? crearMotorSistema(ctx2d, velada ? "" : paraMotor(escrito))
+        : crearMotor(ctx2d, velada ? "" : paraMotor(fuenteEscrita));
       programarRedibujo();
       programarFinal();
     };

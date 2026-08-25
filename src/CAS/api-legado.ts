@@ -68,7 +68,7 @@ export {
 
 // ── Evaluación numérica (la frontera donde se pierde la exactitud) ───────────
 export { compilarExpresion, compilarFuncion, compilarCampo, evaluarConstante } from "../evaluador";
-export { type FuncionDegenerada, clasificarDegenerada } from "../degeneradas";
+export { type FuncionDegenerada, clasificarDegenerada, degeneradaPorSingularidad } from "../degeneradas";
 
 // ── Números y polinomios exactos ─────────────────────────────────────────────
 export { type Racional, rac, aNumero as racionalANumero, aTexto as racionalATexto } from "../math/racional";

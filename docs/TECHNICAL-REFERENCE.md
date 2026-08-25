@@ -1,6 +1,6 @@
 # LMath — Internal Technical Reference
 
-**Technical guide for version 2.0.0.**
+**Technical guide for version 2.0.2.**
 
 This document describes the source tree **as it stands at one version**, and it is expected to
 go out of date: the plugin keeps growing, and a reference that claimed to be permanent would
@@ -34,6 +34,12 @@ pass had done the same for `_trig` (§13,
 have not been re-audited since; they describe machinery neither `_trig` nor `_vector`
 uses — **except** where §18 corrects them: the numbers the panel shows for a system's solutions,
 and the `f(x)` of the crosshair on an explicit curve, no longer come from the traced geometry.
+The v2.0.2 pass updated the sections the BUG-001 fix touches (§4.2c, §4.4, §5.3, §15.4b, §18.2,
+§18.2b, §19.6): the domain reader folds constant arithmetic and reads a zero exponent (§18.2b),
+a new classifier veils a constant whose domain broke at a point (§4.4), the veil is recomputed on
+every slider move (§4.2c), both evaluation paths answer `0^0 = NaN` and honest infinities at the
+exact poles of the six direct trigonometric functions (§5.3), and the LaTeX scrollbar has a token
+of its own (§15.4b).
 
 **A correction, stated where it belongs.** Two things this document previously described as
 features of the geometry-reading design were defects, and §18 says so plainly: deriving a
@@ -380,7 +386,13 @@ in scope would push every parameterised `f(x)` onto the mathjs path — 2.3× to
 one case that recompiles most. Substituted, the engine still sees a one-variable function. The
 value is wrapped in parentheses: without them `A = -2` breaks `x^A`, and `A\sin x` stops being a
 product of two factors. Names are matched with lookarounds so `A` cannot bite inside `\Alpha` or
-`BA`, and are replaced longest-first.
+`BA`, and are replaced longest-first. The parentheses are not cosmetically neutral, though, and
+2.0.2 learned to read them: `A = 0` turns `Ax^{A-1}` into `x^{(0)-1}`, whose exponent is a
+*binary* minus of two constants, and a domain reader that only folded unary minus and division
+saw no negative power there — so the fidelity guardian (§18.2b) accepted the collapse
+`0·x^{(0)-1} → 0` and the block drew the line `y=0` through a point where the expression does not
+exist. The reader folds constant arithmetic now, which is what makes the two BUG-001 blocks
+classifiable at all (§4.4).
 
 **Greek names are atoms** (`GRIEGAS` in §5.2). Without that, `alpha` splits into `a*l*p*h*a` and
 the panel typesets `al{p}h{a}`. The short ones (`xi`, `mu`, `nu`, `chi`, `eta`, `rho`, `psi`) are
@@ -397,7 +409,12 @@ point, since rebuilding the block (what a settings change does) would reset the 
 tick — then calls `programarRedibujo` + `programarFinal`, so the drag runs at interactive quality
 and refines 150 ms after release: the two-pass contract that already governs panning (§8.1), not a
 new one. Auto-framing is **not** repeated, or the view would chase the curve and nothing would
-appear to move.
+appear to move. Since 2.0.2 the same drag also **recomputes the veil** (§4.4): the classification
+is a closure over the live values, so a slider can carry the formula into a broken form
+(`tan(A)` reaching `A = 90`) or out of one, and the label follows in the same stroke instead of
+describing what was true when the block mounted. Under the veil the scene is rebuilt **empty** —
+a veiled function does not draw, and the one a BUG-001 value produces would be exactly the lying
+line the veil exists to deny.
 
 `recorridoDe(valor)` gives the slider its range: −10..10, stretched to contain a declared value
 outside it, with a step of range/1000. There is no syntax for the range yet, deliberately.
@@ -447,6 +464,29 @@ reads the cached geometry and is recomputed on every final pass.
 results. If **no** sample is real, the function is unplottable and classified:
 some ±∞ → *Indefinida*; some complex → *No definida en ℝ*; only NaN → *Indeterminada*.
 
+Sampling answers "does it exist *anywhere*", and since 2.0.2 a second question follows it:
+`degeneradaPorSingularidad` (`src/degeneradas.ts`) asks whether the function is **one constant
+over a domain that broke at isolated points**. That is the family the sampler cannot see —
+`0·x^{-1}` is zero at every sample and still does not exist at the origin — and it is exactly
+what a slider produces when its value breaks the formula (BUG-001: `Ax^{A-1}` with `A=0`,
+`Ax^{A}` with `A=0`). The classifier reads the domain conditions and their provenance
+(§18.2b), keeps the breakpoints where a condition is actually violated, and then applies two
+filters that protect everything that was always drawable:
+
+- **A pole is not a veil.** Each broken point is probed at ±1e-3/±1e-6/±1e-9: if any probe
+  escapes past 1e8, the point is an asymptote and there is a curve to draw (`1/x`, `5/(x-5)`,
+  `tan x`). One pole anywhere vetoes the veil for the whole expression.
+- **A removable hole in a non-constant function is not a veil either.** `(x²−1)/(x−1)` breaks
+  at `x=1` with a *bounded* probe, but it equals `x+1` there — the drawn line minus a point is
+  the honest picture, so only if every finite sample agrees to a relative 1e-9 does the
+  expression count as constant.
+
+What survives both filters is veiled, and the label comes from the *provenance* of the broken
+condition, not from any number: an annihilated quotient or a negative power → *Indefinida*
+(`0x^{-1}`), a zero power → *Indeterminada* (`0·x^0`, and `y = 0^0` itself, which the sampler
+already catches since `0^0` evaluates NaN — §5.3). `degeneradaDeEcuacion`
+(`host-obsidian/analysis/clasificacion.ts`) chains the two questions, sampler first.
+
 `clasificarBloque` (`host-obsidian/analysis/clasificacion.ts`) layers block-level labels
 on top, in priority order. The two restriction labels come **first**, and in that order, because
 each is more specific than what follows and would otherwise be masked by a truer-sounding but
@@ -465,7 +505,9 @@ less useful message:
 
 Steps 1 and 2 only run where restrictions mean something (`admiteRestriccion`). A non-null result
 renders the **veil**: a dark overlay with a formal label floating over a still-interactive plot.
-Core labels are produced in canonical Spanish and translated at the host boundary (§15.3).
+Since 2.0.2 the veil is **live** — the classification is a closure over the sliders' current
+values, re-run on every drag (§4.2c), and the scene under it is empty. Core labels are produced
+in canonical Spanish and translated at the host boundary (§15.3).
 
 ### 4.5 Polar period: `src/core/parsing/periodoPolar.ts`
 
@@ -561,7 +603,7 @@ about what an expression means.
 ### 5.3 Evaluation: `src/evaluador.ts` + `src/constantes.ts`
 
 `compilarExpresion` parses+compiles once and returns a closure that evaluates against a
-scope, injecting three shims on every call:
+scope, injecting four shims on every call:
 
 - `FUNCIONES_INVERSAS_EXTRA` — `acsc/asec/acot` (mathjs lacks them). `acot` uses the
   continuous convention `π/2 − atan(x)` (range (0, π)) rather than `atan(1/x)`.
@@ -569,6 +611,31 @@ scope, injecting three shims on every call:
   typed-function dispatch, preserving the epsilon correction (values within 1e-12 relative
   of an integer round to it).
 - `FUNCIONES_SIGNO` — the `pm/mp` principal branch (§4.3).
+- `FUNCIONES_TRIG_GUARDADAS` — the six direct trigonometric functions with **honest poles**
+  (below).
+
+Before compiling, the AST is rewritten once (`reescribirNodos`): every `a ^ b` becomes
+`powg(a, b)`, and every `tan/sec/csc/cot/sin/cos(u)` becomes its `*G` twin. The rewrite exists
+because two operations lie in floating point exactly where their value does not exist, and both
+lies drew curves:
+
+- **`0^0`** — mathjs's `pow` returns 1; the motor's `potenciaReal`
+  (`compiladorNativo.ts`, shared by both paths) returns NaN. This is what makes `y = 0^0`
+  classify *Indeterminada* and `Ax^{A}` with `A=0` lose its fake value at the origin (§4.4).
+- **A trigonometric pole** — `Math.tan(π/2)` is not infinity but the residue `1.633e16`, and
+  `1/Math.sin(π)` is `8.2e15`; `tan(A)` with `A=90` drew that residue as a line off-screen. The
+  guarded functions return `+Infinity` at the pole and the **exact zero** at the zero (`sin(π)`,
+  `cos(π/2)` — so `1/cos(π/2)` is a division by zero, not by `6.1e-17`). Detection reads the
+  *argument* with a deliberately narrow window, 1e-12 turns of π: the float of an exact pole
+  (`90·π/180`, `π/2`, `3π/2`…) sits ~1e-16 from it, while `localizarPolos` probes at ±1e-9
+  expecting *finite* huge values — a wider window ate those probes and the zoom-out regression
+  suite caught it. Legitimate near-misses (`tan(89.99)` ≈ 5729) are untouched.
+
+The native compiler (`compiladorNativo.ts`) consumes the same tables by original name, so the
+differential validation that gates the fast path compares guarded against guarded and still
+passes. With honest poles, everything downstream classifies for free: the degeneracy sampler
+counts `±∞` → *Indefinida* (§4.4), the tracer breaks the segment as an asymptote, and
+`evaluarConstante` answers `null` — a pole is not a number, so `A = tan(90)` declares nothing.
 
 Any evaluation error returns NaN. This evaluator is shared by both engines and every
 symbolic module, so all of them recognize exactly the same function set.
@@ -1996,6 +2063,14 @@ Two derived rules that are easy to break:
   menu, mobile card — so none of them depends on its background differing from what is behind it.
   That is what makes it safe for the panel token to coincide with the note's own background.
 
+Since 2.0.2 the LaTeX panel's scrollbar has a token of its own, `--lmath-scrollbar`, declared
+twice — on the dark base block and on `.theme-light .lmath-container` — because the two themes
+are meant to be tuned separately. Its value **is** the whole `scrollbar-color` (thumb, then
+track), and it is consumed by the inline style `scrollerLatex.ts` writes, so editing the colours
+in `styles.css` needs no rebuild. It is deliberately *not* `--lmath-borde`: that token paints
+five other things (block border, panel divider, slider track, ⓘ border, and feeds
+`--lmath-borde-activo`), and darkening the scrollbar must not darken the chrome with it.
+
 Since 1.5.0 the ⓘ popover also needs one rule that an inline style cannot express, so the element
 carries the class `CLASE_POPOVER_INFO` (`lmath-info-pop`, named in `ui/estilos.ts`) alongside its
 inline geometry:
@@ -2373,7 +2448,7 @@ correct **for those curves**. It was wrong wherever the expression can simply be
 | `simbolico/constanteExacta.ts` | A variable-free subtree evaluated in ℚ, in integer arithmetic only: `nthRoot(64,3)` is 4, `8^(2/3)` is 4, `√2` is `null`. Roots are accepted only when the integer root exists. |
 | `resolverSistema.ts` | Classify → eliminate → solve → **verify**, plus the four-rung ladder (exact → numeric → branches → symmetric numeric). `resolverBloque` is the entry point the host calls; it separates the domain restriction before solving and re-applies it after, **expands the double sign before pairing anything** (§18.2c), and reports `aproximado` (values came from a sweep) and `parcial` (some pair could not be enumerated) as **independent** facts — an empty *and* partial list is "I do not know", not "they do not meet". |
 | `ordenada.ts` | `lectorExacto(objeto)`: the exact ordinate reader, for explicit `y = f(x)` only. |
-| `dominio.ts` | What an expression needs in order to exist, read off the tree: a denominator that does not vanish, an even radicand that is not negative, a positive logarithm argument, an arcsine argument within [−1, 1]. From those conditions it derives the **breakpoints** — where the domain can change — solving them exactly through the CAS's own root engine when they are polynomial, and by a sign-change sweep otherwise. `mismaFuncion(a, b)` is the guard that decides whether a transformation is adopted: it compares **values** over the anodyne sample *and* **domains** over the breakpoints, and the second question is asked of the conditions, never of the numbers — in floating point `1/0` is `Infinity`, so `(1/x)^(-1)` evaluates to 0 at x=0 and agrees with `x`. Shared by `simplificar` and `derivar`. |
+| `dominio.ts` | What an expression needs in order to exist, read off the tree: a denominator that does not vanish, a power base that is not zero when the exponent is negative **or zero** (`0^0` is indeterminate — 2.0.2), an even radicand that is not negative, a positive logarithm argument, an arcsine argument within [−1, 1]. Each `noCero` condition also carries its **provenance** (`division`, `potenciaNegativa`, `potenciaCero`), which is what lets the veil classifier name *why* an expression broke (§4.4). Constant arithmetic inside exponents is folded (`x^{(0)-1}` reads as `x^{-1}` — the shape the parameter substitution writes, §4.2c). From the conditions it derives the **breakpoints** — where the domain can change — solving them exactly through the CAS's own root engine when they are polynomial, and by a sign-change sweep otherwise. `mismaFuncion(a, b)` is the guard that decides whether a transformation is adopted: it compares **values** over the anodyne sample *and* **domains** over the breakpoints, and the second question is asked of the conditions, never of the numbers — in floating point `1/0` is `Infinity`, so `(1/x)^(-1)` evaluates to 0 at x=0 and agrees with `x`. `condicionesVioladas` is the same question without collapsing it to yes/no. Shared by `simplificar` and `derivar`. |
 | `notablesImplicita.ts` | The notable points of an implicit curve, asked of the equation: roots are `F = 0 ∩ y = 0`, Y-intercepts `F = 0 ∩ x = 0`, and vertices `F = 0 ∩ ∂F/∂x = 0` — implicit differentiation, since `dy/dx = −Fₓ/F_y` vanishes where `Fₓ` does and `F_y` does not. That last condition is not decoration: where **both** vanish the point is singular (the cusp of `y² = x³` at the origin has no tangent), so those are filtered out. Three calls to `resolverBloque`; the states it returns travel untouched to the panel, because an empty list from an unsolved system is not "there are none". |
 
 ### 18.2b A transformation must preserve the domain, not just the values
@@ -2404,6 +2479,16 @@ avoids the special points. Four unsound cancellations were passing through it: `
 
 Two identities that *are* unconditionally true were added at the same time, and they are the ones
 that used to be left undone out of caution: `√(u²) → |u|` and `|u|² → u²`.
+
+**The 2.0.2 additions** came from BUG-001, and they are the same lesson twice. The substitution
+format writes values parenthesized (§4.2c), so a computed exponent arrived as `(0)-1` — a shape
+`constante()` could not fold, which silenced the negative-power condition exactly where sliders
+were involved; the reader now folds constant `+ − × ÷ ^` (conservatively: a division by zero or
+a power that overflows folds to "unknown", never to a guess). And the exponent **zero** used to
+say nothing at all, so `0·x^{(0)} → 0` passed the guard even though `0^0` is the textbook
+indeterminate form; `u^0` now demands `u ≠ 0` like any negative power, with its provenance
+recorded so the veil can name the form (§4.4). Both rejections are the guardian failing in its
+designed direction: "no simplification" instead of "a wrong one".
 
 **What this does not do.** It does not decide implications between conditions, and it does not need
 to: the caller already has the points where the difference shows. And it cannot rescue a reduction
@@ -2687,6 +2772,15 @@ would become `x·x⁻¹`. The reason is that `formatearCanonico` does not only c
 **presents**. The algebraic order serves the algebra; the presentation order serves the reader, and
 it belongs with the printer, which is E7. The normaliser *is* in use where it belongs already: as
 the semantic oracle's decision procedure.
+
+**2.0.2 aligned the core with the production evaluator on one convention.** The core already
+refused `u^0 → 1` for symbolic bases (`baseNoNula` in `normal/canonica.ts`) but still folded the
+literal `0^0` through the numeric path, and `siempreDefinida` counted a zero exponent as total.
+Since the evaluator now answers NaN there (§5.3), the core does too: `potenciaN` declines `0^0`
+in both its rational and float branches — its algebraic branch already did —, `siempreDefinida`
+requires an exponent **strictly positive**, and `juntarExponentes` treats a zero exponent like a
+negative one (`x⁰·x⁰ → 1` fabricated a value where there is an indeterminacy). The property test
+that checks the normaliser against the real evaluator is what surfaced the divergence.
 
 **The order of the remaining stages changed** after the boundary review: the reader moved ahead of
 the simplifier. The reason was measured — 39 imports from the CAS to the parser, with 27 calls to

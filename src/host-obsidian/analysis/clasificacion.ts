@@ -15,7 +15,9 @@
 import { t } from "../../i18n";
 import { normalizarEntrada, contieneYLibre, comandosNoSoportados } from "../../CAS/api-legado";
 import { compilarFuncion } from "../../CAS/api-legado";
-import { clasificarDegenerada, type FuncionDegenerada } from "../../CAS/api-legado";
+import {
+  clasificarDegenerada, degeneradaPorSingularidad, type FuncionDegenerada,
+} from "../../CAS/api-legado";
 import { etiquetaIntegral } from "./areaIntegral";
 import { construirObjeto } from "../../core/parsing/construirObjeto";
 import { insertarProductoImplicito } from "../../core/parsing/productoImplicito";
@@ -145,7 +147,8 @@ export function degeneradaDeEcuacion(ec: string): FuncionDegenerada | null {
   if (comp) {
     const enX = renombrarParametroAX(insertarProductoImplicito(normalizarEntrada(comp.expr.trim())));
     try {
-      return clasificarDegenerada(compilarFuncion(enX, "x"));
+      const evalX = compilarFuncion(enX, "x");
+      return clasificarDegenerada(evalX) ?? degeneradaPorSingularidad(enX, evalX);
     } catch {
       return null;
     }
@@ -173,7 +176,11 @@ export function degeneradaDeEcuacion(ec: string): FuncionDegenerada | null {
     // falso "Indeterminada" sobre una curva bien dibujada.
     if (contieneYLibre(norm)) return null;
     const evalX = compilarFuncion(norm, "x");
-    return clasificarDegenerada(evalX);
+    // Dos preguntas, en este orden: ¿no existe en NINGUNA parte? (muestreo, el velo de
+    // siempre) y —desde el BUG-001— ¿existe en todas menos en puntos sueltos donde la
+    // sustitución de un parámetro fabricó una forma rota, y lo que quedaría dibujado es
+    // una constante con agujeros invisibles? Ahí el velo dice lo que la recta callaba.
+    return clasificarDegenerada(evalX) ?? degeneradaPorSingularidad(norm, evalX);
   } catch {
     return null; // no compila: el motor ya no dibuja nada; sin etiqueta formal
   }

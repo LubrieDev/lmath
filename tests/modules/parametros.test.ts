@@ -10,14 +10,19 @@
 // La otra mitad es la sustitución, donde el riesgo es morder al vecino: una `A` que entre dentro
 // de `\Alpha`, o un parámetro `pi` que se coma el `\pi` de la fórmula.
 
-import { describe, test, igual, assert } from "../runner";
+import { describe, test, igual, assert, aprox } from "../runner";
 import {
   separarParametros, sustituirParametros, recorridoDe,
 } from "../../src/core/parsing/parametros";
 import { dividirEcuaciones } from "../../src/core/parsing/dividirEcuaciones";
 import { insertarProductoImplicito } from "../../src/core/parsing/productoImplicito";
-import { evaluarConstante } from "../../src/evaluador";
+import { evaluarConstante, compilarFuncion } from "../../src/evaluador";
+import { normalizarEntrada } from "../../src/parser";
 import { exprALatex } from "../../src/latex";
+import { simplificarEcuaciones } from "../../src/simplificar";
+import { mismaFuncion } from "../../src/math/dominio";
+import { clasificarDegenerada, degeneradaPorSingularidad } from "../../src/degeneradas";
+import { degeneradaDeEcuacion } from "../../src/host-obsidian/analysis/clasificacion";
 
 /** Los parámetros de un source, en texto compacto. */
 const params = (src: string): string =>
@@ -204,5 +209,160 @@ describe("parámetros · la sustitución", () => {
 
   test("sin parámetros, la expresión sale idéntica", () => {
     igual(sustituirParametros("A\\sin x", []), "A\\sin x");
+  });
+});
+
+describe("parámetros · BUG-001: un valor que indefiniza la fórmula", () => {
+  // Con `A = 0`, `Ax^{A-1}` es `0·x^{-1}` (indefinida en x=0) y `Ax^{A}` es `0·x^0`
+  // (0^0 indeterminada en el origen). El bug: la sustitución escribe los valores entre
+  // paréntesis, el exponente llega como `(0)-1` y el lector de dominio no lo plegaba —
+  // así que el guardián daba por buena la reducción a la constante `0`, que rellena el
+  // agujero del origen, y el bloque graficaba una recta `y=0` que no es la función.
+  // Lo tecleado A MANO (`0x^{-1}`) siempre se comportó bien: la regresión era del formato
+  // `(valor)` que introdujo v1.4.0.
+
+  /** La fórmula del bloque con los valores declarados puestos y normalizada, como llega
+   *  al compilador (`construirObjeto.norm`). */
+  const sustituida = (src: string): string => {
+    const { parametros, source } = separarParametros(src);
+    return insertarProductoImplicito(normalizarEntrada(sustituirParametros(source.trim(), parametros)));
+  };
+
+  test("los dos bloques de la reproducción, sustituidos", () => {
+    igual(sustituirParametros("Ax^{A-1}", separarParametros("A = 0").parametros), "(0)x^{(0)-1}");
+    igual(sustituirParametros("Ax^{A}", separarParametros("A = 0").parametros), "(0)x^{(0)}");
+  });
+
+  test("el guardián ya NO da por buena la reducción a la constante 0", () => {
+    assert(!mismaFuncion("0", sustituida("Ax^{A-1}\nA=0")), "0·x^{-1} difiere de 0 en x=0");
+    assert(!mismaFuncion("0", sustituida("Ax^{A}\nA=0")), "0·x^0 difiere de 0 en x=0");
+  });
+
+  test("Simplificar conserva la estructura, igual que lo tecleado a mano", () => {
+    const p = separarParametros("A = 0").parametros;
+    // Del slider: la forma `(valor)` sobrevive a Simplificar…
+    igual(simplificarEcuaciones([sustituirParametros("Ax^{A-1}", p)])[0], "(0)*x^((0)-1)");
+    igual(simplificarEcuaciones([sustituirParametros("Ax^{A}", p)])[0], "(0)*x^((0))");
+    // …exactamente como la misma forma tecleada directamente, que siempre se conservó.
+    igual(simplificarEcuaciones(["0x^{-1}"])[0], "0*x^(-1)");
+  });
+
+  test("la función compilada tiene su agujero en el origen, y cero fuera", () => {
+    for (const src of ["Ax^{A-1}\nA=0", "Ax^{A}\nA=0"]) {
+      const f = compilarFuncion(sustituida(src), "x");
+      assert(Number.isNaN(f(0) as number), `${src}: f(0) es NaN`);
+      igual(f(2) as number, 0, `${src}: f(2) = 0`);
+      igual(f(-2) as number, 0, `${src}: f(-2) = 0`);
+      igual(f(0.5) as number, 0, `${src}: f(0.5) = 0`);
+    }
+  });
+
+  test("misma conducta que la forma tecleada directamente (paridad)", () => {
+    const conSlider = compilarFuncion(sustituida("Ax^{A-1}\nA=0"), "x");
+    const aMano = compilarFuncion("0*x^(-1)", "x");
+    igual(Number.isNaN(conSlider(0) as number), Number.isNaN(aMano(0) as number), "f(0):");
+    igual(conSlider(3), aMano(3), "f(3):");
+
+    const conSliderB = compilarFuncion(sustituida("Ax^{A}\nA=0"), "x");
+    const aManoB = compilarFuncion("0*x^0", "x");
+    igual(Number.isNaN(conSliderB(0) as number), Number.isNaN(aManoB(0) as number), "f(0) caso B:");
+  });
+
+  test("el bloque se VELA: Indefinida la rota por cociente, Indeterminada la de 0^0", () => {
+    // El muestreo de `clasificarDegenerada` ve reales (ceros) y se queda callado: el velo lo
+    // pone `degeneradaPorSingularidad`, que ve la constante con el dominio roto en un punto.
+    for (const [src, etiqueta] of [
+      ["Ax^{A-1}\nA=0", "Indefinida"],
+      ["Ax^{A}\nA=0", "Indeterminada"],
+    ] as const) {
+      const n = sustituida(src);
+      const f = compilarFuncion(n, "x");
+      igual(clasificarDegenerada(f), null, `${src}: el muestreo solo no basta`);
+      igual(degeneradaPorSingularidad(n, f)?.etiqueta, etiqueta, `${src}:`);
+    }
+  });
+
+  test("el velo llega por el camino REAL del bloque (degeneradaDeEcuacion)", () => {
+    // La misma pregunta que hace el host, sobre la ecuación YA SUSTITUIDA.
+    const p = separarParametros("A = 0").parametros;
+    igual(degeneradaDeEcuacion(sustituirParametros("Ax^{A-1}", p))?.etiqueta, "Indefinida");
+    igual(degeneradaDeEcuacion(sustituirParametros("Ax^{A}", p))?.etiqueta, "Indeterminada");
+  });
+
+  test("NO REGRESIÓN: lo que siempre se dibujó sigue dibujándose", () => {
+    const sinVelo = (expr: string): string | undefined =>
+      degeneradaPorSingularidad(expr, compilarFuncion(expr, "x"))?.etiqueta;
+    igual(sinVelo("1/x"), undefined, "el polo de 1/x es una asíntota, no un velo");
+    igual(sinVelo("tan(x)"), undefined, "tan no tiene condiciones leíbles: sin velo");
+    igual(sinVelo("sqrt(x)"), undefined, "la frontera de una raíz SÍ existe");
+    igual(sinVelo("(x^2 - 1)/(x - 1)"), undefined, "agujero removable NO constante: se dibuja");
+    igual(sinVelo("5/(x - 5)"), undefined, "el polo del deslizador también es asíntota");
+    igual(sinVelo("x^2"), undefined, "un polinomio no se vela");
+  });
+
+  test("la indeterminación PURA sí se vela: `y = 0^0` es Indeterminada", () => {
+    igual(clasificarDegenerada(compilarFuncion("0^0", "x"))?.etiqueta, "Indeterminada");
+  });
+});
+
+describe("parámetros · polos trigonométricos en valores exactos (BUG-001, familia tan)", () => {
+  // `tan(A)` con `A = 90`: el parser lee el argumento numérico de una trigonométrica directa
+  // en GRADOS (`tan(90)` → `tan(90·pi/180)`), y en coma flotante `Math.tan(pi/2)` no es
+  // infinito sino el residuo 1.633e16 — un valor que no existe, presentado como número. El
+  // bloque graficaba una recta `y=1.63e16` fuera de la vista en vez de velarse. La arreglo
+  // está en la EVALUACIÓN (polos honestos: ±Infinity en el polo, cero exacto en el cero),
+  // porque con eso el clasificador de siempre —«algún ±∞ → Indefinida»— hace el resto, y
+  // también cubre los casos no constantes (`tan(A)·x` con A=90 es Infinity·x).
+
+  /** El bloque del reporte, con el valor del deslizador puesto. */
+  const bloque = (formula: string, decl: string): string => {
+    const { parametros, source } = separarParametros(`${formula}\n${decl}`);
+    return insertarProductoImplicito(
+      normalizarEntrada(sustituirParametros(source.trim(), parametros))
+    );
+  };
+
+  test("EL CASO: `tan(A)` con A=90 se vela como Indefinida", () => {
+    igual(degeneradaDeEcuacion(bloque("tan(A)", "A=90"))?.etiqueta, "Indefinida");
+  });
+
+  test("la familia entera de polos exactos, en grados y en radianes", () => {
+    for (const expr of [
+      "tan(90)", "tan(-90)", "tan(270)", "tan(pi/2)",
+      "sec(90)", "sec(pi/2)", "csc(180)", "csc(pi)",
+      "cot(180)", "cot(0)", "cot(pi)",
+      "1/cos(pi/2)", "1/sin(pi)",
+    ]) {
+      igual(
+        degeneradaDeEcuacion(expr)?.etiqueta, "Indefinida", `${expr}:`
+      );
+    }
+  });
+
+  test("un polo multiplicado no se cuela: `tan(A)·x` con A=90 tampoco se dibuja", () => {
+    igual(degeneradaDeEcuacion(bloque("tan(A)x", "A=90"))?.etiqueta, "Indefinida");
+  });
+
+  test("los ceros exactos son cero: sin(pi) y cos(pi/2) valen 0", () => {
+    const f = compilarFuncion("sin(pi)", "x");
+    igual(f(0) as number, 0, "sin(pi):");
+    const g = compilarFuncion("cos(pi/2)", "x");
+    igual(g(0) as number, 0, "cos(pi/2):");
+  });
+
+  test("NO REGRESIÓN: lo legítimo cerca del polo no se toca", () => {
+    // `tan(x)` es una función con asíntotas: se dibuja, no se vela.
+    igual(degeneradaDeEcuacion("tan(x)"), null, "tan(x):");
+    // A dos centésimas del polo el valor es legítimo (≈5729): recta dibujable.
+    igual(degeneradaDeEcuacion("tan(89.99)"), null, "tan(89.99):");
+    // Y un argumento que no es el polo evalúa lo suyo.
+    igual(compilarFuncion("tan(1.57)", "x")(0) as number, Math.tan(1.57), "tan(1.57):");
+    igual(compilarFuncion("sin(x)", "x")(1) as number, Math.sin(1), "sin(x) en 1:");
+    igual(compilarFuncion("cos(x)", "x")(0) as number, 1, "cos(0):");
+  });
+
+  test("un polo no es una constante declarable", () => {
+    igual(evaluarConstante("tan(90)"), null, "A = tan(90) no declara nada:");
+    aprox(evaluarConstante("tan(45)") ?? NaN, 1, 1e-12, "y tan(45) sigue siendo 1:");
   });
 });

@@ -45,6 +45,50 @@ export const FUNCIONES_DOMINIO = {
   dom: (cuerpo: number, cond: number) => (cond >= 0 ? cuerpo : NaN),
 };
 
+// Trigonométricas DIRECTAS con polos honestos. En coma flotante, evaluar una trigonométrica
+// EXACTAMENTE en su polo no da infinito: da un residuo finito enorme (`Math.tan(pi/2)` es
+// 1.633e16, `1/Math.sin(pi)` es 8.2e15) — un valor que no existe, presentado como número.
+// Así graficaba el motor `tan(A)` con `A = 90`: una recta `y=1.63e16` fuera de la vista en
+// vez del velo «Indefinida» que la expresión dice. Estas guardas devuelven lo que la función
+// vale ahí: ±Infinity en el polo —que el clasificador de degeneradas ya traduce a la etiqueta
+// «Indefinida», y el trazador a un corte limpio de asíntota—, y el cero EXACTO donde la
+// función se anula (para que `1/cos(pi/2)` sea 1/0, no 1/6.1e-17).
+//
+// La detección es sobre el ARGUMENTO, no sobre el resultado: el polo de tan/sec está en
+// pi/2+kpi y el de cot/csc en kpi; si el argumento cae a menos de 1e-12 vueltas de pi de él,
+// ES el polo — el float de un polo exacto (90·pi/180, pi/2, 3pi/2…) cae a ~1e-16 de él, y
+// nadie teclea ni desliza un punto a 3e-12 radianes del polo con intención de leer su valor,
+// que ahí ya no tiene ni un dígito bueno. La ventana es MUY estrecha a propósito: el
+// localizador de polos de las implícitas (`localizarPolos`) sondea a ±1e-9 del polo
+// esperando valores FINITOS enormes de signos opuestos —asíntota verificada—, y una ventana
+// ancha se comería esos sondeos. Un argumento legítimo cerca (`tan(89.99)` ≈ 5729,
+// `tan(1.57)`) no se toca.
+const CERCA_POLO = 1e-12;
+/** ¿Es `u` el float de pi/2 + k·pi? Polos de tan y sec, ceros de cos. */
+const enPoloMedioPi = (u: number): boolean => {
+  const k = (u - Math.PI / 2) / Math.PI;
+  return Math.abs(k - Math.round(k)) < CERCA_POLO;
+};
+/** ¿Es `u` el float de k·pi? Polos de cot y csc, ceros de sin y tan. */
+const enPoloPi = (u: number): boolean => {
+  const k = u / Math.PI;
+  return Math.abs(k - Math.round(k)) < CERCA_POLO;
+};
+
+/**
+ * Las seis directas, con la guarda. Las claves son los nombres DEL ÁRBOL (`tan`, `sin`…);
+ * la ruta mathjs las consume reescritas a `tanG`/`sinG`… (ver evaluador.ts) y la nativa las
+ * consulta por su nombre original. Fuera de polo y cero exactos, `Math.*` idéntica.
+ */
+export const FUNCIONES_TRIG_GUARDADAS: Readonly<Record<string, (u: number) => number>> = {
+  tan: (u) => (enPoloMedioPi(u) ? Infinity : enPoloPi(u) ? 0 : Math.tan(u)),
+  sec: (u) => (enPoloMedioPi(u) ? Infinity : 1 / Math.cos(u)),
+  cot: (u) => (enPoloPi(u) ? Infinity : 1 / Math.tan(u)),
+  csc: (u) => (enPoloPi(u) ? Infinity : 1 / Math.sin(u)),
+  sin: (u) => (enPoloPi(u) ? 0 : Math.sin(u)),
+  cos: (u) => (enPoloMedioPi(u) ? 0 : Math.cos(u)),
+};
+
 // floor/ceil RÁPIDAS para el scope de evaluación. Las nativas de mathjs pasan por
 // typed-function + nearlyEqual con soporte BigNumber/Fraction: ~18 µs por llamada
 // frente a ~1.5 µs de sin(x) (medido) — al muestrear miles de puntos por frame,

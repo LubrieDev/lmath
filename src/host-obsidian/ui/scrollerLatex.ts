@@ -166,7 +166,11 @@ export function crearScrollerLatex(
       `padding:${enmarcado ? "8px 24px" : "24px"}; ` +
       "display:flex; align-items:safe center; justify-content:safe center; " +
       "overflow-x:hidden; overflow-y:hidden;";
-    area.setCssStyles({ scrollbarWidth: "thin", scrollbarColor: "var(--lmath-borde) transparent" });
+    // El color de la scrollbar vive en el token EXCLUSIVO `--lmath-scrollbar`
+    // (styles.css: uno para oscuro en el bloque base, otro para claro en
+    // `.theme-light .lmath-container`). Su valor ES la `scrollbar-color` entera
+    // (barra + carril), así que se cambia solo ahí, sin tocar código.
+    area.setCssStyles({ scrollbarWidth: "thin", scrollbarColor: "var(--lmath-scrollbar)" });
 
     // Overlay de fade: HERMANO del área (un absolute dentro del scroller viajaría con
     // el contenido). Se ciñe al marco redondeado con el mismo recorte.

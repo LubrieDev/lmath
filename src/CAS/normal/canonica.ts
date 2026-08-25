@@ -181,34 +181,36 @@ function normalizarProducto(factores: readonly Expresion[]): Expresion {
  * El razonamiento es sobre UN solo punto: `u = 0`. El dominio propio de `u` es común a las dos
  * formas, así que lo único que puede diferir es si cada una exige `u ≠ 0`:
  *
- *   • el producto original lo exige en cuanto ALGÚN exponente es negativo (hay una división);
+ *   • el producto original lo exige en cuanto ALGÚN exponente es negativo (hay una división)
+ *     o CERO (`u^0` en u=0 es la forma indeterminada 0^0: BUG-001);
  *   • la forma juntada lo exige solo si el exponente TOTAL es negativo.
  *
- * De ahí las tres respuestas, y ninguna es un caso especial: son la misma condición leída en sus
- * tres situaciones.
+ * De ahí las respuestas, y ninguna es un caso especial: son la misma condición leída en sus
+ * situaciones.
  *
- *     todos los exponentes ≥ 0        →  seguro (ninguna de las dos formas exige nada)
- *     total < 0                       →  seguro (las dos exigen u ≠ 0)
- *     algún exponente < 0, total ≥ 0  →  NO, salvo que se sepa que u ≠ 0
+ *     todos los exponentes > 0         →  seguro (ninguna de las dos formas exige nada)
+ *     total < 0                        →  seguro (las dos exigen u ≠ 0)
+ *     algún exponente ≤ 0, total ≥ 0   →  NO, salvo que se sepa que u ≠ 0
  *
  * El último es el caso que hay que ver, y es más ancho que el clásico `x·x⁻¹ → x⁰`: también lo es
  * `x²·x⁻¹ → x`, que parece inofensivo y no lo es —el producto no existe en x=0 y la `x` sí—. Se
  * coló en la primera versión de este archivo, guardada solo contra el total nulo, y lo destapó el
- * autodiagnóstico del oráculo (`x^2/x` frente a `x`).
+ * autodiagnóstico del oráculo (`x^2/x` frente a `x`). El exponente cero entró con el BUG-001:
+ * `x⁰·x⁰ → 1` fabricaba un valor donde hay una indeterminación.
  */
 function juntarExponentes(base: Expresion, exps: readonly Expresion[]): Expresion | null {
   let total: Numero = CERO_N;
-  let algunoNegativo = false;
+  let exigeNoNula = false;
   for (const e of exps) {
     if (e.clase !== "literal") return null;
     const k = enteroDe(e.numero);
     if (k === null) return null;
-    if (k < 0n) algunoNegativo = true;
+    if (k <= 0n) exigeNoNula = true;   // negativo: división; cero: 0^0 indeterminada
     total = sumaN(total, e.numero);
   }
 
   const totalNegativo = signoN(total) < 0;
-  if (algunoNegativo && !totalNegativo && !baseNoNula(base)) return null;
+  if (exigeNoNula && !totalNegativo && !baseNoNula(base)) return null;
 
   if (esCeroN(total)) return UNO_E;   // aquí solo se llega si la base es no nula
   if (esUnoN(total)) return base;

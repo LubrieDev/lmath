@@ -40,7 +40,7 @@
      El 5% es el mando: con el `#1e1e1e` del Obsidian oscuro deja el hueco en `#272727`, un
      escalón que se ve contra la tarjeta (`#181818`) sin llamar la atención por su cuenta. */
   --lmath-panel: var(--background-primary);
-  --lmath-panel: color-mix(in srgb, var(--background-primary) 95%, var(--text-normal));
+  --lmath-panel: color-mix(in srgb, var(--background-primary) 99%, var(--text-normal));
   /* TARJETA: la caja de la fórmula y el cuadro ⓘ, que son los dos objetos que se posan SOBRE
      el panel y tienen que leerse como una capa aparte. Por debajo de él.
 
@@ -59,15 +59,27 @@
      color del tema. En un tema claro el mismo cálculo da la tarjeta gris sobre el fondo
      blanco, que es lo que una tarjeta hace ahí.
 
-     Ese 80% es el ÚNICO mando: bajarlo hunde más la tarjeta, subirlo la acerca al panel. Está
+     Ese 85% es el ÚNICO mando: bajarlo hunde más la tarjeta, subirlo la acerca al panel. Está
      donde está porque el margen es estrecho en oscuro —el fondo del Obsidian de fábrica es
      `#1e1e1e`, así que un 95% movería la tarjeta un solo nivel de gris y no se vería—; con un
      80% baja a `#181818`, que ya se lee como una capa aparte sin llegar a mancha negra.
      La primera declaración es el respaldo si `color-mix` no está disponible (mismo patrón que
      los tokens "-activo" de abajo): plana, pero válida. */
   --lmath-tarjeta: var(--background-primary);
-  --lmath-tarjeta: color-mix(in srgb, var(--background-primary) 80%, black);
+  --lmath-tarjeta: color-mix(in srgb, var(--background-primary) 85%, black);
   --lmath-borde: var(--background-modifier-border);
+  /* SCROLLBAR del panel LaTeX (la barrita horizontal bajo la fórmula). Token EXCLUSIVO:
+     solo pinta esa barra, no toca bordes ni ningún otro cromo. Se consume desde el estilo
+     inline que escribe `host-obsidian/ui/scrollerLatex.ts` (scrollbar-color), así que
+     cambiarlo aquí NO exige rebuild: el var() se resuelve en el navegador.
+
+     El valor ES la propiedad `scrollbar-color` entera: el primer color es la BARRA (el
+     pulgar que se arrastra) y el segundo el CARRIL (el fondo por donde corre). Puedes
+     escribir los dos (`#555555 transparent`) o solo uno (`#555555`, y el carril queda
+     automático). Este es el valor del tema OSCURO; el de CLARO vive en el bloque
+     `.theme-light .lmath-container` de más abajo (busca "--lmath-scrollbar"). */
+ /* Tema OSCURO */
+--lmath-scrollbar: #404040 transparent;
   --lmath-texto: var(--text-normal);
   --lmath-texto-tenue: var(--text-muted);
   --lmath-texto-apagado: var(--text-faint);
@@ -202,6 +214,11 @@
 }
 
 .theme-light .lmath-container {
+  /* SCROLLBAR del panel LaTeX en tema CLARO (la de OSCURO está en el bloque base de
+     arriba, junto a --lmath-borde). Mismo formato: primer color la BARRA, segundo el
+     CARRIL (`transparent` lo deja invisible). Solo pinta esa barra; nada más. */
+/* Tema CLARO */
+--lmath-scrollbar: #929292 transparent;
   --lmath-velo: rgba(255, 255, 255, 0.62);
   /* Mismo ámbar que la tinta del plano en claro (`paleta.ts`): 5,25:1 sobre blanco, y
      con texto blanco encima cuando va relleno. */

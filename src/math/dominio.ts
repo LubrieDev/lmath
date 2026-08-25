@@ -46,7 +46,8 @@ import { CERO } from "./racional";
  * Una condición que la expresión necesita para estar definida. `expr` es el subárbol al que se
  * le exige (el denominador, el radicando, el argumento del logaritmo…).
  *
- *   • `noCero`      `expr ≠ 0`    denominador, o base de una potencia negativa
+ *   • `noCero`      `expr ≠ 0`    denominador; base de una potencia con exponente negativo
+ *                                 (polo) o CERO (0^0 es indeterminado)
  *   • `noNegativo`  `expr ≥ 0`    radicando de índice PAR
  *   • `positivo`    `expr > 0`    argumento de un logaritmo
  *   • `acotado`     `|expr| ≤ 1`  argumento de arcoseno / arcocoseno
@@ -57,6 +58,14 @@ export interface Restriccion {
   readonly tipo: TipoRestriccion;
   /** El subárbol condicionado, como string mathjs re-parseable. */
   readonly expr: string;
+  /**
+   * De dónde salió la condición. Solo la llevan las `noCero`: `division` y `potenciaNegativa`
+   * son la misma cosa dicha dos veces —un cociente que se anula—, y `potenciaCero` es la forma
+   * indeterminada 0^0. La clasificación de velos la usa para elegir la etiqueta: una
+   * indeterminación se dice «Indeterminada», un cociente roto «Indefinida» (así lo reparte el
+   * BUG-001). Las demás condiciones no la necesitan: su violación no está en un punto suelto.
+   */
+  readonly forma?: "division" | "potenciaNegativa" | "potenciaCero";
 }
 
 /** Funciones cuyo primer argumento tiene que ser ≥ 0 (raíz de índice par). */
@@ -85,7 +94,16 @@ export function variablesLibresDe(exprNorm: string): string[] {
   } catch { return []; }
 }
 
-/** El valor de un nodo constante, o `null` si no lo es. */
+/** El valor de un nodo constante, o `null` si no lo es.
+ *
+ *  Plega también la ARITMÉTICA CONSTANTE (`0 - 1`, `2·3`, `1/4`, `2^10`): la sustitución de
+ *  parámetros (v1.4.0) escribe cada valor entre paréntesis, y una fórmula `A x^{A-1}` con
+ *  `A = 0` llega como `x^{(0) - 1}` —un `-` BINARIO de dos constantes, que antes no se
+ *  plegaba—. Sin el plegado, ese exponente deja de parecérselo a `-1` y la condición de las
+ *  potencias de exponente negativo no se emite: el guardián daba por buena la reducción `0·x^{(0)-1} → 0`,
+ *  que rellena el agujero de x=0, y el bloque graficaba la recta `y=0`. Es exactamente el
+ *  BUG-001: no lo producía la sustitución en sí, sino el formato `(valor)` que introdujo.
+ */
 function constante(n0: Nodo): number | null {
   const n = desParen(n0);
   if (n.type === "ConstantNode") return Number(n.value);
@@ -93,11 +111,26 @@ function constante(n0: Nodo): number | null {
     const v = constante(n.args[0]);
     return v === null ? null : -v;
   }
-  // `1/2`, `3/4`: los exponentes racionales llegan así del normalizador.
-  if (n.type === "OperatorNode" && n.args.length === 2 && n.op === "/") {
+  if (n.type === "OperatorNode" && n.args.length === 2) {
+    const op = n.op;
+    // Solo las operaciones cuyo resultado se puede afirmar EXACTO: nada de funciones. La
+    // división por cero y la potencia que desborda o cae en una raíz no real no se pliegan
+    // (`null`), que es el lado conservador: sin condición leída, el guardián no simplifica.
+    if (op !== "+" && op !== "-" && op !== "*" && op !== "/" && op !== "^") return null;
     const a = constante(n.args[0]), b = constante(n.args[1]);
-    return a === null || b === null || b === 0 ? null : a / b;
+    if (a === null || b === null) return null;
+    switch (op) {
+      case "+": return a + b;
+      case "-": return a - b;
+      case "*": return a * b;
+      case "/": return b === 0 ? null : a / b;
+      default: {
+        const p = a ** b;             // `^`: NaN o ±Infinity → no es una constante afiable
+        return Number.isFinite(p) ? p : null;
+      }
+    }
   }
+  // `1/2`, `3/4`: los exponentes racionales llegan así del normalizador.
   return null;
 }
 
@@ -147,22 +180,27 @@ function leerRestricciones(exprNorm: string): Restriccion[] | null {
   try { raiz = parse(exprNorm) as unknown as Nodo; } catch { return null; }
 
   const out: Restriccion[] = [];
-  const anotar = (tipo: TipoRestriccion, n: Nodo) => {
+  const anotar = (tipo: TipoRestriccion, n: Nodo, forma?: Restriccion["forma"]) => {
     const expr = desParen(n).toString();
     // Una condición SIN variables no condiciona nada: o es cierta siempre (`2 ≠ 0`, del
     // denominador de un exponente `1/2`) o la expresión no existe en ningún punto, y eso ya lo
     // dice al evaluarla. Guardarla solo añadiría barridos inútiles.
     if (variablesLibresDe(expr).length === 0) return;
-    if (!out.some((r) => r.tipo === tipo && r.expr === expr)) out.push({ tipo, expr });
+    if (!out.some((r) => r.tipo === tipo && r.expr === expr)) out.push({ tipo, expr, forma });
   };
 
   const visitar = (n0: Nodo): void => {
     const n = desParen(n0);
     if (n.type === "OperatorNode") {
-      if (n.op === "/" && n.args.length === 2) anotar("noCero", n.args[1]);
+      if (n.op === "/" && n.args.length === 2) anotar("noCero", n.args[1], "division");
       if (n.op === "^" && n.args.length === 2) {
         const e = constante(n.args[1]);
-        if (e !== null && e < 0) anotar("noCero", n.args[0]);
+        if (e !== null && e < 0) anotar("noCero", n.args[0], "potenciaNegativa");
+        // Exponente CERO: `u^0` exige u ≠ 0, porque en u = 0 es la forma indeterminada 0^0.
+        // Es la otra mitad del BUG-001: sin esta condición, `0·x^{(0)}` se reducía a `0` y
+        // la curva atravesaba el origen afirmando un valor que no existe. (Una condición
+        // sobre una base SIN variables —`2^0`— no se guarda: `anotar` ya la filtra.)
+        if (e !== null && e === 0) anotar("noCero", n.args[0], "potenciaCero");
         if (e !== null && exponenteDeRaizPar(e)) anotar("noNegativo", n.args[0]);
       }
     } else if (n.type === "FunctionNode") {
@@ -238,9 +276,21 @@ function violaUna(r: Restriccion, scope: Record<string, number>): boolean {
  * exige `x ≠ 0` y la segunda no.
  */
 export function fueraDeDominio(exprNorm: string, scope: Record<string, number>): boolean {
+  return condicionesVioladas(exprNorm, scope).length > 0;
+}
+
+/**
+ * Las condiciones de `exprNorm` que se incumplen con esos valores, cada una con su
+ * procedencia (`forma`). Es la pregunta de `fueraDeDominio` sin colapsarla a un sí: quien
+ * necesita saber QUÉ se rompió —la clasificación de velos elige «Indefinida» o
+ * «Indeterminada» según sea un cociente anulado o la forma 0^0— la lee aquí.
+ */
+export function condicionesVioladas(
+  exprNorm: string, scope: Record<string, number>
+): Restriccion[] {
   const rs = restriccionesDe(exprNorm);
-  if (rs === null) return false;
-  return rs.some((r) => violaUna(r, scope));
+  if (rs === null) return [];
+  return rs.filter((r) => violaUna(r, scope));
 }
 
 // ── Puntos de quiebre ────────────────────────────────────────────────────────

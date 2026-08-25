@@ -1,13 +1,55 @@
-import { parse } from "mathjs";
+import { parse, FunctionNode, OperatorNode, type MathNode } from "mathjs";
 
-import { FUNCIONES_INVERSAS_EXTRA, FUNCIONES_ESCALON_RAPIDAS, FUNCIONES_SIGNO, FUNCIONES_DOMINIO } from "./constantes";
-import { compilarNativo } from "./compiladorNativo";
+import {
+  FUNCIONES_INVERSAS_EXTRA, FUNCIONES_ESCALON_RAPIDAS, FUNCIONES_SIGNO, FUNCIONES_DOMINIO,
+  FUNCIONES_TRIG_GUARDADAS,
+} from "./constantes";
+import { compilarNativo, potenciaReal } from "./compiladorNativo";
 import { normalizarEntrada } from "./parser";
 import { insertarProductoImplicito } from "./core/parsing/productoImplicito";
 
 // ─────────────────────────────────────────────
 // Evaluador (compartido por obs-graph y obs-system)
 // ─────────────────────────────────────────────
+
+/**
+ * El nombre interno de la potencia del motor. `^` de mathjs resuelve a SU `pow` —que da
+ * `0^0 = 1`—, así que antes de compilar se reescribe cada `a ^ b` como `powg(a, b)` y el
+ * scope inyecta `powg` con la semántica del motor (`potenciaReal`: 0^0 es la forma
+ * indeterminada, NaN). Es la mitad mathjs del arreglo del BUG-001; la nativa vive en
+ * `compiladorNativo.potenciaReal`, y las dos tienen que coincidir punto a punto porque el
+ * validador diferencial compara una contra la otra.
+ */
+const NOMBRE_POTENCIA = "powg";
+
+/**
+ * Lo mismo para las trigonométricas directas: `tan` de mathjs en su polo da el residuo
+ * flotante (`1.63e16` en pi/2), no infinito. Cada `tan(u)` se reescribe a `tanG(u)` —y las
+ * cinco hermanas— con la implementación guardada de `FUNCIONES_TRIG_GUARDADAS` (BUG-001,
+ * familia de `tan(A)` con `A = 90`).
+ */
+const SUFIJO_TRIG = "G";
+const ES_TRIG_GUARDADA = (nombre: string): nombre is keyof typeof FUNCIONES_TRIG_GUARDADAS =>
+  Object.prototype.hasOwnProperty.call(FUNCIONES_TRIG_GUARDADAS, nombre);
+
+/** Reescritura `^ → powg` y `tan/sec/csc/cot/sin/cos → *G` sobre el árbol, antes de compilar. */
+function reescribirNodos(nodo: MathNode): MathNode {
+  return nodo.transform((n: MathNode) => {
+    if (n instanceof OperatorNode && n.op === "^" && n.args.length === 2) {
+      return new FunctionNode(NOMBRE_POTENCIA, n.args);
+    }
+    if (n instanceof FunctionNode && n.args.length === 1) {
+      const nombre = (n.fn as { name?: string } | undefined)?.name ?? "";
+      if (ES_TRIG_GUARDADA(nombre)) return new FunctionNode(nombre + SUFIJO_TRIG, n.args);
+    }
+    return n;
+  });
+}
+
+/** Las guardas trigonométricas con el sufijo que les pone la reescritura (`tan` → `tanG`). */
+const FUNCIONES_TRIG_REESCRITAS = Object.fromEntries(
+  Object.entries(FUNCIONES_TRIG_GUARDADAS).map(([nombre, fn]) => [nombre + SUFIJO_TRIG, fn])
+);
 
 // Compila una expresión YA NORMALIZADA (ver normalizarEntrada) a una función que
 // la evalúa en un scope dado. Inyecta SIEMPRE las trigonométricas inversas que
@@ -18,7 +60,7 @@ import { insertarProductoImplicito } from "./core/parsing/productoImplicito";
 export function compilarExpresion(
   expr: string
 ): (scope: Record<string, number>) => unknown {
-  const compilada = parse(expr).compile();
+  const compilada = reescribirNodos(parse(expr)).compile();
   // FUNCIONES_ESCALON_RAPIDAS sombrea floor/ceil de mathjs (12× más caras por el
   // dispatch typed-function; ver constantes.ts) — mismo mecanismo que las inversas.
   return (scope) => {
@@ -28,7 +70,10 @@ export function compilarExpresion(
       // mathjs tipa `evaluate` como `any`; se acota a `unknown` para que el valor
       // (number | Complex | NaN…) obligue a los consumidores a estrecharlo.
       return compilada.evaluate({
-        ...scope, ...FUNCIONES_INVERSAS_EXTRA, ...FUNCIONES_ESCALON_RAPIDAS, ...FUNCIONES_SIGNO, ...FUNCIONES_DOMINIO,
+        ...scope,
+        [NOMBRE_POTENCIA]: potenciaReal,
+        ...FUNCIONES_TRIG_REESCRITAS,
+        ...FUNCIONES_INVERSAS_EXTRA, ...FUNCIONES_ESCALON_RAPIDAS, ...FUNCIONES_SIGNO, ...FUNCIONES_DOMINIO,
       }) as unknown;
     }
     catch { return NaN; }
