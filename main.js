@@ -30,29 +30,12 @@ var __toESM = (mod3, isNodeMode, target) => (target = mod3 != null ? __create(__
 ));
 var __toCommonJS = (mod3) => __copyProps(__defProp({}, "__esModule", { value: true }), mod3);
 
-// node_modules/@babel/runtime/helpers/extends.js
-var require_extends = __commonJS({
-  "node_modules/@babel/runtime/helpers/extends.js"(exports2, module2) {
-    function _extends8() {
-      return module2.exports = _extends8 = Object.assign ? Object.assign.bind() : function(n) {
-        for (var e3 = 1; e3 < arguments.length; e3++) {
-          var t2 = arguments[e3];
-          for (var r in t2)
-            ({}).hasOwnProperty.call(t2, r) && (n[r] = t2[r]);
-        }
-        return n;
-      }, module2.exports.__esModule = true, module2.exports["default"] = module2.exports, _extends8.apply(null, arguments);
-    }
-    module2.exports = _extends8, module2.exports.__esModule = true, module2.exports["default"] = module2.exports;
-  }
-});
-
 // node_modules/typed-function/lib/umd/typed-function.js
 var require_typed_function = __commonJS({
-  "node_modules/typed-function/lib/umd/typed-function.js"(exports2, module2) {
+  "node_modules/typed-function/lib/umd/typed-function.js"(exports, module2) {
     (function(global, factory2) {
-      typeof exports2 === "object" && typeof module2 !== "undefined" ? module2.exports = factory2() : typeof define === "function" && define.amd ? define(factory2) : (global = typeof globalThis !== "undefined" ? globalThis : global || self, global.typed = factory2());
-    })(exports2, function() {
+      typeof exports === "object" && typeof module2 !== "undefined" ? module2.exports = factory2() : typeof define === "function" && define.amd ? define(factory2) : (global = typeof globalThis !== "undefined" ? globalThis : global || self, global.typed = factory2());
+    })(exports, function() {
       "use strict";
       function ok() {
         return true;
@@ -1286,7 +1269,7 @@ var require_typed_function = __commonJS({
 
 // node_modules/fraction.js/fraction.js
 var require_fraction = __commonJS({
-  "node_modules/fraction.js/fraction.js"(exports2, module2) {
+  "node_modules/fraction.js/fraction.js"(exports, module2) {
     (function(root) {
       "use strict";
       var MAX_CYCLE_LEN = 2e3;
@@ -1922,7 +1905,7 @@ var require_fraction = __commonJS({
           return str;
         }
       };
-      if (typeof exports2 === "object") {
+      if (typeof exports === "object") {
         Object.defineProperty(Fraction3, "__esModule", { "value": true });
         Fraction3["default"] = Fraction3;
         Fraction3["Fraction"] = Fraction3;
@@ -1930,77 +1913,13 @@ var require_fraction = __commonJS({
       } else {
         root["Fraction"] = Fraction3;
       }
-    })(exports2);
-  }
-});
-
-// node_modules/@babel/runtime/helpers/typeof.js
-var require_typeof = __commonJS({
-  "node_modules/@babel/runtime/helpers/typeof.js"(exports2, module2) {
-    function _typeof(o) {
-      "@babel/helpers - typeof";
-      return module2.exports = _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function(o2) {
-        return typeof o2;
-      } : function(o2) {
-        return o2 && "function" == typeof Symbol && o2.constructor === Symbol && o2 !== Symbol.prototype ? "symbol" : typeof o2;
-      }, module2.exports.__esModule = true, module2.exports["default"] = module2.exports, _typeof(o);
-    }
-    module2.exports = _typeof, module2.exports.__esModule = true, module2.exports["default"] = module2.exports;
-  }
-});
-
-// node_modules/@babel/runtime/helpers/toPrimitive.js
-var require_toPrimitive = __commonJS({
-  "node_modules/@babel/runtime/helpers/toPrimitive.js"(exports2, module2) {
-    var _typeof = require_typeof()["default"];
-    function toPrimitive(t2, r) {
-      if ("object" != _typeof(t2) || !t2)
-        return t2;
-      var e3 = t2[Symbol.toPrimitive];
-      if (void 0 !== e3) {
-        var i2 = e3.call(t2, r || "default");
-        if ("object" != _typeof(i2))
-          return i2;
-        throw new TypeError("@@toPrimitive must return a primitive value.");
-      }
-      return ("string" === r ? String : Number)(t2);
-    }
-    module2.exports = toPrimitive, module2.exports.__esModule = true, module2.exports["default"] = module2.exports;
-  }
-});
-
-// node_modules/@babel/runtime/helpers/toPropertyKey.js
-var require_toPropertyKey = __commonJS({
-  "node_modules/@babel/runtime/helpers/toPropertyKey.js"(exports2, module2) {
-    var _typeof = require_typeof()["default"];
-    var toPrimitive = require_toPrimitive();
-    function toPropertyKey(t2) {
-      var i2 = toPrimitive(t2, "string");
-      return "symbol" == _typeof(i2) ? i2 : i2 + "";
-    }
-    module2.exports = toPropertyKey, module2.exports.__esModule = true, module2.exports["default"] = module2.exports;
-  }
-});
-
-// node_modules/@babel/runtime/helpers/defineProperty.js
-var require_defineProperty = __commonJS({
-  "node_modules/@babel/runtime/helpers/defineProperty.js"(exports2, module2) {
-    var toPropertyKey = require_toPropertyKey();
-    function _defineProperty18(e3, r, t2) {
-      return (r = toPropertyKey(r)) in e3 ? Object.defineProperty(e3, r, {
-        value: t2,
-        enumerable: true,
-        configurable: true,
-        writable: true
-      }) : e3[r] = t2, e3;
-    }
-    module2.exports = _defineProperty18, module2.exports.__esModule = true, module2.exports["default"] = module2.exports;
+    })(exports);
   }
 });
 
 // node_modules/javascript-natural-sort/naturalSort.js
 var require_naturalSort = __commonJS({
-  "node_modules/javascript-natural-sort/naturalSort.js"(exports2, module2) {
+  "node_modules/javascript-natural-sort/naturalSort.js"(exports, module2) {
     module2.exports = function naturalSort2(a, b) {
       "use strict";
       var re2 = /(^([+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?)?$|^0x[0-9a-f]+$|\d+)/gi, sre = /(^[ ]*|[ ]*$)/g, dre = /(^([\w ]+,?[\w ]+)?[\w ]+,?[\w ]+\d+:\d+(:\d+)?[\w ]?|^\d{1,4}[\/\-]\d{1,4}[\/\-]\d{1,4}|^\w+, \w+ \d+, \d{4})/, hre = /^0x[0-9a-f]+$/i, ore = /^0/, i2 = function(s) {
@@ -2036,9 +1955,9 @@ var require_naturalSort = __commonJS({
 
 // node_modules/escape-latex/dist/index.js
 var require_dist = __commonJS({
-  "node_modules/escape-latex/dist/index.js"(exports2, module2) {
+  "node_modules/escape-latex/dist/index.js"(exports, module2) {
     "use strict";
-    var _extends8 = Object.assign || function(target) {
+    var _extends2 = Object.assign || function(target) {
       for (var i2 = 1; i2 < arguments.length; i2++) {
         var source = arguments[i2];
         for (var key in source) {
@@ -2070,13 +1989,13 @@ var require_dist = __commonJS({
       "\n": "\\newline{}"
     };
     var defaultEscapeMapFn = function defaultEscapeMapFn2(defaultEscapes2, formatEscapes2) {
-      return _extends8({}, defaultEscapes2, formatEscapes2);
+      return _extends2({}, defaultEscapes2, formatEscapes2);
     };
     module2.exports = function(str) {
       var _ref = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {}, _ref$preserveFormatti = _ref.preserveFormatting, preserveFormatting = _ref$preserveFormatti === void 0 ? false : _ref$preserveFormatti, _ref$escapeMapFn = _ref.escapeMapFn, escapeMapFn = _ref$escapeMapFn === void 0 ? defaultEscapeMapFn : _ref$escapeMapFn;
       var runningStr = String(str);
       var result = "";
-      var escapes = escapeMapFn(_extends8({}, defaultEscapes), preserveFormatting ? _extends8({}, formatEscapes) : {});
+      var escapes = escapeMapFn(_extends2({}, defaultEscapes), preserveFormatting ? _extends2({}, formatEscapes) : {});
       var escapeKeys = Object.keys(escapes);
       var _loop = function _loop2() {
         var specialCharFound = false;
@@ -2105,7 +2024,7 @@ var require_dist = __commonJS({
 
 // node_modules/seedrandom/lib/alea.js
 var require_alea = __commonJS({
-  "node_modules/seedrandom/lib/alea.js"(exports2, module2) {
+  "node_modules/seedrandom/lib/alea.js"(exports, module2) {
     (function(global, module3, define2) {
       function Alea(seed) {
         var me = this, mash = Mash();
@@ -2186,7 +2105,7 @@ var require_alea = __commonJS({
         this.alea = impl;
       }
     })(
-      exports2,
+      exports,
       typeof module2 == "object" && module2,
       // present in node.js
       typeof define == "function" && define
@@ -2197,7 +2116,7 @@ var require_alea = __commonJS({
 
 // node_modules/seedrandom/lib/xor128.js
 var require_xor128 = __commonJS({
-  "node_modules/seedrandom/lib/xor128.js"(exports2, module2) {
+  "node_modules/seedrandom/lib/xor128.js"(exports, module2) {
     (function(global, module3, define2) {
       function XorGen(seed) {
         var me = this, strseed = "";
@@ -2260,7 +2179,7 @@ var require_xor128 = __commonJS({
         this.xor128 = impl;
       }
     })(
-      exports2,
+      exports,
       typeof module2 == "object" && module2,
       // present in node.js
       typeof define == "function" && define
@@ -2271,7 +2190,7 @@ var require_xor128 = __commonJS({
 
 // node_modules/seedrandom/lib/xorwow.js
 var require_xorwow = __commonJS({
-  "node_modules/seedrandom/lib/xorwow.js"(exports2, module2) {
+  "node_modules/seedrandom/lib/xorwow.js"(exports, module2) {
     (function(global, module3, define2) {
       function XorGen(seed) {
         var me = this, strseed = "";
@@ -2341,7 +2260,7 @@ var require_xorwow = __commonJS({
         this.xorwow = impl;
       }
     })(
-      exports2,
+      exports,
       typeof module2 == "object" && module2,
       // present in node.js
       typeof define == "function" && define
@@ -2352,7 +2271,7 @@ var require_xorwow = __commonJS({
 
 // node_modules/seedrandom/lib/xorshift7.js
 var require_xorshift7 = __commonJS({
-  "node_modules/seedrandom/lib/xorshift7.js"(exports2, module2) {
+  "node_modules/seedrandom/lib/xorshift7.js"(exports, module2) {
     (function(global, module3, define2) {
       function XorGen(seed) {
         var me = this;
@@ -2438,7 +2357,7 @@ var require_xorshift7 = __commonJS({
         this.xorshift7 = impl;
       }
     })(
-      exports2,
+      exports,
       typeof module2 == "object" && module2,
       // present in node.js
       typeof define == "function" && define
@@ -2449,7 +2368,7 @@ var require_xorshift7 = __commonJS({
 
 // node_modules/seedrandom/lib/xor4096.js
 var require_xor4096 = __commonJS({
-  "node_modules/seedrandom/lib/xor4096.js"(exports2, module2) {
+  "node_modules/seedrandom/lib/xor4096.js"(exports, module2) {
     (function(global, module3, define2) {
       function XorGen(seed) {
         var me = this;
@@ -2550,7 +2469,7 @@ var require_xor4096 = __commonJS({
         this.xor4096 = impl;
       }
     })(
-      exports2,
+      exports,
       // window object or global
       typeof module2 == "object" && module2,
       // present in node.js
@@ -2562,7 +2481,7 @@ var require_xor4096 = __commonJS({
 
 // node_modules/seedrandom/lib/tychei.js
 var require_tychei = __commonJS({
-  "node_modules/seedrandom/lib/tychei.js"(exports2, module2) {
+  "node_modules/seedrandom/lib/tychei.js"(exports, module2) {
     (function(global, module3, define2) {
       function XorGen(seed) {
         var me = this, strseed = "";
@@ -2631,7 +2550,7 @@ var require_tychei = __commonJS({
         this.tychei = impl;
       }
     })(
-      exports2,
+      exports,
       typeof module2 == "object" && module2,
       // present in node.js
       typeof define == "function" && define
@@ -2640,9 +2559,15 @@ var require_tychei = __commonJS({
   }
 });
 
+// (disabled):crypto
+var require_crypto = __commonJS({
+  "(disabled):crypto"() {
+  }
+});
+
 // node_modules/seedrandom/seedrandom.js
 var require_seedrandom = __commonJS({
-  "node_modules/seedrandom/seedrandom.js"(exports2, module2) {
+  "node_modules/seedrandom/seedrandom.js"(exports, module2) {
     (function(global, pool, math2) {
       var width = 256, chunks = 6, digits2 = 52, rngname = "random", startdenom = math2.pow(width, chunks), significance = math2.pow(2, digits2), overflow = significance * 2, mask = width - 1, nodecrypto;
       function seedrandom2(seed, options, callback) {
@@ -2767,7 +2692,7 @@ var require_seedrandom = __commonJS({
       if (typeof module2 == "object" && module2.exports) {
         module2.exports = seedrandom2;
         try {
-          nodecrypto = require("crypto");
+          nodecrypto = require_crypto();
         } catch (ex) {
         }
       } else if (typeof define == "function" && define.amd) {
@@ -2780,7 +2705,7 @@ var require_seedrandom = __commonJS({
     })(
       // global: `self` in browsers (including strict mode and web workers),
       // otherwise `this` in Node and other environments
-      typeof self !== "undefined" ? self : exports2,
+      typeof self !== "undefined" ? self : exports,
       [],
       // pool: entropy pool starts empty
       Math
@@ -2791,7 +2716,7 @@ var require_seedrandom = __commonJS({
 
 // node_modules/seedrandom/index.js
 var require_seedrandom2 = __commonJS({
-  "node_modules/seedrandom/index.js"(exports2, module2) {
+  "node_modules/seedrandom/index.js"(exports, module2) {
     var alea = require_alea();
     var xor128 = require_xor128();
     var xorwow = require_xorwow();
@@ -2820,8 +2745,17 @@ var import_obsidian11 = require("obsidian");
 // src/engines/obs-graph/GraphEngine.ts
 var import_obsidian = require("obsidian");
 
-// node_modules/mathjs/lib/esm/entry/configReadonly.js
-var import_extends = __toESM(require_extends(), 1);
+// node_modules/@babel/runtime/helpers/esm/extends.js
+function _extends() {
+  return _extends = Object.assign ? Object.assign.bind() : function(n) {
+    for (var e3 = 1; e3 < arguments.length; e3++) {
+      var t2 = arguments[e3];
+      for (var r in t2)
+        ({}).hasOwnProperty.call(t2, r) && (n[r] = t2[r]);
+    }
+    return n;
+  }, _extends.apply(null, arguments);
+}
 
 // node_modules/mathjs/lib/esm/core/config.js
 var DEFAULT_CONFIG = {
@@ -3107,7 +3041,7 @@ var config = function config2(options) {
   }
   return Object.freeze(DEFAULT_CONFIG);
 };
-(0, import_extends.default)(config, DEFAULT_CONFIG, {
+_extends(config, DEFAULT_CONFIG, {
   MATRIX_OPTIONS,
   NUMBER_OPTIONS
 });
@@ -7939,9 +7873,6 @@ var createMatrixClass = /* @__PURE__ */ factory(name6, dependencies7, () => {
   isClass: true
 });
 
-// node_modules/mathjs/lib/esm/utils/array.js
-var import_extends2 = __toESM(require_extends(), 1);
-
 // node_modules/mathjs/lib/esm/utils/bignumber/formatter.js
 function formatBigNumberToBase(n, base, size2) {
   var BigNumberCtor = n.constructor;
@@ -8634,7 +8565,7 @@ function stretch(arrayToStretch, sizeToStretch, dimToStretch) {
   return concat(...Array(sizeToStretch).fill(arrayToStretch), dimToStretch);
 }
 function clone3(array) {
-  return (0, import_extends2.default)([], array);
+  return _extends([], array);
 }
 
 // node_modules/mathjs/lib/esm/utils/lruQueue.js
@@ -16489,8 +16420,47 @@ var createIfft = /* @__PURE__ */ factory(name111, dependencies111, (_ref) => {
   });
 });
 
+// node_modules/@babel/runtime/helpers/esm/typeof.js
+function _typeof(o) {
+  "@babel/helpers - typeof";
+  return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function(o2) {
+    return typeof o2;
+  } : function(o2) {
+    return o2 && "function" == typeof Symbol && o2.constructor === Symbol && o2 !== Symbol.prototype ? "symbol" : typeof o2;
+  }, _typeof(o);
+}
+
+// node_modules/@babel/runtime/helpers/esm/toPrimitive.js
+function toPrimitive(t2, r) {
+  if ("object" != _typeof(t2) || !t2)
+    return t2;
+  var e3 = t2[Symbol.toPrimitive];
+  if (void 0 !== e3) {
+    var i2 = e3.call(t2, r || "default");
+    if ("object" != _typeof(i2))
+      return i2;
+    throw new TypeError("@@toPrimitive must return a primitive value.");
+  }
+  return ("string" === r ? String : Number)(t2);
+}
+
+// node_modules/@babel/runtime/helpers/esm/toPropertyKey.js
+function toPropertyKey(t2) {
+  var i2 = toPrimitive(t2, "string");
+  return "symbol" == _typeof(i2) ? i2 : i2 + "";
+}
+
+// node_modules/@babel/runtime/helpers/esm/defineProperty.js
+function _defineProperty(e3, r, t2) {
+  return (r = toPropertyKey(r)) in e3 ? Object.defineProperty(e3, r, {
+    value: t2,
+    enumerable: true,
+    configurable: true,
+    writable: true
+  }) : e3[r] = t2, e3;
+}
+
 // node_modules/mathjs/lib/esm/function/numeric/solveODE.js
-var import_defineProperty = __toESM(require_defineProperty(), 1);
 function ownKeys(e3, r) {
   var t2 = Object.keys(e3);
   if (Object.getOwnPropertySymbols) {
@@ -16505,7 +16475,7 @@ function _objectSpread(e3) {
   for (var r = 1; r < arguments.length; r++) {
     var t2 = null != arguments[r] ? arguments[r] : {};
     r % 2 ? ownKeys(Object(t2), true).forEach(function(r2) {
-      (0, import_defineProperty.default)(e3, r2, t2[r2]);
+      _defineProperty(e3, r2, t2[r2]);
     }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e3, Object.getOwnPropertyDescriptors(t2)) : ownKeys(Object(t2)).forEach(function(r2) {
       Object.defineProperty(e3, r2, Object.getOwnPropertyDescriptor(t2, r2));
     });
@@ -20176,10 +20146,6 @@ var createSpaClass = /* @__PURE__ */ factory(name160, dependencies160, (_ref) =>
   isClass: true
 });
 
-// node_modules/mathjs/lib/esm/type/unit/Unit.js
-var import_defineProperty2 = __toESM(require_defineProperty(), 1);
-var import_extends3 = __toESM(require_extends(), 1);
-
 // node_modules/mathjs/lib/esm/utils/bignumber/constants.js
 var createBigNumberE = memoize(function(BigNumber2) {
   return new BigNumber2(1).exp();
@@ -20220,7 +20186,7 @@ function _objectSpread2(e3) {
   for (var r = 1; r < arguments.length; r++) {
     var t2 = null != arguments[r] ? arguments[r] : {};
     r % 2 ? ownKeys2(Object(t2), true).forEach(function(r2) {
-      (0, import_defineProperty2.default)(e3, r2, t2[r2]);
+      _defineProperty(e3, r2, t2[r2]);
     }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e3, Object.getOwnPropertyDescriptors(t2)) : ownKeys2(Object(t2)).forEach(function(r2) {
       Object.defineProperty(e3, r2, Object.getOwnPropertyDescriptor(t2, r2));
     });
@@ -20270,7 +20236,7 @@ var createUnitClass = /* @__PURE__ */ factory(name161, dependencies161, (_ref) =
       this.fixPrefix = valuelessUnit.fixPrefix;
       this.skipAutomaticSimplification = valuelessUnit.skipAutomaticSimplification;
       this.dimensions = valuelessUnit.dimensions.slice(0);
-      this.units = valuelessUnit.units.map((u2) => (0, import_extends3.default)({}, u2));
+      this.units = valuelessUnit.units.map((u2) => _extends({}, u2));
     } else {
       throw new TypeError("Second parameter in Unit constructor must be a string or valueless Unit");
     }
@@ -21707,9 +21673,9 @@ var createUnitClass = /* @__PURE__ */ factory(name161, dependencies161, (_ref) =
       }
     }
   };
-  PREFIXES.SHORTLONG = (0, import_extends3.default)({}, PREFIXES.SHORT, PREFIXES.LONG);
-  PREFIXES.BINARY_SHORT = (0, import_extends3.default)({}, PREFIXES.BINARY_SHORT_SI, PREFIXES.BINARY_SHORT_IEC);
-  PREFIXES.BINARY_LONG = (0, import_extends3.default)({}, PREFIXES.BINARY_LONG_SI, PREFIXES.BINARY_LONG_IEC);
+  PREFIXES.SHORTLONG = _extends({}, PREFIXES.SHORT, PREFIXES.LONG);
+  PREFIXES.BINARY_SHORT = _extends({}, PREFIXES.BINARY_SHORT_SI, PREFIXES.BINARY_SHORT_IEC);
+  PREFIXES.BINARY_LONG = _extends({}, PREFIXES.BINARY_LONG_SI, PREFIXES.BINARY_LONG_IEC);
   var BASE_DIMENSIONS = ["MASS", "LENGTH", "TIME", "CURRENT", "TEMPERATURE", "LUMINOUS_INTENSITY", "AMOUNT_OF_SUBSTANCE", "ANGLE", "BIT"];
   var BASE_UNITS = {
     NONE: {
@@ -25363,9 +25329,6 @@ var createNode = /* @__PURE__ */ factory(name206, dependencies206, (_ref) => {
   isNode: true
 });
 
-// node_modules/mathjs/lib/esm/expression/node/AccessorNode.js
-var import_defineProperty3 = __toESM(require_defineProperty(), 1);
-
 // node_modules/mathjs/lib/esm/expression/transform/utils/errorTransform.js
 function errorTransform(err) {
   if (err && err.isIndexError) {
@@ -25562,7 +25525,7 @@ var createAccessorNode = /* @__PURE__ */ factory(name207, dependencies207, (_ref
       return new AccessorNode2(json.object, json.index);
     }
   }
-  (0, import_defineProperty3.default)(AccessorNode2, "name", name207);
+  _defineProperty(AccessorNode2, "name", name207);
   return AccessorNode2;
 }, {
   isClass: true,
@@ -25570,7 +25533,6 @@ var createAccessorNode = /* @__PURE__ */ factory(name207, dependencies207, (_ref
 });
 
 // node_modules/mathjs/lib/esm/expression/node/ArrayNode.js
-var import_defineProperty4 = __toESM(require_defineProperty(), 1);
 var name208 = "ArrayNode";
 var dependencies208 = ["Node"];
 var createArrayNode = /* @__PURE__ */ factory(name208, dependencies208, (_ref) => {
@@ -25726,15 +25688,12 @@ var createArrayNode = /* @__PURE__ */ factory(name208, dependencies208, (_ref) =
       return itemsToTex(this.items, false);
     }
   }
-  (0, import_defineProperty4.default)(ArrayNode2, "name", name208);
+  _defineProperty(ArrayNode2, "name", name208);
   return ArrayNode2;
 }, {
   isClass: true,
   isNode: true
 });
-
-// node_modules/mathjs/lib/esm/expression/node/AssignmentNode.js
-var import_defineProperty5 = __toESM(require_defineProperty(), 1);
 
 // node_modules/mathjs/lib/esm/expression/node/utils/assign.js
 function assignFactory(_ref) {
@@ -26326,7 +26285,7 @@ var createAssignmentNode = /* @__PURE__ */ factory(name209, dependencies209, (_r
       return object + index2 + "=" + value;
     }
   }
-  (0, import_defineProperty5.default)(AssignmentNode2, "name", name209);
+  _defineProperty(AssignmentNode2, "name", name209);
   return AssignmentNode2;
 }, {
   isClass: true,
@@ -26334,7 +26293,6 @@ var createAssignmentNode = /* @__PURE__ */ factory(name209, dependencies209, (_r
 });
 
 // node_modules/mathjs/lib/esm/expression/node/BlockNode.js
-var import_defineProperty6 = __toESM(require_defineProperty(), 1);
 var name210 = "BlockNode";
 var dependencies210 = ["ResultSet", "Node"];
 var createBlockNode = /* @__PURE__ */ factory(name210, dependencies210, (_ref) => {
@@ -26502,7 +26460,7 @@ var createBlockNode = /* @__PURE__ */ factory(name210, dependencies210, (_ref) =
       }).join("\\;\\;\n");
     }
   }
-  (0, import_defineProperty6.default)(BlockNode2, "name", name210);
+  _defineProperty(BlockNode2, "name", name210);
   return BlockNode2;
 }, {
   isClass: true,
@@ -26510,7 +26468,6 @@ var createBlockNode = /* @__PURE__ */ factory(name210, dependencies210, (_ref) =
 });
 
 // node_modules/mathjs/lib/esm/expression/node/ConditionalNode.js
-var import_defineProperty7 = __toESM(require_defineProperty(), 1);
 var name211 = "ConditionalNode";
 var dependencies211 = ["Node"];
 var createConditionalNode = /* @__PURE__ */ factory(name211, dependencies211, (_ref) => {
@@ -26702,15 +26659,12 @@ var createConditionalNode = /* @__PURE__ */ factory(name211, dependencies211, (_
       return "\\begin{cases} {" + this.trueExpr.toTex(options) + "}, &\\quad{\\text{if }\\;" + this.condition.toTex(options) + "}\\\\{" + this.falseExpr.toTex(options) + "}, &\\quad{\\text{otherwise}}\\end{cases}";
     }
   }
-  (0, import_defineProperty7.default)(ConditionalNode2, "name", name211);
+  _defineProperty(ConditionalNode2, "name", name211);
   return ConditionalNode2;
 }, {
   isClass: true,
   isNode: true
 });
-
-// node_modules/mathjs/lib/esm/expression/node/ConstantNode.js
-var import_defineProperty8 = __toESM(require_defineProperty(), 1);
 
 // node_modules/mathjs/lib/esm/utils/latex.js
 var import_escape_latex = __toESM(require_dist(), 1);
@@ -27345,7 +27299,7 @@ var createConstantNode = /* @__PURE__ */ factory(name212, dependencies212, (_ref
       }
     }
   }
-  (0, import_defineProperty8.default)(ConstantNode2, "name", name212);
+  _defineProperty(ConstantNode2, "name", name212);
   return ConstantNode2;
 }, {
   isClass: true,
@@ -27353,7 +27307,6 @@ var createConstantNode = /* @__PURE__ */ factory(name212, dependencies212, (_ref
 });
 
 // node_modules/mathjs/lib/esm/expression/node/FunctionAssignmentNode.js
-var import_defineProperty9 = __toESM(require_defineProperty(), 1);
 var name213 = "FunctionAssignmentNode";
 var dependencies213 = ["typed", "Node"];
 var createFunctionAssignmentNode = /* @__PURE__ */ factory(name213, dependencies213, (_ref) => {
@@ -27556,7 +27509,7 @@ var createFunctionAssignmentNode = /* @__PURE__ */ factory(name213, dependencies
       return "\\mathrm{" + this.name + "}\\left(" + this.params.map(toSymbol).join(",") + "\\right)=" + expr;
     }
   }
-  (0, import_defineProperty9.default)(FunctionAssignmentNode2, "name", name213);
+  _defineProperty(FunctionAssignmentNode2, "name", name213);
   return FunctionAssignmentNode2;
 }, {
   isClass: true,
@@ -27564,7 +27517,6 @@ var createFunctionAssignmentNode = /* @__PURE__ */ factory(name213, dependencies
 });
 
 // node_modules/mathjs/lib/esm/expression/node/IndexNode.js
-var import_defineProperty10 = __toESM(require_defineProperty(), 1);
 var name214 = "IndexNode";
 var dependencies214 = ["Node", "size"];
 var createIndexNode = /* @__PURE__ */ factory(name214, dependencies214, (_ref) => {
@@ -27747,7 +27699,7 @@ var createIndexNode = /* @__PURE__ */ factory(name214, dependencies214, (_ref) =
       return this.dotNotation ? "." + this.getObjectProperty() : "_{" + dimensions.join(",") + "}";
     }
   }
-  (0, import_defineProperty10.default)(IndexNode2, "name", name214);
+  _defineProperty(IndexNode2, "name", name214);
   return IndexNode2;
 }, {
   isClass: true,
@@ -27755,7 +27707,6 @@ var createIndexNode = /* @__PURE__ */ factory(name214, dependencies214, (_ref) =
 });
 
 // node_modules/mathjs/lib/esm/expression/node/ObjectNode.js
-var import_defineProperty11 = __toESM(require_defineProperty(), 1);
 var name215 = "ObjectNode";
 var dependencies215 = ["Node"];
 var createObjectNode = /* @__PURE__ */ factory(name215, dependencies215, (_ref) => {
@@ -27924,15 +27875,12 @@ var createObjectNode = /* @__PURE__ */ factory(name215, dependencies215, (_ref) 
       return tex;
     }
   }
-  (0, import_defineProperty11.default)(ObjectNode2, "name", name215);
+  _defineProperty(ObjectNode2, "name", name215);
   return ObjectNode2;
 }, {
   isClass: true,
   isNode: true
 });
-
-// node_modules/mathjs/lib/esm/expression/node/OperatorNode.js
-var import_defineProperty12 = __toESM(require_defineProperty(), 1);
 
 // node_modules/mathjs/lib/esm/utils/scope.js
 function createSubScope(parentScope, args) {
@@ -28449,7 +28397,7 @@ var createOperatorNode = /* @__PURE__ */ factory(name216, dependencies216, (_ref
       return this.type + ":" + this.fn;
     }
   }
-  (0, import_defineProperty12.default)(OperatorNode2, "name", name216);
+  _defineProperty(OperatorNode2, "name", name216);
   return OperatorNode2;
 }, {
   isClass: true,
@@ -28457,7 +28405,6 @@ var createOperatorNode = /* @__PURE__ */ factory(name216, dependencies216, (_ref
 });
 
 // node_modules/mathjs/lib/esm/expression/node/ParenthesisNode.js
-var import_defineProperty13 = __toESM(require_defineProperty(), 1);
 var name217 = "ParenthesisNode";
 var dependencies217 = ["Node"];
 var createParenthesisNode = /* @__PURE__ */ factory(name217, dependencies217, (_ref) => {
@@ -28590,7 +28537,7 @@ var createParenthesisNode = /* @__PURE__ */ factory(name217, dependencies217, (_
       return this.content.toTex(options);
     }
   }
-  (0, import_defineProperty13.default)(ParenthesisNode2, "name", name217);
+  _defineProperty(ParenthesisNode2, "name", name217);
   return ParenthesisNode2;
 }, {
   isClass: true,
@@ -28598,7 +28545,6 @@ var createParenthesisNode = /* @__PURE__ */ factory(name217, dependencies217, (_
 });
 
 // node_modules/mathjs/lib/esm/expression/node/RangeNode.js
-var import_defineProperty14 = __toESM(require_defineProperty(), 1);
 var name218 = "RangeNode";
 var dependencies218 = ["Node"];
 var createRangeNode = /* @__PURE__ */ factory(name218, dependencies218, (_ref) => {
@@ -28819,7 +28765,7 @@ var createRangeNode = /* @__PURE__ */ factory(name218, dependencies218, (_ref) =
       return str;
     }
   }
-  (0, import_defineProperty14.default)(RangeNode2, "name", name218);
+  _defineProperty(RangeNode2, "name", name218);
   return RangeNode2;
 }, {
   isClass: true,
@@ -28827,7 +28773,6 @@ var createRangeNode = /* @__PURE__ */ factory(name218, dependencies218, (_ref) =
 });
 
 // node_modules/mathjs/lib/esm/expression/node/RelationalNode.js
-var import_defineProperty15 = __toESM(require_defineProperty(), 1);
 var name219 = "RelationalNode";
 var dependencies219 = ["Node"];
 var createRelationalNode = /* @__PURE__ */ factory(name219, dependencies219, (_ref) => {
@@ -29005,7 +28950,7 @@ var createRelationalNode = /* @__PURE__ */ factory(name219, dependencies219, (_r
       return ret;
     }
   }
-  (0, import_defineProperty15.default)(RelationalNode2, "name", name219);
+  _defineProperty(RelationalNode2, "name", name219);
   return RelationalNode2;
 }, {
   isClass: true,
@@ -29181,7 +29126,6 @@ var createSymbolNode = /* @__PURE__ */ factory(name220, dependencies220, (_ref) 
 });
 
 // node_modules/mathjs/lib/esm/expression/node/FunctionNode.js
-var import_defineProperty16 = __toESM(require_defineProperty(), 1);
 var name221 = "FunctionNode";
 var dependencies221 = ["math", "Node", "SymbolNode"];
 var createFunctionNode = /* @__PURE__ */ factory(name221, dependencies221, (_ref) => {
@@ -29561,11 +29505,11 @@ var createFunctionNode = /* @__PURE__ */ factory(name221, dependencies221, (_ref
     }
   }
   _FunctionNode = FunctionNode2;
-  (0, import_defineProperty16.default)(FunctionNode2, "name", name221);
-  (0, import_defineProperty16.default)(FunctionNode2, "onUndefinedFunction", function(name314) {
+  _defineProperty(FunctionNode2, "name", name221);
+  _defineProperty(FunctionNode2, "onUndefinedFunction", function(name314) {
     throw new Error("Undefined function " + name314);
   });
-  (0, import_defineProperty16.default)(FunctionNode2, "fromJSON", function(json) {
+  _defineProperty(FunctionNode2, "fromJSON", function(json) {
     return new _FunctionNode(json.fn, json.args);
   });
   return FunctionNode2;
@@ -29575,7 +29519,6 @@ var createFunctionNode = /* @__PURE__ */ factory(name221, dependencies221, (_ref
 });
 
 // node_modules/mathjs/lib/esm/expression/parse.js
-var import_extends4 = __toESM(require_extends(), 1);
 var name222 = "parse";
 var dependencies222 = ["typed", "numeric", "config", "AccessorNode", "ArrayNode", "AssignmentNode", "BlockNode", "ConditionalNode", "ConstantNode", "FunctionAssignmentNode", "FunctionNode", "IndexNode", "ObjectNode", "OperatorNode", "ParenthesisNode", "RangeNode", "RelationalNode", "SymbolNode"];
 var createParse = /* @__PURE__ */ factory(name222, dependencies222, (_ref) => {
@@ -29911,7 +29854,7 @@ var createParse = /* @__PURE__ */ factory(name222, dependencies222, (_ref) => {
   };
   function parseStart(expression, extraNodes) {
     var state = initialState();
-    (0, import_extends4.default)(state, {
+    _extends(state, {
       expression,
       extraNodes
     });
@@ -30231,23 +30174,23 @@ var createParse = /* @__PURE__ */ factory(name222, dependencies222, (_ref) => {
     var tokenStates = [];
     while (true) {
       if (state.token === "/" && rule2Node(last)) {
-        tokenStates.push((0, import_extends4.default)({}, state));
+        tokenStates.push(_extends({}, state));
         getTokenSkipNewline(state);
         if (state.tokenType === TOKENTYPE.NUMBER) {
-          tokenStates.push((0, import_extends4.default)({}, state));
+          tokenStates.push(_extends({}, state));
           getTokenSkipNewline(state);
           if (state.tokenType === TOKENTYPE.SYMBOL || state.token === "(") {
-            (0, import_extends4.default)(state, tokenStates.pop());
+            _extends(state, tokenStates.pop());
             tokenStates.pop();
             last = parseModulusPercentage(state);
             node = new OperatorNode2("/", "divide", [node, last]);
           } else {
             tokenStates.pop();
-            (0, import_extends4.default)(state, tokenStates.pop());
+            _extends(state, tokenStates.pop());
             break;
           }
         } else {
-          (0, import_extends4.default)(state, tokenStates.pop());
+          _extends(state, tokenStates.pop());
           break;
         }
       } else {
@@ -30973,7 +30916,6 @@ var createLup = /* @__PURE__ */ factory(name227, dependencies227, (_ref) => {
 });
 
 // node_modules/mathjs/lib/esm/function/algebra/decomposition/qr.js
-var import_extends5 = __toESM(require_extends(), 1);
 var name228 = "qr";
 var dependencies228 = ["typed", "matrix", "zeros", "identity", "isZero", "equal", "sign", "sqrt", "conj", "unaryMinus", "addScalar", "divideScalar", "multiplyScalar", "subtractScalar", "complex"];
 var createQr = /* @__PURE__ */ factory(name228, dependencies228, (_ref) => {
@@ -30994,7 +30936,7 @@ var createQr = /* @__PURE__ */ factory(name228, dependencies228, (_ref) => {
     subtractScalar: subtractScalar2,
     complex: complex2
   } = _ref;
-  return (0, import_extends5.default)(typed3(name228, {
+  return _extends(typed3(name228, {
     DenseMatrix: function DenseMatrix2(m) {
       return _denseQR(m);
     },
@@ -35772,9 +35714,6 @@ var createPinv = /* @__PURE__ */ factory(name243, dependencies243, (_ref) => {
   }
 });
 
-// node_modules/mathjs/lib/esm/function/matrix/eigs.js
-var import_extends6 = __toESM(require_extends(), 1);
-
 // node_modules/mathjs/lib/esm/function/matrix/eigs/complexEigs.js
 function createComplexEigs(_ref) {
   var {
@@ -36562,7 +36501,7 @@ var createEigs = /* @__PURE__ */ factory(name244, dependencies244, (_ref) => {
       var useOpts = {
         matricize: true
       };
-      (0, import_extends6.default)(useOpts, opts);
+      _extends(useOpts, opts);
       return doEigs(mat, useOpts);
     }
   });
@@ -38785,7 +38724,6 @@ function isConstantExpression(x) {
 }
 
 // node_modules/mathjs/lib/esm/function/algebra/simplify/util.js
-var import_defineProperty17 = __toESM(require_defineProperty(), 1);
 function ownKeys3(e3, r) {
   var t2 = Object.keys(e3);
   if (Object.getOwnPropertySymbols) {
@@ -38800,7 +38738,7 @@ function _objectSpread3(e3) {
   for (var r = 1; r < arguments.length; r++) {
     var t2 = null != arguments[r] ? arguments[r] : {};
     r % 2 ? ownKeys3(Object(t2), true).forEach(function(r2) {
-      (0, import_defineProperty17.default)(e3, r2, t2[r2]);
+      _defineProperty(e3, r2, t2[r2]);
     }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e3, Object.getOwnPropertyDescriptors(t2)) : ownKeys3(Object(t2)).forEach(function(r2) {
       Object.defineProperty(e3, r2, Object.getOwnPropertyDescriptor(t2, r2));
     });
@@ -44752,7 +44690,6 @@ var lyap = /* @__PURE__ */ createLyap({
 });
 
 // node_modules/mathjs/lib/esm/entry/impureFunctionsAny.generated.js
-var import_extends7 = __toESM(require_extends(), 1);
 var math = {};
 var mathWithTransform = {};
 var classes = {};
@@ -44992,7 +44929,7 @@ var help = createHelp({
   mathWithTransform,
   typed: typed2
 });
-(0, import_extends7.default)(math, {
+_extends(math, {
   e: e2,
   false: _false,
   fineStructure,
@@ -45300,7 +45237,7 @@ var help = createHelp({
   lyap,
   config
 });
-(0, import_extends7.default)(mathWithTransform, math, {
+_extends(mathWithTransform, math, {
   filter: createFilterTransform({
     typed: typed2
   }),
@@ -45456,7 +45393,7 @@ var help = createHelp({
     variance
   })
 });
-(0, import_extends7.default)(classes, {
+_extends(classes, {
   BigNumber,
   Complex: Complex2,
   Fraction: Fraction2,
